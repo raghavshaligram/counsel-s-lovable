@@ -115,7 +115,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Desktop Nav */}
         <nav className="hidden lg:flex items-center gap-0.5 text-[13px]">
           {heroTools.map((t) => (
-            <NavLink key={t.to} to={t.to} label={t.short} icon={t.icon} />
+            <NavLink key={t.to} to={t.to} label={t.short} icon={t.icon} beta={(t as any).beta} />
           ))}
           <span className="mx-1.5 h-4 w-px bg-border" />
           {utilities.map((t) => (
