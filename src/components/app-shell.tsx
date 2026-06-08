@@ -19,6 +19,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/redact" className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" activeProps={{ className: "text-foreground bg-accent" }}>Redact</Link>
           <Link to="/merge" className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" activeProps={{ className: "text-foreground bg-accent" }}>Mail Merge</Link>
           <Link to="/extract" className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" activeProps={{ className: "text-foreground bg-accent" }}>Extract</Link>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <Link to="/split" className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" activeProps={{ className: "text-foreground bg-accent" }}>Split</Link>
+          <Link to="/rotate" className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" activeProps={{ className: "text-foreground bg-accent" }}>Rotate</Link>
+          <Link to="/watermark" className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" activeProps={{ className: "text-foreground bg-accent" }}>Watermark</Link>
         </nav>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           <span className="h-1.5 w-1.5 rounded-full bg-vault" />

@@ -11,6 +11,9 @@ import {
   X,
   ArrowRight,
   CircleDot,
+  Scissors,
+  RotateCw,
+  Stamp,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -115,6 +118,18 @@ function Landing() {
               description="Pull tables from bank statements, invoices, research papers. Layout-aware detection with OCR fallback. Outputs clean Excel, CSV, or JSON."
               bullets={["Multi-page stitching", "OCR for scans", "Export to XLSX/CSV/JSON"]}
             />
+          </div>
+
+          {/* Utilities row */}
+          <div className="mt-16">
+            <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground mb-5">
+              Plus everyday utilities
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <UtilCard to="/split" icon={Scissors} name="Split" desc="Pages or ranges into separate PDFs." />
+              <UtilCard to="/rotate" icon={RotateCw} name="Rotate" desc="Fix sideways scans, page by page." />
+              <UtilCard to="/watermark" icon={Stamp} name="Watermark" desc="CONFIDENTIAL across every page." />
+            </div>
           </div>
         </div>
       </section>
@@ -307,6 +322,36 @@ function ToolCard({
     </Link>
   );
 }
+
+function UtilCard({
+  to,
+  icon: Icon,
+  name,
+  desc,
+}: {
+  to: string;
+  icon: typeof Lock;
+  name: string;
+  desc: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="group flex items-center gap-4 rounded-lg border border-border bg-card/40 hover:bg-card hover:border-vault/50 p-4 transition"
+    >
+      <div className="grid h-9 w-9 place-items-center rounded-md bg-vault/10 text-vault shrink-0">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{name}</div>
+        <div className="text-xs text-muted-foreground truncate">{desc}</div>
+      </div>
+      <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-vault transition shrink-0" />
+    </Link>
+  );
+}
+
+
 
 function Step({ n, ok, bad, children }: { n: number; ok?: boolean; bad?: boolean; children: React.ReactNode }) {
   return (

@@ -9,11 +9,29 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WatermarkRouteImport } from './routes/watermark'
+import { Route as SplitRouteImport } from './routes/split'
+import { Route as RotateRouteImport } from './routes/rotate'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as MergeRouteImport } from './routes/merge'
 import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as IndexRouteImport } from './routes/index'
 
+const WatermarkRoute = WatermarkRouteImport.update({
+  id: '/watermark',
+  path: '/watermark',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SplitRoute = SplitRouteImport.update({
+  id: '/split',
+  path: '/split',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RotateRoute = RotateRouteImport.update({
+  id: '/rotate',
+  path: '/rotate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RedactRoute = RedactRouteImport.update({
   id: '/redact',
   path: '/redact',
@@ -40,12 +58,18 @@ export interface FileRoutesByFullPath {
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
   '/redact': typeof RedactRoute
+  '/rotate': typeof RotateRoute
+  '/split': typeof SplitRoute
+  '/watermark': typeof WatermarkRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
   '/redact': typeof RedactRoute
+  '/rotate': typeof RotateRoute
+  '/split': typeof SplitRoute
+  '/watermark': typeof WatermarkRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +77,38 @@ export interface FileRoutesById {
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
   '/redact': typeof RedactRoute
+  '/rotate': typeof RotateRoute
+  '/split': typeof SplitRoute
+  '/watermark': typeof WatermarkRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/extract' | '/merge' | '/redact'
+  fullPaths:
+    | '/'
+    | '/extract'
+    | '/merge'
+    | '/redact'
+    | '/rotate'
+    | '/split'
+    | '/watermark'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/extract' | '/merge' | '/redact'
-  id: '__root__' | '/' | '/extract' | '/merge' | '/redact'
+  to:
+    | '/'
+    | '/extract'
+    | '/merge'
+    | '/redact'
+    | '/rotate'
+    | '/split'
+    | '/watermark'
+  id:
+    | '__root__'
+    | '/'
+    | '/extract'
+    | '/merge'
+    | '/redact'
+    | '/rotate'
+    | '/split'
+    | '/watermark'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,10 +116,34 @@ export interface RootRouteChildren {
   ExtractRoute: typeof ExtractRoute
   MergeRoute: typeof MergeRoute
   RedactRoute: typeof RedactRoute
+  RotateRoute: typeof RotateRoute
+  SplitRoute: typeof SplitRoute
+  WatermarkRoute: typeof WatermarkRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/watermark': {
+      id: '/watermark'
+      path: '/watermark'
+      fullPath: '/watermark'
+      preLoaderRoute: typeof WatermarkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/split': {
+      id: '/split'
+      path: '/split'
+      fullPath: '/split'
+      preLoaderRoute: typeof SplitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rotate': {
+      id: '/rotate'
+      path: '/rotate'
+      fullPath: '/rotate'
+      preLoaderRoute: typeof RotateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/redact': {
       id: '/redact'
       path: '/redact'
@@ -107,6 +180,9 @@ const rootRouteChildren: RootRouteChildren = {
   ExtractRoute: ExtractRoute,
   MergeRoute: MergeRoute,
   RedactRoute: RedactRoute,
+  RotateRoute: RotateRoute,
+  SplitRoute: SplitRoute,
+  WatermarkRoute: WatermarkRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
