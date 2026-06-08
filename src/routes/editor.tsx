@@ -534,7 +534,7 @@ function Thumbnail({ op, srcBytes }: { op: PageOp; srcBytes: Uint8Array }) {
 
 // ---------- page canvas + annotation layer ----------
 
-type TextItem = { x: number; y: number; w: number; h: number; str: string };
+type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean };
 
 function PageCanvas({
   op, srcBytes, annos, state, dispatch,
