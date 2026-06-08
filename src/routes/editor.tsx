@@ -763,6 +763,9 @@ function PageCanvas({
       text: it.str,
       fontSize: it.h * 0.95,
       bg: { r: 1, g: 1, b: 1 },
+      family: it.family,
+      bold: it.bold,
+      italic: it.italic,
     } });
     setEditingId(id);
     dispatch({ type: "SELECT_ANNO", id });
