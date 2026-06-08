@@ -80,7 +80,6 @@ export async function extractTables(
 async function ocrPageItems(
   page: { render: (args: { canvasContext: CanvasRenderingContext2D; viewport: unknown; canvas: HTMLCanvasElement }) => { promise: Promise<unknown> } },
   viewport: { width: number; height: number },
-  _scale: number,
 ): Promise<Item[]> {
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
