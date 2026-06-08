@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Redact, sign, mail-merge, and extract tables from PDFs — 100% in your browser. Your files never leave this tab. Pay once, use forever.",
+          "Redact, sign, chat with, mail-merge, and extract tables from PDFs — 100% in your browser. A local AI answers questions about your PDF without uploading it. Pay once, use forever.",
       },
       { property: "og:title", content: "VaultPDF — PDFs that never leave your browser" },
       {
