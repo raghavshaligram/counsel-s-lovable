@@ -15,6 +15,7 @@ import {
   RotateCw,
   Stamp,
   PenLine,
+  MessageSquare,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -24,7 +25,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Redact, sign, mail-merge, and extract tables from PDFs — 100% in your browser. Your files never leave this tab. Pay once, use forever.",
+          "Redact, sign, chat with, mail-merge, and extract tables from PDFs — 100% in your browser. A local AI answers questions about your PDF without uploading it. Pay once, use forever.",
       },
       { property: "og:title", content: "VaultPDF — PDFs that never leave your browser" },
       {
@@ -94,11 +95,11 @@ function Landing() {
       <section id="tools" className="border-b border-border">
         <div className="mx-auto max-w-6xl px-5 md:px-8 py-20 md:py-28">
           <SectionHead
-            label="Four Hero Tools"
+            label="Five Hero Tools"
             title="Built for the work nobody else will touch."
             kicker="Confidential PDFs that lawyers, accountants, HR, and brokers handle every day."
           />
-          <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             <ToolCard
               to="/redact"
               icon={ShieldCheck}
@@ -116,6 +117,15 @@ function Landing() {
               live
               description="Draw, type, or upload your signature. Drop it on any page, add text and dates, then flatten — never email an unsigned doc again."
               bullets={["Draw / Type / Upload", "Drag & resize on page", "Flattened output"]}
+            />
+            <ToolCard
+              to="/chat"
+              icon={MessageSquare}
+              name="Chat with PDF"
+              tag="Beta"
+              live
+              description="A small open-source LLM runs entirely in your tab. Ask questions about any PDF — no API key, no upload, no leak. Works offline once cached."
+              bullets={["WebGPU + WASM fallback", "BM25 retrieval w/ page citations", "Zero network calls after load"]}
             />
             <ToolCard
               to="/merge"

@@ -17,6 +17,7 @@ import { Route as RedactRouteImport } from './routes/redact'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as MergeRouteImport } from './routes/merge'
 import { Route as ExtractRouteImport } from './routes/extract'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 
 const WatermarkRoute = WatermarkRouteImport.update({
@@ -59,6 +60,11 @@ const ExtractRoute = ExtractRouteImport.update({
   path: '/extract',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -67,6 +73,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
   '/pricing': typeof PricingRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
   '/pricing': typeof PricingRoute
@@ -90,6 +98,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
   '/pricing': typeof PricingRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/chat'
     | '/extract'
     | '/merge'
     | '/pricing'
@@ -114,6 +124,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/chat'
     | '/extract'
     | '/merge'
     | '/pricing'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/chat'
     | '/extract'
     | '/merge'
     | '/pricing'
@@ -137,6 +149,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatRoute: typeof ChatRoute
   ExtractRoute: typeof ExtractRoute
   MergeRoute: typeof MergeRoute
   PricingRoute: typeof PricingRoute
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExtractRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -217,6 +237,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatRoute: ChatRoute,
   ExtractRoute: ExtractRoute,
   MergeRoute: MergeRoute,
   PricingRoute: PricingRoute,
