@@ -773,6 +773,7 @@ function PageCanvas({
       family: it.family,
       bold: it.bold,
       italic: it.italic,
+      textOffsetY: padTop,
     } });
     setEditingId(id);
     dispatch({ type: "SELECT_ANNO", id });
