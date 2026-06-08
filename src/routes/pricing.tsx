@@ -226,7 +226,7 @@ function PricingPage() {
             One email when the AppSumo deal goes live. Founding-member price stays locked for the
             first 1,000 buyers.
           </p>
-          <WaitlistForm />
+          <WaitlistForm source="pricing" placeholder="you@firm.com" className="mt-8 max-w-md mx-auto" />
         </div>
       </section>
 
