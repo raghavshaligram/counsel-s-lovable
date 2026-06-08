@@ -221,7 +221,14 @@ function RedactPage() {
     } finally {
       setExporting(false);
     }
-  }, [file, pages, boxes]);
+  }, [file, pages, allBoxes]);
+
+  const addBox = useCallback((b: Box) => setBoxes((prev) => [...prev, b]), []);
+  const removeBox = useCallback((id: string) => {
+    // Auto-detection boxes are removed by toggling/dismissing the detection.
+    setDetections((prev) => prev.filter((d) => d.id !== id));
+    setBoxes((prev) => prev.filter((b) => b.id !== id));
+  }, []);
 
   return (
     <AppShell>
