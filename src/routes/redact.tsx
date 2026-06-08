@@ -183,7 +183,7 @@ function RedactPage() {
         const img = await loadImage(p.dataUrl);
         ctx.drawImage(img, 0, 0);
         ctx.fillStyle = "#000000";
-        for (const b of boxes.filter((bx) => bx.page === p.pageNumber)) {
+        for (const b of allBoxes.filter((bx) => bx.page === p.pageNumber)) {
           ctx.fillRect(b.x, b.y, b.w, b.h);
         }
         const jpegBytes = await new Promise<Uint8Array>((resolve, reject) => {
