@@ -281,31 +281,37 @@ function TablePreview({
         enabled ? "border-border" : "border-border/40 opacity-50"
       }`}
     >
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/60 text-xs">
-        <div className="flex items-center gap-3">
-          <span className="text-muted-foreground">Page {table.page}</span>
-          <span className="text-muted-foreground">
-            · {table.rows.length} row{table.rows.length === 1 ? "" : "s"} × {cols} col
-            {cols === 1 ? "" : "s"}
-          </span>
-          {table.source === "ocr" && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-vault/15 text-vault text-[10px] uppercase tracking-wider">
-              <ScanLine className="h-3 w-3" /> OCR
-            </span>
-          )}
-        </div>
-        <label className="flex items-center gap-2 cursor-pointer text-xs">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border bg-card/60 text-xs">
+        <label className="flex items-center gap-2 cursor-pointer text-xs shrink-0">
           <input
             type="checkbox"
             checked={enabled}
             onChange={onToggle}
             className="accent-vault"
           />
-          Include in export
+          <span className="text-foreground/90">Include in export</span>
         </label>
+        <div className="flex items-center gap-3 min-w-0 overflow-hidden">
+          <span className="text-muted-foreground shrink-0">Page {table.page}</span>
+          <span className="text-muted-foreground shrink-0 hidden sm:inline">
+            · {table.rows.length} row{table.rows.length === 1 ? "" : "s"} × {cols} col
+            {cols === 1 ? "" : "s"}
+          </span>
+          {table.source === "ocr" && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-vault/15 text-vault text-[10px] uppercase tracking-wider shrink-0">
+              <ScanLine className="h-3 w-3" /> OCR
+            </span>
+          )}
+        </div>
       </div>
-      <div className="overflow-x-auto max-h-[420px]">
-        <table className="w-full text-xs">
+      <div
+        className="overflow-x-auto max-h-[420px]"
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "oklch(0.30 0.025 260) transparent",
+        }}
+      >
+        <table className="w-full text-xs" style={{ tableLayout: "auto" }}>
           <tbody>
             {table.rows.slice(0, 200).map((row, ri) => (
               <tr
@@ -315,7 +321,7 @@ function TablePreview({
                 {Array.from({ length: cols }).map((_, ci) => (
                   <td
                     key={ci}
-                    className="px-3 py-1.5 align-top whitespace-nowrap text-foreground/90"
+                    className="px-3 py-1.5 align-top text-foreground/90 break-words min-w-[6rem] max-w-[24rem]"
                   >
                     {row[ci] ?? ""}
                   </td>
