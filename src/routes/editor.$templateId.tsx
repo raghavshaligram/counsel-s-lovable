@@ -43,9 +43,11 @@ function nodeIcon(type: ASTNode["type"]) {
 
 function EditorPage() {
   const { template } = Route.useLoaderData();
-  const ast = template.ast;
+  const ast: TemplateAST = template.ast;
   const [vars, setVars] = useState<Record<string, string>>(() =>
-    Object.fromEntries(Object.entries(ast.variables ?? {}).map(([k, v]) => [k, v.default])),
+    Object.fromEntries(
+      Object.entries(ast.variables ?? {}).map(([k, v]) => [k, (v as { default: string }).default]),
+    ),
   );
   const [brand, setBrand] = useState(DEFAULT_BRAND);
   const [selected, setSelected] = useState<string | null>(null);
@@ -149,7 +151,7 @@ function EditorPage() {
               <h3 className="text-sm font-medium">Template variables</h3>
               {Object.entries(ast.variables ?? {}).map(([k, meta]) => (
                 <div key={k} className="space-y-1.5">
-                  <Label className="text-xs">{meta.label}</Label>
+                  <Label className="text-xs">{(meta as { label: string }).label}</Label>
                   <Input
                     value={vars[k] ?? ""}
                     onChange={(e) => setVars((v) => ({ ...v, [k]: e.target.value }))}
