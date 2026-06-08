@@ -669,6 +669,8 @@ function PageCanvas({
         color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
       } });
       setEditingId(id);
+      dispatch({ type: "SET_TOOL", t: "select" });
+      dispatch({ type: "SELECT_ANNO", id });
       return;
     }
 
@@ -681,6 +683,8 @@ function PageCanvas({
         color: state.color, opacity: state.opacity, text: "",
       } });
       setEditingId(id);
+      dispatch({ type: "SET_TOOL", t: "select" });
+      dispatch({ type: "SELECT_ANNO", id });
       return;
     }
 
