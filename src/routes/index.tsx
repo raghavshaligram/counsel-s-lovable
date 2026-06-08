@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
+import { WaitlistForm } from "@/components/waitlist-form";
 import {
   Lock,
   ShieldCheck,
