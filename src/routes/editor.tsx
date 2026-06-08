@@ -753,11 +753,18 @@ function PageCanvas({
   }, [state.tool, textItems]);
 
   const editExistingText = (it: TextItem) => {
-    const pad = Math.max(1, it.h * 0.1);
+    // Generous coverage so descenders (g, p, y) and ascenders of the original
+    // glyphs are fully whited-out — otherwise the original text peeks through.
+    const padX = Math.max(2, it.h * 0.15);
+    const padTop = Math.max(2, it.h * 0.35);
+    const padBottom = Math.max(2, it.h * 0.45);
     const id = uid();
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: state.current,
-      x: it.x - pad, y: it.y - pad, w: it.w + pad * 2, h: it.h + pad * 2,
+      x: it.x - padX,
+      y: it.y - padTop,
+      w: it.w + padX * 2,
+      h: it.h + padTop + padBottom,
       color: { r: 0, g: 0, b: 0 },
       opacity: 1,
       text: it.str,
@@ -769,7 +776,6 @@ function PageCanvas({
     } });
     setEditingId(id);
     dispatch({ type: "SELECT_ANNO", id });
-    // keep edit-text tool active so user can keep editing more strings
   };
 
   // Render annotation overlays (in unrotated PDF coords → rotate to screen)
