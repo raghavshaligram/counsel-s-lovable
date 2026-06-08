@@ -119,6 +119,18 @@ function Landing() {
               bullets={["Multi-page stitching", "OCR for scans", "Export to XLSX/CSV/JSON"]}
             />
           </div>
+
+          {/* Utilities row */}
+          <div className="mt-16">
+            <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground mb-5">
+              Plus everyday utilities
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <UtilCard to="/split" icon={Scissors} name="Split" desc="Pages or ranges into separate PDFs." />
+              <UtilCard to="/rotate" icon={RotateCw} name="Rotate" desc="Fix sideways scans, page by page." />
+              <UtilCard to="/watermark" icon={Stamp} name="Watermark" desc="CONFIDENTIAL across every page." />
+            </div>
+          </div>
         </div>
       </section>
 
