@@ -89,35 +89,46 @@ function Landing() {
       <section id="tools" className="border-b border-border">
         <div className="mx-auto max-w-6xl px-5 md:px-8 py-20 md:py-28">
           <SectionHead
-            label="Three Hero Tools"
+            label="Four Hero Tools"
             title="Built for the work nobody else will touch."
             kicker="Confidential PDFs that lawyers, accountants, HR, and brokers handle every day."
           />
-          <div className="mt-12 grid md:grid-cols-3 gap-5">
+          <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-4 gap-5">
             <ToolCard
               to="/redact"
               icon={ShieldCheck}
               name="Smart Redact"
               tag="Ready to try"
               live
-              description="AI detects names, SSNs, account numbers, addresses. You confirm. Content is permanently removed from the PDF — not a black box you can copy under."
-              bullets={["On-device AI PII detection", "True content removal", "Metadata stripped"]}
+              description="AI detects names, SSNs, account numbers, addresses. You confirm. Content is permanently removed from the PDF."
+              bullets={["On-device AI", "True content removal", "Metadata stripped"]}
+            />
+            <ToolCard
+              to="/sign"
+              icon={PenLine}
+              name="Sign & Fill"
+              tag="Ready to try"
+              live
+              description="Draw, type, or upload your signature. Drop it on any page, add text and dates, then flatten — never email an unsigned doc again."
+              bullets={["Draw / Type / Upload", "Drag & resize on page", "Flattened output"]}
             />
             <ToolCard
               to="/merge"
               icon={FileStack}
               name="Batch Mail Merge"
-              tag="Next up"
-              description="Upload a PDF template and a CSV. Generate 500 filled, named, ready-to-send PDFs in a zip. No subscription, no per-document fee."
-              bullets={["CSV / XLSX / JSON input", "Auto-rename by field", "Up to 10k per batch"]}
+              tag="Ready to try"
+              live
+              description="Upload a PDF template and a CSV. Generate hundreds of filled, named, ready-to-send PDFs in a zip."
+              bullets={["CSV / XLSX / JSON", "Auto-rename by field", "Up to 10k per batch"]}
             />
             <ToolCard
               to="/extract"
               icon={Table2}
               name="Smart Table Extract"
-              tag="Next up"
-              description="Pull tables from bank statements, invoices, research papers. Layout-aware detection with OCR fallback. Outputs clean Excel, CSV, or JSON."
-              bullets={["Multi-page stitching", "OCR for scans", "Export to XLSX/CSV/JSON"]}
+              tag="Ready to try"
+              live
+              description="Pull tables from statements, invoices, papers. Layout-aware with OCR fallback. Export Excel/CSV/JSON."
+              bullets={["Multi-page stitching", "OCR for scans", "XLSX/CSV/JSON"]}
             />
           </div>
 
