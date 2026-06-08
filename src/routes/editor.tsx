@@ -326,6 +326,14 @@ function Editor() {
 // ---------- toolbar ----------
 
 function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
+  const selectedAnno = state.selectedAnnoId
+    ? state.doc.pages.flatMap((p) => p.annotations).find((a) => a.id === state.selectedAnnoId) ?? null
+    : null;
+  const effOpacity = (selectedAnno && "opacity" in selectedAnno ? (selectedAnno as { opacity: number }).opacity : state.opacity);
+  const effFont = selectedAnno && "fontSize" in selectedAnno ? (selectedAnno as { fontSize: number }).fontSize : state.fontSize;
+  const effStroke = selectedAnno && "stroke" in selectedAnno ? (selectedAnno as { stroke: number }).stroke : state.stroke;
+  const supportsStroke = selectedAnno ? ["rect", "ellipse", "freehand"].includes(selectedAnno.kind) : (state.tool === "rect" || state.tool === "ellipse" || state.tool === "freehand");
+  const supportsFont = selectedAnno ? ["text", "note", "text-edit"].includes(selectedAnno.kind) : (state.tool === "text" || state.tool === "edit-text" || state.tool === "note");
   const tools: { id: Tool; icon: React.FC<{ className?: string }>; label: string }[] = [
     { id: "select", icon: MousePointer2, label: "Select" },
     { id: "text", icon: Type, label: "Text" },
