@@ -15,6 +15,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+import { softwareAppSchema } from "@/lib/seo/tool-schema";
+
 export const Route = createFileRoute("/merge")({
   head: () => ({
     meta: [
@@ -29,6 +31,21 @@ export const Route = createFileRoute("/merge")({
         property: "og:description",
         content:
           "Upload a fillable PDF template and a CSV. Download a zip of filled PDFs. Nothing leaves your browser.",
+      },
+      { property: "og:url", content: "/merge" },
+    ],
+    links: [{ rel: "canonical", href: "/merge" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(
+          softwareAppSchema({
+            name: "VaultPDF Batch Mail Merge",
+            url: "/merge",
+            description:
+              "Fill a PDF template with rows from a CSV. Outputs a zip of named PDFs, generated in your browser.",
+          }),
+        ),
       },
     ],
   }),
