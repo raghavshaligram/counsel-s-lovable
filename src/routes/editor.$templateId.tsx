@@ -295,13 +295,13 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`h-11 flex items-center justify-center gap-2 text-sm transition ${
+      className={`h-12 flex items-center justify-center gap-2 text-[12px] uppercase tracking-[0.16em] transition ${
         active
-          ? "text-foreground border-b-2 border-primary -mb-px"
+          ? "text-foreground bg-background border-b-2 border-foreground -mb-px"
           : "text-muted-foreground hover:text-foreground"
       }`}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-3.5 w-3.5" />
       {label}
     </button>
   );
@@ -310,8 +310,8 @@ function TabBtn({
 function SectionHeader({ title, hint }: { title: string; hint: string }) {
   return (
     <div>
-      <h3 className="font-[Fraunces] text-lg">{title}</h3>
-      <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>
+      <h3 className="font-display text-xl">{title}</h3>
+      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{hint}</p>
     </div>
   );
 }
