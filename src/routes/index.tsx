@@ -15,6 +15,7 @@ import {
   RotateCw,
   Stamp,
   PenLine,
+  MessageSquare,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
