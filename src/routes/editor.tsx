@@ -529,6 +529,8 @@ function PageCanvas({
   const [textItems, setTextItems] = useState<TextItem[]>([]);
   const [displayScale, setDisplayScale] = useState(1.3);
   const [drawing, setDrawing] = useState<null | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }>(null);
+  // id of the annotation currently in inline-edit mode (text / note / text-edit)
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Render the page
   useEffect(() => {
