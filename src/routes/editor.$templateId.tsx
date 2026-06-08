@@ -334,7 +334,7 @@ function SelectedCallout({
   const v = varForNode[node.id];
   if (!v) {
     return (
-      <div className="px-4 py-3 bg-secondary/50 border-b border-border text-xs text-muted-foreground">
+      <div className="px-5 py-3 bg-secondary/50 border-b border-border text-xs text-muted-foreground leading-relaxed">
         This element is locked by the template — pick a different one or edit your brand colors.
       </div>
     );
