@@ -857,9 +857,9 @@ function PageCanvas({
         {inner}
         {selected && (
           <>
-            <div style={{ position: "absolute", inset: -2, border: "1.5px dashed hsl(var(--vault))", pointerEvents: "none" }} />
-            <div onMouseDown={onResize} style={{ position: "absolute", right: -6, bottom: -6, width: 12, height: 12, background: "hsl(var(--vault))", border: "2px solid white", borderRadius: 2, cursor: "nwse-resize" }} />
-            <button onClick={(e) => { e.stopPropagation(); dispatch({ type: "DELETE_ANNO", id: a.id }); }} style={{ position: "absolute", top: -10, right: -10, background: "hsl(var(--destructive))", color: "white", borderRadius: 999, width: 18, height: 18, fontSize: 10, lineHeight: 1, display: "grid", placeItems: "center" }}>×</button>
+            <div style={{ position: "absolute", inset: -2, border: "1.5px dashed var(--vault)", pointerEvents: "none" }} />
+            <div onMouseDown={onResize} style={{ position: "absolute", right: -6, bottom: -6, width: 12, height: 12, background: "var(--vault)", border: "2px solid white", borderRadius: 2, cursor: "nwse-resize" }} />
+            <button onClick={(e) => { e.stopPropagation(); dispatch({ type: "DELETE_ANNO", id: a.id }); }} style={{ position: "absolute", top: -10, right: -10, background: "#dc2626", color: "white", borderRadius: 999, width: 18, height: 18, fontSize: 10, lineHeight: 1, display: "grid", placeItems: "center" }}>×</button>
           </>
         )}
       </div>
