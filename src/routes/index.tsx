@@ -40,25 +40,32 @@ function CatalogPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl px-6 py-10">
-        <div className="flex flex-col gap-2 mb-8">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Catalog</p>
-          <h1 className="font-[Fraunces] text-4xl md:text-5xl font-700 tracking-tight">
-            Pick a template. <span className="text-muted-foreground italic">Make it yours.</span>
-          </h1>
-          <p className="text-muted-foreground max-w-xl mt-2">
-            Layout is locked. Type, swap photos, and recolor — you can't make it ugly.
+      <div className="mx-auto max-w-7xl px-6 md:px-10 py-12 md:py-16">
+        <div className="grid md:grid-cols-[1.1fr_1fr] gap-10 mb-12 items-end border-b border-border pb-10">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground mb-5">
+              Vol. 01 · The Catalog
+            </p>
+            <h1 className="font-display text-5xl md:text-7xl font-semibold leading-[0.95]">
+              Pick a template.
+              <br />
+              <span className="italic font-normal text-muted-foreground">Make it yours.</span>
+            </h1>
+          </div>
+          <p className="text-base md:text-lg text-muted-foreground max-w-md md:justify-self-end leading-relaxed">
+            Layout is locked by a designer. You type the words, drop in the photos, set your colors —
+            and it always looks right.
           </p>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-3 mb-8">
+        <div className="flex flex-col md:flex-row gap-3 mb-10">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search templates…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="pl-9 h-11 bg-background"
+              className="pl-9 h-11 bg-background border-border rounded-none"
             />
           </div>
           <FacetPills label="Niche" value={niche} options={FACETS.niche} onChange={setNiche} />
@@ -66,29 +73,32 @@ function CatalogPage() {
           <FacetPills label="Style" value={aesthetic} options={FACETS.aesthetic} onChange={setAesthetic} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((t) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+          {filtered.map((t, i) => (
             <Link
               key={t.id}
               to="/editor/$templateId"
               params={{ templateId: t.id }}
               className="group block"
             >
-              <div className="aspect-square overflow-hidden rounded-xl border border-border bg-background relative">
-                <div className="absolute inset-0 grid place-items-center p-6">
+              <div className="aspect-square overflow-hidden bg-background relative border border-border">
+                <div className="absolute top-3 left-3 z-10 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                  №&nbsp;{String(i + 1).padStart(2, "0")}
+                </div>
+                <div className="absolute inset-0 grid place-items-center p-8">
                   <ASTRenderer ast={t.ast} scale={300 / t.ast.sizes[0].w} />
                 </div>
-                <div className="absolute inset-0 ring-0 group-hover:ring-2 ring-primary/40 transition rounded-xl pointer-events-none" />
+                <div className="absolute inset-0 ring-0 group-hover:ring-1 ring-foreground/60 transition pointer-events-none" />
               </div>
-              <div className="mt-3 flex items-center justify-between">
+              <div className="mt-4 flex items-end justify-between border-t border-border pt-3">
                 <div>
-                  <div className="font-medium text-sm">{t.name}</div>
-                  <div className="text-xs text-muted-foreground capitalize">
+                  <div className="font-display text-lg leading-tight">{t.name}</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mt-1">
                     {t.niche} · {t.occasion.replace("-", " ")}
                   </div>
                 </div>
-                <span className="text-xs text-primary opacity-0 group-hover:opacity-100 transition">
-                  Edit →
+                <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition translate-x-0 group-hover:-translate-x-0.5">
+                  Open →
                 </span>
               </div>
             </Link>
@@ -116,13 +126,13 @@ function FacetPills({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 bg-background border border-border rounded-lg px-2 h-11">
-      <span className="text-xs text-muted-foreground pr-1">{label}</span>
+    <div className="flex items-center gap-1 bg-background border border-border px-2 h-11">
+      <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground pr-2">{label}</span>
       {options.map((o) => (
         <button
           key={o}
           onClick={() => onChange(o)}
-          className={`text-xs px-2.5 py-1 rounded-md capitalize transition ${
+          className={`text-xs px-2.5 py-1 capitalize transition ${
             value === o
               ? "bg-foreground text-background"
               : "text-muted-foreground hover:text-foreground"

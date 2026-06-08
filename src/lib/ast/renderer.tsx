@@ -30,9 +30,9 @@ function interpolate(text: string, vars: Record<string, string>) {
 }
 
 const FONTS: Record<string, string> = {
-  display: '"Fraunces", "Times New Roman", serif',
-  body: '"Inter", system-ui, sans-serif',
-  mono: '"JetBrains Mono", monospace',
+  display: '"Syne", "Plus Jakarta Sans", sans-serif',
+  body: '"Plus Jakarta Sans", system-ui, sans-serif',
+  mono: 'ui-monospace, "SF Mono", monospace',
 };
 
 function renderNode(

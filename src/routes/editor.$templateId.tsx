@@ -105,23 +105,29 @@ function EditorPage() {
 
   return (
     <AppShell>
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] h-[calc(100vh-3.5rem)]">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_380px] h-[calc(100vh-3.5rem)]">
         {/* Canvas */}
         <section
           ref={stageRef}
           className="relative bg-[var(--studio-bg)] overflow-hidden grid place-items-center"
           onClick={() => setSelected(null)}
         >
-          <div className="absolute top-3 left-3 flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild className="h-8">
-              <Link to="/"><ChevronLeft className="h-4 w-4 mr-1" /> Back</Link>
-            </Button>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              {ast.sizes[0].name} · {ast.sizes[0].w}×{ast.sizes[0].h}
-            </span>
+          {/* Top meta */}
+          <div className="absolute top-5 left-6 right-6 flex items-start justify-between pointer-events-none">
+            <div className="flex items-center gap-3 pointer-events-auto">
+              <Button variant="ghost" size="sm" asChild className="h-8 -ml-2 text-muted-foreground hover:text-foreground">
+                <Link to="/"><ChevronLeft className="h-4 w-4 mr-1" /> Catalog</Link>
+              </Button>
+            </div>
+            <div className="text-right pointer-events-auto">
+              <div className="font-display text-base leading-tight">{template.name}</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground mt-0.5">
+                {ast.sizes[0].name} · {ast.sizes[0].w}×{ast.sizes[0].h}
+              </div>
+            </div>
           </div>
 
-          <div onClick={(e) => e.stopPropagation()}>
+          <div onClick={(e) => e.stopPropagation()} className="shadow-[0_30px_80px_-30px_rgba(13,13,13,0.35)]">
             <ASTRenderer
               ast={ast}
               brand={brand}
@@ -132,19 +138,25 @@ function EditorPage() {
             />
           </div>
 
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-muted-foreground bg-background/80 backdrop-blur px-3 py-1.5 rounded-full border border-border flex items-center gap-1.5">
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground flex items-center gap-2">
             <Wand2 className="h-3 w-3" />
             Click anything to edit. Layout stays locked.
           </div>
 
-          <div className="absolute bottom-3 right-3 flex gap-2">
-            <Button size="sm" className="h-9"><Download className="h-3.5 w-3.5 mr-1.5" /> Download</Button>
+          <div className="absolute bottom-5 right-6 flex gap-2">
+            <Button size="sm" className="h-9 rounded-none bg-foreground text-background hover:bg-foreground/90">
+              <Download className="h-3.5 w-3.5 mr-1.5" /> Download
+            </Button>
           </div>
         </section>
 
         {/* Right panel */}
-        <aside className="border-l border-border bg-background flex flex-col min-h-0">
-          <div className="grid grid-cols-3 border-b border-border">
+        <aside className="border-t md:border-t-0 md:border-l border-border bg-background flex flex-col min-h-0">
+          <div className="px-5 pt-5 pb-3">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Studio</p>
+            <h2 className="font-display text-2xl mt-1">Make it yours</h2>
+          </div>
+          <div className="grid grid-cols-3 border-y border-border">
             <TabBtn icon={Type} label="Words" active={tab === "content"} onClick={() => setTab("content")} />
             <TabBtn icon={ImageIcon} label="Photos" active={tab === "photos"} onClick={() => setTab("photos")} />
             <TabBtn icon={Palette} label="Colors" active={tab === "brand"} onClick={() => setTab("brand")} />
@@ -162,7 +174,7 @@ function EditorPage() {
             )}
 
             {tab === "content" && (
-              <div className="p-4 space-y-4">
+              <div className="p-5 space-y-5">
                 <SectionHeader title="Words" hint="Change the text. Sizes and layout stay locked." />
                 {wordFields.length === 0 && <Empty text="No text fields in this template." />}
                 {wordFields.map(([k, m]) => {
@@ -170,17 +182,19 @@ function EditorPage() {
                   const long = (vars[k] ?? "").length > 40;
                   return (
                     <div key={k} className="space-y-1.5">
-                      <Label className="text-xs">{meta.label}</Label>
+                      <Label className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{meta.label}</Label>
                       {long ? (
                         <Textarea
                           value={vars[k] ?? ""}
                           onChange={(e) => setVars((v) => ({ ...v, [k]: e.target.value }))}
                           rows={2}
+                          className="rounded-none border-border focus-visible:ring-foreground/20"
                         />
                       ) : (
                         <Input
                           value={vars[k] ?? ""}
                           onChange={(e) => setVars((v) => ({ ...v, [k]: e.target.value }))}
+                          className="rounded-none border-border focus-visible:ring-foreground/20"
                         />
                       )}
                     </div>
@@ -190,15 +204,15 @@ function EditorPage() {
             )}
 
             {tab === "photos" && (
-              <div className="p-4 space-y-4">
+              <div className="p-5 space-y-5">
                 <SectionHeader title="Photos" hint="Paste a link or upload — we'll crop it for you." />
                 {photoFields.length === 0 && <Empty text="No photo slots in this template." />}
                 {photoFields.map(([k, m]) => {
                   const meta = m as { label: string; default: string };
                   return (
                     <div key={k} className="space-y-2">
-                      <Label className="text-xs">{meta.label}</Label>
-                      <div className="aspect-video rounded-md overflow-hidden bg-secondary border border-border">
+                      <Label className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{meta.label}</Label>
+                      <div className="aspect-video overflow-hidden bg-secondary border border-border">
                         {vars[k] && (
                           <img src={vars[k]} alt="" className="h-full w-full object-cover" />
                         )}
@@ -207,8 +221,9 @@ function EditorPage() {
                         value={vars[k] ?? ""}
                         onChange={(e) => setVars((v) => ({ ...v, [k]: e.target.value }))}
                         placeholder="https://…"
+                        className="rounded-none border-border focus-visible:ring-foreground/20"
                       />
-                      <Button size="sm" variant="secondary" className="w-full h-8 text-xs" disabled>
+                      <Button size="sm" variant="secondary" className="w-full h-8 text-xs rounded-none" disabled>
                         Upload photo (coming soon)
                       </Button>
                     </div>
@@ -218,31 +233,31 @@ function EditorPage() {
             )}
 
             {tab === "brand" && (
-              <div className="p-4 space-y-4">
+              <div className="p-5 space-y-4">
                 <SectionHeader title="Your colors" hint="Set once, applies to every template you use." />
                 <div className="grid grid-cols-1 gap-2">
                   {(Object.keys(brand) as (keyof typeof brand)[]).map((k) => (
                     <label
                       key={k}
-                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-border hover:bg-secondary/50 cursor-pointer"
+                      className="flex items-center justify-between gap-3 px-3 py-2.5 border border-border hover:bg-secondary/50 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
                         <span
-                          className="h-6 w-6 rounded-full border border-border shrink-0"
+                          className="h-6 w-6 border border-border shrink-0"
                           style={{ background: brand[k] }}
                         />
-                        <span className="text-sm capitalize">{labelForToken(k)}</span>
+                        <span className="text-sm">{labelForToken(k)}</span>
                       </div>
                       <input
                         type="color"
                         value={brand[k]}
                         onChange={(e) => setBrand((b) => ({ ...b, [k]: e.target.value }))}
-                        className="h-7 w-10 rounded border border-border bg-transparent cursor-pointer"
+                        className="h-7 w-10 border border-border bg-transparent cursor-pointer"
                       />
                     </label>
                   ))}
                 </div>
-                <p className="text-[11px] text-muted-foreground pt-2">
+                <p className="text-[11px] text-muted-foreground pt-2 leading-relaxed">
                   Brand colors blend in at render time — your templates aren't rewritten.
                 </p>
               </div>
@@ -280,13 +295,13 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`h-11 flex items-center justify-center gap-2 text-sm transition ${
+      className={`h-12 flex items-center justify-center gap-2 text-[12px] uppercase tracking-[0.16em] transition ${
         active
-          ? "text-foreground border-b-2 border-primary -mb-px"
+          ? "text-foreground bg-background border-b-2 border-foreground -mb-px"
           : "text-muted-foreground hover:text-foreground"
       }`}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-3.5 w-3.5" />
       {label}
     </button>
   );
@@ -295,8 +310,8 @@ function TabBtn({
 function SectionHeader({ title, hint }: { title: string; hint: string }) {
   return (
     <div>
-      <h3 className="font-[Fraunces] text-lg">{title}</h3>
-      <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>
+      <h3 className="font-display text-xl">{title}</h3>
+      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{hint}</p>
     </div>
   );
 }
@@ -319,7 +334,7 @@ function SelectedCallout({
   const v = varForNode[node.id];
   if (!v) {
     return (
-      <div className="px-4 py-3 bg-secondary/50 border-b border-border text-xs text-muted-foreground">
+      <div className="px-5 py-3 bg-secondary/50 border-b border-border text-xs text-muted-foreground leading-relaxed">
         This element is locked by the template — pick a different one or edit your brand colors.
       </div>
     );
@@ -327,17 +342,17 @@ function SelectedCallout({
   const value = vars[v] ?? "";
   const isPhoto = /^https?:\/\//.test(value);
   return (
-    <div className="px-4 py-3 bg-secondary/40 border-b border-border space-y-2">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+    <div className="px-5 py-3 bg-secondary/50 border-b border-border space-y-2">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+        <span className="h-1.5 w-1.5 bg-foreground" />
         Editing selection
       </div>
       {isPhoto ? (
-        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} placeholder="Photo URL" />
+        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} placeholder="Photo URL" className="rounded-none border-border" />
       ) : (node as TextNode).text.length > 40 ? (
-        <Textarea value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} rows={2} />
+        <Textarea value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} rows={2} className="rounded-none border-border" />
       ) : (
-        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} />
+        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} className="rounded-none border-border" />
       )}
     </div>
   );
