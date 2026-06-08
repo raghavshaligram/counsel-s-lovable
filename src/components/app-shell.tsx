@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 const heroTools = [
   { to: "/redact", label: "Redact", short: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
+  { to: "/sign", label: "Sign & Fill", short: "Sign", icon: PenIcon, desc: "Draw, type, or upload your signature" },
   { to: "/merge", label: "Mail Merge", short: "Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
   { to: "/extract", label: "Extract", short: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
 ];
