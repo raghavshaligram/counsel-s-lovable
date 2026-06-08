@@ -115,10 +115,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-vault" />
-            <span>Files never leave this tab</span>
-          </div>
+          <Link
+            to="/pricing"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
+            activeProps={{ className: "bg-vault/25" }}
+          >
+            Lifetime deal
+          </Link>
 
           {/* Mobile hamburger */}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -146,6 +149,20 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <MobileGroup title="Hero Tools" items={heroTools} currentPath={currentPath} onNavigate={() => setMobileOpen(false)} />
                   <div className="mx-5 my-3 h-px bg-border" />
                   <MobileGroup title="Utilities" items={utilities} currentPath={currentPath} onNavigate={() => setMobileOpen(false)} />
+                  <div className="mx-5 my-3 h-px bg-border" />
+                  <div className="px-3">
+                    <Link
+                      to="/pricing"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex items-center justify-between gap-3 rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-vault">Lifetime deal</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">One payment, every tool, forever.</div>
+                      </div>
+                      <span className="text-vault text-xs">→</span>
+                    </Link>
+                  </div>
                 </div>
 
                 {/* Mobile footer */}
@@ -167,6 +184,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
         <div className="flex gap-4">
           <Link to="/" className="hover:text-foreground">Home</Link>
+          <Link to="/pricing" className="hover:text-foreground">Pricing</Link>
           <a href="/#trust" className="hover:text-foreground">How privacy works</a>
         </div>
       </footer>

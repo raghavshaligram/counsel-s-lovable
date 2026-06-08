@@ -22,6 +22,8 @@ import {
   type ExtractedTable,
 } from "@/lib/pdf/extract-tables";
 
+import { softwareAppSchema } from "@/lib/seo/tool-schema";
+
 export const Route = createFileRoute("/extract")({
   head: () => ({
     meta: [
@@ -36,6 +38,21 @@ export const Route = createFileRoute("/extract")({
         property: "og:description",
         content:
           "Bank statements, invoices, lab reports — extracted into spreadsheets without uploading anything.",
+      },
+      { property: "og:url", content: "/extract" },
+    ],
+    links: [{ rel: "canonical", href: "/extract" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(
+          softwareAppSchema({
+            name: "VaultPDF Smart Table Extract",
+            url: "/extract",
+            description:
+              "Detect tables in PDFs and export to Excel, CSV, or JSON. OCR fallback for scanned pages.",
+          }),
+        ),
       },
     ],
   }),

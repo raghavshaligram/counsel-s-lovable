@@ -82,10 +82,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Privacy-architected PDF toolkit. Redact, mail-merge, and extract tables 100% in your browser. No uploads, no limits.",
+          "Privacy-architected PDF toolkit. Redact, sign, mail-merge, and extract tables 100% in your browser. No uploads, no limits.",
       },
       { name: "theme-color", content: "#1c1f33" },
       { property: "og:type", content: "website" },
+      { property: "og:site_name", content: "VaultPDF" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
@@ -95,6 +96,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+      },
+    ],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "VaultPDF",
+          description:
+            "Privacy-architected PDF toolkit that runs entirely in your browser.",
+          publisher: {
+            "@type": "Organization",
+            name: "VaultPDF",
+          },
+        }),
       },
     ],
   }),

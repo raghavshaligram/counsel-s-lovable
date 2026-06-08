@@ -11,6 +11,8 @@ import {
   type PiiCategory,
 } from "@/lib/pdf/detect-pii";
 
+import { softwareAppSchema } from "@/lib/seo/tool-schema";
+
 export const Route = createFileRoute("/redact")({
   head: () => ({
     meta: [
@@ -25,6 +27,21 @@ export const Route = createFileRoute("/redact")({
         property: "og:description",
         content:
           "Redact PDFs without uploading them. Auto-detect PII, true content removal — not just a black box.",
+      },
+      { property: "og:url", content: "/redact" },
+    ],
+    links: [{ rel: "canonical", href: "/redact" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(
+          softwareAppSchema({
+            name: "VaultPDF Smart Redact",
+            url: "/redact",
+            description:
+              "AI-detected PII redaction. Content is permanently removed from the PDF, in your browser.",
+          }),
+        ),
       },
     ],
   }),

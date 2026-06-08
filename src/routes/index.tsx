@@ -24,15 +24,17 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Redact, mail-merge, and extract tables from PDFs — 100% in your browser. Your files never leave this tab. Pay once, use forever.",
+          "Redact, sign, mail-merge, and extract tables from PDFs — 100% in your browser. Your files never leave this tab. Pay once, use forever.",
       },
       { property: "og:title", content: "VaultPDF — PDFs that never leave your browser" },
       {
         property: "og:description",
         content:
-          "Privacy-architected PDF toolkit. AI redaction, batch mail-merge, smart table extraction — all client-side. No uploads, no limits.",
+          "Privacy-architected PDF toolkit. AI redaction, signing, batch mail-merge, smart table extraction — all client-side.",
       },
+      { property: "og:url", content: "/" },
     ],
+    links: [{ rel: "canonical", href: "/" }],
   }),
   component: Landing,
 });
@@ -48,10 +50,13 @@ function Landing() {
           style={{ background: "var(--gradient-glow)" }}
         />
         <div className="relative mx-auto max-w-6xl px-5 md:px-8 pt-20 md:pt-28 pb-20 md:pb-28">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 backdrop-blur px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-8">
-            <CircleDot className="h-3 w-3 text-vault" />
-            AppSumo Lifetime Deal — coming soon
-          </div>
+          <Link
+            to="/pricing"
+            className="inline-flex items-center gap-2 rounded-full border border-vault/40 bg-vault/10 hover:bg-vault/20 backdrop-blur px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-vault mb-8 transition-colors"
+          >
+            <CircleDot className="h-3 w-3" />
+            AppSumo Lifetime Deal — see pricing
+          </Link>
           <h1 className="font-display text-5xl md:text-7xl lg:text-[88px] leading-[0.95] tracking-tight max-w-4xl">
             The PDF toolkit for documents you'd{" "}
             <span className="text-vault italic">never upload</span> to the cloud.
