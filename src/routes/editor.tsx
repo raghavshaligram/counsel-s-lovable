@@ -747,15 +747,15 @@ function PageCanvas({
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: state.current,
       x: it.x - pad, y: it.y - pad, w: it.w + pad * 2, h: it.h + pad * 2,
-      color: state.color.r + state.color.g + state.color.b < 0.2 ? state.color : { r: 0, g: 0, b: 0 },
+      color: { r: 0, g: 0, b: 0 },
       opacity: 1,
       text: it.str,
       fontSize: it.h * 0.95,
       bg: { r: 1, g: 1, b: 1 },
     } });
     setEditingId(id);
-    dispatch({ type: "SET_TOOL", t: "select" });
     dispatch({ type: "SELECT_ANNO", id });
+    // keep edit-text tool active so user can keep editing more strings
   };
 
   // Render annotation overlays (in unrotated PDF coords → rotate to screen)
