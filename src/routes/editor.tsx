@@ -324,6 +324,14 @@ function Editor() {
 // ---------- toolbar ----------
 
 function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
+  const [signOpen, setSignOpen] = useState(false);
+  const [stampOpen, setStampOpen] = useState(false);
+  const setPendingImageFromCanvas = (canvas: HTMLCanvasElement) => {
+    const dataUrl = canvas.toDataURL("image/png");
+    dispatch({ type: "SET_PENDING_IMAGE", img: { dataUrl, mime: "image/png", w: canvas.width, h: canvas.height } });
+    dispatch({ type: "SET_TOOL", t: "image" });
+    toast.message("Click on the page to place it");
+  };
   const selectedAnno = state.selectedAnnoId && state.doc
     ? state.doc.annotations.find((a) => a.id === state.selectedAnnoId) ?? null
     : null;
