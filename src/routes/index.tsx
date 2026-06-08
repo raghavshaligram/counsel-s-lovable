@@ -1,10 +1,44 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { AppShell } from "@/components/app-shell";
 import { FIXTURE_TEMPLATES } from "@/lib/ast/fixtures";
 import { ASTRenderer } from "@/lib/ast/renderer";
+import type { TemplateAST } from "@/lib/ast/types";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+
+function TemplateThumb({ ast }: { ast: TemplateAST }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.25);
+  const native = ast.sizes[0];
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0].contentRect.width;
+      setScale(w / native.w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [native.w]);
+
+  return (
+    <div ref={ref} className="absolute inset-0 overflow-hidden">
+      <div
+        style={{
+          width: native.w,
+          height: native.h,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      >
+        <ASTRenderer ast={ast} scale={1} />
+      </div>
+    </div>
+  );
+}
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -79,37 +113,23 @@ function CatalogPage() {
               key={t.id}
               to="/editor/$templateId"
               params={{ templateId: t.id }}
-              className="group block"
+              className="group block rounded-lg overflow-hidden border border-border bg-card shadow-sm hover:shadow-md transition-shadow"
             >
-              <div
-                className="aspect-square overflow-hidden bg-background relative border border-border"
-                style={{ containerType: "inline-size" }}
-              >
-                <div className="absolute top-3 left-3 z-10 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+              <div className="aspect-square relative bg-background border-b border-border overflow-hidden rounded-t-lg">
+                <div className="absolute top-3 left-3 z-10 text-[10px] uppercase tracking-[0.22em] text-muted-foreground/70 mix-blend-difference">
                   №&nbsp;{String(i + 1).padStart(2, "0")}
                 </div>
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: t.ast.sizes[0].w,
-                    height: t.ast.sizes[0].h,
-                    transform: `scale(calc(100cqw / ${t.ast.sizes[0].w}))`,
-                    transformOrigin: "top left",
-                  }}
-                >
-                  <ASTRenderer ast={t.ast} scale={1} />
-                </div>
-                <div className="absolute inset-0 ring-0 group-hover:ring-1 ring-foreground/60 transition pointer-events-none" />
+                <TemplateThumb ast={t.ast} />
+                <div className="absolute inset-0 ring-0 group-hover:ring-2 ring-foreground/80 ring-inset transition pointer-events-none" />
               </div>
-              <div className="mt-4 flex items-end justify-between border-t border-border pt-3">
-                <div>
-                  <div className="font-display text-lg leading-tight">{t.name}</div>
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mt-1">
+              <div className="bg-card px-4 py-3 flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-display text-base leading-tight truncate">{t.name}</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mt-1 truncate">
                     {t.niche} · {t.occasion.replace("-", " ")}
                   </div>
                 </div>
-                <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition translate-x-0 group-hover:-translate-x-0.5">
+                <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition shrink-0">
                   Open →
                 </span>
               </div>
