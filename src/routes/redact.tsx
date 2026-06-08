@@ -357,7 +357,8 @@ function RedactPage() {
                   Auto-detect PII
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Scans the text layer on-device for common sensitive patterns.
+                  Scans the text layer for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls
+                  back to on-device OCR for scanned pages (first run downloads ~10MB).
                 </p>
                 <Button
                   onClick={runAutoDetect}
@@ -372,6 +373,11 @@ function RedactPage() {
                       ? "Re-scan"
                       : "Scan this PDF"}
                 </Button>
+                {detectStatus && (
+                  <div className="mt-2 text-[11px] text-muted-foreground text-center">
+                    {detectStatus}
+                  </div>
+                )}
 
                 {detections.length > 0 && (
                   <div className="mt-4 space-y-1.5">
