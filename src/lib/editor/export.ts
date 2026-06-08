@@ -204,7 +204,7 @@ function drawAnno(
         x: a.x,
         y: yFlip(a.y, a.h) + a.h - a.fontSize * 0.85,
         size: a.fontSize,
-        font,
+        font: pickFont(fonts, a.family ?? "sans", a.bold, a.italic),
         color: col(a.color),
         maxWidth: a.w,
         lineHeight: a.fontSize * 1.15,
