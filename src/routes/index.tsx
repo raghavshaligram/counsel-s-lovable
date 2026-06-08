@@ -121,12 +121,13 @@ function Landing() {
             <ToolCard
               to="/chat"
               icon={MessageSquare}
-              name="Chat with PDF"
+              name="Search inside PDF"
               tag="Beta"
               live
-              description="Instant answers from your document — quoted passages with page numbers, in milliseconds. Optional on-device AI for written summaries. Nothing uploads, ever."
-              bullets={["Works instantly — no download", "Optional ~200 MB local LLM", "Page-cited quotes you can copy"]}
+              description="Drop a PDF and find any passage in milliseconds. Page-cited quotes you can copy. Nothing uploads, ever."
+              bullets={["Instant — no download", "Page-cited quoted passages", "BM25 local index"]}
             />
+
             <ToolCard
               to="/merge"
               icon={FileStack}
