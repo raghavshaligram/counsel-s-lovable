@@ -9,8 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RedactRouteImport } from './routes/redact'
+import { Route as MergeRouteImport } from './routes/merge'
+import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as IndexRouteImport } from './routes/index'
 
+const RedactRoute = RedactRouteImport.update({
+  id: '/redact',
+  path: '/redact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MergeRoute = MergeRouteImport.update({
+  id: '/merge',
+  path: '/merge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExtractRoute = ExtractRouteImport.update({
+  id: '/extract',
+  path: '/extract',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +37,61 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/extract': typeof ExtractRoute
+  '/merge': typeof MergeRoute
+  '/redact': typeof RedactRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/extract': typeof ExtractRoute
+  '/merge': typeof MergeRoute
+  '/redact': typeof RedactRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/extract': typeof ExtractRoute
+  '/merge': typeof MergeRoute
+  '/redact': typeof RedactRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/extract' | '/merge' | '/redact'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/extract' | '/merge' | '/redact'
+  id: '__root__' | '/' | '/extract' | '/merge' | '/redact'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ExtractRoute: typeof ExtractRoute
+  MergeRoute: typeof MergeRoute
+  RedactRoute: typeof RedactRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/redact': {
+      id: '/redact'
+      path: '/redact'
+      fullPath: '/redact'
+      preLoaderRoute: typeof RedactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/merge': {
+      id: '/merge'
+      path: '/merge'
+      fullPath: '/merge'
+      preLoaderRoute: typeof MergeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/extract': {
+      id: '/extract'
+      path: '/extract'
+      fullPath: '/extract'
+      preLoaderRoute: typeof ExtractRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,6 +104,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ExtractRoute: ExtractRoute,
+  MergeRoute: MergeRoute,
+  RedactRoute: RedactRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
