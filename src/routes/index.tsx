@@ -16,6 +16,7 @@ import {
   Stamp,
   PenLine,
   MessageSquare,
+  ScanText,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
