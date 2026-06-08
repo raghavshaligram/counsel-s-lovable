@@ -534,7 +534,7 @@ function Thumbnail({ op, srcBytes }: { op: PageOp; srcBytes: Uint8Array }) {
 
 // ---------- page canvas + annotation layer ----------
 
-type TextItem = { x: number; y: number; w: number; h: number; str: string };
+type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean };
 
 function PageCanvas({
   op, srcBytes, annos, state, dispatch,
@@ -574,12 +574,21 @@ function PageCanvas({
       // (scale 1, no rotation) so the coords match PDF points top-left.
       const baseVp = page.getViewport({ scale: 1 });
       const content = await page.getTextContent();
-      type Raw = { str: string; transform: number[]; width: number; height: number };
+      const styles = (content as unknown as { styles: Record<string, { fontFamily?: string }> }).styles ?? {};
+      type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
       const items: TextItem[] = (content.items as Raw[]).flatMap((it) => {
         if (!it.str || !it.str.trim()) return [];
         const m = pdfjs.Util.transform(baseVp.transform, it.transform);
         const fh = Math.hypot(m[2], m[3]);
-        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str }];
+        const ff = (it.fontName && styles[it.fontName]?.fontFamily) || it.fontName || "";
+        const ffl = ff.toLowerCase();
+        const family: "sans" | "serif" | "mono" =
+          /mono|courier|consol|typewriter/.test(ffl) ? "mono" :
+          /serif|times|roman|garamond|georgia|cambria|book/.test(ffl) ? "serif" :
+          "sans";
+        const bold = /bold|black|heavy|semibold|demibold/.test(ffl);
+        const italic = /italic|oblique/.test(ffl);
+        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str, family, bold, italic }];
       });
       setTextItems(items);
     })();
@@ -754,6 +763,9 @@ function PageCanvas({
       text: it.str,
       fontSize: it.h * 0.95,
       bg: { r: 1, g: 1, b: 1 },
+      family: it.family,
+      bold: it.bold,
+      italic: it.italic,
     } });
     setEditingId(id);
     dispatch({ type: "SELECT_ANNO", id });
@@ -853,12 +865,19 @@ function PageCanvas({
       case "text-edit": {
         const isEditing = editingId === a.id;
         const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
+        const fam = a.kind === "text-edit"
+          ? (a.family === "serif" ? `'Times New Roman', Times, serif`
+            : a.family === "mono" ? `'Courier New', Courier, monospace`
+            : `Helvetica, Arial, sans-serif`)
+          : `Helvetica, Arial, sans-serif`;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: bg,
           color: rgbCss(a.color, a.opacity),
-          fontSize: (a.kind === "text" ? a.fontSize : a.fontSize) * displayScale,
-          fontFamily: "Helvetica, Arial, sans-serif",
+          fontSize: a.fontSize * displayScale,
+          fontFamily: fam,
+          fontWeight: a.kind === "text-edit" && a.bold ? 700 : 400,
+          fontStyle: a.kind === "text-edit" && a.italic ? "italic" : "normal",
           lineHeight: 1.15,
           whiteSpace: "pre-wrap",
           overflow: "hidden",

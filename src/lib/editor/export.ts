@@ -15,7 +15,21 @@ const col = (c: RGB) => rgb(c.r, c.g, c.b);
 export async function exportEditedPdf(doc: EditorDoc): Promise<Uint8Array> {
   const srcDoc = await PDFDocument.load(doc.srcBytes);
   const out = await PDFDocument.create();
-  const font = await out.embedFont(StandardFonts.Helvetica);
+  const fonts = {
+    sans: await out.embedFont(StandardFonts.Helvetica),
+    sansBold: await out.embedFont(StandardFonts.HelveticaBold),
+    sansItalic: await out.embedFont(StandardFonts.HelveticaOblique),
+    sansBoldItalic: await out.embedFont(StandardFonts.HelveticaBoldOblique),
+    serif: await out.embedFont(StandardFonts.TimesRoman),
+    serifBold: await out.embedFont(StandardFonts.TimesRomanBold),
+    serifItalic: await out.embedFont(StandardFonts.TimesRomanItalic),
+    serifBoldItalic: await out.embedFont(StandardFonts.TimesRomanBoldItalic),
+    mono: await out.embedFont(StandardFonts.Courier),
+    monoBold: await out.embedFont(StandardFonts.CourierBold),
+    monoItalic: await out.embedFont(StandardFonts.CourierOblique),
+    monoBoldItalic: await out.embedFont(StandardFonts.CourierBoldOblique),
+  };
+  const font = fonts.sans;
 
   // Pre-embed images once, dedupe by dataUrl
   const imageCache = new Map<string, import("pdf-lib").PDFImage>();
@@ -47,10 +61,21 @@ export async function exportEditedPdf(doc: EditorDoc): Promise<Uint8Array> {
 
     const { width: pw, height: ph } = outPage.getSize();
     const annos = doc.annotations.filter((a) => a.page === i);
-    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache);
+    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts);
   }
 
   return out.save();
+}
+
+type FontSet = {
+  sans: import("pdf-lib").PDFFont; sansBold: import("pdf-lib").PDFFont; sansItalic: import("pdf-lib").PDFFont; sansBoldItalic: import("pdf-lib").PDFFont;
+  serif: import("pdf-lib").PDFFont; serifBold: import("pdf-lib").PDFFont; serifItalic: import("pdf-lib").PDFFont; serifBoldItalic: import("pdf-lib").PDFFont;
+  mono: import("pdf-lib").PDFFont; monoBold: import("pdf-lib").PDFFont; monoItalic: import("pdf-lib").PDFFont; monoBoldItalic: import("pdf-lib").PDFFont;
+};
+
+function pickFont(fonts: FontSet, family: "sans" | "serif" | "mono", bold?: boolean, italic?: boolean): import("pdf-lib").PDFFont {
+  const k = family + (bold && italic ? "BoldItalic" : bold ? "Bold" : italic ? "Italic" : "");
+  return (fonts as unknown as Record<string, import("pdf-lib").PDFFont>)[k] ?? fonts.sans;
 }
 
 function drawAnno(
@@ -60,6 +85,7 @@ function drawAnno(
   pw: number,
   ph: number,
   imgs: Map<string, import("pdf-lib").PDFImage>,
+  fonts: FontSet,
 ) {
   // Convert top-left bbox to bottom-left for pdf-lib
   const yFlip = (y: number, h: number) => ph - (y + h);
@@ -178,7 +204,7 @@ function drawAnno(
         x: a.x,
         y: yFlip(a.y, a.h) + a.h - a.fontSize * 0.85,
         size: a.fontSize,
-        font,
+        font: pickFont(fonts, a.family ?? "sans", a.bold, a.italic),
         color: col(a.color),
         maxWidth: a.w,
         lineHeight: a.fontSize * 1.15,

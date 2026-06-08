@@ -68,12 +68,16 @@ export interface ImageAnno extends BaseAnno {
 }
 
 // "Edit existing text" — covers original text bbox with whiteout, redraws.
+export type FontFamily = "sans" | "serif" | "mono";
 export interface TextEditAnno extends BaseAnno {
   kind: "text-edit";
   text: string;
   fontSize: number;
   // background fill colour painted over original glyphs
   bg: RGB;
+  family?: FontFamily;
+  bold?: boolean;
+  italic?: boolean;
 }
 
 export type Anno =
