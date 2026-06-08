@@ -126,13 +126,13 @@ function FacetPills({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 bg-background border border-border rounded-lg px-2 h-11">
-      <span className="text-xs text-muted-foreground pr-1">{label}</span>
+    <div className="flex items-center gap-1 bg-background border border-border px-2 h-11">
+      <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground pr-2">{label}</span>
       {options.map((o) => (
         <button
           key={o}
           onClick={() => onChange(o)}
-          className={`text-xs px-2.5 py-1 rounded-md capitalize transition ${
+          className={`text-xs px-2.5 py-1 capitalize transition ${
             value === o
               ? "bg-foreground text-background"
               : "text-muted-foreground hover:text-foreground"
