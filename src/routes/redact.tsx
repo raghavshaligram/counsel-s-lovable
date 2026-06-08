@@ -1,10 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Sparkles, Trash2, X, ShieldCheck, Lock } from "lucide-react";
+import { Download, FileText, Trash2, X, ShieldCheck, Lock, Wand2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  CATEGORY_META,
+  type Detection,
+  type PiiCategory,
+} from "@/lib/pdf/detect-pii";
 
 export const Route = createFileRoute("/redact")({
   head: () => ({
@@ -13,20 +18,20 @@ export const Route = createFileRoute("/redact")({
       {
         name: "description",
         content:
-          "Permanently remove sensitive content from PDFs. 100% in your browser. AI PII detection coming soon.",
+          "Permanently remove sensitive content from PDFs. AI PII auto-detection, 100% in your browser.",
       },
       { property: "og:title", content: "Smart Redact — VaultPDF" },
       {
         property: "og:description",
         content:
-          "Redact PDFs without uploading them. True content removal, not just a black box.",
+          "Redact PDFs without uploading them. Auto-detect PII, true content removal — not just a black box.",
       },
     ],
   }),
   component: RedactPage,
 });
 
-type Box = { id: string; page: number; x: number; y: number; w: number; h: number };
+type Box = { id: string; page: number; x: number; y: number; w: number; h: number; auto?: boolean; category?: PiiCategory };
 type RenderedPage = { pageNumber: number; width: number; height: number; dataUrl: string };
 
 function RedactPage() {
@@ -35,6 +40,11 @@ function RedactPage() {
   const [loading, setLoading] = useState(false);
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [enabledCats, setEnabledCats] = useState<Set<PiiCategory>>(
+    () => new Set(Object.keys(CATEGORY_META) as PiiCategory[]),
+  );
 
   // Render pages with PDF.js whenever a new file lands.
   useEffect(() => {
