@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
@@ -9,19 +9,17 @@ import {
   Lock,
   Send,
   X,
-  Cpu,
   Sparkles,
   AlertTriangle,
   Loader2,
+  Cpu,
+  Zap,
 } from "lucide-react";
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
 import { extractPdfChunks, type PdfChunk } from "@/lib/chat/pdf-extract";
-import { buildIndex, search, type Bm25Index } from "@/lib/chat/bm25";
-import {
-  detectRuntime,
-  approxDeviceMemoryGB,
-  type ChatRuntime,
-} from "@/lib/chat/runtime-detect";
+import { buildIndex, search, type Bm25Index, type SearchHit } from "@/lib/chat/bm25";
+import { detectRuntime, type ChatRuntime } from "@/lib/chat/runtime-detect";
+import { InstantAnswer } from "@/components/chat/InstantAnswer";
 
 export const Route = createFileRoute("/chat")({
   head: () => ({
@@ -30,13 +28,13 @@ export const Route = createFileRoute("/chat")({
       {
         name: "description",
         content:
-          "Ask questions about any PDF. The AI runs entirely in your browser via WebGPU — no upload, no API key, no server. Works offline after first load.",
+          "Ask questions about any PDF. Instant answers from the document itself — no upload, no API key, no download required. Optional AI summary runs locally.",
       },
       { property: "og:title", content: "Chat with PDF — 100% in your browser" },
       {
         property: "og:description",
         content:
-          "A local LLM answers questions about your PDF without ever leaving your tab. WebGPU + WASM fallback.",
+          "Instant local PDF search with page citations. Optional on-device LLM for written answers.",
       },
       { property: "og:url", content: "/chat" },
     ],
@@ -49,7 +47,7 @@ export const Route = createFileRoute("/chat")({
             name: "VaultPDF Chat with PDF",
             url: "/chat",
             description:
-              "Browser-local AI chat over your PDF. WebGPU when available, WASM fallback. Files and questions never leave the tab.",
+              "Instant browser-local PDF search with optional on-device LLM. Files and questions never leave the tab.",
           }),
         ),
       },
@@ -58,14 +56,16 @@ export const Route = createFileRoute("/chat")({
   component: ChatPage,
 });
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  citations?: number[];
+interface Turn {
+  id: string;
+  question: string;
+  hits: SearchHit[];
+  // LLM-generated answer state, per-turn
+  llm: { status: "idle" | "loading-model" | "generating" | "done" | "error"; text: string; error?: string };
 }
 
-type LoadStatus =
-  | { kind: "idle" }
+type ModelState =
+  | { kind: "uninit" }
   | { kind: "loading"; text: string; progress?: number }
   | { kind: "ready" }
   | { kind: "error"; message: string };
@@ -77,81 +77,28 @@ function ChatPage() {
   const [extracting, setExtracting] = useState(false);
   const [extractStatus, setExtractStatus] = useState<string | null>(null);
 
-  const [runtime, setRuntime] = useState<ChatRuntime | null>(null);
-  const [modelId, setModelId] = useState<string | null>(null);
-  const [status, setStatus] = useState<LoadStatus>({ kind: "idle" });
-
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
-  const [generating, setGenerating] = useState(false);
+
+  // LLM worker — created only on first Generate click
+  const [runtime, setRuntime] = useState<ChatRuntime | null>(null);
+  const [modelState, setModelState] = useState<ModelState>({ kind: "uninit" });
   const workerRef = useRef<Worker | null>(null);
-  const initStartedRef = useRef(false);
-  const genIdRef = useRef(0);
+  const pendingTurnRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Worker boot — strictly client-side
-  useEffect(() => {
-    if (initStartedRef.current) return;
-    initStartedRef.current = true;
-
-    let cancelled = false;
-    (async () => {
-      const rt = await detectRuntime();
-      if (cancelled) return;
-      setRuntime(rt);
-      setStatus({
-        kind: "loading",
-        text: rt === "webgpu" ? "Initializing WebGPU model…" : "Initializing WASM model…",
-      });
-
-      const worker = new Worker(new URL("../lib/chat/llm-worker.ts", import.meta.url), {
-        type: "module",
-      });
-      workerRef.current = worker;
-
-      worker.addEventListener("message", (e: MessageEvent) => {
-        const msg = e.data;
-        if (msg.type === "progress") {
-          setStatus({ kind: "loading", text: msg.text, progress: msg.progress });
-        } else if (msg.type === "ready") {
-          setModelId(msg.modelId);
-          setStatus({ kind: "ready" });
-        } else if (msg.type === "token") {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const last = prev[prev.length - 1];
-            if (last.role !== "assistant") return prev;
-            return [
-              ...prev.slice(0, -1),
-              { ...last, content: last.content + msg.delta },
-            ];
-          });
-        } else if (msg.type === "done") {
-          setGenerating(false);
-        } else if (msg.type === "error") {
-          setStatus({ kind: "error", message: msg.message });
-          setGenerating(false);
-          toast.error(msg.message);
-        }
-      });
-
-      worker.postMessage({ type: "init", runtime: rt });
-    })();
-
-    return () => {
-      cancelled = true;
-      workerRef.current?.terminate();
-      workerRef.current = null;
-    };
-  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [turns]);
+
+  useEffect(() => () => {
+    workerRef.current?.terminate();
+    workerRef.current = null;
+  }, []);
 
   const onPdf = useCallback(async (f: File) => {
     setFile(f);
-    setMessages([]);
+    setTurns([]);
     setExtracting(true);
     setExtractStatus("Reading PDF locally…");
     try {
@@ -180,53 +127,156 @@ function ChatPage() {
     setFile(null);
     setChunks([]);
     setIndex(null);
-    setMessages([]);
+    setTurns([]);
   };
 
   const ask = useCallback(() => {
     const q = input.trim();
-    if (!q || !index || status.kind !== "ready" || generating) return;
+    if (!q || !index) return;
     setInput("");
+    const hits = search(index, q, 3);
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        question: q,
+        hits,
+        llm: { status: "idle", text: "" },
+      },
+    ]);
+  }, [input, index]);
 
-    const hits = search(index, q, 4);
-    const context = hits
-      .map((h, i) => `[Source ${i + 1}, p. ${h.chunk.page}]\n${h.chunk.text}`)
-      .join("\n\n");
-    const cites = Array.from(new Set(hits.map((h) => h.chunk.page))).sort((a, b) => a - b);
+  // Lazy worker creation. Returns the live worker.
+  const ensureWorker = useCallback(async (): Promise<Worker> => {
+    if (workerRef.current) return workerRef.current;
 
-    const system =
-      "You answer questions strictly from the provided PDF excerpts. " +
-      "Cite the page number for any claim using the form [p. N]. " +
-      "If the answer is not in the excerpts, reply that the document doesn't cover it. " +
-      "Be concise.";
-    const userTurn = `PDF excerpts:\n\n${context || "(no relevant excerpts found)"}\n\nQuestion: ${q}`;
-
-    const history: Message[] = [
-      ...messages,
-      { role: "user", content: q },
-      { role: "assistant", content: "", citations: cites },
-    ];
-    setMessages(history);
-    setGenerating(true);
-
-    const id = String(++genIdRef.current);
-    workerRef.current?.postMessage({
-      type: "generate",
-      id,
-      messages: [
-        { role: "system", content: system },
-        // Only send the new turn — the model has no useful memory of prior PDF
-        // contexts and re-fetching context per turn keeps prompts tight.
-        { role: "user", content: userTurn },
-      ],
-      maxTokens: 512,
+    const rt = await detectRuntime();
+    setRuntime(rt);
+    setModelState({
+      kind: "loading",
+      text: rt === "webgpu" ? "Initializing WebGPU…" : "Initializing WASM runtime…",
     });
-  }, [input, index, status, generating, messages]);
 
-  const memWarn = useMemo(() => {
-    const m = approxDeviceMemoryGB();
-    return runtime === "wasm" && m !== null && m < 4;
-  }, [runtime]);
+    const worker = new Worker(new URL("../lib/chat/llm-worker.ts", import.meta.url), {
+      type: "module",
+    });
+    workerRef.current = worker;
+
+    worker.addEventListener("message", (e: MessageEvent) => {
+      const msg = e.data;
+      if (msg.type === "progress") {
+        setModelState({ kind: "loading", text: msg.text, progress: msg.progress });
+        // Reflect on the pending turn so the per-turn UI shows progress too.
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id === pendingTurnRef.current && t.llm.status === "loading-model"
+              ? { ...t, llm: { ...t.llm, text: msg.text } }
+              : t,
+          ),
+        );
+      } else if (msg.type === "ready") {
+        setModelState({ kind: "ready" });
+      } else if (msg.type === "token") {
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id === msg.id
+              ? { ...t, llm: { ...t.llm, status: "generating", text: t.llm.text + msg.delta } }
+              : t,
+          ),
+        );
+      } else if (msg.type === "done") {
+        setTurns((prev) =>
+          prev.map((t) => (t.id === msg.id ? { ...t, llm: { ...t.llm, status: "done" } } : t)),
+        );
+        pendingTurnRef.current = null;
+      } else if (msg.type === "error") {
+        setModelState({ kind: "error", message: msg.message });
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id === pendingTurnRef.current
+              ? { ...t, llm: { status: "error", text: t.llm.text, error: msg.message } }
+              : t,
+          ),
+        );
+        toast.error(msg.message);
+        pendingTurnRef.current = null;
+      }
+    });
+
+    worker.postMessage({ type: "init", runtime: rt });
+    return worker;
+  }, []);
+
+  const generateForTurn = useCallback(
+    async (turn: Turn) => {
+      if (pendingTurnRef.current) {
+        toast.info("Already generating another answer — please wait.");
+        return;
+      }
+      pendingTurnRef.current = turn.id;
+      const willLoad = modelState.kind !== "ready";
+
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === turn.id
+            ? { ...t, llm: { status: willLoad ? "loading-model" : "generating", text: "" } }
+            : t,
+        ),
+      );
+
+      try {
+        const worker = await ensureWorker();
+        // Wait until the model is ready before sending generate.
+        if (modelState.kind !== "ready" && workerRef.current) {
+          await new Promise<void>((resolve, reject) => {
+            const onMsg = (e: MessageEvent) => {
+              if (e.data?.type === "ready") {
+                worker.removeEventListener("message", onMsg);
+                resolve();
+              } else if (e.data?.type === "error") {
+                worker.removeEventListener("message", onMsg);
+                reject(new Error(e.data.message));
+              }
+            };
+            worker.addEventListener("message", onMsg);
+          });
+        }
+
+        const context = turn.hits
+          .map((h, i) => `[Source ${i + 1}, p. ${h.chunk.page}]\n${h.chunk.text}`)
+          .join("\n\n");
+        const system =
+          "You answer questions strictly from the provided PDF excerpts. " +
+          "Cite the page number for claims using [p. N]. " +
+          "If the answer isn't in the excerpts, say so plainly. Be concise.";
+        const userTurn = `PDF excerpts:\n\n${context || "(no relevant excerpts found)"}\n\nQuestion: ${turn.question}`;
+
+        setTurns((prev) =>
+          prev.map((t) => (t.id === turn.id ? { ...t, llm: { status: "generating", text: "" } } : t)),
+        );
+
+        worker.postMessage({
+          type: "generate",
+          id: turn.id,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: userTurn },
+          ],
+          maxTokens: 512,
+        });
+      } catch (err: any) {
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id === turn.id
+              ? { ...t, llm: { status: "error", text: "", error: err?.message ?? "Failed" } }
+              : t,
+          ),
+        );
+        pendingTurnRef.current = null;
+      }
+    },
+    [ensureWorker, modelState],
+  );
 
   return (
     <AppShell>
@@ -238,13 +288,14 @@ function ChatPage() {
                 Tool · Chat with PDF <span className="ml-2 text-muted-foreground">Beta</span>
               </div>
               <h1 className="font-display text-4xl md:text-5xl leading-tight">
-                Ask your PDF anything.
+                Instant answers from your PDF.
                 <br />
-                <span className="text-vault italic">Locally.</span>
+                <span className="text-vault italic">No download. No upload.</span>
               </h1>
               <p className="mt-3 text-muted-foreground max-w-2xl">
-                A small open-source AI runs entirely inside this tab. Your PDF and your questions
-                never leave the browser. WebGPU when available, WASM fallback otherwise.
+                Ask anything — top-matching passages with page numbers appear immediately. Want a
+                written summary? An optional 200 MB AI model loads on demand, runs in your browser,
+                and caches forever. Nothing ever leaves this tab.
               </p>
             </div>
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground rounded-md border border-border bg-card/50 px-3 py-2">
@@ -262,7 +313,7 @@ function ChatPage() {
               <FileDropzone
                 onFile={onPdf}
                 label="Drop a PDF to chat with it"
-                sublabel="text-based PDFs · indexed locally for retrieval"
+                sublabel="text-based PDFs · indexed locally · no download required"
               />
             ) : (
               <>
@@ -291,15 +342,19 @@ function ChatPage() {
                 )}
 
                 {!extracting && index && (
-                  <div className="rounded-xl border border-border bg-card/30 flex flex-col h-[60vh] min-h-[420px]">
-                    <div
-                      ref={scrollRef}
-                      className="flex-1 overflow-y-auto p-5 space-y-4"
-                    >
-                      {messages.length === 0 ? (
+                  <div className="rounded-xl border border-border bg-card/30 flex flex-col h-[65vh] min-h-[460px]">
+                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-6">
+                      {turns.length === 0 ? (
                         <EmptyChat />
                       ) : (
-                        messages.map((m, i) => <MessageBubble key={i} message={m} />)
+                        turns.map((t) => (
+                          <TurnBlock
+                            key={t.id}
+                            turn={t}
+                            onGenerate={() => generateForTurn(t)}
+                            modelReady={modelState.kind === "ready"}
+                          />
+                        ))
                       )}
                     </div>
                     <form
@@ -312,25 +367,16 @@ function ChatPage() {
                       <input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder={
-                          status.kind === "ready"
-                            ? "Ask a question about this PDF…"
-                            : "Waiting for model to finish loading…"
-                        }
-                        disabled={status.kind !== "ready" || generating}
-                        className="flex-1 bg-transparent text-sm px-3 py-2 outline-none placeholder:text-muted-foreground/70 disabled:opacity-50"
+                        placeholder="Ask a question about this PDF…"
+                        className="flex-1 bg-transparent text-sm px-3 py-2 outline-none placeholder:text-muted-foreground/70"
                       />
                       <Button
                         type="submit"
                         size="sm"
-                        disabled={status.kind !== "ready" || generating || !input.trim()}
+                        disabled={!input.trim()}
                         className="bg-vault text-vault-foreground hover:opacity-90"
                       >
-                        {generating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Send className="h-4 w-4" />
-                        )}
+                        <Send className="h-4 w-4" />
                       </Button>
                     </form>
                   </div>
@@ -342,65 +388,55 @@ function ChatPage() {
           <aside className="lg:sticky lg:top-20 space-y-4">
             <div className="rounded-lg border border-border bg-card/50 p-5">
               <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3 flex items-center gap-2">
-                <Cpu className="h-3.5 w-3.5 text-vault" /> Local model
+                <Zap className="h-3.5 w-3.5 text-vault" /> Instant mode
               </div>
-              <div className="text-sm font-medium">
-                {runtime === "webgpu"
-                  ? "Llama-3.2-1B"
-                  : runtime === "wasm"
-                  ? "Qwen2.5-0.5B"
-                  : "Detecting…"}
+              <div className="text-sm">
+                Top-matching passages from your PDF appear in under 50&nbsp;ms. Zero download, zero
+                network, zero cost.
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                Runtime: {runtime ?? "…"} {runtime === "wasm" && "(CPU)"}
-              </div>
+            </div>
 
-              {status.kind === "loading" && (
-                <div className="mt-4">
-                  <div className="text-xs text-muted-foreground mb-1.5">{status.text}</div>
-                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+            <div className="rounded-lg border border-border bg-card/50 p-5">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3 flex items-center gap-2">
+                <Cpu className="h-3.5 w-3.5 text-vault" /> AI mode (optional)
+              </div>
+              {modelState.kind === "uninit" && (
+                <div className="text-sm text-muted-foreground">
+                  Loads SmolLM2-360M (~200&nbsp;MB) the first time you tap{" "}
+                  <span className="text-foreground">Generate written answer</span> on any reply.
+                  Cached forever after.
+                </div>
+              )}
+              {modelState.kind === "loading" && (
+                <>
+                  <div className="text-sm text-foreground">{modelState.text}</div>
+                  <div className="mt-3 h-1.5 rounded-full bg-secondary overflow-hidden">
                     <div
                       className="h-full bg-vault transition-all"
-                      style={{
-                        width: `${Math.round((status.progress ?? 0.05) * 100)}%`,
-                      }}
+                      style={{ width: `${Math.round((modelState.progress ?? 0.05) * 100)}%` }}
                     />
                   </div>
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-2">
-                    First load only · cached after
-                  </div>
+                </>
+              )}
+              {modelState.kind === "ready" && (
+                <div className="text-sm text-vault flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5" /> Model loaded ({runtime})
                 </div>
               )}
-
-              {status.kind === "ready" && (
-                <div className="mt-4 flex items-center gap-2 text-xs text-vault">
-                  <Sparkles className="h-3.5 w-3.5" /> Model loaded · ready
-                </div>
-              )}
-
-              {status.kind === "error" && (
-                <div className="mt-4 flex items-start gap-2 text-xs text-destructive">
+              {modelState.kind === "error" && (
+                <div className="text-sm text-destructive flex items-start gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  <span>{status.message}</span>
+                  <span>{modelState.message}</span>
                 </div>
               )}
             </div>
 
-            {memWarn && (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-200/90 leading-relaxed">
-                <div className="flex items-center gap-2 font-medium mb-1">
-                  <AlertTriangle className="h-3.5 w-3.5" /> Low-memory device
-                </div>
-                Your device reports under 4 GB of RAM. WASM models may be slow or fail. For best
-                results, try desktop Chrome on a machine with WebGPU.
-              </div>
-            )}
-
             <div className="rounded-lg border border-border bg-card/30 p-5 text-xs text-muted-foreground leading-relaxed">
               <div className="text-foreground font-medium mb-2">How it works</div>
-              The PDF is parsed locally with PDF.js, broken into passages, and indexed with BM25.
-              For each question, the top-matching passages are sent to a small open-source LLM
-              running in a Web Worker. No network calls after the model is cached.
+              The PDF is parsed and indexed with BM25 inside your browser. Each question retrieves
+              the top 3 passages with page citations — instantly. If you opt into the local AI,
+              those passages are summarized by a small open-source model running in a Web Worker.
+              No network calls after the model is cached.
             </div>
           </aside>
         </div>
@@ -413,51 +449,77 @@ function EmptyChat() {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center text-sm text-muted-foreground py-12">
       <div className="grid h-10 w-10 place-items-center rounded-full bg-vault/10 text-vault mb-3">
-        <Sparkles className="h-4 w-4" />
+        <Zap className="h-4 w-4" />
       </div>
       <div className="text-foreground font-medium">Your PDF is indexed.</div>
       <div className="mt-1 max-w-sm">
-        Try: <span className="text-foreground">"Summarize the key findings"</span> or{" "}
-        <span className="text-foreground">"What does it say about pricing?"</span>
+        Try: <span className="text-foreground">"key findings"</span>,{" "}
+        <span className="text-foreground">"payment terms"</span>, or{" "}
+        <span className="text-foreground">"who is liable"</span>.
       </div>
     </div>
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
-  if (message.role === "user") {
-    return (
+function TurnBlock({
+  turn,
+  onGenerate,
+  modelReady,
+}: {
+  turn: Turn;
+  onGenerate: () => void;
+  modelReady: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      {/* User question */}
       <div className="flex justify-end">
         <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-vault text-vault-foreground px-4 py-2.5 text-sm whitespace-pre-wrap">
-          {message.content}
+          {turn.question}
         </div>
       </div>
-    );
-  }
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] space-y-2">
-        <div className="rounded-2xl rounded-bl-sm bg-secondary/70 text-foreground px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed">
-          {message.content || (
-            <span className="inline-flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Thinking locally…
-            </span>
-          )}
+
+      {/* Instant retrieval answer */}
+      <InstantAnswer hits={turn.hits} query={turn.question} />
+
+      {/* Optional written answer */}
+      {turn.llm.status === "idle" && turn.hits.length > 0 && (
+        <button
+          onClick={onGenerate}
+          className="group inline-flex items-center gap-2 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-2 text-xs font-medium transition-colors"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Generate written answer
+          <span className="text-[10px] uppercase tracking-[0.16em] text-vault/70 group-hover:text-vault">
+            {modelReady ? "· model cached" : "· loads ~200 MB once"}
+          </span>
+        </button>
+      )}
+
+      {turn.llm.status === "loading-model" && (
+        <div className="rounded-lg border border-vault/30 bg-vault/5 px-3 py-2 text-xs text-muted-foreground inline-flex items-center gap-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-vault" />
+          {turn.llm.text || "Downloading model…"}
         </div>
-        {message.citations && message.citations.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-            <span>Context from</span>
-            {message.citations.map((p) => (
-              <span
-                key={p}
-                className="rounded-full bg-vault/10 text-vault px-2 py-0.5"
-              >
-                p. {p}
+      )}
+
+      {(turn.llm.status === "generating" || turn.llm.status === "done") && (
+        <div className="flex justify-start">
+          <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-secondary/70 text-foreground px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed">
+            {turn.llm.text || (
+              <span className="inline-flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Thinking locally…
               </span>
-            ))}
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {turn.llm.status === "error" && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive inline-flex items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5" /> {turn.llm.error ?? "Generation failed"}
+        </div>
+      )}
     </div>
   );
 }
