@@ -61,24 +61,50 @@ async function initTFJS() {
   post({ type: "ready", runtime: "wasm", modelId: TFJS_MODEL });
 }
 
+// Detect when the model has fallen into a repetition loop and abort.
+// SmolLM2-360M (especially q4) frequently collapses into repeating n-grams.
+function makeRepetitionGuard() {
+  let buf = "";
+  return (delta: string): boolean => {
+    buf = (buf + delta).slice(-240);
+    if (buf.length < 80) return false;
+    for (let n = 8; n <= 40; n += 4) {
+      const tail = buf.slice(-n);
+      if (!tail.trim()) continue;
+      const hits = buf.split(tail).length - 1;
+      if (hits >= 4) return true;
+    }
+    return false;
+  };
+}
+
 async function generate(
   id: string,
   messages: { role: "system" | "user" | "assistant"; content: string }[],
-  maxTokens = 512,
+  maxTokens = 256,
 ) {
   abortFlag = false;
+  const guard = makeRepetitionGuard();
   try {
     if (runtime === "webgpu" && webllmEngine) {
       const stream = await webllmEngine.chat.completions.create({
         messages,
         stream: true,
         max_tokens: maxTokens,
-        temperature: 0.3,
+        temperature: 0.7,
+        top_p: 0.9,
+        frequency_penalty: 0.6,
+        presence_penalty: 0.3,
       });
       for await (const chunk of stream) {
         if (abortFlag) break;
         const delta = chunk.choices?.[0]?.delta?.content ?? "";
-        if (delta) post({ type: "token", id, delta });
+        if (!delta) continue;
+        post({ type: "token", id, delta });
+        if (guard(delta)) {
+          abortFlag = true;
+          break;
+        }
       }
     } else if (runtime === "wasm" && tfjsPipeline) {
       const mod: any = await import("@huggingface/transformers");
@@ -86,13 +112,19 @@ async function generate(
         skip_prompt: true,
         skip_special_tokens: true,
         callback_function: (text: string) => {
-          if (!abortFlag && text) post({ type: "token", id, delta: text });
+          if (abortFlag || !text) return;
+          post({ type: "token", id, delta: text });
+          if (guard(text)) abortFlag = true;
         },
       });
       await tfjsPipeline(messages, {
         max_new_tokens: maxTokens,
-        do_sample: false,
-        temperature: 0.3,
+        do_sample: true,
+        temperature: 0.7,
+        top_p: 0.9,
+        top_k: 40,
+        repetition_penalty: 1.3,
+        no_repeat_ngram_size: 4,
         streamer,
         return_full_text: false,
       });
