@@ -96,10 +96,69 @@ function RedactPage() {
     setFile(null);
     setPages([]);
     setBoxes([]);
+    setDetections([]);
   };
 
-  const addBox = useCallback((b: Box) => setBoxes((prev) => [...prev, b]), []);
-  const removeBox = (id: string) => setBoxes((prev) => prev.filter((b) => b.id !== id));
+  const runAutoDetect = useCallback(async () => {
+    if (!file) return;
+    setDetecting(true);
+    try {
+      const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
+      const found = await detectPiiInPdf(file, 1.5);
+      setDetections(found);
+      if (found.length === 0) {
+        toast.info("No obvious PII patterns found in the text layer.", {
+          description:
+            "Scanned PDFs need OCR first — that's coming. You can still mark regions manually.",
+        });
+      } else {
+        toast.success(`Found ${found.length} likely PII region${found.length === 1 ? "" : "s"}`, {
+          description: "Review and toggle categories on the right, then export.",
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Auto-detect failed");
+    } finally {
+      setDetecting(false);
+    }
+  }, [file]);
+
+  const toggleCategory = (cat: PiiCategory) => {
+    setEnabledCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  // Detections filtered by enabled categories, treated as redaction boxes.
+  const autoBoxes: Box[] = useMemo(
+    () =>
+      detections
+        .filter((d) => enabledCats.has(d.category))
+        .map((d) => ({
+          id: d.id,
+          page: d.page,
+          x: d.x,
+          y: d.y,
+          w: d.w,
+          h: d.h,
+          auto: true,
+          category: d.category,
+        })),
+    [detections, enabledCats],
+  );
+
+  const allBoxes = useMemo(() => [...autoBoxes, ...boxes], [autoBoxes, boxes]);
+
+  // Counts per category for the toggle UI.
+  const catCounts = useMemo(() => {
+    const m = new Map<PiiCategory, number>();
+    for (const d of detections) m.set(d.category, (m.get(d.category) ?? 0) + 1);
+    return m;
+  }, [detections]);
 
   const exportRedacted = useCallback(async () => {
     if (!file || pages.length === 0) return;
