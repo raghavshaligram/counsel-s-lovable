@@ -326,8 +326,8 @@ function Editor() {
 // ---------- toolbar ----------
 
 function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
-  const selectedAnno = state.selectedAnnoId
-    ? state.doc.pages.flatMap((p) => p.annotations).find((a) => a.id === state.selectedAnnoId) ?? null
+  const selectedAnno = state.selectedAnnoId && state.doc
+    ? state.doc.annotations.find((a) => a.id === state.selectedAnnoId) ?? null
     : null;
   const effOpacity = (selectedAnno && "opacity" in selectedAnno ? (selectedAnno as { opacity: number }).opacity : state.opacity);
   const effFont = selectedAnno && "fontSize" in selectedAnno ? (selectedAnno as { fontSize: number }).fontSize : state.fontSize;
