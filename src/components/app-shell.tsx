@@ -1,11 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Sparkles, LayoutGrid, Wrench } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
-const NAV = [
-  { to: "/", label: "Catalog", icon: LayoutGrid },
-  { to: "/admin", label: "Admin", icon: Wrench },
-];
+// Public shell — end-user facing only.
+// Operator surfaces (/admin, AST editor, Co-Pilot) are intentionally NOT linked here.
+// They live behind direct URLs now and will be gated by the `operator` role in Phase 3.
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
