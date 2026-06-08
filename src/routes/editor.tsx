@@ -822,15 +822,82 @@ function PageCanvas({
         inner = <div style={{ width: "100%", height: "100%", borderRadius: "50%", border: `${a.stroke * displayScale}px solid ${rgbCss(a.color, a.opacity)}`, background: a.fill ? rgbCss(a.color, a.opacity) : "transparent" }} />;
         break;
       case "text":
-        inner = (
-          <div
-            style={{ width: "100%", height: "100%", color: rgbCss(a.color, a.opacity), fontSize: a.fontSize * displayScale, fontFamily: "Helvetica, Arial, sans-serif", lineHeight: 1.15, whiteSpace: "pre-wrap", overflow: "hidden" }}
-          >{a.text}</div>
+      case "text-edit": {
+        const isEditing = editingId === a.id;
+        const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
+        const textStyle: React.CSSProperties = {
+          width: "100%", height: "100%",
+          background: bg,
+          color: rgbCss(a.color, a.opacity),
+          fontSize: (a.kind === "text" ? a.fontSize : a.fontSize) * displayScale,
+          fontFamily: "Helvetica, Arial, sans-serif",
+          lineHeight: 1.15,
+          whiteSpace: "pre-wrap",
+          overflow: "hidden",
+          padding: 0,
+          margin: 0,
+          border: "none",
+          outline: "none",
+          resize: "none",
+          caretColor: rgbCss(a.color),
+        };
+        inner = isEditing ? (
+          <textarea
+            autoFocus
+            value={a.text}
+            onChange={(e) => dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: e.target.value } as Partial<Anno> })}
+            onBlur={() => {
+              if (!a.text.trim()) dispatch({ type: "DELETE_ANNO", id: a.id });
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={textStyle}
+          />
+        ) : (
+          <div style={textStyle}>{a.text || (a.kind === "text" ? "Type here…" : "")}</div>
         );
         break;
-      case "note":
-        inner = <div style={{ width: "100%", height: "100%", background: "rgba(255,229,77,0.95)", border: "1px solid #b89800", color: "#000", fontSize: 8 * displayScale, padding: 4 * displayScale, overflow: "hidden" }}>{a.text}</div>;
+      }
+      case "note": {
+        const isEditing = editingId === a.id;
+        const noteStyle: React.CSSProperties = {
+          width: "100%", height: "100%",
+          background: "rgba(255,229,77,0.95)",
+          border: "1px solid #b89800",
+          color: "#000",
+          fontSize: 9 * displayScale,
+          padding: 4 * displayScale,
+          overflow: "hidden",
+          fontFamily: "Helvetica, Arial, sans-serif",
+          lineHeight: 1.2,
+          margin: 0,
+          outline: "none",
+          resize: "none",
+        };
+        inner = isEditing ? (
+          <textarea
+            autoFocus
+            value={a.text}
+            onChange={(e) => dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: e.target.value } as Partial<Anno> })}
+            onBlur={() => {
+              if (!a.text.trim()) dispatch({ type: "DELETE_ANNO", id: a.id });
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={noteStyle}
+          />
+        ) : (
+          <div style={noteStyle}>{a.text || "Note…"}</div>
+        );
         break;
+      }
       case "image":
         inner = <img src={a.dataUrl} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "fill", opacity: a.opacity }} />;
         break;
