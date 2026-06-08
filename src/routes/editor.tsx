@@ -877,6 +877,7 @@ function PageCanvas({
             : a.family === "mono" ? `'Courier New', Courier, monospace`
             : `Helvetica, Arial, sans-serif`)
           : `Helvetica, Arial, sans-serif`;
+        const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * displayScale : 0;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: bg,
@@ -889,6 +890,8 @@ function PageCanvas({
           whiteSpace: "pre-wrap",
           overflow: "hidden",
           padding: 0,
+          paddingTop: padTop,
+          boxSizing: "border-box",
           margin: 0,
           border: "none",
           outline: "none",
