@@ -7,7 +7,7 @@ import { PDFDocument } from "pdf-lib";
 import {
   MousePointer2, Type, Highlighter, Square, Circle, Pen, StickyNote,
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
-  ChevronLeft, ChevronRight, Undo2, Redo2,
+  ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
