@@ -57,7 +57,7 @@ function RedactPage() {
     (async () => {
       try {
         const { getPdfjs } = await import("@/lib/pdf/worker");
-        const pdfjs = getPdfjs();
+        const pdfjs = await getPdfjs();
         const buf = await file.arrayBuffer();
         const doc = await pdfjs.getDocument({ data: buf }).promise;
         const out: RenderedPage[] = [];
