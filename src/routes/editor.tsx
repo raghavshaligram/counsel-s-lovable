@@ -779,16 +779,18 @@ function PageCanvas({
     const w = maxX - minX, h = maxY - minY;
 
     const onMouseDownAnno = (e: React.MouseEvent) => {
-      if (state.tool !== "select") return;
+      if (!(state.tool === "select" || selected)) return;
+      if (isEditingThis) return; // don't drag while typing
       e.stopPropagation();
       dispatch({ type: "SELECT_ANNO", id: a.id });
       const startX = e.clientX, startY = e.clientY;
       const origX = a.x, origY = a.y;
+      let moved = false;
       const move = (ev: MouseEvent) => {
         const dxScreen = ev.clientX - startX;
         const dyScreen = ev.clientY - startY;
-        // Convert dx/dy from screen to PDF (just invert the scale; rotation
-        // of a translation: rotate the dx/dy vector by -rot)
+        if (!moved && Math.hypot(dxScreen, dyScreen) < 3) return;
+        moved = true;
         const r = (-rot * Math.PI) / 180;
         const cos = Math.cos(r), sin = Math.sin(r);
         const dxP = (dxScreen * cos - dyScreen * sin) / displayScale;
@@ -798,6 +800,10 @@ function PageCanvas({
       const up = () => {
         window.removeEventListener("mousemove", move);
         window.removeEventListener("mouseup", up);
+        // click without drag on text/note → enter edit mode
+        if (!moved && selected && (a.kind === "text" || a.kind === "text-edit" || a.kind === "note")) {
+          setEditingId(a.id);
+        }
       };
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", up);
