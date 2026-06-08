@@ -801,12 +801,13 @@ function PageCanvas({
       window.addEventListener("mouseup", up);
     };
 
+    const isEditingThis = editingId === a.id;
     const baseStyle: React.CSSProperties = {
       position: "absolute",
       left: minX, top: minY, width: w, height: h,
       transform: `rotate(${rot}deg)`,
       transformOrigin: "center center",
-      pointerEvents: state.tool === "select" ? "auto" : "none",
+      pointerEvents: state.tool === "select" || isEditingThis ? "auto" : "none",
       cursor: state.tool === "select" ? "move" : "default",
     };
 
