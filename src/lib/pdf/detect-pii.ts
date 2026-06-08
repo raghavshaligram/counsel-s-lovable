@@ -62,7 +62,7 @@ export async function detectPiiInPdf(
   scale = 1.5,
   onProgress?: (p: DetectProgress) => void,
 ): Promise<{ detections: Detection[]; usedOcr: boolean }> {
-  const pdfjs = getPdfjs();
+  const pdfjs = await getPdfjs();
   const buf = await file.arrayBuffer();
   const doc = await pdfjs.getDocument({ data: buf }).promise;
   const detections: Detection[] = [];
