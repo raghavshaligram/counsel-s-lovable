@@ -78,6 +78,10 @@ export interface TextEditAnno extends BaseAnno {
   family?: FontFamily;
   bold?: boolean;
   italic?: boolean;
+  // top offset (in PDF points) inside the bbox where the text should start.
+  // Lets us oversize the whiteout box for full glyph coverage while keeping
+  // the replacement text aligned to the original baseline.
+  textOffsetY?: number;
 }
 
 export type Anno =
