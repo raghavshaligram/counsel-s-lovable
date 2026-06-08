@@ -921,7 +921,8 @@ function PageCanvas({
   );
 }
 
-function DrawingPreview({ drawing, state }: { drawing: NonNullable<Parameters<typeof PageCanvas>[0]> extends never ? never : { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }; state: State }) {
+type DrawingState = { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] };
+function DrawingPreview({ drawing, state }: { drawing: DrawingState; state: State }) {
   if (state.tool === "freehand" && drawing.points) {
     const d = drawing.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
     return (
