@@ -7,13 +7,14 @@ import { PDFDocument } from "pdf-lib";
 import {
   MousePointer2, Type, Highlighter, Square, Circle, Pen, StickyNote,
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
-  ChevronLeft, ChevronRight, Undo2, Redo2,
+  ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
@@ -324,6 +325,14 @@ function Editor() {
 // ---------- toolbar ----------
 
 function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
+  const [signOpen, setSignOpen] = useState(false);
+  const [stampOpen, setStampOpen] = useState(false);
+  const setPendingImageFromCanvas = (canvas: HTMLCanvasElement) => {
+    const dataUrl = canvas.toDataURL("image/png");
+    dispatch({ type: "SET_PENDING_IMAGE", img: { dataUrl, mime: "image/png", w: canvas.width, h: canvas.height } });
+    dispatch({ type: "SET_TOOL", t: "image" });
+    toast.message("Click on the page to place it");
+  };
   const selectedAnno = state.selectedAnnoId && state.doc
     ? state.doc.annotations.find((a) => a.id === state.selectedAnnoId) ?? null
     : null;
@@ -385,6 +394,20 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
             <input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(e) => e.target.files?.[0] && onPickImage(e.target.files[0])} />
           </label>
         )}
+        <button
+          onClick={() => setSignOpen(true)}
+          title="Sign"
+          className="grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent text-muted-foreground"
+        >
+          <FileSignature className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setStampOpen(true)}
+          title="Stamp"
+          className="grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent text-muted-foreground"
+        >
+          <BadgeCheck className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="mx-1 h-6 w-px bg-border" />
@@ -450,6 +473,9 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
           Export PDF
         </Button>
       </div>
+
+      <SignatureDialog open={signOpen} onOpenChange={setSignOpen} onSave={setPendingImageFromCanvas} />
+      <StampDialog open={stampOpen} onOpenChange={setStampOpen} onSave={setPendingImageFromCanvas} />
     </div>
   );
 }
@@ -753,11 +779,18 @@ function PageCanvas({
   }, [state.tool, textItems]);
 
   const editExistingText = (it: TextItem) => {
-    const pad = Math.max(1, it.h * 0.1);
+    // Generous coverage so descenders (g, p, y) and ascenders of the original
+    // glyphs are fully whited-out — otherwise the original text peeks through.
+    const padX = Math.max(2, it.h * 0.15);
+    const padTop = Math.max(2, it.h * 0.35);
+    const padBottom = Math.max(2, it.h * 0.45);
     const id = uid();
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: state.current,
-      x: it.x - pad, y: it.y - pad, w: it.w + pad * 2, h: it.h + pad * 2,
+      x: it.x - padX,
+      y: it.y - padTop,
+      w: it.w + padX * 2,
+      h: it.h + padTop + padBottom,
       color: { r: 0, g: 0, b: 0 },
       opacity: 1,
       text: it.str,
@@ -766,10 +799,10 @@ function PageCanvas({
       family: it.family,
       bold: it.bold,
       italic: it.italic,
+      textOffsetY: padTop,
     } });
     setEditingId(id);
     dispatch({ type: "SELECT_ANNO", id });
-    // keep edit-text tool active so user can keep editing more strings
   };
 
   // Render annotation overlays (in unrotated PDF coords → rotate to screen)
@@ -870,6 +903,7 @@ function PageCanvas({
             : a.family === "mono" ? `'Courier New', Courier, monospace`
             : `Helvetica, Arial, sans-serif`)
           : `Helvetica, Arial, sans-serif`;
+        const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * displayScale : 0;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: bg,
@@ -882,6 +916,8 @@ function PageCanvas({
           whiteSpace: "pre-wrap",
           overflow: "hidden",
           padding: 0,
+          paddingTop: padTop,
+          boxSizing: "border-box",
           margin: 0,
           border: "none",
           outline: "none",
@@ -1085,4 +1121,243 @@ function DrawingPreview({ drawing, state }: { drawing: DrawingState; state: Stat
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   return null;
+}
+
+// ---------- Signature dialog ----------
+
+function SignatureDialog({
+  open, onOpenChange, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSave: (canvas: HTMLCanvasElement) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hasInk, setHasInk] = useState(false);
+  const [color, setColor] = useState("#111111");
+  const [stroke, setStroke] = useState(2.5);
+
+  useEffect(() => {
+    if (!open) return;
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext("2d"); if (!ctx) return;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, c.width, c.height);
+    setHasInk(false);
+  }, [open]);
+
+  const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const c = canvasRef.current!; const ctx = c.getContext("2d")!;
+    const rect = c.getBoundingClientRect();
+    const sx = c.width / rect.width, sy = c.height / rect.height;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = color; ctx.lineWidth = stroke * sx;
+    ctx.beginPath();
+    ctx.moveTo((e.clientX - rect.left) * sx, (e.clientY - rect.top) * sy);
+    c.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      ctx.lineTo((ev.clientX - rect.left) * sx, (ev.clientY - rect.top) * sy);
+      ctx.stroke();
+      setHasInk(true);
+    };
+    const up = () => {
+      c.removeEventListener("pointermove", move);
+      c.removeEventListener("pointerup", up);
+    };
+    c.addEventListener("pointermove", move);
+    c.addEventListener("pointerup", up);
+  };
+
+  const clear = () => {
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext("2d"); if (!ctx) return;
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    setHasInk(false);
+  };
+
+  const save = () => {
+    const c = canvasRef.current; if (!c) return;
+    // Trim whitespace by scanning pixel alpha vs white-ish
+    const ctx = c.getContext("2d"); if (!ctx) return;
+    const { width, height } = c;
+    const img = ctx.getImageData(0, 0, width, height).data;
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        // not near-white?
+        if (img[i] < 240 || img[i + 1] < 240 || img[i + 2] < 240) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    let outCanvas = c;
+    if (maxX >= 0) {
+      const pad = 8;
+      const sx = Math.max(0, minX - pad);
+      const sy = Math.max(0, minY - pad);
+      const sw = Math.min(width - sx, maxX - minX + pad * 2);
+      const sh = Math.min(height - sy, maxY - minY + pad * 2);
+      const trimmed = document.createElement("canvas");
+      trimmed.width = sw; trimmed.height = sh;
+      const tctx = trimmed.getContext("2d")!;
+      tctx.drawImage(c, sx, sy, sw, sh, 0, 0, sw, sh);
+      outCanvas = trimmed;
+    }
+    onSave(outCanvas);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[640px]">
+        <DialogHeader>
+          <DialogTitle>Draw your signature</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-center gap-3 text-xs">
+          <label className="flex items-center gap-1.5">Color
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-7 w-9 rounded border border-border bg-transparent" />
+          </label>
+          <label className="flex items-center gap-1.5">Stroke
+            <input type="range" min={1} max={6} step={0.5} value={stroke} onChange={(e) => setStroke(Number(e.target.value))} />
+            <span className="tabular-nums w-6">{stroke}</span>
+          </label>
+          <Button size="sm" variant="outline" onClick={clear} className="ml-auto">Clear</Button>
+        </div>
+        <div className="rounded-md border border-border overflow-hidden bg-white">
+          <canvas
+            ref={canvasRef}
+            width={1200}
+            height={400}
+            onPointerDown={start}
+            className="block w-full touch-none cursor-crosshair"
+            style={{ aspectRatio: "3 / 1" }}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={!hasInk} onClick={save} className="bg-vault text-vault-foreground hover:opacity-90">Use signature</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------- Stamp dialog ----------
+
+const STAMPS: { label: string; color: string }[] = [
+  { label: "APPROVED", color: "#16a34a" },
+  { label: "REJECTED", color: "#dc2626" },
+  { label: "DRAFT", color: "#6b7280" },
+  { label: "CONFIDENTIAL", color: "#dc2626" },
+  { label: "REVIEWED", color: "#0ea5e9" },
+  { label: "PAID", color: "#16a34a" },
+  { label: "URGENT", color: "#dc2626" },
+  { label: "FINAL", color: "#7c3aed" },
+];
+
+function StampDialog({
+  open, onOpenChange, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSave: (canvas: HTMLCanvasElement) => void;
+}) {
+  const [text, setText] = useState("APPROVED");
+  const [color, setColor] = useState("#dc2626");
+
+  const renderToCanvas = (label: string, hex: string): HTMLCanvasElement => {
+    const dpr = 2;
+    const padX = 28, padY = 16, border = 6;
+    const ctx0 = document.createElement("canvas").getContext("2d")!;
+    const fontSize = 48;
+    ctx0.font = `900 ${fontSize}px Helvetica, Arial, sans-serif`;
+    const m = ctx0.measureText(label);
+    const tw = Math.ceil(m.width);
+    const th = fontSize * 1.1;
+    const w = tw + padX * 2 + border * 2;
+    const h = Math.ceil(th + padY * 2 + border * 2);
+    const c = document.createElement("canvas");
+    c.width = w * dpr; c.height = h * dpr;
+    const ctx = c.getContext("2d")!;
+    ctx.scale(dpr, dpr);
+    // transparent background
+    ctx.clearRect(0, 0, w, h);
+    // rounded rect border
+    const r = 8;
+    ctx.strokeStyle = hex; ctx.lineWidth = border;
+    ctx.beginPath();
+    ctx.moveTo(border + r, border);
+    ctx.lineTo(w - border - r, border);
+    ctx.quadraticCurveTo(w - border, border, w - border, border + r);
+    ctx.lineTo(w - border, h - border - r);
+    ctx.quadraticCurveTo(w - border, h - border, w - border - r, h - border);
+    ctx.lineTo(border + r, h - border);
+    ctx.quadraticCurveTo(border, h - border, border, h - border - r);
+    ctx.lineTo(border, border + r);
+    ctx.quadraticCurveTo(border, border, border + r, border);
+    ctx.closePath();
+    ctx.stroke();
+    // text
+    ctx.fillStyle = hex;
+    ctx.font = `900 ${fontSize}px Helvetica, Arial, sans-serif`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText(label, w / 2, h / 2 + 2);
+    return c;
+  };
+
+  const pick = (label: string, hex: string) => {
+    setText(label); setColor(hex);
+  };
+  const save = () => {
+    const label = (text || "STAMP").toUpperCase().trim();
+    if (!label) return;
+    onSave(renderToCanvas(label, color));
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Add a stamp</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-4 gap-2">
+          {STAMPS.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => pick(s.label, s.color)}
+              className={cn("rounded-md border-2 px-2 py-2 text-[11px] font-extrabold tracking-wider transition",
+                text === s.label ? "ring-2 ring-vault" : "")}
+              style={{ color: s.color, borderColor: s.color }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 text-xs pt-2">
+          <label className="flex items-center gap-1.5 flex-1">Custom
+            <input
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value.toUpperCase())}
+              maxLength={24}
+              className="flex-1 h-8 px-2 rounded border border-border bg-transparent uppercase tracking-wider"
+            />
+          </label>
+          <label className="flex items-center gap-1.5">Color
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-7 w-9 rounded border border-border bg-transparent" />
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={save} className="bg-vault text-vault-foreground hover:opacity-90">Use stamp</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
