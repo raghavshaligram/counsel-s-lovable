@@ -1,14 +1,24 @@
-// PDF.js worker bootstrap. Client-only — import this file only inside
-// useEffect / event handlers, never at module scope of an SSR'd file.
-import * as pdfjs from "pdfjs-dist";
-// Vite ?url returns a URL string that resolves to the bundled asset.
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+// PDF.js worker bootstrap. Client-only — pdfjs touches DOMMatrix at
+// module-eval time, which doesn't exist during Cloudflare Worker SSR.
+// We dynamic-import to keep it out of the SSR bundle entirely.
 
-let configured = false;
-export function getPdfjs() {
-  if (!configured) {
-    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-    configured = true;
+type PdfjsModule = typeof import("pdfjs-dist");
+let cached: PdfjsModule | null = null;
+
+export async function loadPdfjs(): Promise<PdfjsModule> {
+  if (cached) return cached;
+  if (typeof window === "undefined") {
+    throw new Error("pdfjs can only be loaded in the browser");
   }
+  const [pdfjs, workerUrlMod] = await Promise.all([
+    import("pdfjs-dist"),
+    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+  ]);
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
+  cached = pdfjs;
   return pdfjs;
 }
+
+// Back-compat shim: previous code called getPdfjs() synchronously.
+// Keeping the name but it now returns a promise.
+export const getPdfjs = loadPdfjs;

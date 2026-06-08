@@ -51,49 +51,54 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
   iban: { label: "IBAN", hint: "International bank account numbers" },
 };
 
+export type DetectProgress = {
+  stage: "text" | "ocr";
+  page: number;
+  totalPages: number;
+};
+
 export async function detectPiiInPdf(
   file: File,
   scale = 1.5,
-): Promise<Detection[]> {
-  const pdfjs = getPdfjs();
+  onProgress?: (p: DetectProgress) => void,
+): Promise<{ detections: Detection[]; usedOcr: boolean }> {
+  const pdfjs = await getPdfjs();
   const buf = await file.arrayBuffer();
   const doc = await pdfjs.getDocument({ data: buf }).promise;
   const detections: Detection[] = [];
+  const ocrPages: number[] = [];
 
+  // Pass 1 — native text layer
   for (let i = 1; i <= doc.numPages; i++) {
+    onProgress?.({ stage: "text", page: i, totalPages: doc.numPages });
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale });
     const content = await page.getTextContent();
-
-    for (const raw of content.items as Array<{
+    const items = content.items as Array<{
       str: string;
       transform: number[];
       width: number;
       height: number;
-    }>) {
+    }>;
+
+    // Heuristic: a scanned page has ~no text items.
+    const totalChars = items.reduce((n, it) => n + (it.str?.length ?? 0), 0);
+    if (totalChars < 20) {
+      ocrPages.push(i);
+      continue;
+    }
+
+    for (const raw of items) {
       const str = raw.str;
       if (!str || !str.trim()) continue;
-
-      let hit: PiiCategory | null = null;
-      for (const { category, re } of PATTERNS) {
-        if (re.test(str)) {
-          hit = category;
-          break;
-        }
-      }
-      if (!hit) continue;
-
-      // Transform the text item's local matrix through the viewport to get
-      // device-space coordinates. pdfjs.Util.transform multiplies matrices.
-      // The resulting [a,b,c,d,e,f]: (e,f) is the baseline origin.
+      const cat = matchCategory(str);
+      if (!cat) continue;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
-      // baseline (e,f) → top-left of bounding box
       const x = m[4];
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
-
       detections.push({
         id: `det-${i}-${detections.length}`,
         page: i,
@@ -101,11 +106,84 @@ export async function detectPiiInPdf(
         y: y - pad,
         w: itemWidth + pad * 2,
         h: fontHeight + pad * 2,
-        category: hit,
-        snippet: str.length > 60 ? str.slice(0, 57) + "…" : str,
+        category: cat,
+        snippet: snippet(str),
       });
     }
   }
 
-  return detections;
+  // Pass 2 — OCR for image-only pages
+  if (ocrPages.length > 0) {
+    const { createWorker } = await import("tesseract.js");
+    const worker = await createWorker("eng");
+    try {
+      for (const i of ocrPages) {
+        onProgress?.({ stage: "ocr", page: i, totalPages: doc.numPages });
+        const page = await doc.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+        await page.render({
+          canvasContext: ctx,
+          viewport,
+          canvas,
+        } as Parameters<typeof page.render>[0]).promise;
+
+        const { data } = await worker.recognize(canvas, {}, { blocks: true });
+        const words = collectWords(data);
+        for (const w of words) {
+          if (!w.text || !w.text.trim()) continue;
+          const cat = matchCategory(w.text);
+          if (!cat) continue;
+          const { x0, y0, x1, y1 } = w.bbox;
+          const pad = Math.max(2, (y1 - y0) * 0.15);
+          detections.push({
+            id: `det-ocr-${i}-${detections.length}`,
+            page: i,
+            x: x0 - pad,
+            y: y0 - pad,
+            w: x1 - x0 + pad * 2,
+            h: y1 - y0 + pad * 2,
+            category: cat,
+            snippet: snippet(w.text),
+          });
+        }
+      }
+    } finally {
+      await worker.terminate();
+    }
+  }
+
+  return { detections, usedOcr: ocrPages.length > 0 };
 }
+
+function matchCategory(str: string): PiiCategory | null {
+  for (const { category, re } of PATTERNS) {
+    if (re.test(str)) return category;
+  }
+  return null;
+}
+
+function snippet(s: string) {
+  return s.length > 60 ? s.slice(0, 57) + "…" : s;
+}
+
+type OcrWord = { text: string; bbox: { x0: number; y0: number; x1: number; y1: number } };
+function collectWords(data: unknown): OcrWord[] {
+  const out: OcrWord[] = [];
+  const visit = (node: Record<string, unknown> | null | undefined) => {
+    if (!node) return;
+    const words = node.words as OcrWord[] | undefined;
+    if (Array.isArray(words)) out.push(...words);
+    for (const key of ["blocks", "paragraphs", "lines"]) {
+      const arr = node[key] as Record<string, unknown>[] | undefined;
+      if (Array.isArray(arr)) arr.forEach(visit);
+    }
+  };
+  visit(data as Record<string, unknown>);
+  return out;
+}
+
