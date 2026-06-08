@@ -60,9 +60,7 @@ function RedactPage() {
           canvas.height = Math.ceil(viewport.height);
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("Could not get canvas context");
-          // pdfjs v6 expects `canvas` param
-          // @ts-expect-error  - pdfjs render param types vary across versions
-          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+          await page.render({ canvasContext: ctx, viewport, canvas } as Parameters<typeof page.render>[0]).promise;
           out.push({
             pageNumber: i,
             width: canvas.width,
