@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { WaitlistForm } from "@/components/waitlist-form";
 import {
   Check,
   X,
