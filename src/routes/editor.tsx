@@ -411,21 +411,31 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
           <Switch checked={state.fillShape} onCheckedChange={(v) => dispatch({ type: "SET_FILL", v })} />
         </label>
       )}
-      {(state.tool === "rect" || state.tool === "ellipse" || state.tool === "freehand") && (
+      {supportsStroke && (
         <div className="flex items-center gap-2 w-32">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Stroke</span>
-          <Slider value={[state.stroke]} min={1} max={12} step={1} onValueChange={([v]) => dispatch({ type: "SET_STROKE", v })} />
+          <Slider value={[effStroke]} min={1} max={12} step={1} onValueChange={([v]) => {
+            dispatch({ type: "SET_STROKE", v });
+            if (selectedAnno) dispatch({ type: "UPDATE_ANNO", id: selectedAnno.id, patch: { stroke: v } as Partial<Anno> });
+          }} />
         </div>
       )}
-      {(state.tool === "text" || state.tool === "edit-text" || state.tool === "note") && (
+      {supportsFont && (
         <div className="flex items-center gap-2 w-32">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Size</span>
-          <Slider value={[state.fontSize]} min={6} max={64} step={1} onValueChange={([v]) => dispatch({ type: "SET_FONT", v })} />
+          <Slider value={[effFont]} min={6} max={64} step={1} onValueChange={([v]) => {
+            dispatch({ type: "SET_FONT", v });
+            if (selectedAnno) dispatch({ type: "UPDATE_ANNO", id: selectedAnno.id, patch: { fontSize: v } as Partial<Anno> });
+          }} />
         </div>
       )}
       <div className="flex items-center gap-2 w-32">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Opacity</span>
-        <Slider value={[state.opacity * 100]} min={10} max={100} step={5} onValueChange={([v]) => dispatch({ type: "SET_OPACITY", v: v / 100 })} />
+        <Slider value={[effOpacity * 100]} min={10} max={100} step={5} onValueChange={([v]) => {
+          const o = v / 100;
+          dispatch({ type: "SET_OPACITY", v: o });
+          if (selectedAnno) dispatch({ type: "UPDATE_ANNO", id: selectedAnno.id, patch: { opacity: o } as Partial<Anno> });
+        }} />
       </div>
 
       <div className="mx-1 h-6 w-px bg-border" />
