@@ -24,15 +24,17 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Redact, mail-merge, and extract tables from PDFs — 100% in your browser. Your files never leave this tab. Pay once, use forever.",
+          "Redact, sign, mail-merge, and extract tables from PDFs — 100% in your browser. Your files never leave this tab. Pay once, use forever.",
       },
       { property: "og:title", content: "VaultPDF — PDFs that never leave your browser" },
       {
         property: "og:description",
         content:
-          "Privacy-architected PDF toolkit. AI redaction, batch mail-merge, smart table extraction — all client-side. No uploads, no limits.",
+          "Privacy-architected PDF toolkit. AI redaction, signing, batch mail-merge, smart table extraction — all client-side.",
       },
+      { property: "og:url", content: "/" },
     ],
+    links: [{ rel: "canonical", href: "/" }],
   }),
   component: Landing,
 });
