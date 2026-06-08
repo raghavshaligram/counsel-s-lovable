@@ -972,11 +972,40 @@ function PageCanvas({
     ellipse: "crosshair", freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
   };
 
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const zoomIn = () => setDisplayScale((s) => Math.min(4, +(s * 1.25).toFixed(3)));
+  const zoomOut = () => setDisplayScale((s) => Math.max(0.25, +(s / 1.25).toFixed(3)));
+  const zoomReset = () => setDisplayScale(1);
+  const zoomFit = () => {
+    const el = wrapRef.current; if (!el) return;
+    const avail = el.clientWidth - 24;
+    const pw = rot % 180 === 0 ? pageW : pageH;
+    if (avail > 0 && pw > 0) setDisplayScale(Math.max(0.25, Math.min(4, avail / pw)));
+  };
+  // ctrl/cmd + wheel zoom on the canvas wrapper
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      setDisplayScale((s) => {
+        const next = dir > 0 ? s * 1.1 : s / 1.1;
+        return Math.max(0.25, Math.min(4, +next.toFixed(3)));
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-xs">
-        <Label className="text-muted-foreground">Zoom</Label>
-        <Input type="number" min={0.5} max={3} step={0.1} value={displayScale.toFixed(1)} onChange={(e) => setDisplayScale(Math.max(0.5, Math.min(3, Number(e.target.value) || 1)))} className="h-7 w-20" />
+    <div ref={wrapRef} className="space-y-2">
+      <div className="flex items-center gap-1 text-xs">
+        <Button size="sm" variant="outline" className="h-7 px-2" onClick={zoomOut} title="Zoom out (Ctrl -)">−</Button>
+        <button onClick={zoomReset} className="h-7 min-w-[58px] px-2 rounded-md border border-border text-center tabular-nums hover:bg-accent" title="Reset to 100%">{Math.round(displayScale * 100)}%</button>
+        <Button size="sm" variant="outline" className="h-7 px-2" onClick={zoomIn} title="Zoom in (Ctrl +)">+</Button>
+        <Button size="sm" variant="outline" className="h-7 px-2 ml-1" onClick={zoomFit} title="Fit to width">Fit</Button>
+        <span className="text-muted-foreground ml-2 hidden md:inline">Hold ⌘/Ctrl + scroll to zoom</span>
       </div>
       <div className="relative inline-block shadow-lg" style={{ background: "white" }}>
         <canvas ref={canvasRef} className="block" />
