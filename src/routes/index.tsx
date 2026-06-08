@@ -268,8 +268,18 @@ function Landing() {
               Open Smart Redact <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
+          <div className="mt-12 max-w-md mx-auto text-left">
+            <div className="text-[10px] uppercase tracking-[0.24em] text-vault mb-2 text-center">
+              Get notified
+            </div>
+            <p className="text-sm text-muted-foreground mb-3 text-center">
+              One email when the AppSumo deal goes live. No spam, ever.
+            </p>
+            <WaitlistForm source="home" placeholder="you@firm.com" />
+          </div>
         </div>
       </section>
+
     </AppShell>
   );
 }
