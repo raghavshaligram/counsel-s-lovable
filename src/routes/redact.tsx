@@ -296,7 +296,7 @@ function RedactPage() {
                   <PageCanvas
                     key={p.pageNumber}
                     page={p}
-                    boxes={boxes.filter((b) => b.page === p.pageNumber)}
+                    boxes={allBoxes.filter((b) => b.page === p.pageNumber)}
                     onAddBox={addBox}
                     onRemoveBox={removeBox}
                   />
@@ -306,6 +306,92 @@ function RedactPage() {
 
             <aside className="lg:sticky lg:top-20 space-y-4">
               <div className="rounded-lg border border-border bg-card/50 p-5">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
+                  Redactions
+                </div>
+                <div className="text-3xl font-display">{allBoxes.length}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  region{allBoxes.length === 1 ? "" : "s"} marked across {pages.length} page
+                  {pages.length === 1 ? "" : "s"}
+                </div>
+                <Button
+                  onClick={exportRedacted}
+                  disabled={allBoxes.length === 0 || exporting || loading}
+                  className="w-full mt-5 bg-vault text-vault-foreground hover:opacity-90"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {exporting ? "Exporting…" : "Export redacted PDF"}
+                </Button>
+                {(boxes.length > 0 || detections.length > 0) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full mt-2"
+                    onClick={() => {
+                      setBoxes([]);
+                      setDetections([]);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Clear all
+                  </Button>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-border bg-card/50 p-5">
+                <div className="flex items-center gap-2 text-foreground font-medium mb-1 text-sm">
+                  <Wand2 className="h-4 w-4 text-vault" />
+                  Auto-detect PII
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Scans the text layer on-device for common sensitive patterns.
+                </p>
+                <Button
+                  onClick={runAutoDetect}
+                  disabled={detecting || loading}
+                  variant="outline"
+                  className="w-full mt-3"
+                >
+                  <Wand2 className="h-3.5 w-3.5 mr-2" />
+                  {detecting
+                    ? "Scanning…"
+                    : detections.length > 0
+                      ? "Re-scan"
+                      : "Scan this PDF"}
+                </Button>
+
+                {detections.length > 0 && (
+                  <div className="mt-4 space-y-1.5">
+                    {(Object.keys(CATEGORY_META) as PiiCategory[])
+                      .filter((c) => (catCounts.get(c) ?? 0) > 0)
+                      .map((c) => {
+                        const on = enabledCats.has(c);
+                        const count = catCounts.get(c) ?? 0;
+                        return (
+                          <button
+                            key={c}
+                            onClick={() => toggleCategory(c)}
+                            className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition ${
+                              on
+                                ? "border-vault/50 bg-vault/10 text-foreground"
+                                : "border-border bg-card/30 text-muted-foreground hover:bg-card"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span
+                                className={`inline-block h-2 w-2 rounded-full ${
+                                  on ? "bg-vault" : "bg-muted-foreground/40"
+                                }`}
+                              />
+                              {CATEGORY_META[c].label}
+                            </span>
+                            <span className="tabular-nums">{count}</span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
                 <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
                   Redactions
                 </div>
