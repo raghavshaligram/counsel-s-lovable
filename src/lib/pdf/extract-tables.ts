@@ -62,7 +62,7 @@ export async function extractTables(
     if (items.length < 4) {
       // Image-only page → OCR
       onProgress?.({ page: i, totalPages: doc.numPages, stage: "ocr" });
-      const ocrItems = await ocrPageItems(page, viewport, scale);
+      const ocrItems = await ocrPageItems(page as unknown as Parameters<typeof ocrPageItems>[0], viewport);
       if (ocrItems.length > 0) {
         const rows = itemsToTable(ocrItems);
         if (rows.length > 0) out.push({ page: i, rows, source: "ocr" });
