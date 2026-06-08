@@ -16,8 +16,8 @@ type OutMsg =
   | { type: "done"; id: string }
   | { type: "error"; message: string };
 
-const WEBLLM_MODEL = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
-const TFJS_MODEL = "onnx-community/Qwen2.5-0.5B-Instruct";
+const WEBLLM_MODEL = "SmolLM2-360M-Instruct-q4f16_1-MLC";
+const TFJS_MODEL = "HuggingFaceTB/SmolLM2-360M-Instruct";
 
 let runtime: Runtime | null = null;
 let webllmEngine: any = null;
