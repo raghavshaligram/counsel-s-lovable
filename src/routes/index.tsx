@@ -124,8 +124,8 @@ function Landing() {
               name="Chat with PDF"
               tag="Beta"
               live
-              description="A small open-source LLM runs entirely in your tab. Ask questions about any PDF — no API key, no upload, no leak. Works offline once cached."
-              bullets={["WebGPU + WASM fallback", "BM25 retrieval w/ page citations", "Zero network calls after load"]}
+              description="Instant answers from your document — quoted passages with page numbers, in milliseconds. Optional on-device AI for written summaries. Nothing uploads, ever."
+              bullets={["Works instantly — no download", "Optional ~200 MB local LLM", "Page-cited quotes you can copy"]}
             />
             <ToolCard
               to="/merge"
