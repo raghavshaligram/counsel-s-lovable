@@ -3,7 +3,7 @@ import { useMemo, useRef, useState, useLayoutEffect } from "react";
 import { AppShell } from "@/components/app-shell";
 import { getTemplate } from "@/lib/ast/fixtures";
 import { ASTRenderer, DEFAULT_BRAND } from "@/lib/ast/renderer";
-import type { ASTNode, TemplateAST, TextNode, ImageNode } from "@/lib/ast/types";
+import type { ASTNode, TemplateAST, TextNode } from "@/lib/ast/types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
