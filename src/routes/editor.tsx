@@ -824,13 +824,14 @@ function PageCanvas({
     };
 
     const isEditingThis = editingId === a.id;
+    const interactive = state.tool === "select" || isEditingThis || selected;
     const baseStyle: React.CSSProperties = {
       position: "absolute",
       left: minX, top: minY, width: w, height: h,
       transform: `rotate(${rot}deg)`,
       transformOrigin: "center center",
-      pointerEvents: state.tool === "select" || isEditingThis ? "auto" : "none",
-      cursor: state.tool === "select" ? "move" : "default",
+      pointerEvents: interactive ? "auto" : "none",
+      cursor: isEditingThis ? "text" : (interactive ? "move" : "default"),
     };
 
     let inner: React.ReactNode = null;
