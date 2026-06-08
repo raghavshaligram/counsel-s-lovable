@@ -392,42 +392,7 @@ function RedactPage() {
                 )}
               </div>
 
-                <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
-                  Redactions
-                </div>
-                <div className="text-3xl font-display">{boxes.length}</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  region{boxes.length === 1 ? "" : "s"} marked across {pages.length} page
-                  {pages.length === 1 ? "" : "s"}
-                </div>
-                <Button
-                  onClick={exportRedacted}
-                  disabled={boxes.length === 0 || exporting || loading}
-                  className="w-full mt-5 bg-vault text-vault-foreground hover:opacity-90"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  {exporting ? "Exporting…" : "Export redacted PDF"}
-                </Button>
-                {boxes.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full mt-2"
-                    onClick={() => setBoxes([])}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Clear all
-                  </Button>
-                )}
-              </div>
 
-              <div className="rounded-lg border border-border bg-card/30 p-5 text-xs text-muted-foreground leading-relaxed">
-                <div className="flex items-center gap-2 text-foreground font-medium mb-2">
-                  <Sparkles className="h-3.5 w-3.5 text-vault" />
-                  Coming in v0.2
-                </div>
-                AI auto-detection of names, SSNs, emails, addresses, account numbers, dates of
-                birth — all on-device. One click to mark every PII region across all pages.
-              </div>
 
               <div className="rounded-lg border border-border bg-card/30 p-5 text-xs text-muted-foreground leading-relaxed">
                 <div className="flex items-center gap-2 text-foreground font-medium mb-2">
