@@ -6,15 +6,15 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { cn } from "@/lib/utils";
 
 const heroTools = [
-  { to: "/redact" as const, label: "Redact", short: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
-  { to: "/merge" as const, label: "Mail Merge", short: "Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
-  { to: "/extract" as const, label: "Extract", short: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
+  { to: "/redact", label: "Redact", short: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
+  { to: "/merge", label: "Mail Merge", short: "Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
+  { to: "/extract", label: "Extract", short: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
 ];
 
 const utilities = [
-  { to: "/split" as const, label: "Split", short: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
-  { to: "/rotate" as const, label: "Rotate", short: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
-  { to: "/watermark" as const, label: "Watermark", short: "Stamp", icon: StampIcon, desc: "Add text stamps to pages" },
+  { to: "/split", label: "Split", short: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
+  { to: "/rotate", label: "Rotate", short: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
+  { to: "/watermark", label: "Watermark", short: "Stamp", icon: StampIcon, desc: "Add text stamps to pages" },
 ];
 
 function ShieldCheckIcon({ className }: { className?: string }) {
