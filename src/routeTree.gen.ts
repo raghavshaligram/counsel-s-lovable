@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatermarkRouteImport } from './routes/watermark'
 import { Route as SplitRouteImport } from './routes/split'
+import { Route as SignRouteImport } from './routes/sign'
 import { Route as RotateRouteImport } from './routes/rotate'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as MergeRouteImport } from './routes/merge'
@@ -25,6 +26,11 @@ const WatermarkRoute = WatermarkRouteImport.update({
 const SplitRoute = SplitRouteImport.update({
   id: '/split',
   path: '/split',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignRoute = SignRouteImport.update({
+  id: '/sign',
+  path: '/sign',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RotateRoute = RotateRouteImport.update({
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/merge': typeof MergeRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
+  '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/watermark': typeof WatermarkRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/merge': typeof MergeRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
+  '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/watermark': typeof WatermarkRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/merge': typeof MergeRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
+  '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/watermark': typeof WatermarkRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/redact'
     | '/rotate'
+    | '/sign'
     | '/split'
     | '/watermark'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/redact'
     | '/rotate'
+    | '/sign'
     | '/split'
     | '/watermark'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/redact'
     | '/rotate'
+    | '/sign'
     | '/split'
     | '/watermark'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   MergeRoute: typeof MergeRoute
   RedactRoute: typeof RedactRoute
   RotateRoute: typeof RotateRoute
+  SignRoute: typeof SignRoute
   SplitRoute: typeof SplitRoute
   WatermarkRoute: typeof WatermarkRoute
 }
@@ -135,6 +148,13 @@ declare module '@tanstack/react-router' {
       path: '/split'
       fullPath: '/split'
       preLoaderRoute: typeof SplitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign': {
+      id: '/sign'
+      path: '/sign'
+      fullPath: '/sign'
+      preLoaderRoute: typeof SignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rotate': {
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   MergeRoute: MergeRoute,
   RedactRoute: RedactRoute,
   RotateRoute: RotateRoute,
+  SignRoute: SignRoute,
   SplitRoute: SplitRoute,
   WatermarkRoute: WatermarkRoute,
 }

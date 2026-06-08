@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 const heroTools = [
   { to: "/redact", label: "Redact", short: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
+  { to: "/sign", label: "Sign & Fill", short: "Sign", icon: PenIcon, desc: "Draw, type, or upload your signature" },
   { to: "/merge", label: "Mail Merge", short: "Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
   { to: "/extract", label: "Extract", short: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
 ];
@@ -22,6 +23,15 @@ function ShieldCheckIcon({ className }: { className?: string }) {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
       <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+function PenIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+      <path d="m15 5 4 4" />
     </svg>
   );
 }
