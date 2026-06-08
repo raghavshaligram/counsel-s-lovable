@@ -865,12 +865,19 @@ function PageCanvas({
       case "text-edit": {
         const isEditing = editingId === a.id;
         const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
+        const fam = a.kind === "text-edit"
+          ? (a.family === "serif" ? `'Times New Roman', Times, serif`
+            : a.family === "mono" ? `'Courier New', Courier, monospace`
+            : `Helvetica, Arial, sans-serif`)
+          : `Helvetica, Arial, sans-serif`;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: bg,
           color: rgbCss(a.color, a.opacity),
-          fontSize: (a.kind === "text" ? a.fontSize : a.fontSize) * displayScale,
-          fontFamily: "Helvetica, Arial, sans-serif",
+          fontSize: a.fontSize * displayScale,
+          fontFamily: fam,
+          fontWeight: a.kind === "text-edit" && a.bold ? 700 : 400,
+          fontStyle: a.kind === "text-edit" && a.italic ? "italic" : "normal",
           lineHeight: 1.15,
           whiteSpace: "pre-wrap",
           overflow: "hidden",
