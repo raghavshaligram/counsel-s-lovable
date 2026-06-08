@@ -53,6 +53,7 @@ function RedactPage() {
     setLoading(true);
     setPages([]);
     setBoxes([]);
+    setDetections([]);
     (async () => {
       try {
         const { getPdfjs } = await import("@/lib/pdf/worker");
