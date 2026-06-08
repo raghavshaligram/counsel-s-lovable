@@ -1,10 +1,44 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { AppShell } from "@/components/app-shell";
 import { FIXTURE_TEMPLATES } from "@/lib/ast/fixtures";
 import { ASTRenderer } from "@/lib/ast/renderer";
+import type { TemplateAST } from "@/lib/ast/types";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+
+function TemplateThumb({ ast }: { ast: TemplateAST }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.25);
+  const native = ast.sizes[0];
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0].contentRect.width;
+      setScale(w / native.w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [native.w]);
+
+  return (
+    <div ref={ref} className="absolute inset-0 overflow-hidden">
+      <div
+        style={{
+          width: native.w,
+          height: native.h,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      >
+        <ASTRenderer ast={ast} scale={1} />
+      </div>
+    </div>
+  );
+}
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
