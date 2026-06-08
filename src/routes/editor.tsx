@@ -13,8 +13,6 @@ import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -669,6 +667,8 @@ function PageCanvas({
         color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
       } });
       setEditingId(id);
+      dispatch({ type: "SET_TOOL", t: "select" });
+      dispatch({ type: "SELECT_ANNO", id });
       return;
     }
 
@@ -681,6 +681,8 @@ function PageCanvas({
         color: state.color, opacity: state.opacity, text: "",
       } });
       setEditingId(id);
+      dispatch({ type: "SET_TOOL", t: "select" });
+      dispatch({ type: "SELECT_ANNO", id });
       return;
     }
 
@@ -747,15 +749,15 @@ function PageCanvas({
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: state.current,
       x: it.x - pad, y: it.y - pad, w: it.w + pad * 2, h: it.h + pad * 2,
-      color: state.color.r + state.color.g + state.color.b < 0.2 ? state.color : { r: 0, g: 0, b: 0 },
+      color: { r: 0, g: 0, b: 0 },
       opacity: 1,
       text: it.str,
       fontSize: it.h * 0.95,
       bg: { r: 1, g: 1, b: 1 },
     } });
     setEditingId(id);
-    dispatch({ type: "SET_TOOL", t: "select" });
     dispatch({ type: "SELECT_ANNO", id });
+    // keep edit-text tool active so user can keep editing more strings
   };
 
   // Render annotation overlays (in unrotated PDF coords → rotate to screen)
@@ -775,16 +777,18 @@ function PageCanvas({
     const w = maxX - minX, h = maxY - minY;
 
     const onMouseDownAnno = (e: React.MouseEvent) => {
-      if (state.tool !== "select") return;
+      if (!(state.tool === "select" || selected)) return;
+      if (isEditingThis) return; // don't drag while typing
       e.stopPropagation();
       dispatch({ type: "SELECT_ANNO", id: a.id });
       const startX = e.clientX, startY = e.clientY;
       const origX = a.x, origY = a.y;
+      let moved = false;
       const move = (ev: MouseEvent) => {
         const dxScreen = ev.clientX - startX;
         const dyScreen = ev.clientY - startY;
-        // Convert dx/dy from screen to PDF (just invert the scale; rotation
-        // of a translation: rotate the dx/dy vector by -rot)
+        if (!moved && Math.hypot(dxScreen, dyScreen) < 3) return;
+        moved = true;
         const r = (-rot * Math.PI) / 180;
         const cos = Math.cos(r), sin = Math.sin(r);
         const dxP = (dxScreen * cos - dyScreen * sin) / displayScale;
@@ -794,6 +798,10 @@ function PageCanvas({
       const up = () => {
         window.removeEventListener("mousemove", move);
         window.removeEventListener("mouseup", up);
+        // click without drag on text/note → enter edit mode
+        if (!moved && selected && (a.kind === "text" || a.kind === "text-edit" || a.kind === "note")) {
+          setEditingId(a.id);
+        }
       };
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", up);
@@ -820,13 +828,14 @@ function PageCanvas({
     };
 
     const isEditingThis = editingId === a.id;
+    const interactive = state.tool === "select" || isEditingThis || selected;
     const baseStyle: React.CSSProperties = {
       position: "absolute",
       left: minX, top: minY, width: w, height: h,
       transform: `rotate(${rot}deg)`,
       transformOrigin: "center center",
-      pointerEvents: state.tool === "select" || isEditingThis ? "auto" : "none",
-      cursor: state.tool === "select" ? "move" : "default",
+      pointerEvents: interactive ? "auto" : "none",
+      cursor: isEditingThis ? "text" : (interactive ? "move" : "default"),
     };
 
     let inner: React.ReactNode = null;
@@ -961,11 +970,40 @@ function PageCanvas({
     ellipse: "crosshair", freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
   };
 
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const zoomIn = () => setDisplayScale((s) => Math.min(4, +(s * 1.25).toFixed(3)));
+  const zoomOut = () => setDisplayScale((s) => Math.max(0.25, +(s / 1.25).toFixed(3)));
+  const zoomReset = () => setDisplayScale(1);
+  const zoomFit = () => {
+    const el = wrapRef.current; if (!el) return;
+    const avail = el.clientWidth - 24;
+    const pw = rot % 180 === 0 ? pageW : pageH;
+    if (avail > 0 && pw > 0) setDisplayScale(Math.max(0.25, Math.min(4, avail / pw)));
+  };
+  // ctrl/cmd + wheel zoom on the canvas wrapper
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      setDisplayScale((s) => {
+        const next = dir > 0 ? s * 1.1 : s / 1.1;
+        return Math.max(0.25, Math.min(4, +next.toFixed(3)));
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-xs">
-        <Label className="text-muted-foreground">Zoom</Label>
-        <Input type="number" min={0.5} max={3} step={0.1} value={displayScale.toFixed(1)} onChange={(e) => setDisplayScale(Math.max(0.5, Math.min(3, Number(e.target.value) || 1)))} className="h-7 w-20" />
+    <div ref={wrapRef} className="space-y-2">
+      <div className="flex items-center gap-1 text-xs">
+        <Button size="sm" variant="outline" className="h-7 px-2" onClick={zoomOut} title="Zoom out (Ctrl -)">−</Button>
+        <button onClick={zoomReset} className="h-7 min-w-[58px] px-2 rounded-md border border-border text-center tabular-nums hover:bg-accent" title="Reset to 100%">{Math.round(displayScale * 100)}%</button>
+        <Button size="sm" variant="outline" className="h-7 px-2" onClick={zoomIn} title="Zoom in (Ctrl +)">+</Button>
+        <Button size="sm" variant="outline" className="h-7 px-2 ml-1" onClick={zoomFit} title="Fit to width">Fit</Button>
+        <span className="text-muted-foreground ml-2 hidden md:inline">Hold ⌘/Ctrl + scroll to zoom</span>
       </div>
       <div className="relative inline-block shadow-lg" style={{ background: "white" }}>
         <canvas ref={canvasRef} className="block" />
