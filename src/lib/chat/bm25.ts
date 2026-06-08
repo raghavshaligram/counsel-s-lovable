@@ -91,3 +91,24 @@ export function search(
   ranked.sort((a, b) => b.score - a.score);
   return ranked.slice(0, topK);
 }
+
+// Highlight: split a passage around query keyword occurrences for <mark> rendering.
+export interface HighlightSegment { text: string; hit: boolean }
+
+export function highlight(text: string, query: string): HighlightSegment[] {
+  const terms = Array.from(new Set(tokenize(query))).filter((t) => t.length >= 2);
+  if (terms.length === 0) return [{ text, hit: false }];
+  // Escape regex special chars and join into a single alternation.
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+  const out: HighlightSegment[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push({ text: text.slice(last, m.index), hit: false });
+    out.push({ text: m[0], hit: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last), hit: false });
+  return out;
+}

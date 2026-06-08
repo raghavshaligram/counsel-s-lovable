@@ -1,62 +1,81 @@
 
-# Local Chat with PDF — `/chat`
+# Chat with PDF — Instant by Default, AI on Demand
 
-A 5th hero tool: upload a PDF, ask questions, get answers from a model running entirely in the user's browser. No file or question ever leaves the device. Pairs perfectly with the existing privacy moat.
+## The shift
 
-## User flow
+Today: drop PDF → wait 5–10 min for an 800MB model → ask question.
+After: drop PDF → **answer in 50ms** with quoted passages and page numbers. If the user wants a written, conversational reply, they click **Generate written answer** and *then* a small ~200MB model loads (one-time, cached).
 
-1. Land on `/chat`. See: "Chat with your PDF — 100% in your browser."
-2. Drop a PDF → extracted client-side with the existing `pdfjs-dist` setup, chunked into ~500-token passages with page numbers.
-3. First visit only: "Downloading model (~800MB, one-time)" with a progress bar. Cached in the browser afterwards — subsequent loads are instant and work offline.
-4. Ask a question → BM25 picks top 4 chunks → model streams an answer with inline page citations (`[p. 3]`).
-5. Sidebar shows: model name, runtime (WebGPU / WASM), VRAM/RAM estimate, "Clear conversation", "Switch PDF".
+90% of "chat with PDF" questions are really "find the part that talks about X." We serve those instantly with zero download, zero network, zero cost. The LLM becomes a power-user upgrade, not a barrier to entry.
 
-## Architecture
+## New user flow
 
-```text
-/chat route (UI, React)
-   │
-   ├── pdf-extract.ts          → pdfjs-dist, page-aware chunking
-   ├── bm25.ts                  → tiny pure-JS BM25 index (no deps)
-   └── llm-worker.ts (Web Worker)
-        ├── WebGPU path: @mlc-ai/web-llm  → Llama-3.2-1B-Instruct-q4f16
-        └── WASM fallback: @huggingface/transformers → Qwen2.5-0.5B-Instruct (q4)
-```
+1. **Drop PDF** → indexed locally with BM25 (already built). Instant.
+2. **Type question** → press Enter.
+3. **Instant answer card** appears immediately:
+   - Top 3 ranked passages, each as a quote block
+   - Page number chip ("p. 7") on each
+   - Query keywords highlighted in-passage
+   - "Copy quote" button per passage
+4. Below the instant answer: a single **"✨ Generate written answer"** button. Greyed out by default with the label *"Loads a small AI model (~200 MB, one-time)."*
+5. First click → model downloads with a progress bar in place of the button. Subsequent questions in the same session: button is replaced by **"Generating…"** with streaming tokens, no download.
+6. The written answer renders below the instant answer, with the same page citations the retrieval already produced.
 
-- Feature detection: `navigator.gpu && await navigator.gpu.requestAdapter()` → WebLLM, else Transformers.js WASM.
-- All heavy work (model load, tokenize, generate, BM25 index build) runs in the Worker. Main thread only renders tokens streamed back via `postMessage`.
-- Models cached by the libraries themselves (Cache API / IndexedDB). No server hit after first download.
+This way the user *sees value before any download* and opts in only if they want prose.
 
-## Files
+## Model swap
 
-**New**
-- `src/routes/chat.tsx` — route, head() meta + `SoftwareApplication` JSON-LD, dropzone, chat UI, model-status panel.
-- `src/lib/chat/pdf-extract.ts` — reuse `loadPdfjs`, return `{ page, text }[]` chunks.
-- `src/lib/chat/bm25.ts` — `buildIndex(chunks)` + `search(query, k)`. Pure JS, ~80 lines.
-- `src/lib/chat/llm-worker.ts` — Web Worker. Messages: `init`, `generate`, `progress`, `token`, `done`, `error`. Picks WebLLM or Transformers.js at runtime.
-- `src/lib/chat/runtime-detect.ts` — `detectRuntime()` → `"webgpu" | "wasm"`.
-- `src/components/chat/ChatMessages.tsx`, `ChatComposer.tsx`, `ModelStatusCard.tsx` — presentation only.
+Drop the 800MB Llama-3.2-1B + 400MB Qwen-0.5B combo. Use **one** small model on both runtimes:
+- **WebGPU path**: `SmolLM2-360M-Instruct-q4f16_1-MLC` (~230MB) via WebLLM. Existing MLC model URL — no infra change.
+- **WASM path**: `HuggingFaceTB/SmolLM2-360M-Instruct` q4 via Transformers.js (~210MB).
 
-**Edited**
-- `src/components/app-shell.tsx` — add "Chat with PDF" to desktop sidebar + mobile drawer (with a small "Beta" pill).
-- `src/routes/index.tsx` — promote as 5th hero tool in the grid, update meta description to include "Chat".
-- `src/routeTree.gen.ts` — auto-regenerated.
-- `package.json` via `bun add @mlc-ai/web-llm @huggingface/transformers`.
+Same download budget (~200MB) on both paths, which makes the "one-time, ~200 MB" copy honest regardless of device. Quality is lower than Llama-1B, but it's only being asked to *summarize 3 already-retrieved passages*, which it does well.
 
-## Technical notes
+## What stays vs changes
 
-- **Worker**: standard Vite `new Worker(new URL('./llm-worker.ts', import.meta.url), { type: 'module' })` — no SSR concerns since `/chat` is client-only UI (gate model load behind `useEffect`, render a skeleton during SSR).
-- **Streaming**: WebLLM has `engine.chat.completions.create({ stream: true })`; Transformers.js has `TextStreamer`. Both posted token-by-token to the main thread.
-- **Prompt template**: system message "Answer using only the provided context. Cite pages like [p. N]. If the answer isn't in the context, say so." + retrieved chunks + user question.
-- **No backend, no Lovable Cloud**. Nothing to provision.
-- **SEO**: `head()` with title "Chat with PDF in your browser — Free, Private, Offline", `SoftwareApplication` JSON-LD via the existing `softwareAppSchema` helper, canonical URL.
-- **Bundle hygiene**: both LLM libraries are dynamically `import()`ed inside the worker so the main bundle stays small; only loaded on `/chat`.
-- **Device gating**: if WebGPU is unavailable AND device RAM < 4GB (rough `navigator.deviceMemory` check), show a clear "Your device may struggle — try desktop Chrome" warning before downloading.
+**Stays as-is:**
+- `src/lib/chat/pdf-extract.ts` — page-aware chunking
+- `src/lib/chat/bm25.ts` — retrieval index
+- `src/lib/chat/runtime-detect.ts`
+- `/chat` route registration, SEO meta, AppShell nav entries
+
+**Changes:**
+- `src/routes/chat.tsx` — restructure UI: instant-answer card first, optional Generate button second. Don't init the worker on mount; init only on the first click of Generate. Remove the always-on "Initializing model…" sidebar state. Sidebar becomes a privacy/how-it-works panel and shows the model only after the user has opted in.
+- `src/lib/chat/llm-worker.ts` — swap model IDs to SmolLM2-360M variants.
+- `src/lib/chat/bm25.ts` — add a small helper `highlight(text, query)` that returns `{ before, hit, after }[]` segments for the UI to render `<mark>`.
+- Landing page card copy: change "WebGPU + WASM fallback" bullet to "Works instantly — no download required" to reflect the new default.
+
+**New (small):**
+- `src/components/chat/InstantAnswer.tsx` — renders the 3 quoted passages with page chips, highlights, and copy buttons.
+- `src/components/chat/GenerateAnswer.tsx` — encapsulates the "Generate written answer" button, the download-progress state, and the streamed assistant bubble.
+
+## Behavior details
+
+- **No worker spawned until Generate is clicked.** The PDF route stays lightweight and SSR-friendly. The worker file already dynamic-imports the LLM libraries, so the main bundle isn't affected either way; this just defers the model fetch itself.
+- **Empty-state instant answer**: if BM25 returns zero hits (e.g. nonsense query), show a small "No matching passages — try different words" card instead of an empty quote list.
+- **Generate button is per-question**, not global. Each user message gets its own "Generate" affordance, so the user picks which answers are worth the wait.
+- **Once the model is loaded**, the Generate button on every prior and future question becomes instant ("Generate" → streams).
+- **Cache awareness**: on `/chat` mount, do a cheap `caches.has(...)` (or equivalent) check; if the model is already cached, show the button as *"Generate written answer · model cached"* without triggering any download.
+
+## Files touched
+
+**Edit**
+- `src/routes/chat.tsx` (substantial)
+- `src/lib/chat/llm-worker.ts` (model IDs)
+- `src/lib/chat/bm25.ts` (add `highlight` helper)
+- `src/routes/index.tsx` (one bullet on the Chat tool card)
+- `src/components/app-shell.tsx` (no change to nav; copy stays "Beta")
+
+**Create**
+- `src/components/chat/InstantAnswer.tsx`
+- `src/components/chat/GenerateAnswer.tsx`
+
+**Delete**
+- Nothing.
 
 ## Out of scope (future)
 
-- Local embeddings (MiniLM) for semantic search — easy follow-up once BM25 ships.
-- Multi-PDF library with IndexedDB persistence.
-- Optional Lovable Cloud sync of chat history (opt-in only; never the PDF).
+- Bring-your-own Ollama URL (settings panel toggle). Easy to add later — same worker, different transport.
+- Local embeddings for semantic retrieval — only worth doing if BM25 quality complaints come in.
 
-After approval I'll implement in one pass, then verify by uploading a sample PDF in the preview and confirming streaming answers + page citations.
+After approval I'll implement, then verify in the preview: drop a PDF, ask a question, confirm passages render instantly with highlights; click Generate, confirm download progress; ask a follow-up, confirm no second download.
