@@ -202,7 +202,8 @@ function drawAnno(
       });
       page.drawText(a.text, {
         x: a.x,
-        y: yFlip(a.y, a.h) + a.h - a.fontSize * 0.85,
+        // Baseline: top of bbox + textOffsetY (skip whiteout padding) + ascent
+        y: yFlip(a.y, a.h) + a.h - (a.textOffsetY ?? 0) - a.fontSize * 0.85,
         size: a.fontSize,
         font: pickFont(fonts, a.family ?? "sans", a.bold, a.italic),
         color: col(a.color),
