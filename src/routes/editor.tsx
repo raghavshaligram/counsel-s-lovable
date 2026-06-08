@@ -724,18 +724,20 @@ function PageCanvas({
   }, [state.tool, textItems]);
 
   const editExistingText = (it: TextItem) => {
-    const next = window.prompt(`Edit text:`, it.str);
-    if (next == null) return;
     const pad = Math.max(1, it.h * 0.1);
+    const id = uid();
     dispatch({ type: "ADD_ANNO", a: {
-      id: uid(), kind: "text-edit", page: state.current,
+      id, kind: "text-edit", page: state.current,
       x: it.x - pad, y: it.y - pad, w: it.w + pad * 2, h: it.h + pad * 2,
       color: state.color.r + state.color.g + state.color.b < 0.2 ? state.color : { r: 0, g: 0, b: 0 },
       opacity: 1,
-      text: next,
+      text: it.str,
       fontSize: it.h * 0.95,
       bg: { r: 1, g: 1, b: 1 },
     } });
+    setEditingId(id);
+    dispatch({ type: "SET_TOOL", t: "select" });
+    dispatch({ type: "SELECT_ANNO", id });
   };
 
   // Render annotation overlays (in unrotated PDF coords → rotate to screen)
