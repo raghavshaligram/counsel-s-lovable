@@ -643,26 +643,26 @@ function PageCanvas({
 
     if (state.tool === "text") {
       const { x: px, y: py } = toPdf(x, y);
-      const text = window.prompt("Text:", "Text") ?? "";
-      if (!text.trim()) return;
-      const w = Math.max(80, text.length * state.fontSize * 0.55);
+      const w = Math.max(120, state.fontSize * 8);
+      const id = uid();
       dispatch({ type: "ADD_ANNO", a: {
-        id: uid(), kind: "text", page: state.current,
+        id, kind: "text", page: state.current,
         x: px, y: py, w, h: state.fontSize * 1.4,
-        color: state.color, opacity: state.opacity, text, fontSize: state.fontSize,
+        color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
       } });
+      setEditingId(id);
       return;
     }
 
     if (state.tool === "note") {
       const { x: px, y: py } = toPdf(x, y);
-      const text = window.prompt("Note:", "") ?? "";
-      if (!text.trim()) return;
+      const id = uid();
       dispatch({ type: "ADD_ANNO", a: {
-        id: uid(), kind: "note", page: state.current,
-        x: px, y: py, w: 120, h: 60,
-        color: state.color, opacity: state.opacity, text,
+        id, kind: "note", page: state.current,
+        x: px, y: py, w: 140, h: 70,
+        color: state.color, opacity: state.opacity, text: "",
       } });
+      setEditingId(id);
       return;
     }
 
