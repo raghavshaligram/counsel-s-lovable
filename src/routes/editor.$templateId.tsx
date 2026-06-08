@@ -342,17 +342,17 @@ function SelectedCallout({
   const value = vars[v] ?? "";
   const isPhoto = /^https?:\/\//.test(value);
   return (
-    <div className="px-4 py-3 bg-secondary/40 border-b border-border space-y-2">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+    <div className="px-5 py-3 bg-secondary/50 border-b border-border space-y-2">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+        <span className="h-1.5 w-1.5 bg-foreground" />
         Editing selection
       </div>
       {isPhoto ? (
-        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} placeholder="Photo URL" />
+        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} placeholder="Photo URL" className="rounded-none border-border" />
       ) : (node as TextNode).text.length > 40 ? (
-        <Textarea value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} rows={2} />
+        <Textarea value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} rows={2} className="rounded-none border-border" />
       ) : (
-        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} />
+        <Input value={value} onChange={(e) => setVars((s) => ({ ...s, [v]: e.target.value }))} className="rounded-none border-border" />
       )}
     </div>
   );
