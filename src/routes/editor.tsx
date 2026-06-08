@@ -911,20 +911,20 @@ function PageCanvas({
         );
         break;
       }
-      case "text-edit":
-        inner = (
-          <div style={{ width: "100%", height: "100%", background: rgbCss(a.bg), color: rgbCss(a.color), fontSize: a.fontSize * displayScale, fontFamily: "Helvetica, Arial, sans-serif", lineHeight: 1.15, whiteSpace: "pre-wrap", overflow: "hidden" }}>{a.text}</div>
-        );
-        break;
     }
 
     return (
-      <div key={a.id} style={baseStyle} onMouseDown={onMouseDownAnno} onDoubleClick={() => {
-        if (a.kind === "text" || a.kind === "text-edit" || a.kind === "note") {
-          const next = window.prompt("Edit:", a.text);
-          if (next != null) dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: next } as Partial<Anno> });
-        }
-      }}>
+      <div
+        key={a.id}
+        style={baseStyle}
+        onMouseDown={onMouseDownAnno}
+        onDoubleClick={(e) => {
+          if (a.kind === "text" || a.kind === "text-edit" || a.kind === "note") {
+            e.stopPropagation();
+            setEditingId(a.id);
+          }
+        }}
+      >
         {inner}
         {selected && (
           <>
