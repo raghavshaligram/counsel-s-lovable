@@ -11,6 +11,9 @@ import {
   X,
   ArrowRight,
   CircleDot,
+  Scissors,
+  RotateCw,
+  Stamp,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
