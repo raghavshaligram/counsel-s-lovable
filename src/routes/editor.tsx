@@ -385,6 +385,20 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
             <input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(e) => e.target.files?.[0] && onPickImage(e.target.files[0])} />
           </label>
         )}
+        <button
+          onClick={() => setSignOpen(true)}
+          title="Sign"
+          className="grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent text-muted-foreground"
+        >
+          <FileSignature className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setStampOpen(true)}
+          title="Stamp"
+          className="grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent text-muted-foreground"
+        >
+          <BadgeCheck className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="mx-1 h-6 w-px bg-border" />
