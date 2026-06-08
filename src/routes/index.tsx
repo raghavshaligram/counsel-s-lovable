@@ -81,12 +81,24 @@ function CatalogPage() {
               params={{ templateId: t.id }}
               className="group block"
             >
-              <div className="aspect-square overflow-hidden bg-background relative border border-border">
+              <div
+                className="aspect-square overflow-hidden bg-background relative border border-border"
+                style={{ containerType: "inline-size" }}
+              >
                 <div className="absolute top-3 left-3 z-10 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                   №&nbsp;{String(i + 1).padStart(2, "0")}
                 </div>
-                <div className="absolute inset-0 grid place-items-center p-8">
-                  <ASTRenderer ast={t.ast} scale={300 / t.ast.sizes[0].w} />
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: t.ast.sizes[0].w,
+                    height: t.ast.sizes[0].h,
+                    transform: `scale(calc(100cqw / ${t.ast.sizes[0].w}))`,
+                    transformOrigin: "top left",
+                  }}
+                >
+                  <ASTRenderer ast={t.ast} scale={1} />
                 </div>
                 <div className="absolute inset-0 ring-0 group-hover:ring-1 ring-foreground/60 transition pointer-events-none" />
               </div>
