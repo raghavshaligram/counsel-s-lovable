@@ -206,10 +206,12 @@ function NavLink({
   to,
   label,
   icon: Icon,
+  beta,
 }: {
   to: string;
   label: string;
   icon: React.FC<{ className?: string }>;
+  beta?: boolean;
 }) {
   return (
     <Link
@@ -227,6 +229,11 @@ function NavLink({
     >
       <Icon className="h-3.5 w-3.5 opacity-70" />
       <span>{label}</span>
+      {beta && (
+        <span className="text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
+          Beta
+        </span>
+      )}
     </Link>
   );
 }
