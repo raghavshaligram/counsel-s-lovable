@@ -15,6 +15,7 @@ import { Route as SignRouteImport } from './routes/sign'
 import { Route as RotateRouteImport } from './routes/rotate'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
 import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as ChatRouteImport } from './routes/chat'
@@ -50,6 +51,11 @@ const PricingRoute = PricingRouteImport.update({
   path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OcrRoute = OcrRouteImport.update({
+  id: '/ocr',
+  path: '/ocr',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MergeRoute = MergeRouteImport.update({
   id: '/merge',
   path: '/merge',
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof ChatRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
+  '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/chat': typeof ChatRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
+  '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/chat': typeof ChatRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
+  '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/extract'
     | '/merge'
+    | '/ocr'
     | '/pricing'
     | '/redact'
     | '/rotate'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/extract'
     | '/merge'
+    | '/ocr'
     | '/pricing'
     | '/redact'
     | '/rotate'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/extract'
     | '/merge'
+    | '/ocr'
     | '/pricing'
     | '/redact'
     | '/rotate'
@@ -152,6 +164,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   ExtractRoute: typeof ExtractRoute
   MergeRoute: typeof MergeRoute
+  OcrRoute: typeof OcrRoute
   PricingRoute: typeof PricingRoute
   RedactRoute: typeof RedactRoute
   RotateRoute: typeof RotateRoute
@@ -204,6 +217,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ocr': {
+      id: '/ocr'
+      path: '/ocr'
+      fullPath: '/ocr'
+      preLoaderRoute: typeof OcrRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/merge': {
       id: '/merge'
       path: '/merge'
@@ -240,6 +260,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   ExtractRoute: ExtractRoute,
   MergeRoute: MergeRoute,
+  OcrRoute: OcrRoute,
   PricingRoute: PricingRoute,
   RedactRoute: RedactRoute,
   RotateRoute: RotateRoute,
@@ -250,3 +271,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

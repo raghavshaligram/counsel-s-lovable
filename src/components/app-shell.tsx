@@ -14,10 +14,21 @@ const heroTools = [
 ];
 
 const utilities = [
+  { to: "/ocr", label: "Make Searchable", short: "OCR", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
   { to: "/split", label: "Split", short: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
   { to: "/rotate", label: "Rotate", short: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
   { to: "/watermark", label: "Watermark", short: "Stamp", icon: StampIcon, desc: "Add text stamps to pages" },
 ];
+
+function ScanTextIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <path d="M7 8h8" /><path d="M7 12h10" /><path d="M7 16h6" />
+    </svg>
+  );
+}
 
 function ShieldCheckIcon({ className }: { className?: string }) {
   return (
