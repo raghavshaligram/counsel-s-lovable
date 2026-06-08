@@ -472,6 +472,9 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
           Export PDF
         </Button>
       </div>
+
+      <SignatureDialog open={signOpen} onOpenChange={setSignOpen} onSave={setPendingImageFromCanvas} />
+      <StampDialog open={stampOpen} onOpenChange={setStampOpen} onSave={setPendingImageFromCanvas} />
     </div>
   );
 }
