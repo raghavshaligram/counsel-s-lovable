@@ -53,6 +53,7 @@ export interface ImageNode extends BaseNode {
   radius?: number;
   width?: number | "fill";
   height?: number | "fill";
+  flex?: number;
 }
 
 export interface QRNode extends BaseNode {
