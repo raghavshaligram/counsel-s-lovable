@@ -99,21 +99,33 @@ function RedactPage() {
     setDetections([]);
   };
 
+  const [detectStatus, setDetectStatus] = useState<string | null>(null);
+
   const runAutoDetect = useCallback(async () => {
     if (!file) return;
     setDetecting(true);
+    setDetectStatus("Reading text layer…");
     try {
       const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
-      const found = await detectPiiInPdf(file, 1.5);
+      const { detections: found, usedOcr } = await detectPiiInPdf(file, 1.5, (p) => {
+        if (p.stage === "ocr") {
+          setDetectStatus(`OCR scanning page ${p.page} of ${p.totalPages}…`);
+        } else {
+          setDetectStatus(`Reading page ${p.page} of ${p.totalPages}…`);
+        }
+      });
       setDetections(found);
       if (found.length === 0) {
-        toast.info("No obvious PII patterns found in the text layer.", {
-          description:
-            "Scanned PDFs need OCR first — that's coming. You can still mark regions manually.",
+        toast.info("No obvious PII patterns found.", {
+          description: usedOcr
+            ? "OCR ran but no SSNs, emails, phones, cards, or dates matched. Mark regions manually."
+            : "Mark sensitive regions manually with click-and-drag.",
         });
       } else {
         toast.success(`Found ${found.length} likely PII region${found.length === 1 ? "" : "s"}`, {
-          description: "Review and toggle categories on the right, then export.",
+          description: usedOcr
+            ? "Some pages were scanned — OCR was used. Review categories on the right."
+            : "Review and toggle categories on the right, then export.",
         });
       }
     } catch (err) {
@@ -121,8 +133,10 @@ function RedactPage() {
       toast.error("Auto-detect failed");
     } finally {
       setDetecting(false);
+      setDetectStatus(null);
     }
   }, [file]);
+
 
   const toggleCategory = (cat: PiiCategory) => {
     setEnabledCats((prev) => {
