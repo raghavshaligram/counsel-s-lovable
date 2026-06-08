@@ -14,6 +14,7 @@ import {
   Scissors,
   RotateCw,
   Stamp,
+  PenLine,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
