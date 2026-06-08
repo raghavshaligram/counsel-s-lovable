@@ -9,13 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AdminRouteImport } from './routes/admin'
+import { Route as RedactRouteImport } from './routes/redact'
+import { Route as MergeRouteImport } from './routes/merge'
+import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as EditorTemplateIdRouteImport } from './routes/editor.$templateId'
 
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const RedactRoute = RedactRouteImport.update({
+  id: '/redact',
+  path: '/redact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MergeRoute = MergeRouteImport.update({
+  id: '/merge',
+  path: '/merge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExtractRoute = ExtractRouteImport.update({
+  id: '/extract',
+  path: '/extract',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -23,49 +34,62 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const EditorTemplateIdRoute = EditorTemplateIdRouteImport.update({
-  id: '/editor/$templateId',
-  path: '/editor/$templateId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/editor/$templateId': typeof EditorTemplateIdRoute
+  '/extract': typeof ExtractRoute
+  '/merge': typeof MergeRoute
+  '/redact': typeof RedactRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/editor/$templateId': typeof EditorTemplateIdRoute
+  '/extract': typeof ExtractRoute
+  '/merge': typeof MergeRoute
+  '/redact': typeof RedactRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/editor/$templateId': typeof EditorTemplateIdRoute
+  '/extract': typeof ExtractRoute
+  '/merge': typeof MergeRoute
+  '/redact': typeof RedactRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/editor/$templateId'
+  fullPaths: '/' | '/extract' | '/merge' | '/redact'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/editor/$templateId'
-  id: '__root__' | '/' | '/admin' | '/editor/$templateId'
+  to: '/' | '/extract' | '/merge' | '/redact'
+  id: '__root__' | '/' | '/extract' | '/merge' | '/redact'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
-  EditorTemplateIdRoute: typeof EditorTemplateIdRoute
+  ExtractRoute: typeof ExtractRoute
+  MergeRoute: typeof MergeRoute
+  RedactRoute: typeof RedactRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
+    '/redact': {
+      id: '/redact'
+      path: '/redact'
+      fullPath: '/redact'
+      preLoaderRoute: typeof RedactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/merge': {
+      id: '/merge'
+      path: '/merge'
+      fullPath: '/merge'
+      preLoaderRoute: typeof MergeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/extract': {
+      id: '/extract'
+      path: '/extract'
+      fullPath: '/extract'
+      preLoaderRoute: typeof ExtractRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -75,20 +99,14 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/editor/$templateId': {
-      id: '/editor/$templateId'
-      path: '/editor/$templateId'
-      fullPath: '/editor/$templateId'
-      preLoaderRoute: typeof EditorTemplateIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
-  EditorTemplateIdRoute: EditorTemplateIdRoute,
+  ExtractRoute: ExtractRoute,
+  MergeRoute: MergeRoute,
+  RedactRoute: RedactRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
