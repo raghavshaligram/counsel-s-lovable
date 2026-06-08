@@ -529,6 +529,8 @@ function PageCanvas({
   const [textItems, setTextItems] = useState<TextItem[]>([]);
   const [displayScale, setDisplayScale] = useState(1.3);
   const [drawing, setDrawing] = useState<null | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }>(null);
+  // id of the annotation currently in inline-edit mode (text / note / text-edit)
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Render the page
   useEffect(() => {
@@ -641,26 +643,26 @@ function PageCanvas({
 
     if (state.tool === "text") {
       const { x: px, y: py } = toPdf(x, y);
-      const text = window.prompt("Text:", "Text") ?? "";
-      if (!text.trim()) return;
-      const w = Math.max(80, text.length * state.fontSize * 0.55);
+      const w = Math.max(120, state.fontSize * 8);
+      const id = uid();
       dispatch({ type: "ADD_ANNO", a: {
-        id: uid(), kind: "text", page: state.current,
+        id, kind: "text", page: state.current,
         x: px, y: py, w, h: state.fontSize * 1.4,
-        color: state.color, opacity: state.opacity, text, fontSize: state.fontSize,
+        color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
       } });
+      setEditingId(id);
       return;
     }
 
     if (state.tool === "note") {
       const { x: px, y: py } = toPdf(x, y);
-      const text = window.prompt("Note:", "") ?? "";
-      if (!text.trim()) return;
+      const id = uid();
       dispatch({ type: "ADD_ANNO", a: {
-        id: uid(), kind: "note", page: state.current,
-        x: px, y: py, w: 120, h: 60,
-        color: state.color, opacity: state.opacity, text,
+        id, kind: "note", page: state.current,
+        x: px, y: py, w: 140, h: 70,
+        color: state.color, opacity: state.opacity, text: "",
       } });
+      setEditingId(id);
       return;
     }
 
@@ -722,18 +724,20 @@ function PageCanvas({
   }, [state.tool, textItems]);
 
   const editExistingText = (it: TextItem) => {
-    const next = window.prompt(`Edit text:`, it.str);
-    if (next == null) return;
     const pad = Math.max(1, it.h * 0.1);
+    const id = uid();
     dispatch({ type: "ADD_ANNO", a: {
-      id: uid(), kind: "text-edit", page: state.current,
+      id, kind: "text-edit", page: state.current,
       x: it.x - pad, y: it.y - pad, w: it.w + pad * 2, h: it.h + pad * 2,
       color: state.color.r + state.color.g + state.color.b < 0.2 ? state.color : { r: 0, g: 0, b: 0 },
       opacity: 1,
-      text: next,
+      text: it.str,
       fontSize: it.h * 0.95,
       bg: { r: 1, g: 1, b: 1 },
     } });
+    setEditingId(id);
+    dispatch({ type: "SET_TOOL", t: "select" });
+    dispatch({ type: "SELECT_ANNO", id });
   };
 
   // Render annotation overlays (in unrotated PDF coords → rotate to screen)
@@ -797,12 +801,13 @@ function PageCanvas({
       window.addEventListener("mouseup", up);
     };
 
+    const isEditingThis = editingId === a.id;
     const baseStyle: React.CSSProperties = {
       position: "absolute",
       left: minX, top: minY, width: w, height: h,
       transform: `rotate(${rot}deg)`,
       transformOrigin: "center center",
-      pointerEvents: state.tool === "select" ? "auto" : "none",
+      pointerEvents: state.tool === "select" || isEditingThis ? "auto" : "none",
       cursor: state.tool === "select" ? "move" : "default",
     };
 
@@ -818,15 +823,82 @@ function PageCanvas({
         inner = <div style={{ width: "100%", height: "100%", borderRadius: "50%", border: `${a.stroke * displayScale}px solid ${rgbCss(a.color, a.opacity)}`, background: a.fill ? rgbCss(a.color, a.opacity) : "transparent" }} />;
         break;
       case "text":
-        inner = (
-          <div
-            style={{ width: "100%", height: "100%", color: rgbCss(a.color, a.opacity), fontSize: a.fontSize * displayScale, fontFamily: "Helvetica, Arial, sans-serif", lineHeight: 1.15, whiteSpace: "pre-wrap", overflow: "hidden" }}
-          >{a.text}</div>
+      case "text-edit": {
+        const isEditing = editingId === a.id;
+        const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
+        const textStyle: React.CSSProperties = {
+          width: "100%", height: "100%",
+          background: bg,
+          color: rgbCss(a.color, a.opacity),
+          fontSize: (a.kind === "text" ? a.fontSize : a.fontSize) * displayScale,
+          fontFamily: "Helvetica, Arial, sans-serif",
+          lineHeight: 1.15,
+          whiteSpace: "pre-wrap",
+          overflow: "hidden",
+          padding: 0,
+          margin: 0,
+          border: "none",
+          outline: "none",
+          resize: "none",
+          caretColor: rgbCss(a.color),
+        };
+        inner = isEditing ? (
+          <textarea
+            autoFocus
+            value={a.text}
+            onChange={(e) => dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: e.target.value } as Partial<Anno> })}
+            onBlur={() => {
+              if (!a.text.trim()) dispatch({ type: "DELETE_ANNO", id: a.id });
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={textStyle}
+          />
+        ) : (
+          <div style={textStyle}>{a.text || (a.kind === "text" ? "Type here…" : "")}</div>
         );
         break;
-      case "note":
-        inner = <div style={{ width: "100%", height: "100%", background: "rgba(255,229,77,0.95)", border: "1px solid #b89800", color: "#000", fontSize: 8 * displayScale, padding: 4 * displayScale, overflow: "hidden" }}>{a.text}</div>;
+      }
+      case "note": {
+        const isEditing = editingId === a.id;
+        const noteStyle: React.CSSProperties = {
+          width: "100%", height: "100%",
+          background: "rgba(255,229,77,0.95)",
+          border: "1px solid #b89800",
+          color: "#000",
+          fontSize: 9 * displayScale,
+          padding: 4 * displayScale,
+          overflow: "hidden",
+          fontFamily: "Helvetica, Arial, sans-serif",
+          lineHeight: 1.2,
+          margin: 0,
+          outline: "none",
+          resize: "none",
+        };
+        inner = isEditing ? (
+          <textarea
+            autoFocus
+            value={a.text}
+            onChange={(e) => dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: e.target.value } as Partial<Anno> })}
+            onBlur={() => {
+              if (!a.text.trim()) dispatch({ type: "DELETE_ANNO", id: a.id });
+              setEditingId(null);
+            }}
+            onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={noteStyle}
+          />
+        ) : (
+          <div style={noteStyle}>{a.text || "Note…"}</div>
+        );
         break;
+      }
       case "image":
         inner = <img src={a.dataUrl} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "fill", opacity: a.opacity }} />;
         break;
@@ -840,20 +912,20 @@ function PageCanvas({
         );
         break;
       }
-      case "text-edit":
-        inner = (
-          <div style={{ width: "100%", height: "100%", background: rgbCss(a.bg), color: rgbCss(a.color), fontSize: a.fontSize * displayScale, fontFamily: "Helvetica, Arial, sans-serif", lineHeight: 1.15, whiteSpace: "pre-wrap", overflow: "hidden" }}>{a.text}</div>
-        );
-        break;
     }
 
     return (
-      <div key={a.id} style={baseStyle} onMouseDown={onMouseDownAnno} onDoubleClick={() => {
-        if (a.kind === "text" || a.kind === "text-edit" || a.kind === "note") {
-          const next = window.prompt("Edit:", a.text);
-          if (next != null) dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: next } as Partial<Anno> });
-        }
-      }}>
+      <div
+        key={a.id}
+        style={baseStyle}
+        onMouseDown={onMouseDownAnno}
+        onDoubleClick={(e) => {
+          if (a.kind === "text" || a.kind === "text-edit" || a.kind === "note") {
+            e.stopPropagation();
+            setEditingId(a.id);
+          }
+        }}
+      >
         {inner}
         {selected && (
           <>
