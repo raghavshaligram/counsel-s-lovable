@@ -25,6 +25,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { WorkspaceRail, WorkspaceHydrator } from "@/components/workspace/workspace-rail";
 
 const heroTools = [
   { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
@@ -379,6 +380,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </footer>
         </SidebarInset>
+
+        <WorkspaceRail />
+        <WorkspaceHydrator />
       </div>
     </SidebarProvider>
   );
