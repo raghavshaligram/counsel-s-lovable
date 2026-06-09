@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/sidebar";
 
 const heroTools = [
-  { to: "/annotate", label: "Annotate", icon: HighlighterIcon, desc: "Highlight, draw, comment — real PDF annotations" },
   { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
   { to: "/sign", label: "Sign & Fill", icon: PenIcon, desc: "Draw, type, or upload your signature" },
   { to: "/chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
@@ -38,7 +37,7 @@ const converters = [
 ];
 
 const utilities = [
-  { to: "/editor", label: "Editor", icon: EditIcon, desc: "Full PDF editor — annotate, edit text, reorder pages" },
+  { to: "/editor", label: "Editor", icon: EditIcon, desc: "Edit pages, text, images — and annotate" },
   { to: "/compare", label: "Compare", icon: CompareIcon, desc: "Visual diff between two PDFs" },
   { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
   { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
