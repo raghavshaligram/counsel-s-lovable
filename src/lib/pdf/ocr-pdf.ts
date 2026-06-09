@@ -21,15 +21,22 @@
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { loadPdfjs } from "./worker";
 
-const RENDER_SCALE = 1.5;
+const RENDER_SCALE_DEFAULT = 1.5;
+const RENDER_SCALE_HIGH = 2.0;
 const JPEG_QUALITY = 0.78;
 const MIN_TEXT_ITEMS_TO_SKIP_OCR = 12;
 
 export interface OcrProgress {
   page: number;
   totalPages: number;
-  stage: "rendering" | "ocr" | "embedding" | "skipped";
+  stage: "rendering" | "ocr" | "embedding" | "skipped" | "copied";
   message: string;
+}
+
+export interface OcrOptions {
+  // Render canvases at 2x instead of 1.5x. Slower (~80%) but more accurate
+  // on small fonts and tight kerning. Default false.
+  highAccuracy?: boolean;
 }
 
 interface OcrWord {
@@ -37,7 +44,10 @@ interface OcrWord {
   bbox: { x0: number; y0: number; x1: number; y1: number };
 }
 
+// Rasterised page bound for OCR + re-embed. Native pages bypass this
+// entirely and are copied through with pdf-lib's copyPages.
 interface PageJob {
+  kind: "raster";
   index: number;
   pageNum: number;
   words: OcrWord[];
@@ -46,6 +56,14 @@ interface PageJob {
   pageHeight: number;
   skipped: boolean;
 }
+
+interface CopyJob {
+  kind: "copy";
+  index: number;
+  pageNum: number;
+}
+
+type AnyJob = PageJob | CopyJob;
 
 function collectWords(data: unknown): OcrWord[] {
   const out: OcrWord[] = [];
