@@ -18,6 +18,7 @@ import {
   PenLine,
   MessageSquare,
   ScanText,
+  Minimize2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -157,6 +158,7 @@ function Landing() {
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <UtilCard to="/ocr" icon={ScanText} name="Make Searchable" desc="OCR scanned PDFs in your browser." />
+              <UtilCard to="/compress" icon={Minimize2} name="Compress" desc="Shrink huge PDFs without uploading." />
               <UtilCard to="/split" icon={Scissors} name="Split" desc="Pages or ranges into separate PDFs." />
               <UtilCard to="/rotate" icon={RotateCw} name="Rotate" desc="Fix sideways scans, page by page." />
               <UtilCard to="/watermark" icon={Stamp} name="Watermark" desc="CONFIDENTIAL across every page." />
