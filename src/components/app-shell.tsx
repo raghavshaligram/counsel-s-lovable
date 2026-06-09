@@ -337,13 +337,33 @@ function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string)
 
 function AllToolsPanel({ isActive }: { isActive: (path: string) => boolean }) {
   return (
-    <div className="w-[900px] p-4 grid grid-cols-3 gap-x-5 gap-y-4">
+    <div className="w-[860px] p-3 grid grid-cols-3 gap-x-4 gap-y-3">
       {groups.map((group) => (
         <div key={group.id}>
-          <div className="font-display text-sm text-vault mb-2 px-1">{group.label}</div>
+          <div className="font-display text-xs text-vault mb-1.5 px-1">{group.label}</div>
           <div className="flex flex-col">
             {group.items.map((t) => (
-              <ToolCard key={t.to} tool={t} isActive={isActive(t.to)} />
+              <Link
+                key={t.to}
+                to={t.to}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60 transition-colors",
+                  isActive(t.to) && "bg-vault/10"
+                )}
+              >
+                <span className={cn(
+                  "grid h-6 w-6 shrink-0 place-items-center rounded bg-vault/10 text-vault",
+                  isActive(t.to) && "bg-vault/20"
+                )}>
+                  <t.icon className="h-3.5 w-3.5" />
+                </span>
+                <span className={cn("text-sm leading-tight truncate", isActive(t.to) && "text-vault font-medium")}>
+                  {t.label}
+                </span>
+                {t.beta && (
+                  <span className="text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px ml-auto">Beta</span>
+                )}
+              </Link>
             ))}
           </div>
         </div>
@@ -351,6 +371,7 @@ function AllToolsPanel({ isActive }: { isActive: (path: string) => boolean }) {
     </div>
   );
 }
+
 
 
 export function AppShell({ children }: { children: ReactNode }) {
