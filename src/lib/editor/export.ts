@@ -70,6 +70,23 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     }
   }
 
+  // Best-effort destructive text rewrite: erase content-stream Tj operands
+  // matching captured originals for text-edit + redact annotations.
+  const rewrites = new Map<number, PageRewrite>();
+  for (const a of doc.annotations) {
+    if (a.kind === "text-edit" && a.source?.originalString) {
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [] };
+      job.edits.push({ original: a.source.originalString, replacement: a.text });
+      rewrites.set(a.page, job);
+    } else if (a.kind === "redact" && a.sources?.length) {
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [] };
+      for (const s of a.sources) job.redacts.push({ original: s.originalString });
+      rewrites.set(a.page, job);
+    }
+  }
+  if (rewrites.size) await rewriteDocument(out, rewrites);
+
+
   let bytes = await out.save();
 
   // Optional encryption + permissions
