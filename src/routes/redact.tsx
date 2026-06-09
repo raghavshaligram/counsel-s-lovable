@@ -547,7 +547,7 @@ function RedactPage() {
               </div>
             </div>
 
-            <aside className="lg:sticky lg:top-20 space-y-4">
+            <aside className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 space-y-4 [scrollbar-width:thin]">
               <div className="rounded-lg border border-border bg-card/50 p-5">
                 <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
                   Redactions
