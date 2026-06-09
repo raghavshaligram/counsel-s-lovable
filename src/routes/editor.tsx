@@ -1704,3 +1704,187 @@ function ProtectDialog({
     </Dialog>
   );
 }
+
+// ---------- Edit Text dialog ----------
+
+const FAMILY_OPTIONS: { value: "sans" | "serif" | "mono"; label: string; css: string }[] = [
+  { value: "sans", label: "Sans (Helvetica)", css: "Helvetica, Arial, sans-serif" },
+  { value: "serif", label: "Serif (Times)", css: "'Times New Roman', Times, serif" },
+  { value: "mono", label: "Mono (Courier)", css: "'Courier New', Courier, monospace" },
+];
+
+function rgbToHex(c: RGB): string {
+  const h = (n: number) => Math.round(n * 255).toString(16).padStart(2, "0");
+  return `#${h(c.r)}${h(c.g)}${h(c.b)}`;
+}
+function hexToRgb(hex: string): RGB {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return { r: 0, g: 0, b: 0 };
+  const n = parseInt(m[1], 16);
+  return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
+}
+
+function TextEditDialog({
+  target, annos, onClose, onCommit,
+}: {
+  target:
+    | { kind: "new"; item: TextItem }
+    | { kind: "existing"; annoId: string }
+    | null;
+  annos: Anno[];
+  onClose: () => void;
+  onCommit: (p: { text: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB }) => void;
+}) {
+  const existing = target?.kind === "existing"
+    ? (annos.find((a) => a.id === target.annoId) as Anno | undefined)
+    : undefined;
+
+  const seed = (() => {
+    if (target?.kind === "new") {
+      const it = target.item;
+      return {
+        text: it.str,
+        family: it.family,
+        bold: it.bold,
+        italic: it.italic,
+        fontSize: +(it.h * 0.95).toFixed(2),
+        color: { r: 0, g: 0, b: 0 } as RGB,
+        bg: { r: 1, g: 1, b: 1 } as RGB,
+      };
+    }
+    if (existing && existing.kind === "text-edit") {
+      return {
+        text: existing.text,
+        family: existing.family ?? "sans",
+        bold: !!existing.bold,
+        italic: !!existing.italic,
+        fontSize: existing.fontSize,
+        color: existing.color,
+        bg: existing.bg,
+      };
+    }
+    return null;
+  })();
+
+  const [text, setText] = useState("");
+  const [family, setFamily] = useState<"sans" | "serif" | "mono">("sans");
+  const [bold, setBold] = useState(false);
+  const [italic, setItalic] = useState(false);
+  const [fontSize, setFontSize] = useState(14);
+  const [colorHex, setColorHex] = useState("#000000");
+  const [bgHex, setBgHex] = useState("#ffffff");
+
+  // Seed whenever target changes
+  useEffect(() => {
+    if (!seed) return;
+    setText(seed.text);
+    setFamily(seed.family);
+    setBold(seed.bold);
+    setItalic(seed.italic);
+    setFontSize(seed.fontSize);
+    setColorHex(rgbToHex(seed.color));
+    setBgHex(rgbToHex(seed.bg));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target?.kind === "new" ? target.item : target?.annoId]);
+
+  const open = target !== null;
+  const isNew = target?.kind === "new";
+  const originalText = target?.kind === "new" ? target.item.str : undefined;
+
+  const handleSave = () => {
+    onCommit({
+      text,
+      family,
+      bold,
+      italic,
+      fontSize,
+      color: hexToRgb(colorHex),
+      bg: hexToRgb(bgHex),
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>{isNew ? "Edit text" : "Update text edit"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {isNew && originalText && (
+            <div className="text-xs text-muted-foreground">
+              Replacing: <span className="font-mono text-foreground/80">&ldquo;{originalText}&rdquo;</span>
+            </div>
+          )}
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            className="w-full rounded-md border border-input bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-vault/40"
+            style={{
+              fontFamily: FAMILY_OPTIONS.find((f) => f.value === family)?.css,
+              fontWeight: bold ? 700 : 400,
+              fontStyle: italic ? "italic" : "normal",
+            }}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">Font</span>
+              <select
+                value={family}
+                onChange={(e) => setFamily(e.target.value as "sans" | "serif" | "mono")}
+                className="w-full rounded-md border border-input bg-background p-1.5 text-sm"
+              >
+                {FAMILY_OPTIONS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">Size ({fontSize.toFixed(1)} pt)</span>
+              <input
+                type="number"
+                step={0.5}
+                min={4}
+                max={144}
+                value={fontSize}
+                onChange={(e) => setFontSize(Math.max(4, +e.target.value || 4))}
+                className="w-full rounded-md border border-input bg-background p-1.5 text-sm"
+              />
+            </label>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={bold} onChange={() => setBold((v) => !v)} className="h-3.5 w-3.5 accent-vault" />
+              Bold
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={italic} onChange={() => setItalic((v) => !v)} className="h-3.5 w-3.5 accent-vault" />
+              Italic
+            </label>
+            <label className="ml-auto flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Color</span>
+              <input type="color" value={colorHex} onChange={(e) => setColorHex(e.target.value)} className="h-7 w-10 cursor-pointer rounded border border-input bg-background" />
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Background</span>
+              <input type="color" value={bgHex} onChange={(e) => setBgHex(e.target.value)} className="h-7 w-10 cursor-pointer rounded border border-input bg-background" />
+            </label>
+          </div>
+
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            VaultPDF covers the original glyphs with a matched background fill and redraws your replacement on top — the visual edit applies cleanly across all viewers. Underlying text-extraction may still return the original characters until we ship destructive content-stream rewrite (coming next).
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} className="bg-vault text-vault-foreground hover:opacity-90" disabled={!text.trim()}>
+            {isNew ? "Replace text" : "Save changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
