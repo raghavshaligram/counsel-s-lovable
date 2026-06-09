@@ -148,8 +148,13 @@ function estimateDetectMinutes(pages: number): [number, number] {
 }
 
 function RedactPage() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isPremium = pathname === "/verifiable-redaction";
+
   const [file, setFile] = useState<File | null>(null);
   const [pages, setPages] = useState<RenderedPage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [boxes, setBoxes] = useState<Box[]>([]);
   const [loading, setLoading] = useState(false);
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [exporting, setExporting] = useState(false);
