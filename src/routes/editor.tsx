@@ -53,6 +53,8 @@ type State = {
   fontSize: number;
   opacity: number;
   pendingImage: { dataUrl: string; mime: "image/png" | "image/jpeg"; w: number; h: number } | null;
+  watermark: WatermarkSettings | null;
+  protect: ProtectSettings | null;
   // history
   past: EditorDoc[];
   future: EditorDoc[];
@@ -76,6 +78,8 @@ type Action =
   | { type: "INSERT_BLANK"; after: number; width: number; height: number }
   | { type: "ROTATE_PAGE"; n: number }
   | { type: "SET_PENDING_IMAGE"; img: State["pendingImage"] }
+  | { type: "SET_WATERMARK"; w: WatermarkSettings | null }
+  | { type: "SET_PROTECT"; p: ProtectSettings | null }
   | { type: "UNDO" }
   | { type: "REDO" };
 
@@ -99,6 +103,8 @@ const initialState: State = {
   fontSize: 14,
   opacity: 1,
   pendingImage: null,
+  watermark: null,
+  protect: null,
   past: [],
   future: [],
 };
@@ -118,6 +124,8 @@ function reducer(s: State, a: Action): State {
     case "SET_FILL": return { ...s, fillShape: a.v };
     case "SELECT_ANNO": return { ...s, selectedAnnoId: a.id };
     case "SET_PENDING_IMAGE": return { ...s, pendingImage: a.img };
+    case "SET_WATERMARK": return { ...s, watermark: a.w };
+    case "SET_PROTECT": return { ...s, protect: a.p };
     case "ADD_ANNO": {
       if (!s.doc) return s;
       return commit(s, { ...s.doc, annotations: [...s.doc.annotations, a.a] });
