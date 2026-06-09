@@ -155,8 +155,6 @@ function RedactPage() {
   const [pages, setPages] = useState<RenderedPage[]>([]);
   const [loading, setLoading] = useState(false);
   const [boxes, setBoxes] = useState<Box[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [boxes, setBoxes] = useState<Box[]>([]);
   const [exporting, setExporting] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
