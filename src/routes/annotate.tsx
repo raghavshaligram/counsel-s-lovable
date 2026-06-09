@@ -426,10 +426,9 @@ export function AnnotationWorkspace({ fileName, bytes, headerSlot }: {
               <span>{annots.length} annotation{annots.length === 1 ? "" : "s"}</span>
               <span className="opacity-70">Autosaved · {fileHash?.slice(0, 8)}</span>
             </div>
-          </div>
         </div>
-      </TooltipProvider>
-    </AppShell>
+      </div>
+    </TooltipProvider>
   );
 }
 
