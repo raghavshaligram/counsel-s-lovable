@@ -1255,6 +1255,12 @@ function PageCanvas({
           )}
         </div>
       </div>
+      <TextEditDialog
+        target={textEditTarget}
+        annos={annos}
+        onClose={() => setTextEditTarget(null)}
+        onCommit={commitTextEdit}
+      />
     </div>
   );
 }
