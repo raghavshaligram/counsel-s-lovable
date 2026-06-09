@@ -791,6 +791,15 @@ function RedactPage() {
                     <span className="text-muted-foreground">Strip hidden metadata</span>
                     <Switch checked={stripMetadata} onCheckedChange={setStripMetadata} />
                   </label>
+                  <Button
+                    onClick={exportRedacted}
+                    disabled={allBoxes.length === 0 || exporting || loading}
+                    className="w-full bg-vault text-vault-foreground hover:opacity-90"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {exporting ? "Exporting…" : "Export redacted PDF"}
+                  </Button>
+                </div>
                 </div>
               </div>
             </aside>
