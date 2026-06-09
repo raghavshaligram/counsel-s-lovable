@@ -41,8 +41,62 @@ export const Route = createFileRoute("/annotate")({
 type PageMeta = { width: number; height: number };
 
 function AnnotatePage() {
-  const [file, setFile] = useState<File | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
+
+  const onFile = useCallback(async (f: File) => {
+    setFileName(f.name);
+    setBytes(new Uint8Array(await f.arrayBuffer()));
+  }, []);
+
+  if (!fileName || !bytes) {
+    return (
+      <AppShell>
+        <div className="p-6 md:p-10 max-w-3xl mx-auto">
+          <div className="mb-6">
+            <h1 className="font-display text-3xl tracking-tight">Annotate PDF</h1>
+            <p className="text-muted-foreground mt-2 text-sm">
+              Highlight, underline, draw, comment, stamp. Real PDF annotations that open
+              correctly in Acrobat, Preview, and any other reader. Files never leave this tab.
+            </p>
+          </div>
+          <FileDropzone
+            accept="application/pdf"
+            onFile={onFile}
+            label="Drop a PDF to start annotating"
+            sublabel="or click to browse"
+          />
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-muted-foreground">
+            <ShortcutHint k="V">Select</ShortcutHint>
+            <ShortcutHint k="H">Highlight</ShortcutHint>
+            <ShortcutHint k="U">Underline</ShortcutHint>
+            <ShortcutHint k="S">Strikethrough</ShortcutHint>
+            <ShortcutHint k="N">Sticky note</ShortcutHint>
+            <ShortcutHint k="D">Draw</ShortcutHint>
+            <ShortcutHint k="R">Rectangle</ShortcutHint>
+            <ShortcutHint k="A">Arrow</ShortcutHint>
+            <ShortcutHint k="T">Text box</ShortcutHint>
+            <ShortcutHint k="⌘Z">Undo</ShortcutHint>
+            <ShortcutHint k="⇧⌘Z">Redo</ShortcutHint>
+            <ShortcutHint k="⌘F">Search</ShortcutHint>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell>
+      <AnnotationWorkspace fileName={fileName} bytes={bytes} />
+    </AppShell>
+  );
+}
+
+export function AnnotationWorkspace({ fileName, bytes, headerSlot }: {
+  fileName: string;
+  bytes: Uint8Array;
+  headerSlot?: React.ReactNode;
+}) {
   const [fileHash, setFileHash] = useState<string | null>(null);
   const [pageMetas, setPageMetas] = useState<PageMeta[]>([]);
   const [zoom, setZoom] = useState(1);
@@ -57,33 +111,38 @@ function AnnotatePage() {
     setTool, setColor, setStroke, setFontSize, setOpacity,
     add, update, remove, setAll, undo, redo, select } = useAnnotStore();
 
-  // Load file
-  const onFile = useCallback(async (f: File) => {
-    setFile(f);
-    const ab = await f.arrayBuffer();
-    const u8 = new Uint8Array(ab);
-    setBytes(u8);
-    const hash = await hashFile(f);
-    setFileHash(hash);
+  // Load file metadata + restore saved + import existing
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // SHA-1 the bytes directly (we may not have a File object)
+      const digest = await crypto.subtle.digest("SHA-1", bytes.slice().buffer as ArrayBuffer);
+      const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      if (cancelled) return;
+      setFileHash(hash);
 
-    const pdfjs = await loadPdfjs();
-    const doc = await pdfjs.getDocument({ data: u8.slice() }).promise;
-    const metas: PageMeta[] = [];
-    for (let i = 1; i <= doc.numPages; i++) {
-      const p = await doc.getPage(i);
-      const vp = p.getViewport({ scale: 1 });
-      metas.push({ width: vp.width, height: vp.height });
-    }
-    setPageMetas(metas);
+      const pdfjs = await loadPdfjs();
+      const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+      const metas: PageMeta[] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const p = await doc.getPage(i);
+        const vp = p.getViewport({ scale: 1 });
+        metas.push({ width: vp.width, height: vp.height });
+      }
+      if (cancelled) return;
+      setPageMetas(metas);
 
-    // Restore saved + import existing native annots
-    const [saved, imported] = await Promise.all([
-      loadAnnots(hash),
-      importNativeAnnots(u8),
-    ]);
-    const initial = saved && saved.length ? saved : imported;
-    setAll(initial);
-  }, [setAll]);
+      const [saved, imported] = await Promise.all([
+        loadAnnots(hash),
+        importNativeAnnots(bytes),
+      ]);
+      if (cancelled) return;
+      const initial = saved && saved.length ? saved : imported;
+      setAll(initial);
+    })();
+    return () => { cancelled = true; };
+  }, [bytes, setAll]);
+
 
   // Autosave
   useEffect(() => {
