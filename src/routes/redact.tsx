@@ -3,12 +3,39 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Trash2, X, ShieldCheck, Lock, Wand2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Download,
+  FileText,
+  Trash2,
+  X,
+  ShieldCheck,
+  Lock,
+  Wand2,
+  Search,
+  Tag,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   CATEGORY_META,
   type Detection,
   type PiiCategory,
+  findKeywordInPdf,
+  type KeywordMatch,
 } from "@/lib/pdf/detect-pii";
 
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
@@ -20,13 +47,13 @@ export const Route = createFileRoute("/redact")({
       {
         name: "description",
         content:
-          "Permanently remove sensitive content from PDFs. AI PII auto-detection, 100% in your browser.",
+          "Permanently remove sensitive content from PDFs. AI PII auto-detection, keyword batch redact, exemption codes — 100% in your browser.",
       },
       { property: "og:title", content: "Smart Redact — VaultPDF" },
       {
         property: "og:description",
         content:
-          "Redact PDFs without uploading them. Auto-detect PII, true content removal — not just a black box.",
+          "Redact PDFs without uploading them. Auto-detect PII, find-and-redact-all, FOIA exemption labels, true content removal.",
       },
       { property: "og:url", content: "/redact" },
     ],
@@ -39,7 +66,7 @@ export const Route = createFileRoute("/redact")({
             name: "VaultPDF Smart Redact",
             url: "/redact",
             description:
-              "AI-detected PII redaction. Content is permanently removed from the PDF, in your browser.",
+              "AI-detected PII redaction with keyword batching and legal exemption codes. Content is permanently removed in your browser.",
           }),
         ),
       },
@@ -48,8 +75,47 @@ export const Route = createFileRoute("/redact")({
   component: RedactPage,
 });
 
-type Box = { id: string; page: number; x: number; y: number; w: number; h: number; auto?: boolean; category?: PiiCategory };
-type RenderedPage = { pageNumber: number; width: number; height: number; dataUrl: string };
+type Box = {
+  id: string;
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  auto?: boolean;
+  category?: PiiCategory;
+  keywordId?: string; // groups boxes that came from one keyword search
+  label?: string;
+};
+type RenderedPage = {
+  pageNumber: number;
+  width: number;
+  height: number;
+  dataUrl: string;
+};
+type KeywordGroup = {
+  id: string;
+  query: string;
+  matchCase: boolean;
+  wholeWord: boolean;
+  count: number;
+};
+
+const EXEMPTION_PRESETS: { value: string; label: string }[] = [
+  { value: "FOIA b(1)", label: "FOIA b(1) — National security" },
+  { value: "FOIA b(2)", label: "FOIA b(2) — Internal personnel" },
+  { value: "FOIA b(3)", label: "FOIA b(3) — Statutory" },
+  { value: "FOIA b(4)", label: "FOIA b(4) — Trade secrets" },
+  { value: "FOIA b(5)", label: "FOIA b(5) — Deliberative" },
+  { value: "FOIA b(6)", label: "FOIA b(6) — Personal privacy" },
+  { value: "FOIA b(7)", label: "FOIA b(7) — Law enforcement" },
+  { value: "Privacy Act", label: "Privacy Act — PII" },
+  { value: "Attorney-Client", label: "Attorney-Client privilege" },
+  { value: "Work Product", label: "Work Product doctrine" },
+  { value: "Trade Secret", label: "Trade Secret" },
+  { value: "PII", label: "PII" },
+  { value: "PHI / HIPAA", label: "PHI / HIPAA" },
+];
 
 function RedactPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -59,9 +125,46 @@ function RedactPage() {
   const [exporting, setExporting] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
+  const [detectionLabels, setDetectionLabels] = useState<Record<string, string>>({});
   const [enabledCats, setEnabledCats] = useState<Set<PiiCategory>>(
     () => new Set(Object.keys(CATEGORY_META) as PiiCategory[]),
   );
+
+  // Keyword search-and-redact
+  const [keywordGroups, setKeywordGroups] = useState<KeywordGroup[]>([]);
+  const [keywordBoxes, setKeywordBoxes] = useState<Box[]>([]);
+  const [kwQuery, setKwQuery] = useState("");
+  const [kwMatchCase, setKwMatchCase] = useState(false);
+  const [kwWholeWord, setKwWholeWord] = useState(false);
+  const [kwSearching, setKwSearching] = useState(false);
+
+  // Export settings (persisted)
+  const [stripMetadata, setStripMetadata] = useState(true);
+  const [defaultLabel, setDefaultLabel] = useState<string>("");
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("vault.redact.stripMetadata");
+      if (s !== null) setStripMetadata(s === "1");
+      const d = localStorage.getItem("vault.redact.defaultLabel");
+      if (d) setDefaultLabel(d);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("vault.redact.stripMetadata", stripMetadata ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [stripMetadata]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("vault.redact.defaultLabel", defaultLabel);
+    } catch {
+      /* ignore */
+    }
+  }, [defaultLabel]);
 
   // Render pages with PDF.js whenever a new file lands.
   useEffect(() => {
@@ -71,6 +174,9 @@ function RedactPage() {
     setPages([]);
     setBoxes([]);
     setDetections([]);
+    setDetectionLabels({});
+    setKeywordGroups([]);
+    setKeywordBoxes([]);
     (async () => {
       try {
         const { getPdfjs } = await import("@/lib/pdf/worker");
@@ -88,7 +194,11 @@ function RedactPage() {
           canvas.height = Math.ceil(viewport.height);
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("Could not get canvas context");
-          await page.render({ canvasContext: ctx, viewport, canvas } as Parameters<typeof page.render>[0]).promise;
+          await page.render({
+            canvasContext: ctx,
+            viewport,
+            canvas,
+          } as Parameters<typeof page.render>[0]).promise;
           out.push({
             pageNumber: i,
             width: canvas.width,
@@ -114,6 +224,9 @@ function RedactPage() {
     setPages([]);
     setBoxes([]);
     setDetections([]);
+    setDetectionLabels({});
+    setKeywordGroups([]);
+    setKeywordBoxes([]);
   };
 
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
@@ -139,11 +252,14 @@ function RedactPage() {
             : "Mark sensitive regions manually with click-and-drag.",
         });
       } else {
-        toast.success(`Found ${found.length} likely PII region${found.length === 1 ? "" : "s"}`, {
-          description: usedOcr
-            ? "Some pages were scanned — OCR was used. Review categories on the right."
-            : "Review and toggle categories on the right, then export.",
-        });
+        toast.success(
+          `Found ${found.length} likely PII region${found.length === 1 ? "" : "s"}`,
+          {
+            description: usedOcr
+              ? "Some pages were scanned — OCR was used. Review categories on the right."
+              : "Review and toggle categories on the right, then export.",
+          },
+        );
       }
     } catch (err) {
       console.error(err);
@@ -154,6 +270,60 @@ function RedactPage() {
     }
   }, [file]);
 
+  const runKeywordSearch = useCallback(async () => {
+    if (!file) return;
+    const q = kwQuery.trim();
+    if (!q) return;
+    setKwSearching(true);
+    try {
+      const matches = await findKeywordInPdf(
+        file,
+        q,
+        { matchCase: kwMatchCase, wholeWord: kwWholeWord },
+        1.5,
+      );
+      if (matches.length === 0) {
+        toast.info(`No matches for "${q}"`, {
+          description: "Tip: scanned PDFs have no text layer — run Auto-detect (OCR) first.",
+        });
+        return;
+      }
+      const groupId = `kg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const newBoxes: Box[] = matches.map((m: KeywordMatch) => ({
+        id: m.id,
+        page: m.page,
+        x: m.x,
+        y: m.y,
+        w: m.w,
+        h: m.h,
+        keywordId: groupId,
+        label: defaultLabel || undefined,
+      }));
+      setKeywordBoxes((prev) => [...prev, ...newBoxes]);
+      setKeywordGroups((prev) => [
+        ...prev,
+        {
+          id: groupId,
+          query: q,
+          matchCase: kwMatchCase,
+          wholeWord: kwWholeWord,
+          count: matches.length,
+        },
+      ]);
+      setKwQuery("");
+      toast.success(`Redacted ${matches.length} instance${matches.length === 1 ? "" : "s"} of "${q}"`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Search failed");
+    } finally {
+      setKwSearching(false);
+    }
+  }, [file, kwQuery, kwMatchCase, kwWholeWord, defaultLabel]);
+
+  const removeKeywordGroup = (id: string) => {
+    setKeywordGroups((prev) => prev.filter((g) => g.id !== id));
+    setKeywordBoxes((prev) => prev.filter((b) => b.keywordId !== id));
+  };
 
   const toggleCategory = (cat: PiiCategory) => {
     setEnabledCats((prev) => {
@@ -164,7 +334,6 @@ function RedactPage() {
     });
   };
 
-  // Detections filtered by enabled categories, treated as redaction boxes.
   const autoBoxes: Box[] = useMemo(
     () =>
       detections
@@ -178,50 +347,82 @@ function RedactPage() {
           h: d.h,
           auto: true,
           category: d.category,
+          label: detectionLabels[d.id] ?? defaultLabel ?? undefined,
         })),
-    [detections, enabledCats],
+    [detections, enabledCats, detectionLabels, defaultLabel],
   );
 
-  const allBoxes = useMemo(() => [...autoBoxes, ...boxes], [autoBoxes, boxes]);
+  const allBoxes = useMemo(
+    () => [...autoBoxes, ...keywordBoxes, ...boxes],
+    [autoBoxes, keywordBoxes, boxes],
+  );
 
-  // Counts per category for the toggle UI.
   const catCounts = useMemo(() => {
     const m = new Map<PiiCategory, number>();
     for (const d of detections) m.set(d.category, (m.get(d.category) ?? 0) + 1);
     return m;
   }, [detections]);
 
+  const setBoxLabel = useCallback((id: string, label: string) => {
+    // auto-detect ids start with "det-", keyword ids with "kw-"
+    if (id.startsWith("det-")) {
+      setDetectionLabels((prev) => ({ ...prev, [id]: label }));
+      return;
+    }
+    if (id.startsWith("kw-")) {
+      setKeywordBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, label } : b)));
+      return;
+    }
+    setBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, label } : b)));
+  }, []);
+
   const exportRedacted = useCallback(async () => {
     if (!file || pages.length === 0) return;
     setExporting(true);
     try {
-      const { PDFDocument } = await import("pdf-lib");
+      const { PDFDocument, PDFName } = await import("pdf-lib");
       const out = await PDFDocument.create();
-      // Strip metadata
-      out.setTitle("");
-      out.setAuthor("");
-      out.setSubject("");
-      out.setKeywords([]);
-      out.setProducer("VaultPDF");
-      out.setCreator("VaultPDF");
+
+      if (stripMetadata) {
+        out.setTitle("");
+        out.setAuthor("");
+        out.setSubject("");
+        out.setKeywords([]);
+        out.setProducer("VaultPDF");
+        out.setCreator("VaultPDF");
+        const epoch = new Date(0);
+        out.setCreationDate(epoch);
+        out.setModificationDate(epoch);
+        try {
+          out.catalog.delete(PDFName.of("Metadata"));
+          out.catalog.delete(PDFName.of("PieceInfo"));
+          out.catalog.delete(PDFName.of("AcroForm"));
+          out.catalog.delete(PDFName.of("Names"));
+          out.catalog.delete(PDFName.of("StructTreeRoot"));
+        } catch {
+          /* best-effort */
+        }
+      }
 
       for (const p of pages) {
-        // Render this page with redaction boxes burned in
         const composite = document.createElement("canvas");
         composite.width = p.width;
         composite.height = p.height;
         const ctx = composite.getContext("2d")!;
         const img = await loadImage(p.dataUrl);
         ctx.drawImage(img, 0, 0);
-        ctx.fillStyle = "#000000";
         for (const b of allBoxes.filter((bx) => bx.page === p.pageNumber)) {
+          ctx.fillStyle = "#000000";
           ctx.fillRect(b.x, b.y, b.w, b.h);
+          if (b.label) {
+            drawLabelOnCanvas(ctx, b.label, b.x, b.y, b.w, b.h);
+          }
         }
         const jpegBytes = await new Promise<Uint8Array>((resolve, reject) => {
           composite.toBlob(
             (blob) => {
               if (!blob) return reject(new Error("toBlob failed"));
-              blob.arrayBuffer().then((b) => resolve(new Uint8Array(b)));
+              blob.arrayBuffer().then((bb) => resolve(new Uint8Array(bb)));
             },
             "image/jpeg",
             0.92,
@@ -243,8 +444,9 @@ function RedactPage() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Redacted PDF saved", {
-        description:
-          "Content was rasterised + permanently removed. Original text and metadata are gone.",
+        description: stripMetadata
+          ? "Pages rasterised, original text destroyed, metadata wiped."
+          : "Pages rasterised and original text destroyed. (Metadata kept per your setting.)",
       });
     } catch (err) {
       console.error(err);
@@ -252,12 +454,21 @@ function RedactPage() {
     } finally {
       setExporting(false);
     }
-  }, [file, pages, allBoxes]);
+  }, [file, pages, allBoxes, stripMetadata]);
 
-  const addBox = useCallback((b: Box) => setBoxes((prev) => [...prev, b]), []);
+  const addBox = useCallback(
+    (b: Box) => setBoxes((prev) => [...prev, { ...b, label: defaultLabel || undefined }]),
+    [defaultLabel],
+  );
   const removeBox = useCallback((id: string) => {
-    // Auto-detection boxes are removed by toggling/dismissing the detection.
-    setDetections((prev) => prev.filter((d) => d.id !== id));
+    if (id.startsWith("det-")) {
+      setDetections((prev) => prev.filter((d) => d.id !== id));
+      return;
+    }
+    if (id.startsWith("kw-")) {
+      setKeywordBoxes((prev) => prev.filter((b) => b.id !== id));
+      return;
+    }
     setBoxes((prev) => prev.filter((b) => b.id !== id));
   }, []);
 
@@ -274,11 +485,11 @@ function RedactPage() {
                 Permanently remove anything sensitive.
               </h1>
               <p className="mt-3 text-muted-foreground max-w-2xl">
-                Drag rectangles over names, account numbers, signatures — anything. On export,
-                the content is rasterised and burned into the PDF as an image with the redaction
-                applied. The original text is{" "}
-                <span className="text-foreground">gone, not hidden</span>. Metadata is stripped
-                too.
+                Auto-detect PII, batch-redact every instance of a keyword, and stamp legal
+                exemption codes on each box. On export every page is rasterised and re-baked —
+                the original text is{" "}
+                <span className="text-foreground">destroyed in the file bytes</span>, not just
+                covered.
               </p>
             </div>
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground rounded-md border border-border bg-card/50 px-3 py-2">
@@ -297,7 +508,7 @@ function RedactPage() {
             sublabel="or click to browse · no upload, no size limit"
           />
         ) : (
-          <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
+          <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
             <div className="space-y-6">
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -330,6 +541,7 @@ function RedactPage() {
                     boxes={allBoxes.filter((b) => b.page === p.pageNumber)}
                     onAddBox={addBox}
                     onRemoveBox={removeBox}
+                    onLabelChange={setBoxLabel}
                   />
                 ))}
               </div>
@@ -345,15 +557,23 @@ function RedactPage() {
                   region{allBoxes.length === 1 ? "" : "s"} marked across {pages.length} page
                   {pages.length === 1 ? "" : "s"}
                 </div>
+
+                <label className="flex items-center justify-between gap-3 mt-4 text-xs">
+                  <span className="text-muted-foreground">Strip hidden metadata</span>
+                  <Switch checked={stripMetadata} onCheckedChange={setStripMetadata} />
+                </label>
+
                 <Button
                   onClick={exportRedacted}
                   disabled={allBoxes.length === 0 || exporting || loading}
-                  className="w-full mt-5 bg-vault text-vault-foreground hover:opacity-90"
+                  className="w-full mt-4 bg-vault text-vault-foreground hover:opacity-90"
                 >
                   <Download className="h-4 w-4 mr-2" />
                   {exporting ? "Exporting…" : "Export redacted PDF"}
                 </Button>
-                {(boxes.length > 0 || detections.length > 0) && (
+                {(boxes.length > 0 ||
+                  detections.length > 0 ||
+                  keywordBoxes.length > 0) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -361,6 +581,9 @@ function RedactPage() {
                     onClick={() => {
                       setBoxes([]);
                       setDetections([]);
+                      setDetectionLabels({});
+                      setKeywordGroups([]);
+                      setKeywordBoxes([]);
                     }}
                   >
                     <Trash2 className="h-3.5 w-3.5 mr-1" /> Clear all
@@ -370,12 +593,112 @@ function RedactPage() {
 
               <div className="rounded-lg border border-border bg-card/50 p-5">
                 <div className="flex items-center gap-2 text-foreground font-medium mb-1 text-sm">
+                  <Search className="h-4 w-4 text-vault" />
+                  Find &amp; redact all
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Type a word or phrase — every match across all pages is redacted in one click.
+                </p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    runKeywordSearch();
+                  }}
+                  className="mt-3 space-y-2"
+                >
+                  <Input
+                    value={kwQuery}
+                    onChange={(e) => setKwQuery(e.target.value)}
+                    placeholder="e.g. Acme Corp"
+                    disabled={kwSearching}
+                  />
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <Checkbox
+                        checked={kwMatchCase}
+                        onCheckedChange={(v) => setKwMatchCase(v === true)}
+                      />
+                      Match case
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <Checkbox
+                        checked={kwWholeWord}
+                        onCheckedChange={(v) => setKwWholeWord(v === true)}
+                      />
+                      Whole word
+                    </label>
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="w-full"
+                    disabled={!kwQuery.trim() || kwSearching}
+                  >
+                    {kwSearching ? "Searching…" : "Redact all matches"}
+                  </Button>
+                </form>
+                {keywordGroups.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {keywordGroups.map((g) => (
+                      <span
+                        key={g.id}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-vault/40 bg-vault/10 px-2.5 py-1 text-[11px]"
+                      >
+                        <span className="font-medium">{g.query}</span>
+                        <span className="text-muted-foreground tabular-nums">· {g.count}</span>
+                        <button
+                          onClick={() => removeKeywordGroup(g.id)}
+                          className="ml-0.5 text-muted-foreground hover:text-foreground"
+                          aria-label={`Remove ${g.query}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-border bg-card/50 p-5">
+                <div className="flex items-center gap-2 text-foreground font-medium mb-1 text-sm">
+                  <Tag className="h-4 w-4 text-vault" />
+                  Default exemption label
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                  Stamped in white over every new redaction. Double-click any box to override.
+                </p>
+                <Select
+                  value={defaultLabel || "__none"}
+                  onValueChange={(v) => setDefaultLabel(v === "__none" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No label" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No label</SelectItem>
+                    {EXEMPTION_PRESETS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="mt-2"
+                  placeholder="Or type a custom label"
+                  value={defaultLabel}
+                  onChange={(e) => setDefaultLabel(e.target.value)}
+                />
+              </div>
+
+              <div className="rounded-lg border border-border bg-card/50 p-5">
+                <div className="flex items-center gap-2 text-foreground font-medium mb-1 text-sm">
                   <Wand2 className="h-4 w-4 text-vault" />
                   Auto-detect PII
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Scans the text layer for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls
-                  back to on-device OCR for scanned pages (first run downloads ~10MB).
+                  Scans for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls back to
+                  on-device OCR for scanned pages (first run downloads ~10MB).
                 </p>
                 <Button
                   onClick={runAutoDetect}
@@ -429,16 +752,15 @@ function RedactPage() {
                 )}
               </div>
 
-
-
               <div className="rounded-lg border border-border bg-card/30 p-5 text-xs text-muted-foreground leading-relaxed">
                 <div className="flex items-center gap-2 text-foreground font-medium mb-2">
                   <ShieldCheck className="h-3.5 w-3.5 text-vault" />
-                  How the export works
+                  How export works
                 </div>
-                Each page is rendered to an image, the redaction rectangles are painted on, and
-                the image is embedded as the new page. There is no text layer left underneath —
-                the redacted content cannot be selected or extracted.
+                Each page is rendered to an image, redactions and labels are painted on, and the
+                image is embedded as the new page. No selectable text remains underneath. With
+                metadata stripping on, the document info dict, XMP stream, form fields, and
+                structure tree are removed.
               </div>
             </aside>
           </div>
@@ -457,16 +779,56 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// Pick a font size that lets `text` fit within (w-pad) × (h-pad).
+function fitFontSize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  w: number,
+  h: number,
+): number {
+  const maxByHeight = Math.max(6, Math.min(h * 0.7, 28));
+  let size = maxByHeight;
+  ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
+  const target = w - 6;
+  if (target <= 8) return Math.max(6, Math.min(h * 0.6, 10));
+  while (ctx.measureText(text).width > target && size > 6) {
+    size -= 1;
+    ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
+  }
+  return size;
+}
+
+function drawLabelOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  if (w < 14 || h < 8) return;
+  const size = fitFontSize(ctx, label, w, h);
+  ctx.save();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + w / 2, y + h / 2, w - 4);
+  ctx.restore();
+}
+
 function PageCanvas({
   page,
   boxes,
   onAddBox,
   onRemoveBox,
+  onLabelChange,
 }: {
   page: RenderedPage;
   boxes: Box[];
   onAddBox: (b: Box) => void;
   onRemoveBox: (id: string) => void;
+  onLabelChange: (id: string, label: string) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(
@@ -489,13 +851,15 @@ function PageCanvas({
     <div className="rounded-lg border border-border bg-card/30 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/60 text-xs text-muted-foreground">
         <span>Page {page.pageNumber}</span>
-        <span>Click and drag to mark areas to redact</span>
+        <span>Drag to mark · double-click a box to label it</span>
       </div>
       <div
         ref={wrapRef}
         className="relative select-none cursor-crosshair"
         style={{ aspectRatio: `${page.width} / ${page.height}` }}
         onPointerDown={(e) => {
+          // Don't start a new drag when interacting with an existing box / popover
+          if ((e.target as HTMLElement).closest("[data-box]")) return;
           (e.target as Element).setPointerCapture(e.pointerId);
           const p = toLocal(e.clientX, e.clientY);
           startRef.current = p;
@@ -531,28 +895,14 @@ function PageCanvas({
           draggable={false}
         />
         {boxes.map((b) => (
-          <div
+          <BoxOverlay
             key={b.id}
-            className="absolute bg-black border border-vault/60 group"
-            style={{
-              left: `${(b.x / page.width) * 100}%`,
-              top: `${(b.y / page.height) * 100}%`,
-              width: `${(b.w / page.width) * 100}%`,
-              height: `${(b.h / page.height) * 100}%`,
-            }}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveBox(b.id);
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="absolute -top-2 -right-2 grid h-5 w-5 place-items-center rounded-full bg-vault text-vault-foreground opacity-0 group-hover:opacity-100 transition pointer-events-auto"
-              aria-label="Remove redaction"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
+            box={b}
+            pageWidth={page.width}
+            pageHeight={page.height}
+            onRemove={() => onRemoveBox(b.id)}
+            onLabelChange={(label) => onLabelChange(b.id, label)}
+          />
         ))}
         {drawing && (
           <div
@@ -567,5 +917,107 @@ function PageCanvas({
         )}
       </div>
     </div>
+  );
+}
+
+function BoxOverlay({
+  box,
+  pageWidth,
+  pageHeight,
+  onRemove,
+  onLabelChange,
+}: {
+  box: Box;
+  pageWidth: number;
+  pageHeight: number;
+  onRemove: () => void;
+  onLabelChange: (label: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(box.label ?? "");
+  useEffect(() => {
+    setDraft(box.label ?? "");
+  }, [box.label]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div
+          data-box
+          className="absolute bg-black border border-vault/60 group cursor-pointer overflow-hidden"
+          style={{
+            left: `${(box.x / pageWidth) * 100}%`,
+            top: `${(box.y / pageHeight) * 100}%`,
+            width: `${(box.w / pageWidth) * 100}%`,
+            height: `${(box.h / pageHeight) * 100}%`,
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+        >
+          {box.label && (
+            <div className="absolute inset-0 grid place-items-center px-1 text-white font-semibold text-center leading-none pointer-events-none">
+              <span
+                className="truncate w-full"
+                style={{ fontSize: "clamp(7px, 1.2vw, 13px)" }}
+              >
+                {box.label}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-2 grid h-5 w-5 place-items-center rounded-full bg-vault text-vault-foreground opacity-0 group-hover:opacity-100 transition pointer-events-auto"
+            aria-label="Remove redaction"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-3 space-y-2"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="text-xs font-medium text-foreground">Exemption label</div>
+        <Select value={draft || "__none"} onValueChange={(v) => setDraft(v === "__none" ? "" : v)}>
+          <SelectTrigger>
+            <SelectValue placeholder="No label" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none">No label</SelectItem>
+            {EXEMPTION_PRESETS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Custom label"
+        />
+        <div className="flex gap-2 justify-end pt-1">
+          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              onLabelChange(draft.trim());
+              setOpen(false);
+            }}
+          >
+            Apply
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
