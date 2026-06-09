@@ -142,6 +142,7 @@ function RedactPage() {
   // Export settings (persisted)
   const [stripMetadata, setStripMetadata] = useState(true);
   const [defaultLabel, setDefaultLabel] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"detect" | "find" | "label">("detect");
   useEffect(() => {
     try {
       const s = localStorage.getItem("vault.redact.stripMetadata");
