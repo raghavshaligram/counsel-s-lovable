@@ -1017,14 +1017,63 @@ function PageCanvas({
 
     let inner: React.ReactNode = null;
     switch (a.kind) {
-      case "highlight":
-        inner = <div style={{ width: "100%", height: "100%", background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />;
+      case "highlight": {
+        if (a.quads?.length) {
+          inner = (
+            <div style={{ position: "absolute", inset: 0 }}>
+              {a.quads.map((q, qi) => (
+                <div key={qi} style={{ position: "absolute",
+                  left: (q.x - a.x) * displayScale, top: (q.y - a.y) * displayScale,
+                  width: q.w * displayScale, height: q.h * displayScale,
+                  background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />
+              ))}
+            </div>
+          );
+        } else {
+          inner = <div style={{ width: "100%", height: "100%", background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />;
+        }
         break;
-      case "underline":
-        inner = <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity) }} />;
+      }
+      case "underline": {
+        const sw = Math.max(1, a.stroke * displayScale);
+        if (a.quads?.length) {
+          inner = (
+            <div style={{ position: "absolute", inset: 0 }}>
+              {a.quads.map((q, qi) => (
+                <div key={qi} style={{ position: "absolute",
+                  left: (q.x - a.x) * displayScale,
+                  top: (q.y - a.y + q.h) * displayScale - sw,
+                  width: q.w * displayScale, height: sw,
+                  background: rgbCss(a.color, a.opacity) }} />
+              ))}
+            </div>
+          );
+        } else {
+          inner = <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: sw, background: rgbCss(a.color, a.opacity) }} />;
+        }
         break;
-      case "strikethrough":
-        inner = <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity), transform: "translateY(-50%)" }} />;
+      }
+      case "strikethrough": {
+        const sw = Math.max(1, a.stroke * displayScale);
+        if (a.quads?.length) {
+          inner = (
+            <div style={{ position: "absolute", inset: 0 }}>
+              {a.quads.map((q, qi) => (
+                <div key={qi} style={{ position: "absolute",
+                  left: (q.x - a.x) * displayScale,
+                  top: (q.y - a.y + q.h / 2) * displayScale - sw / 2,
+                  width: q.w * displayScale, height: sw,
+                  background: rgbCss(a.color, a.opacity) }} />
+              ))}
+            </div>
+          );
+        } else {
+          inner = <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: sw, background: rgbCss(a.color, a.opacity), transform: "translateY(-50%)" }} />;
+        }
+        break;
+      }
+      case "redact":
+        inner = <div style={{ width: "100%", height: "100%", background: "#000" }} />;
         break;
       case "line":
       case "arrow": {
