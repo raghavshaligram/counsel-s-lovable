@@ -8,8 +8,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { toast } from "sonner";
 import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info, Languages, ChevronDown } from "lucide-react";
 import { ocrPdfToSearchable, type OcrProgress } from "@/lib/pdf/ocr-pdf";
+import { ocrImageToSearchable, type ImageOcrProgress } from "@/lib/pdf/ocr-image";
 import { OCR_LANGUAGES, estimateDownloadMb, getLanguageLabel } from "@/lib/pdf/ocr-languages";
 import { loadPdfjs } from "@/lib/pdf/worker";
+
+const ACCEPTED_TYPES = "application/pdf,image/jpeg,image/png,image/webp";
+const isImage = (f: File) =>
+  f.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(f.name);
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
 
 interface DeviceProfile {
@@ -147,8 +152,14 @@ function OcrPage() {
 
   // Pre-flight inspection: read page count, build a warning if the file is heavy
   // relative to the user's device. No OCR runs here — just metadata.
+  // For images we skip the whole thing — they're always single-page.
   useEffect(() => {
     if (!file) return;
+    if (isImage(file)) {
+      setPageCount(1);
+      setPreflight(null);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setInspecting(true);
@@ -180,12 +191,40 @@ function OcrPage() {
     setProgress(null);
     abortRef.current = new AbortController();
     try {
-      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
+      let bytes: Uint8Array;
+      let outName: string;
+      if (isImage(file)) {
+        // Single-image flow → 1-page searchable PDF. We translate the
+        // image-OCR progress events onto the same OcrProgress shape the UI
+        // already knows how to render.
+        const onImgProgress = (p: ImageOcrProgress) => {
+          setProgress({
+            page: p.stage === "embedding" ? 1 : 0,
+            totalPages: 1,
+            stage:
+              p.stage === "decoding"
+                ? "rendering"
+                : p.stage === "embedding"
+                  ? "embedding"
+                  : p.stage,
+            message: p.message,
+          });
+        };
+        bytes = await ocrImageToSearchable(
+          file,
+          onImgProgress,
+          abortRef.current.signal,
+          { languages },
+        );
+        outName = file.name.replace(/\.(jpe?g|png|webp)$/i, "") + " (searchable).pdf";
+      } else {
+        bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
+        outName = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
+      }
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      const name = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
       setResultUrl(url);
-      setResultName(name);
+      setResultName(outName);
       toast.success("Searchable PDF ready");
     } catch (err) {
       console.error(err);
@@ -238,7 +277,7 @@ function OcrPage() {
             Turn scans into <span className="text-vault italic">searchable PDFs</span>.
           </>
         }
-        sub="Drop a scanned or image-only PDF and get one back with a real text layer — copy, search, redact, extract. Tesseract OCR runs entirely in your browser. Pages never leave the tab."
+        sub="Drop a scanned PDF or an image (JPG, PNG, WebP) and get back a PDF with a real text layer — copy, search, redact, extract. Tesseract OCR runs entirely in your browser. Pages never leave the tab."
         collapsed={!!file}
       />
 
@@ -248,8 +287,9 @@ function OcrPage() {
             {!file ? (
               <FileDropzone
                 onFile={onFile}
-                label="Drop a scanned PDF"
-                sublabel="image-only or mixed PDFs · processed locally"
+                accept={ACCEPTED_TYPES}
+                label="Drop a scanned PDF or image"
+                sublabel="PDF, JPG, PNG, WebP · processed locally"
               />
             ) : (
               <>
@@ -260,7 +300,7 @@ function OcrPage() {
                       <div className="text-sm font-medium truncate">{file.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {(file.size / (1024 * 1024)).toFixed(1)} MB
-                        {pageCount !== null && ` · ${pageCount} pages`}
+                        {pageCount !== null && ` · ${pageCount} ${pageCount === 1 ? "page" : "pages"}`}
                         {inspecting && " · inspecting…"}
                       </div>
                     </div>
@@ -361,18 +401,20 @@ function OcrPage() {
                         Pick one language for best accuracy. Combining languages (e.g. bilingual docs) costs accuracy and memory. First-time use of a language downloads ~{downloadEstimate} MB to your browser, then cached forever.
                       </p>
                     </div>
-                    <label className="flex items-start gap-2 text-xs text-foreground/80 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={highAccuracy}
-                        onChange={(e) => setHighAccuracy(e.target.checked)}
-                        className="h-3.5 w-3.5 accent-vault mt-0.5"
-                      />
-                      <span>
-                        <span className="font-medium text-foreground">High accuracy</span>
-                        <span className="text-muted-foreground"> — render at 2× instead of 1.5×. Better on small fonts and dense layouts, but ~80% slower per OCR'd page.</span>
-                      </span>
-                    </label>
+                    {file && !isImage(file) && (
+                      <label className="flex items-start gap-2 text-xs text-foreground/80 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={highAccuracy}
+                          onChange={(e) => setHighAccuracy(e.target.checked)}
+                          className="h-3.5 w-3.5 accent-vault mt-0.5"
+                        />
+                        <span>
+                          <span className="font-medium text-foreground">High accuracy</span>
+                          <span className="text-muted-foreground"> — render at 2× instead of 1.5×. Better on small fonts and dense layouts, but ~80% slower per OCR'd page.</span>
+                        </span>
+                      </label>
+                    )}
                     <Button
                       onClick={run}
                       disabled={
