@@ -234,7 +234,9 @@ function OcrPage() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">{file.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {(file.size / 1024).toFixed(1)} KB
+                        {(file.size / (1024 * 1024)).toFixed(1)} MB
+                        {pageCount !== null && ` · ${pageCount} pages`}
+                        {inspecting && " · inspecting…"}
                       </div>
                     </div>
                   </div>
@@ -243,21 +245,68 @@ function OcrPage() {
                   </Button>
                 </div>
 
+                {!busy && !resultUrl && preflight && (
+                  <div
+                    className={
+                      preflight.level === "block"
+                        ? "rounded-lg border border-destructive/40 bg-destructive/10 p-5 space-y-2"
+                        : preflight.level === "warn"
+                          ? "rounded-lg border border-amber-500/40 bg-amber-500/10 p-5 space-y-2"
+                          : "rounded-lg border border-vault/30 bg-vault/5 p-5 space-y-2"
+                    }
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {preflight.level === "info" ? (
+                        <Info className="h-4 w-4 text-vault" />
+                      ) : (
+                        <AlertTriangle
+                          className={
+                            preflight.level === "block"
+                              ? "h-4 w-4 text-destructive"
+                              : "h-4 w-4 text-amber-500"
+                          }
+                        />
+                      )}
+                      {preflight.title}
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{preflight.body}</p>
+                    {preflight.level === "warn" && !acknowledged && (
+                      <label className="flex items-center gap-2 text-xs text-foreground/80 pt-1">
+                        <input
+                          type="checkbox"
+                          checked={acknowledged}
+                          onChange={(e) => setAcknowledged(e.target.checked)}
+                          className="h-3.5 w-3.5 accent-vault"
+                        />
+                        I understand this may take {preflight.estimateMinutes[0]}–
+                        {preflight.estimateMinutes[1]} minutes. Proceed anyway.
+                      </label>
+                    )}
+                  </div>
+                )}
+
                 {!busy && !resultUrl && (
                   <div className="rounded-lg border border-border bg-card/30 p-6 flex flex-col items-start gap-3">
                     <p className="text-sm text-muted-foreground">
                       OCR is CPU-intensive. A 10-page scan typically takes 30–90 seconds depending
                       on your device.
+                      {device.tier === "low" && " Your device looks modestly specced — expect slower runs."}
                     </p>
                     <Button
                       onClick={run}
-                      className="bg-vault text-vault-foreground hover:opacity-90"
+                      disabled={
+                        inspecting ||
+                        preflight?.level === "block" ||
+                        (preflight?.level === "warn" && !acknowledged)
+                      }
+                      className="bg-vault text-vault-foreground hover:opacity-90 disabled:opacity-50"
                     >
                       <ScanText className="h-4 w-4 mr-2" />
-                      Run OCR locally
+                      {preflight?.level === "block" ? "Too large to OCR here" : "Run OCR locally"}
                     </Button>
                   </div>
                 )}
+
 
                 {busy && (
                   <div className="rounded-lg border border-vault/30 bg-vault/5 p-6 space-y-3">
