@@ -304,6 +304,9 @@ function RedactPage() {
     setDetectConfirm(false);
     setDetecting(true);
     setDetectStatus("Reading text layer…");
+    // Clear any previous pending preview so it doesn't blend with new results.
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
     try {
       const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
       const { detections: found, usedOcr } = await detectPiiInPdf(
@@ -318,7 +321,6 @@ function RedactPage() {
         },
         docRef.current ?? undefined,
       );
-      setDetections(found);
       if (found.length === 0) {
         toast.info("No obvious PII patterns found.", {
           description: usedOcr
@@ -326,13 +328,13 @@ function RedactPage() {
             : "Mark sensitive regions manually with click-and-drag.",
         });
       } else {
-        toast.success(
-          `Found ${found.length} likely PII region${found.length === 1 ? "" : "s"}`,
-          {
-            description: usedOcr
-              ? "Some pages were scanned — OCR was used. Review categories on the right."
-              : "Review and toggle categories on the right, then export.",
-          },
+        // Stage — do NOT commit to `detections` yet.
+        setPendingDetections(found);
+        setPendingUsedOcr(usedOcr);
+        // Reset category filter so the preview shows everything selected.
+        setEnabledCats(new Set(Object.keys(CATEGORY_META) as PiiCategory[]));
+        toast.info(
+          `Found ${found.length} potential PII region${found.length === 1 ? "" : "s"} — review before redacting`,
         );
       }
     } catch (err) {
@@ -344,11 +346,31 @@ function RedactPage() {
     }
   }, [file, totalPages, detectConfirm]);
 
+  const confirmDetectRedact = useCallback(() => {
+    if (!pendingDetections) return;
+    const filtered = pendingDetections.filter((d) => enabledCats.has(d.category));
+    if (filtered.length === 0) {
+      toast.info("No categories selected — nothing redacted.");
+      return;
+    }
+    setDetections(filtered);
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
+    toast.success(`Redacted ${filtered.length} region${filtered.length === 1 ? "" : "s"}`);
+  }, [pendingDetections, enabledCats]);
+
+  const discardPendingDetections = useCallback(() => {
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
+  }, []);
+
   const runKeywordSearch = useCallback(async () => {
     if (!file) return;
     const q = kwQuery.trim();
     if (!q) return;
     setKwSearching(true);
+    // Clear previous preview before running again.
+    setPendingMatches(null);
     try {
       const matches = await findKeywordInPdf(
         file,
@@ -362,37 +384,47 @@ function RedactPage() {
         });
         return;
       }
-      const groupId = `kg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const newBoxes: Box[] = matches.map((m: KeywordMatch) => ({
-        id: m.id,
-        page: m.page,
-        x: m.x,
-        y: m.y,
-        w: m.w,
-        h: m.h,
-        keywordId: groupId,
-        label: defaultLabel || undefined,
-      }));
-      setKeywordBoxes((prev) => [...prev, ...newBoxes]);
-      setKeywordGroups((prev) => [
-        ...prev,
-        {
-          id: groupId,
-          query: q,
-          matchCase: kwMatchCase,
-          wholeWord: kwWholeWord,
-          count: matches.length,
-        },
-      ]);
-      setKwQuery("");
-      toast.success(`Redacted ${matches.length} instance${matches.length === 1 ? "" : "s"} of "${q}"`);
+      // Stage matches; the user confirms before they become redaction boxes.
+      setPendingMatches({ query: q, matchCase: kwMatchCase, wholeWord: kwWholeWord, matches });
     } catch (err) {
       console.error(err);
       toast.error("Search failed");
     } finally {
       setKwSearching(false);
     }
-  }, [file, kwQuery, kwMatchCase, kwWholeWord, defaultLabel]);
+  }, [file, kwQuery, kwMatchCase, kwWholeWord]);
+
+  const confirmKeywordRedact = useCallback(() => {
+    if (!pendingMatches) return;
+    const { query, matchCase, wholeWord, matches } = pendingMatches;
+    const groupId = `kg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newBoxes: Box[] = matches.map((m: KeywordMatch) => ({
+      id: m.id,
+      page: m.page,
+      x: m.x,
+      y: m.y,
+      w: m.w,
+      h: m.h,
+      keywordId: groupId,
+      label: defaultLabel || undefined,
+    }));
+    setKeywordBoxes((prev) => [...prev, ...newBoxes]);
+    setKeywordGroups((prev) => [
+      ...prev,
+      { id: groupId, query, matchCase, wholeWord, count: matches.length },
+    ]);
+    setPendingMatches(null);
+    setKwQuery("");
+    toast.success(`Redacted ${matches.length} instance${matches.length === 1 ? "" : "s"} of "${query}"`);
+  }, [pendingMatches, defaultLabel]);
+
+  const discardPendingMatches = useCallback(() => setPendingMatches(null), []);
+
+  // Invalidate any pending preview if the user changes the query / options —
+  // otherwise they could click Redact on stale results.
+  useEffect(() => {
+    setPendingMatches(null);
+  }, [kwQuery, kwMatchCase, kwWholeWord]);
 
   const removeKeywordGroup = (id: string) => {
     setKeywordGroups((prev) => prev.filter((g) => g.id !== id));
