@@ -957,9 +957,10 @@ function PageCanvas({
       const up = () => {
         window.removeEventListener("mousemove", move);
         window.removeEventListener("mouseup", up);
-        // click without drag on text/note → enter edit mode
-        if (!moved && selected && (a.kind === "text" || a.kind === "text-edit" || a.kind === "note")) {
-          setEditingId(a.id);
+        // click without drag → text-edit opens dialog, text/note opens inline editor
+        if (!moved && selected) {
+          if (a.kind === "text-edit") setTextEditTarget({ kind: "existing", annoId: a.id });
+          else if (a.kind === "text" || a.kind === "note") setEditingId(a.id);
         }
       };
       window.addEventListener("mousemove", move);
