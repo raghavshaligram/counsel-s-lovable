@@ -19,6 +19,7 @@ import { Route as SignRouteImport } from './routes/sign'
 import { Route as RotateRouteImport } from './routes/rotate'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as ProtectRouteImport } from './routes/protect'
+import { Route as PrivilegeScanRouteImport } from './routes/privilege-scan'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
@@ -28,6 +29,7 @@ import { Route as EditorRouteImport } from './routes/editor'
 import { Route as CompressRouteImport } from './routes/compress'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as BatesRouteImport } from './routes/bates'
 import { Route as IndexRouteImport } from './routes/index'
 
 const WordToPdfRoute = WordToPdfRouteImport.update({
@@ -80,6 +82,11 @@ const ProtectRoute = ProtectRouteImport.update({
   path: '/protect',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivilegeScanRoute = PrivilegeScanRouteImport.update({
+  id: '/privilege-scan',
+  path: '/privilege-scan',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -125,6 +132,11 @@ const ChatRoute = ChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BatesRoute = BatesRouteImport.update({
+  id: '/bates',
+  path: '/bates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -133,6 +145,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/bates': typeof BatesRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
@@ -142,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
+  '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
@@ -155,6 +169,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bates': typeof BatesRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
@@ -164,6 +179,7 @@ export interface FileRoutesByTo {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
+  '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
@@ -178,6 +194,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/bates': typeof BatesRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
@@ -187,6 +204,7 @@ export interface FileRoutesById {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
+  '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
@@ -202,6 +220,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/bates'
     | '/chat'
     | '/compare'
     | '/compress'
@@ -211,6 +230,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/pricing'
+    | '/privilege-scan'
     | '/protect'
     | '/redact'
     | '/rotate'
@@ -224,6 +244,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/bates'
     | '/chat'
     | '/compare'
     | '/compress'
@@ -233,6 +254,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/pricing'
+    | '/privilege-scan'
     | '/protect'
     | '/redact'
     | '/rotate'
@@ -246,6 +268,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/bates'
     | '/chat'
     | '/compare'
     | '/compress'
@@ -255,6 +278,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/pricing'
+    | '/privilege-scan'
     | '/protect'
     | '/redact'
     | '/rotate'
@@ -269,6 +293,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BatesRoute: typeof BatesRoute
   ChatRoute: typeof ChatRoute
   CompareRoute: typeof CompareRoute
   CompressRoute: typeof CompressRoute
@@ -278,6 +303,7 @@ export interface RootRouteChildren {
   MergeRoute: typeof MergeRoute
   OcrRoute: typeof OcrRoute
   PricingRoute: typeof PricingRoute
+  PrivilegeScanRoute: typeof PrivilegeScanRoute
   ProtectRoute: typeof ProtectRoute
   RedactRoute: typeof RedactRoute
   RotateRoute: typeof RotateRoute
@@ -362,6 +388,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privilege-scan': {
+      id: '/privilege-scan'
+      path: '/privilege-scan'
+      fullPath: '/privilege-scan'
+      preLoaderRoute: typeof PrivilegeScanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
@@ -425,6 +458,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/bates': {
+      id: '/bates'
+      path: '/bates'
+      fullPath: '/bates'
+      preLoaderRoute: typeof BatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -437,6 +477,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BatesRoute: BatesRoute,
   ChatRoute: ChatRoute,
   CompareRoute: CompareRoute,
   CompressRoute: CompressRoute,
@@ -446,6 +487,7 @@ const rootRouteChildren: RootRouteChildren = {
   MergeRoute: MergeRoute,
   OcrRoute: OcrRoute,
   PricingRoute: PricingRoute,
+  PrivilegeScanRoute: PrivilegeScanRoute,
   ProtectRoute: ProtectRoute,
   RedactRoute: RedactRoute,
   RotateRoute: RotateRoute,

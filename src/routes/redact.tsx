@@ -493,13 +493,36 @@ function RedactPage() {
       const ab = new ArrayBuffer(bytes.byteLength);
       new Uint8Array(ab).set(bytes);
       const blob = new Blob([ab], { type: "application/pdf" });
+      const baseName = file.name.replace(/\.pdf$/i, "");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = file.name.replace(/\.pdf$/i, "") + "-redacted.pdf";
+      a.download = baseName + "-redacted.pdf";
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("Redacted PDF saved", {
+
+      // Certificate of Redaction — court-ready audit trail, generated locally.
+      try {
+        const certBytes = await buildRedactionCertificate({
+          sourceName: file.name,
+          pageCount: pages.length,
+          boxes: allBoxes,
+          stripMetadata,
+        });
+        const certAb = new ArrayBuffer(certBytes.byteLength);
+        new Uint8Array(certAb).set(certBytes);
+        const certBlob = new Blob([certAb], { type: "application/pdf" });
+        const certUrl = URL.createObjectURL(certBlob);
+        const certA = document.createElement("a");
+        certA.href = certUrl;
+        certA.download = baseName + "-certificate.pdf";
+        certA.click();
+        URL.revokeObjectURL(certUrl);
+      } catch (e) {
+        console.error("Certificate generation failed", e);
+      }
+
+      toast.success("Redacted PDF + Certificate saved", {
         description: stripMetadata
           ? "Pages rasterised, original text destroyed, metadata wiped."
           : "Pages rasterised and original text destroyed. (Metadata kept per your setting.)",
@@ -511,6 +534,7 @@ function RedactPage() {
       setExporting(false);
     }
   }, [file, pages, allBoxes, stripMetadata]);
+
 
   const addBox = useCallback(
     (b: Box) => setBoxes((prev) => [...prev, { ...b, label: defaultLabel || undefined }]),
