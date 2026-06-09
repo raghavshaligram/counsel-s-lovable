@@ -337,7 +337,7 @@ function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string)
 
 function AllToolsPanel({ isActive }: { isActive: (path: string) => boolean }) {
   return (
-    <div className="w-[760px] p-4 grid grid-cols-2 gap-x-6 gap-y-5">
+    <div className="w-[900px] p-4 grid grid-cols-3 gap-x-5 gap-y-4">
       {groups.map((group) => (
         <div key={group.id}>
           <div className="font-display text-sm text-vault mb-2 px-1">{group.label}</div>
