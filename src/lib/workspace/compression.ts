@@ -83,15 +83,18 @@ async function runInWorker(action: "gzip" | "gunzip", buffer: ArrayBuffer): Prom
   });
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const out = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(out).set(bytes);
+  return out;
+}
+
 export async function gzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
-  // Slice so we transfer a clean ArrayBuffer.
-  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  const out = await runInWorker("gzip", ab);
+  const out = await runInWorker("gzip", toArrayBuffer(bytes));
   return new Uint8Array(out);
 }
 
 export async function gunzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
-  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  const out = await runInWorker("gunzip", ab);
+  const out = await runInWorker("gunzip", toArrayBuffer(bytes));
   return new Uint8Array(out);
 }

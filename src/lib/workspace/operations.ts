@@ -34,10 +34,9 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
     // Fallback: timestamp-based key — uniqueness is what matters here.
     return `nohash-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   }
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-  );
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  const buf = await crypto.subtle.digest("SHA-256", ab);
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
