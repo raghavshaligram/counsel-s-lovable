@@ -919,6 +919,7 @@ function PageCanvas({
         bold: payload.bold,
         italic: payload.italic,
         textOffsetY: padTop,
+        source: { originalString: it.str, transform: it.transform, fontName: it.fontName },
       } });
       dispatch({ type: "SELECT_ANNO", id });
     } else {
