@@ -358,7 +358,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       {group.label}
                     </NavigationMenuTrigger>
                     <NavigationMenuContent>
-                      <MegaPanel group={group} />
+                      <MegaPanel group={group} isActive={isActive} />
                     </NavigationMenuContent>
                   </NavigationMenuItem>
                 );
@@ -400,7 +400,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       </div>
                       <div className="flex flex-col">
                         {group.items.map((t) => (
-                          <ToolCard key={t.to} tool={t} onClick={() => setMobileOpen(false)} />
+                          <ToolCard key={t.to} tool={t} onClick={() => setMobileOpen(false)} isActive={isActive(t.to)} />
                         ))}
                       </div>
                     </div>
