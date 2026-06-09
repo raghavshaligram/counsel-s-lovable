@@ -228,7 +228,6 @@ function ShellInner({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-40 h-14 flex items-center justify-between border-b border-slate-800/70 bg-background/85 backdrop-blur-xl pl-4 pr-4 md:pl-6 md:pr-6">
         <div className="flex items-center gap-3 min-w-0">
           <BrandMark />
-          <SidebarTrigger className="h-7 w-7 ml-1" />
           <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground truncate ml-2">
             100% in your browser
           </span>
@@ -242,6 +241,7 @@ function ShellInner({ children }: { children: ReactNode }) {
           Lifetime deal
         </Link>
       </header>
+
 
       <div className="flex flex-1 min-h-0">
         <Sidebar collapsible="icon" variant="sidebar" className="border-r border-slate-800/70 top-14 h-[calc(100svh-3.5rem)]">
@@ -346,7 +346,11 @@ function ShellInner({ children }: { children: ReactNode }) {
         </Sidebar>
 
         <SidebarInset>
+          <div className="sticky top-14 z-30 flex items-center h-9 px-2 border-b border-slate-800/70 bg-background/80 backdrop-blur-xl">
+            <SidebarTrigger className="h-7 w-7" />
+          </div>
           <main className="flex-1 min-h-0">{children}</main>
+
 
           <footer className="border-t border-slate-800/70 px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
             <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
