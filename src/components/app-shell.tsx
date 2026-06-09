@@ -322,10 +322,10 @@ function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string)
         </div>
         <div className="rounded-lg border border-vault/20 bg-vault/5 p-4 flex flex-col justify-between">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-vault/80">{group.label}</div>
-            <p className="text-sm text-foreground mt-2 leading-snug font-display">{group.tagline}</p>
+            <div className="font-display text-base text-vault">{group.label}</div>
+            <p className="text-sm text-muted-foreground mt-2 leading-snug">{group.tagline}</p>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-4">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-4">
             <span className="h-1.5 w-1.5 rounded-full bg-vault" />
             <span>Stays in your tab</span>
           </div>
@@ -334,6 +334,24 @@ function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string)
     </div>
   );
 }
+
+function AllToolsPanel({ isActive }: { isActive: (path: string) => boolean }) {
+  return (
+    <div className="w-[760px] p-4 grid grid-cols-2 gap-x-6 gap-y-5">
+      {groups.map((group) => (
+        <div key={group.id}>
+          <div className="font-display text-sm text-vault mb-2 px-1">{group.label}</div>
+          <div className="flex flex-col">
+            {group.items.map((t) => (
+              <ToolCard key={t.to} tool={t} isActive={isActive(t.to)} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 
 export function AppShell({ children }: { children: ReactNode }) {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
