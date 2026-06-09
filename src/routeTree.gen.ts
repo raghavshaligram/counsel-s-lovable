@@ -14,6 +14,7 @@ import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
 import { Route as RotateRouteImport } from './routes/rotate'
 import { Route as RedactRouteImport } from './routes/redact'
+import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
@@ -46,6 +47,11 @@ const RotateRoute = RotateRouteImport.update({
 const RedactRoute = RedactRouteImport.update({
   id: '/redact',
   path: '/redact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProtectRoute = ProtectRouteImport.update({
+  id: '/protect',
+  path: '/protect',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
+  '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
+  '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
+  '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/pricing'
+    | '/protect'
     | '/redact'
     | '/rotate'
     | '/sign'
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/pricing'
+    | '/protect'
     | '/redact'
     | '/rotate'
     | '/sign'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/pricing'
+    | '/protect'
     | '/redact'
     | '/rotate'
     | '/sign'
@@ -192,6 +204,7 @@ export interface RootRouteChildren {
   MergeRoute: typeof MergeRoute
   OcrRoute: typeof OcrRoute
   PricingRoute: typeof PricingRoute
+  ProtectRoute: typeof ProtectRoute
   RedactRoute: typeof RedactRoute
   RotateRoute: typeof RotateRoute
   SignRoute: typeof SignRoute
@@ -234,6 +247,13 @@ declare module '@tanstack/react-router' {
       path: '/redact'
       fullPath: '/redact'
       preLoaderRoute: typeof RedactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/protect': {
+      id: '/protect'
+      path: '/protect'
+      fullPath: '/protect'
+      preLoaderRoute: typeof ProtectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -304,6 +324,7 @@ const rootRouteChildren: RootRouteChildren = {
   MergeRoute: MergeRoute,
   OcrRoute: OcrRoute,
   PricingRoute: PricingRoute,
+  ProtectRoute: ProtectRoute,
   RedactRoute: RedactRoute,
   RotateRoute: RotateRoute,
   SignRoute: SignRoute,

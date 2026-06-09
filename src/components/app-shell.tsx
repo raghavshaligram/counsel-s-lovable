@@ -31,12 +31,14 @@ const heroTools = [
 
 const utilities = [
   { to: "/editor", label: "Editor", icon: EditIcon, desc: "Full PDF editor — annotate, edit text, reorder pages" },
+  { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
   { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
   { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
   { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
   { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
   { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
 ];
+
 
 function CompressIcon({ className }: { className?: string }) {
   return (
