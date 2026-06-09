@@ -1,16 +1,12 @@
 // Renders page 1 of a PDF to a small JPEG data URL for the file rail thumbnail.
-// Uses pdfjs-dist (already in deps). Failures return undefined — non-blocking.
+// Uses the shared pdfjs loader. Failures return undefined — non-blocking.
+
+import { loadPdfjs } from "@/lib/pdf/worker";
 
 export async function pdfThumbnail(blob: Blob, maxWidth = 96): Promise<string | undefined> {
+  if (typeof window === "undefined") return undefined;
   try {
-    const pdfjs = await import("pdfjs-dist");
-    // Wire the worker once.
-    if (!(pdfjs.GlobalWorkerOptions as { workerSrc?: string }).workerSrc) {
-      const workerUrl = (
-        await import("pdfjs-dist/build/pdf.worker.min.mjs?url" as string)
-      ).default as string;
-      (pdfjs.GlobalWorkerOptions as { workerSrc: string }).workerSrc = workerUrl;
-    }
+    const pdfjs = await loadPdfjs();
     const buf = await blob.arrayBuffer();
     const doc = await pdfjs.getDocument({ data: new Uint8Array(buf) }).promise;
     const page = await doc.getPage(1);
@@ -22,7 +18,6 @@ export async function pdfThumbnail(blob: Blob, maxWidth = 96): Promise<string | 
     canvas.height = Math.ceil(viewport.height);
     const ctx = canvas.getContext("2d");
     if (!ctx) return undefined;
-    // pdfjs v6 has a stricter render signature in some types — cast keeps it permissive.
     await (page.render as unknown as (p: unknown) => { promise: Promise<void> })({
       canvas,
       canvasContext: ctx,
