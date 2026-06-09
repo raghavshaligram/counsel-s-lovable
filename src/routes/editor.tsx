@@ -873,30 +873,50 @@ function PageCanvas({
   }, [state.tool, textItems]);
 
   const editExistingText = (it: TextItem) => {
-    // Generous coverage so descenders (g, p, y) and ascenders of the original
-    // glyphs are fully whited-out — otherwise the original text peeks through.
-    const padX = Math.max(2, it.h * 0.15);
-    const padTop = Math.max(2, it.h * 0.35);
-    const padBottom = Math.max(2, it.h * 0.45);
-    const id = uid();
-    dispatch({ type: "ADD_ANNO", a: {
-      id, kind: "text-edit", page: state.current,
-      x: it.x - padX,
-      y: it.y - padTop,
-      w: it.w + padX * 2,
-      h: it.h + padTop + padBottom,
-      color: { r: 0, g: 0, b: 0 },
-      opacity: 1,
-      text: it.str,
-      fontSize: it.h * 0.95,
-      bg: { r: 1, g: 1, b: 1 },
-      family: it.family,
-      bold: it.bold,
-      italic: it.italic,
-      textOffsetY: padTop,
-    } });
-    setEditingId(id);
-    dispatch({ type: "SELECT_ANNO", id });
+    // Open the modal editor pre-filled with the original text & detected font.
+    setTextEditTarget({ kind: "new", item: it });
+  };
+
+  // Commit a new or updated text-edit annotation from the modal.
+  const commitTextEdit = (
+    payload: { text: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB },
+  ) => {
+    if (!textEditTarget) return;
+    if (textEditTarget.kind === "new") {
+      const it = textEditTarget.item;
+      const padX = Math.max(2, it.h * 0.15);
+      const padTop = Math.max(2, it.h * 0.35);
+      const padBottom = Math.max(2, it.h * 0.45);
+      const id = uid();
+      dispatch({ type: "ADD_ANNO", a: {
+        id, kind: "text-edit", page: state.current,
+        x: it.x - padX,
+        y: it.y - padTop,
+        w: it.w + padX * 2,
+        h: it.h + padTop + padBottom,
+        color: payload.color,
+        opacity: 1,
+        text: payload.text,
+        fontSize: payload.fontSize,
+        bg: payload.bg,
+        family: payload.family,
+        bold: payload.bold,
+        italic: payload.italic,
+        textOffsetY: padTop,
+      } });
+      dispatch({ type: "SELECT_ANNO", id });
+    } else {
+      dispatch({ type: "UPDATE_ANNO", id: textEditTarget.annoId, patch: {
+        text: payload.text,
+        family: payload.family,
+        bold: payload.bold,
+        italic: payload.italic,
+        fontSize: payload.fontSize,
+        color: payload.color,
+        bg: payload.bg,
+      } as Partial<Anno> });
+    }
+    setTextEditTarget(null);
   };
 
   // Render annotation overlays (in unrotated PDF coords → rotate to screen)
