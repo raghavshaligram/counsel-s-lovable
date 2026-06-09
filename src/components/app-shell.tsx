@@ -231,7 +231,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-h-svh w-full">
         <Sidebar collapsible="icon" variant="sidebar">
           <SidebarHeader>
-            <div className="flex items-center gap-2.5 px-2 py-1">
+            <div className="flex items-center gap-2.5 px-2 py-1 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center">
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-vault text-vault-foreground">
                 <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
               </span>
