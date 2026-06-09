@@ -19,6 +19,7 @@ import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
 import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as EditorRouteImport } from './routes/editor'
+import { Route as CompressRouteImport } from './routes/compress'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -72,6 +73,11 @@ const EditorRoute = EditorRouteImport.update({
   path: '/editor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompressRoute = CompressRouteImport.update({
+  id: '/compress',
+  path: '/compress',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
@@ -86,6 +92,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
   '/merge': typeof MergeRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/chat'
+    | '/compress'
     | '/editor'
     | '/extract'
     | '/merge'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/chat'
+    | '/compress'
     | '/editor'
     | '/extract'
     | '/merge'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/chat'
+    | '/compress'
     | '/editor'
     | '/extract'
     | '/merge'
@@ -174,6 +186,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChatRoute: typeof ChatRoute
+  CompressRoute: typeof CompressRoute
   EditorRoute: typeof EditorRoute
   ExtractRoute: typeof ExtractRoute
   MergeRoute: typeof MergeRoute
@@ -258,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EditorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/compress': {
+      id: '/compress'
+      path: '/compress'
+      fullPath: '/compress'
+      preLoaderRoute: typeof CompressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/chat': {
       id: '/chat'
       path: '/chat'
@@ -278,6 +298,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChatRoute: ChatRoute,
+  CompressRoute: CompressRoute,
   EditorRoute: EditorRoute,
   ExtractRoute: ExtractRoute,
   MergeRoute: MergeRoute,
