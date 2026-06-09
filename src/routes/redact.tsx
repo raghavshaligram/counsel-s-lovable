@@ -120,6 +120,30 @@ const EXEMPTION_PRESETS: { value: string; label: string }[] = [
   { value: "PHI / HIPAA", label: "PHI / HIPAA" },
 ];
 
+// Rough device tier based on cores + (Chromium-only) device memory.
+// We can't read CPU speed from the browser, so this is a coarse hint —
+// good enough to widen the time range on weaker hardware.
+function deviceTier(): "low" | "mid" | "high" {
+  if (typeof navigator === "undefined") return "mid";
+  const cores = navigator.hardwareConcurrency || 4;
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null;
+  if (cores <= 4 || (mem !== null && mem <= 4)) return "low";
+  if (cores >= 8 && (mem === null || mem >= 8)) return "high";
+  return "mid";
+}
+
+// Returns [bestMinutes, worstMinutes] for an auto-detect pass over `pages`.
+// Best case: every page has a text layer (fast regex scan).
+// Worst case: every page is scanned and falls back to OCR.
+function estimateDetectMinutes(pages: number): [number, number] {
+  const tier = deviceTier();
+  const textSecPerPage = tier === "high" ? 0.03 : tier === "mid" ? 0.06 : 0.12;
+  const ocrSecPerPage = tier === "high" ? 1.6 : tier === "mid" ? 2.8 : 5.5;
+  const best = (pages * textSecPerPage) / 60;
+  const worst = (pages * ocrSecPerPage) / 60;
+  return [Math.max(1, Math.round(best)), Math.max(1, Math.round(worst))];
+}
+
 function RedactPage() {
   const [file, setFile] = useState<File | null>(null);
   const [pages, setPages] = useState<RenderedPage[]>([]);
