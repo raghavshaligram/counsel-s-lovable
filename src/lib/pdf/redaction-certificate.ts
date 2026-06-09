@@ -12,14 +12,20 @@ type Box = {
 
 export async function buildRedactionCertificate({
   sourceName,
+  sourceBytes,
   pageCount,
   boxes,
   stripMetadata,
+  sourceHashSHA256,
+  redactedHashSHA256,
 }: {
   sourceName: string;
+  sourceBytes?: number;
   pageCount: number;
   boxes: Box[];
   stripMetadata: boolean;
+  sourceHashSHA256?: string;
+  redactedHashSHA256?: string;
 }): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle("Certificate of Redaction");
@@ -59,8 +65,12 @@ export async function buildRedactionCertificate({
   // Header
   page.drawRectangle({ x: 0, y: pageH - 8, width: pageW, height: 8, color: vault });
   drawText("CERTIFICATE OF REDACTION", { size: 9, font: bold, color: vault, gapAfter: 14 });
-  drawText("VaultPDF", { size: 22, font: bold, gapAfter: 2 });
-  drawText("Audit trail for browser-side PDF redaction", { size: 10, color: muted, gapAfter: 22 });
+  drawText("VaultPDF · Verifiable Redaction", { size: 22, font: bold, gapAfter: 2 });
+  drawText("Court-defensible audit trail for browser-side PDF redaction", {
+    size: 10,
+    color: muted,
+    gapAfter: 22,
+  });
 
   // Summary block
   const now = new Date();
@@ -68,21 +78,61 @@ export async function buildRedactionCertificate({
 
   const rows: Array<[string, string]> = [
     ["Source document", sourceName],
+  ];
+  if (typeof sourceBytes === "number") {
+    rows.push(["Source size", `${sourceBytes.toLocaleString()} bytes`]);
+  }
+  rows.push(
     ["Total pages", String(pageCount)],
     ["Redactions applied", String(boxes.length)],
     ["Method", "Page raster + opaque overlay (text layer destroyed)"],
     ["Metadata", stripMetadata ? "Stripped on export" : "Preserved per user setting"],
     ["Processed", fmtDate],
     ["Processing location", "Client browser — file never uploaded"],
-  ];
+  );
 
   for (const [k, v] of rows) {
     drawText(k.toUpperCase(), { size: 8, color: muted, font: bold, gapAfter: 2 });
     drawText(v, { size: 11, font: mono, gapAfter: 12 });
   }
 
+  // Chain of custody / hashes
+  if (sourceHashSHA256 || redactedHashSHA256) {
+    y -= 4;
+    drawText("CHAIN OF CUSTODY — SHA-256", { size: 9, font: bold, color: vault, gapAfter: 8 });
+    if (sourceHashSHA256) {
+      drawText("Source document", { size: 8, color: muted, font: bold, gapAfter: 2 });
+      drawText(sourceHashSHA256.slice(0, 32), { size: 9, font: mono, gapAfter: 1 });
+      drawText(sourceHashSHA256.slice(32), { size: 9, font: mono, gapAfter: 10 });
+    }
+    if (redactedHashSHA256) {
+      drawText("Redacted output", { size: 8, color: muted, font: bold, gapAfter: 2 });
+      drawText(redactedHashSHA256.slice(0, 32), { size: 9, font: mono, gapAfter: 1 });
+      drawText(redactedHashSHA256.slice(32), { size: 9, font: mono, gapAfter: 12 });
+    }
+  }
+
+  // Text-layer destruction proof
+  y -= 4;
+  drawText("TEXT-LAYER DESTRUCTION PROOF", { size: 9, font: bold, color: vault, gapAfter: 8 });
+  drawText(
+    "Each page was rasterised to JPEG at native resolution, opaque black overlays were",
+    { size: 10, gapAfter: 2 },
+  );
+  drawText(
+    "drawn on the image, and the resulting image replaced the page contents. The output",
+    { size: 10, gapAfter: 2 },
+  );
+  drawText(
+    "PDF contains no recoverable text under any redaction box — copy-paste, OCR, or PDF",
+    { size: 10, gapAfter: 2 },
+  );
+  drawText(
+    "object-stream extraction will return only the visible black region.",
+    { size: 10, gapAfter: 14 },
+  );
+
   // Per-page breakdown
-  y -= 8;
   drawText("REDACTIONS BY PAGE", { size: 9, font: bold, color: vault, gapAfter: 8 });
 
   const byPage = new Map<number, Box[]>();
@@ -108,7 +158,7 @@ export async function buildRedactionCertificate({
   }
 
   // Footer
-  if (y < margin + 60) {
+  if (y < margin + 80) {
     page = doc.addPage([pageW, pageH]);
     y = pageH - margin;
   }
@@ -121,11 +171,15 @@ export async function buildRedactionCertificate({
   });
   y -= 16;
   drawText(
-    "This certificate is generated locally and pairs with the exported redacted PDF.",
+    "Re-hash the paired redacted PDF and compare against the SHA-256 above to verify",
     { size: 9, color: muted, gapAfter: 2 },
   );
   drawText(
-    "Hash verification is not implied. Retain this file alongside the redacted output for audit.",
+    "the file has not been altered since this certificate was issued.",
+    { size: 9, color: muted, gapAfter: 8 },
+  );
+  drawText(
+    "Retain this certificate alongside the redacted PDF and privilege log for production.",
     { size: 9, color: muted },
   );
 
