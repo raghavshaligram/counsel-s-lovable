@@ -9,6 +9,7 @@
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
+import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
