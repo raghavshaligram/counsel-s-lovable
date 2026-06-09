@@ -273,24 +273,30 @@ function StampIcon({ className }: { className?: string }) {
   );
 }
 
-function ToolCard({ tool, onClick }: { tool: Tool; onClick?: () => void }) {
+function ToolCard({ tool, onClick, isActive }: { tool: Tool; onClick?: () => void; isActive?: boolean }) {
   return (
     <Link
       to={tool.to}
       onClick={onClick}
-      className="group/card flex items-start gap-3 rounded-lg p-3 hover:bg-accent/60 transition-colors"
+      className={cn(
+        "group/card flex items-start gap-3 rounded-lg p-3 hover:bg-accent/60 transition-colors",
+        isActive && "bg-vault/10 ring-1 ring-vault/20"
+      )}
     >
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-vault/10 text-vault group-hover/card:bg-vault/20 transition-colors">
+      <span className={cn(
+        "grid h-10 w-10 shrink-0 place-items-center rounded-md bg-vault/10 text-vault group-hover/card:bg-vault/20 transition-colors",
+        isActive && "bg-vault/20"
+      )}>
         <tool.icon className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium leading-tight">{tool.label}</span>
+          <span className={cn("text-sm font-medium leading-tight", isActive && "text-vault")}>{tool.label}</span>
           {tool.beta && (
             <span className="text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">Beta</span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{tool.desc}</p>
+        <p className={cn("text-xs text-muted-foreground mt-0.5 leading-snug", isActive && "text-vault/70")}>{tool.desc}</p>
       </div>
     </Link>
   );
