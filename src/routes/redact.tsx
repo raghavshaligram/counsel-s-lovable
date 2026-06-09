@@ -800,7 +800,6 @@ function RedactPage() {
                     {exporting ? "Exporting…" : "Export redacted PDF"}
                   </Button>
                 </div>
-                </div>
               </div>
             </aside>
           </div>
