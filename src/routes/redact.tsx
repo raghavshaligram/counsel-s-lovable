@@ -693,9 +693,9 @@ function RedactPage() {
               {/* Global Header */}
               <div className="grid grid-cols-3 gap-1 px-3 py-3 border-b border-border">
                 {[
+                  { id: "label" as const, icon: Tag, label: "Label" },
                   { id: "detect" as const, icon: Wand2, label: "Detect" },
                   { id: "find" as const, icon: Search, label: "Find" },
-                  { id: "label" as const, icon: Tag, label: "Label" },
                 ].map((t) => (
                   <button
                     key={t.id}
