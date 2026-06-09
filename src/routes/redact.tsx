@@ -147,6 +147,56 @@ function estimateDetectMinutes(pages: number): [number, number] {
   return [Math.max(1, Math.round(best)), Math.max(1, Math.round(worst))];
 }
 
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", ab);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function csvCell(v: string | number): string {
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function buildPrivilegeLogCsv(sourceName: string, boxes: Box[]): string {
+  const sorted = [...boxes].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+  const header = [
+    "Entry",
+    "Source",
+    "Page",
+    "Exemption / Privilege",
+    "Origin",
+    "Category",
+    "X",
+    "Y",
+    "Width",
+    "Height",
+  ];
+  const rows: string[] = [header.map(csvCell).join(",")];
+  sorted.forEach((b, i) => {
+    const origin = b.auto ? "Auto-detect" : b.keywordId ? "Keyword find" : "Manual";
+    rows.push(
+      [
+        i + 1,
+        sourceName,
+        b.page,
+        b.label ?? "",
+        origin,
+        b.category ?? "",
+        Math.round(b.x),
+        Math.round(b.y),
+        Math.round(b.w),
+        Math.round(b.h),
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  });
+  return rows.join("\n");
+}
+
+
 function RedactPage() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isPremium = pathname === "/verifiable-redaction";
