@@ -162,34 +162,42 @@ function drawAnno(
   const yFlip = (y: number, h: number) => ph - (y + h);
 
   switch (a.kind) {
-    case "highlight":
-      page.drawRectangle({
-        x: a.x,
-        y: yFlip(a.y, a.h),
-        width: a.w,
-        height: a.h,
-        color: col(a.color),
-        opacity: a.opacity,
-      });
+    case "highlight": {
+      const quads = a.quads?.length ? a.quads : [{ x: a.x, y: a.y, w: a.w, h: a.h }];
+      for (const q of quads) {
+        page.drawRectangle({
+          x: q.x, y: yFlip(q.y, q.h), width: q.w, height: q.h,
+          color: col(a.color), opacity: a.opacity,
+        });
+      }
       break;
-    case "underline":
-      page.drawRectangle({
-        x: a.x,
-        y: yFlip(a.y, a.h),
-        width: a.w,
-        height: Math.max(0.5, a.stroke),
-        color: col(a.color),
-        opacity: a.opacity,
-      });
+    }
+    case "underline": {
+      const quads = a.quads?.length ? a.quads : [{ x: a.x, y: a.y, w: a.w, h: a.h }];
+      for (const q of quads) {
+        page.drawRectangle({
+          x: q.x, y: yFlip(q.y, q.h), width: q.w, height: Math.max(0.5, a.stroke),
+          color: col(a.color), opacity: a.opacity,
+        });
+      }
       break;
-    case "strikethrough":
+    }
+    case "strikethrough": {
+      const quads = a.quads?.length ? a.quads : [{ x: a.x, y: a.y, w: a.w, h: a.h }];
+      for (const q of quads) {
+        page.drawRectangle({
+          x: q.x,
+          y: yFlip(q.y, q.h) + q.h / 2 - Math.max(0.5, a.stroke) / 2,
+          width: q.w, height: Math.max(0.5, a.stroke),
+          color: col(a.color), opacity: a.opacity,
+        });
+      }
+      break;
+    }
+    case "redact":
       page.drawRectangle({
-        x: a.x,
-        y: yFlip(a.y, a.h) + a.h / 2 - Math.max(0.5, a.stroke) / 2,
-        width: a.w,
-        height: Math.max(0.5, a.stroke),
-        color: col(a.color),
-        opacity: a.opacity,
+        x: a.x, y: yFlip(a.y, a.h), width: a.w, height: a.h,
+        color: rgb(0, 0, 0), opacity: 1,
       });
       break;
     case "line":
