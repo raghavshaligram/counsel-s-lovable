@@ -633,16 +633,28 @@ function RedactPage() {
   return (
     <AppShell>
       <ToolHeader
-        tag="Smart Redact"
-        title="Permanently remove anything sensitive."
+        tag={isPremium ? "Verifiable Redaction · Legal" : "Smart Redact"}
+        title={
+          isPremium
+            ? "Court-defensible redaction with a signed audit trail."
+            : "Permanently remove anything sensitive."
+        }
         sub={
-          <>
-            Auto-detect PII, batch-redact every instance of a keyword, and stamp legal
-            exemption codes on each box. On export every page is rasterised and re-baked —
-            the original text is{" "}
-            <span className="text-foreground">destroyed in the file bytes</span>, not just
-            covered.
-          </>
+          isPremium ? (
+            <>
+              Every box requires an exemption code. On export you get the redacted PDF, a
+              Certificate of Redaction with{" "}
+              <span className="text-foreground">SHA-256 hashes of source and output</span>,
+              and a privilege log ready to file alongside production.
+            </>
+          ) : (
+            <>
+              Auto-detect PII, batch-redact every instance of a keyword, and optionally label
+              each box. On export every page is rasterised and re-baked — the original text
+              is <span className="text-foreground">destroyed in the file bytes</span>, not
+              just covered.
+            </>
+          )
         }
         collapsed={!!file}
       />
