@@ -1151,7 +1151,10 @@ function PageCanvas({
         style={baseStyle}
         onMouseDown={onMouseDownAnno}
         onDoubleClick={(e) => {
-          if (a.kind === "text" || a.kind === "text-edit" || a.kind === "note") {
+          if (a.kind === "text-edit") {
+            e.stopPropagation();
+            setTextEditTarget({ kind: "existing", annoId: a.id });
+          } else if (a.kind === "text" || a.kind === "note") {
             e.stopPropagation();
             setEditingId(a.id);
           }
