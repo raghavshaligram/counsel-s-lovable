@@ -1,14 +1,14 @@
 // PDF Editor — single-page route holding the working document, toolbar,
 // page thumbnails sidebar, and the active page canvas with annotations.
 
-import { createFileRoute, useRouterState, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PDFDocument } from "pdf-lib";
 import {
   MousePointer2, Type, Highlighter, Square, Circle, Pen, StickyNote,
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
   ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
-  Layers, Edit3,
+  Underline as UnderlineIcon, Strikethrough, Minus, ArrowRight,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { Anno, EditorDoc, PageOp, RGB, Tool } from "@/lib/editor/types";
-import { AnnotationWorkspace } from "./annotate";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -211,24 +210,10 @@ function EditorRoute() {
   );
 }
 
-type EditorMode = "edit" | "annotate";
-
 function Editor() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loading, setLoading] = useState(false);
-  const routerHash = useRouterState({ select: (s) => s.location.hash });
-  const navigate = useNavigate();
-  const [mode, setMode] = useState<EditorMode>(() => (routerHash === "annotate" ? "annotate" : "edit"));
 
-  // sync mode → url hash so refresh/back works
-  useEffect(() => {
-    if (mode === "annotate" && routerHash !== "annotate") {
-      navigate({ to: "/editor", hash: "annotate", replace: true });
-    } else if (mode === "edit" && routerHash === "annotate") {
-      navigate({ to: "/editor", hash: "", replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
 
 
   // keyboard shortcuts
@@ -245,7 +230,7 @@ function Editor() {
         e.preventDefault();
         dispatch({ type: "DELETE_ANNO", id: state.selectedAnnoId });
       }
-      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", r: "rect", o: "ellipse", p: "freehand", n: "note", i: "image", e: "edit-text" };
+      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", u: "underline", s: "strikethrough", r: "rect", o: "ellipse", l: "line", a: "arrow", p: "freehand", n: "note", i: "image", e: "edit-text" };
       if (map[e.key.toLowerCase()]) dispatch({ type: "SET_TOOL", t: map[e.key.toLowerCase()] });
     };
     window.addEventListener("keydown", onKey);
