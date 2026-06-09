@@ -8,6 +8,7 @@ import { CheckCircle2, Download, Loader2, Lock, Minimize2 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
+import { useHotkey } from "@/lib/use-hotkey";
 
 export const Route = createFileRoute("/compress")({
   head: () => ({
@@ -217,6 +218,7 @@ function CompressPage() {
   };
   void download;
 
+  useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
     <AppShell>
       <ToolHeader
@@ -238,6 +240,7 @@ function CompressPage() {
               file={file}
               info={`${pageCount} page${pageCount === 1 ? "" : "s"}`}
               onClose={reset}
+              onReplace={onFile}
             />
 
             <div className="rounded-lg border border-border bg-card/50 p-5 space-y-5">

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Image as ImageIcon, Download } from "lucide-react";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
+import { useHotkey } from "@/lib/use-hotkey";
 import { loadPdfjs } from "@/lib/pdf/worker";
 
 export const Route = createFileRoute("/to-images")({
@@ -115,6 +116,7 @@ function ToImagesPage() {
     }
   };
 
+  useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
     <AppShell>
       <ToolHeader
@@ -128,7 +130,7 @@ function ToImagesPage() {
           <FileDropzone onFile={onFile} label="Drop a PDF to convert" sublabel="no upload" />
         ) : (
           <div className="space-y-6">
-            <FileBar file={file} info={`${pageCount} page${pageCount === 1 ? "" : "s"}`} onClose={reset} />
+            <FileBar file={file} info={`${pageCount} page${pageCount === 1 ? "" : "s"}`} onClose={reset} onReplace={onFile} />
 
             <div className="rounded-lg border border-border bg-card/50 p-5 space-y-5">
               <div>
