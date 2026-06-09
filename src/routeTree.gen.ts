@@ -28,6 +28,7 @@ import { Route as EditorRouteImport } from './routes/editor'
 import { Route as CompressRouteImport } from './routes/compress'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as AnnotateRouteImport } from './routes/annotate'
 import { Route as IndexRouteImport } from './routes/index'
 
 const WordToPdfRoute = WordToPdfRouteImport.update({
@@ -125,6 +126,11 @@ const ChatRoute = ChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AnnotateRoute = AnnotateRouteImport.update({
+  id: '/annotate',
+  path: '/annotate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -133,6 +139,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/annotate': typeof AnnotateRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/annotate': typeof AnnotateRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
@@ -178,6 +186,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/annotate': typeof AnnotateRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
@@ -202,6 +211,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/annotate'
     | '/chat'
     | '/compare'
     | '/compress'
@@ -224,6 +234,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/annotate'
     | '/chat'
     | '/compare'
     | '/compress'
@@ -246,6 +257,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/annotate'
     | '/chat'
     | '/compare'
     | '/compress'
@@ -269,6 +281,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnnotateRoute: typeof AnnotateRoute
   ChatRoute: typeof ChatRoute
   CompareRoute: typeof CompareRoute
   CompressRoute: typeof CompressRoute
@@ -425,6 +438,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/annotate': {
+      id: '/annotate'
+      path: '/annotate'
+      fullPath: '/annotate'
+      preLoaderRoute: typeof AnnotateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -437,6 +457,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnnotateRoute: AnnotateRoute,
   ChatRoute: ChatRoute,
   CompareRoute: CompareRoute,
   CompressRoute: CompressRoute,

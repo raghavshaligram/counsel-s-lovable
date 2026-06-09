@@ -1,47 +1,111 @@
-# Redact tool — pro upgrade
 
-Current state (already shipped, don't re-do):
-- Pattern auto-detect (SSN, email, phone, card, date, IP, IBAN) with category toggles.
-- True rasterization on export (page rendered to canvas, black boxes drawn, re-embedded as JPEG — text is physically gone).
-- Metadata stripped on export (title/author/subject/keywords cleared, producer/creator overwritten).
+# Annotations + Reader Overhaul
 
-This plan adds the four asks on top, scoped to the redact route + detect-pii lib.
+Building a production-grade annotation system that persists as real PDF annotations (Acrobat-compatible) plus a reader-grade viewing shell. No MVP shortcuts.
 
-## 1. Keyword search-and-redact-all
+## Scope
 
-New "Find & redact" panel in the right sidebar above the category toggles.
-- Input: text field + "Match case" + "Whole word" checkboxes + "Redact all" button.
-- On submit: walk every page's pdf.js `getTextContent()` once (cache results in a ref keyed by page) and produce a `Box` per text item whose `str` matches. Box geometry uses the same `viewport.transform` math already in `detect-pii.ts` (extracted into a shared `textItemToBox` helper in `src/lib/pdf/detect-pii.ts`).
-- Matches are stored as a new `keywordBoxes` state array, merged into `allBoxes` alongside `autoBoxes` and manual `boxes`. Each keyword query gets a chip ("client-name · 14") with an × to remove the whole batch.
-- Performance: extraction runs lazily on first search and is cached; subsequent searches reuse the cached text items.
+### 1. Shared Annotation Engine (`src/lib/annotations/`)
+A canvas + SVG overlay layer that any route can mount on top of a `pdf.js` rendered page.
 
-## 2. Exemption codes on boxes
+- **State model**: typed annotation objects (id, page, type, geometry, style, author, createdAt, contents, replies[])
+- **Tools**: select, highlight, underline, strikethrough, sticky-note, freehand (ink), rectangle, ellipse, arrow, line, text-box, stamp, image, signature
+- **Text-aware tools**: highlight/underline/strikethrough use pdf.js text layer → real `quadPoints` (not just rectangles over rendered pixels)
+- **Style controls**: color picker, opacity, stroke width, font size, font family
+- **Interactions**: click-to-select, drag-to-move, resize handles, delete (Del/Backspace), undo/redo (Cmd+Z / Cmd+Shift+Z), copy/paste
+- **Persistence**: serialize to `pdf-lib` annotation dictionaries on export so Acrobat/Preview see them as native annotations (not flattened pixels). Option to flatten on export.
+- **Import**: read existing annotations from uploaded PDFs and render them editable.
 
-Extend the `Box` type with optional `label?: string` and `labelPreset?: string`.
-- Double-clicking a drawn rectangle (manual or keyword/auto) opens a small popover anchored to the box with:
-  - Preset dropdown: FOIA b(1)–b(9), Privacy Act, Attorney-Client, Work Product, Trade Secret, PII, PHI/HIPAA, Custom.
-  - Free-text override.
-- Labels render in the live preview as white text centred over the black rectangle, auto-sized to fit (binary-search font size against `ctx.measureText` so the label never overflows).
-- On export, the same label is drawn onto the composite canvas in white before JPEG encoding, so it's permanently baked in.
-- Sidebar shows a "Default label for new boxes" picker so users can stamp many boxes with one code without re-opening each.
+### 2. Reader Shell (`src/components/pdf-reader/`)
+Reusable viewer used by `/editor`, new `/annotate`, `/sign`, `/redact`.
 
-## 3. Metadata stripping — make it explicit + thorough
+- Continuous scroll with virtualization (only render visible pages)
+- Thumbnail sidebar (collapsible, drag-to-reorder optional per-route)
+- Outline / bookmarks panel (parsed from PDF outline)
+- Comments sidebar (filtered list of all annotations, click to jump, reply threads)
+- Text search with highlight + result counter + next/prev
+- Zoom: fit-width, fit-page, actual size, custom %, Ctrl+wheel
+- Rotate view (per-session, doesn't mutate doc)
+- Hyperlink + internal link support (clicking TOC entry jumps page)
+- Keyboard: arrows page, +/- zoom, / for search, Esc deselect
 
-- Add a toggle in the export panel: `[x] Strip hidden metadata on export` (default on, persisted to localStorage).
-- When on, in addition to the current `setTitle/Author/Subject/Keywords/Producer/Creator`, also:
-  - `setCreationDate(new Date(0))`, `setModificationDate(new Date(0))`.
-  - Remove the XMP metadata stream: `out.catalog.delete(PDFName.of('Metadata'))`.
-  - Strip document-level `PieceInfo` and `AcroForm` if present (these often retain edit history / form field values).
-- Because export already re-rasterizes pages, hidden text layers and incremental-save history are already gone — call that out in the toast copy.
+### 3. New Route: `/annotate`
+Dedicated annotation workspace using the engine + reader shell. Top toolbar with tool picker, style controls, comments sidebar on right, thumbnails on left.
 
-## 4. Vector / image flattening
+### 4. Editor Upgrade (`/editor`)
+Mount the new reader shell and annotation engine. Existing edit features (add text, image, shapes) become tools within the unified toolbar. Replace current standalone viewer.
 
-Already implemented (raster pipeline in `exportRedacted`). No change needed; we will just tighten the explanatory copy in the hero + export confirmation toast so users understand the moat.
+### 5. Export Paths
+- "Save as PDF with annotations" → annotations as native PDF objects (editable elsewhere)
+- "Flatten and export" → burned into page content (final)
+- "Export comments" → JSON or CSV of all comments
 
-## Files touched
+## Technical Details
 
-- `src/routes/redact.tsx` — new sidebar sections (keyword search, default label, metadata toggle), Box type extension, double-click → label popover, canvas label rendering for preview + export, extra metadata stripping.
-- `src/lib/pdf/detect-pii.ts` — export a `textItemToBox(item, viewport, pdfjs, scale)` helper reused by both auto-detect and keyword search; add `searchKeywordInPdf(file, query, opts)` that returns `Detection[]`-shaped boxes with `category: "keyword"`.
-- Small UI additions: a `<Popover>` (already in shadcn) for the exemption editor, a `Badge`-style chip list for active keyword queries.
+- **Libraries already in project**: `pdfjs-dist`, `pdf-lib`. Add `perfect-freehand` for ink smoothing.
+- **Text layer**: enable `pdf.js` `TextLayer` to get text selection rects for highlight/underline/strikethrough quadPoints.
+- **Annotation dictionaries** (pdf-lib): Highlight, Underline, StrikeOut → `/Subtype /Highlight` with `QuadPoints`; Ink → `/Subtype /Ink` with `InkList`; Text (sticky) → `/Subtype /Text`; FreeText → `/Subtype /FreeText`; Square/Circle/Line → respective subtypes; Stamp → `/Subtype /Stamp` with appearance stream.
+- **Undo/redo**: command pattern, stack of inverse ops per document.
+- **State store**: Zustand store per open document (`useAnnotationStore`), keyed by doc hash so switching files preserves work.
+- **Persistence between sessions**: IndexedDB autosave of unflattened annotation JSON keyed by file hash → reopen same file, restore work.
+- **Performance**: virtualize pages, render annotation overlay only for in-view pages, debounce ink point capture, offload pixel diff and heavy ops to web workers.
 
-No backend, no schema changes, no new deps.
+## File Plan
+
+```
+src/lib/annotations/
+  types.ts                  shared types
+  store.ts                  zustand store + undo/redo
+  serialize.ts              pdf-lib export (native + flattened)
+  import.ts                 read existing annots from PDF
+  quad-points.ts            text-layer rect → quadPoints
+  ink.ts                    perfect-freehand wrapper
+  hotkeys.ts                shortcut bindings
+
+src/components/pdf-reader/
+  PdfReader.tsx             main shell
+  PageCanvas.tsx            pdf.js page render + text layer
+  AnnotationLayer.tsx       SVG/canvas overlay per page
+  Thumbnails.tsx
+  Outline.tsx
+  CommentsSidebar.tsx
+  SearchBar.tsx
+  Toolbar.tsx
+  ZoomControls.tsx
+
+src/components/annotations/
+  ToolPicker.tsx
+  StylePanel.tsx
+  StickyNote.tsx
+  CommentThread.tsx
+  StampPicker.tsx
+  SignaturePad.tsx (reuse from /sign)
+
+src/routes/
+  annotate.tsx              new
+  editor.tsx                upgraded to use reader shell
+```
+
+## Build Order
+
+1. Annotation types + zustand store + undo/redo + IndexedDB autosave
+2. PdfReader shell (continuous scroll, thumbnails, zoom, search) — used standalone first
+3. AnnotationLayer + text-aware highlight/underline/strikethrough
+4. Drawing tools (ink, shapes, arrow, line)
+5. Sticky notes + FreeText + comments sidebar with replies
+6. Stamps + signature + image annotations
+7. Native PDF export (pdf-lib annotation dicts) + flatten export + import existing
+8. New `/annotate` route wiring it all together
+9. Migrate `/editor` to the new shell
+10. Polish: keyboard shortcuts, empty states, success toasts consistent with rest of app
+
+## Out of Scope (next sprint)
+
+- True text editing of existing PDF text (font subsetting work)
+- Form field editor
+- Multi-user realtime comments (needs backend)
+- Read-aloud, AI summarize integration into reader (will tie chat into reader next)
+
+## Estimated Output
+
+~15 new files, ~2 routes touched, ~3500 LOC. Will ship in iterative commits — engine + reader first (browsable result), then layer in tools.
