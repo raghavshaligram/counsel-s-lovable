@@ -33,6 +33,15 @@
   --color-ring: var(--ring);
   --color-vault: var(--vault);
   --color-vault-foreground: var(--vault-foreground);
+  --color-evidence: var(--evidence);
+  --color-surface-canvas: var(--surface-canvas);
+
+  /* Fluid type scale */
+  --text-display: clamp(2.75rem, 6vw, 5rem);
+  --text-h1: clamp(2rem, 4vw, 3.25rem);
+  --text-h2: clamp(1.5rem, 2.6vw, 2.25rem);
+  --text-h3: clamp(1.125rem, 1.6vw, 1.5rem);
+  --text-micro: 0.6875rem;
 }
 
 /* VaultPDF — deep navy ink + signal-amber accent.
@@ -72,6 +81,12 @@
   --vault: oklch(0.84 0.16 78);
   --vault-foreground: oklch(0.16 0.02 260);
 
+  /* Critical / destructive — reserved for redaction & destroy actions */
+  --evidence: oklch(0.58 0.22 25);
+
+  /* Deep neutral for the editor backdrop, distinct from page bg */
+  --surface-canvas: oklch(0.12 0.015 260);
+
   --chart-1: oklch(0.84 0.16 78);
   --chart-2: oklch(0.70 0.13 200);
   --chart-3: oklch(0.62 0.22 25);
@@ -81,6 +96,7 @@
   --gradient-vault: linear-gradient(135deg, oklch(0.20 0.025 260), oklch(0.16 0.02 260));
   --gradient-glow: radial-gradient(60% 80% at 50% 0%, oklch(0.84 0.16 78 / 0.18), transparent 70%);
   --shadow-stamp: 0 1px 0 0 oklch(1 0 0 / 0.04) inset, 0 20px 50px -25px oklch(0 0 0 / 0.6);
+  --shadow-float: 0 1px 0 0 oklch(1 0 0 / 0.05) inset, 0 12px 32px -12px oklch(0 0 0 / 0.7);
 }
 
 /* This is a dark-first product; .dark mirrors :root */

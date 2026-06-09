@@ -86,6 +86,15 @@ const groups: Group[] = [
   },
 ];
 
+const primaryNav: { to: string; label: string }[] = [
+  { to: "/redact", label: "Redact" },
+  { to: "/sign", label: "Sign & Fill" },
+  { to: "/protect", label: "Protect" },
+  { to: "/compress", label: "Compress" },
+  { to: "/editor", label: "Editor" },
+];
+
+
 function HashIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -313,10 +322,10 @@ function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string)
         </div>
         <div className="rounded-lg border border-vault/20 bg-vault/5 p-4 flex flex-col justify-between">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-vault/80">{group.label}</div>
-            <p className="text-sm text-foreground mt-2 leading-snug font-display">{group.tagline}</p>
+            <div className="font-display text-base text-vault">{group.label}</div>
+            <p className="text-sm text-muted-foreground mt-2 leading-snug">{group.tagline}</p>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-4">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-4">
             <span className="h-1.5 w-1.5 rounded-full bg-vault" />
             <span>Stays in your tab</span>
           </div>
@@ -325,6 +334,24 @@ function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string)
     </div>
   );
 }
+
+function AllToolsPanel({ isActive }: { isActive: (path: string) => boolean }) {
+  return (
+    <div className="w-[760px] p-4 grid grid-cols-2 gap-x-6 gap-y-5">
+      {groups.map((group) => (
+        <div key={group.id}>
+          <div className="font-display text-sm text-vault mb-2 px-1">{group.label}</div>
+          <div className="flex flex-col">
+            {group.items.map((t) => (
+              <ToolCard key={t.to} tool={t} isActive={isActive(t.to)} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 
 export function AppShell({ children }: { children: ReactNode }) {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
@@ -342,40 +369,53 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="font-display text-[19px] leading-none">VaultPDF</span>
           </Link>
 
-          {/* Desktop nav */}
+          {/* Desktop nav — 5 primary tools + All tools disclosure */}
           <NavigationMenu className="hidden md:flex flex-1 justify-center">
-            <NavigationMenuList>
-              {groups.map((group) => {
-                const hasActive = group.items.some((t) => isActive(t.to));
-                return (
-                  <NavigationMenuItem key={group.id}>
-                    <NavigationMenuTrigger
-                      className={cn(
-                        "h-9 bg-transparent text-sm",
-                        hasActive && "text-vault"
-                      )}
-                    >
-                      {group.label}
-                    </NavigationMenuTrigger>
-                    <NavigationMenuContent>
-                      <MegaPanel group={group} isActive={isActive} />
-                    </NavigationMenuContent>
-                  </NavigationMenuItem>
-                );
-              })}
+            <NavigationMenuList className="gap-1">
+              {primaryNav.map((p) => (
+                <NavigationMenuItem key={p.to}>
+                  <Link
+                    to={p.to}
+                    className={cn(
+                      "inline-flex h-9 items-center rounded-md px-3 text-sm transition-colors hover:bg-accent/60",
+                      isActive(p.to) && "text-vault"
+                    )}
+                  >
+                    {p.label}
+                  </Link>
+                </NavigationMenuItem>
+              ))}
+              <NavigationMenuItem>
+                <NavigationMenuTrigger
+                  className={cn(
+                    "h-9 bg-transparent text-sm",
+                    groups.some((g) => g.items.some((t) => isActive(t.to))) &&
+                      !primaryNav.some((p) => isActive(p.to)) &&
+                      "text-vault"
+                  )}
+                >
+                  All tools
+                </NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <AllToolsPanel isActive={isActive} />
+                </NavigationMenuContent>
+              </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
 
+
           <div className="flex items-center gap-3 shrink-0">
-            <span className="hidden lg:inline text-xs uppercase tracking-[0.22em] text-muted-foreground">
+            <span className="hidden lg:inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-vault animate-pulse" />
               100% in your browser
             </span>
             <Link
               to="/pricing"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-sm font-medium transition-colors"
             >
               Lifetime deal
             </Link>
+
 
             {/* Mobile trigger */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -395,9 +435,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div className="mt-4 space-y-6">
                   {groups.map((group) => (
                     <div key={group.id}>
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2 px-1">
+                      <div className="font-display text-sm text-vault mb-2 px-1">
                         {group.label}
                       </div>
+
                       <div className="flex flex-col">
                         {group.items.map((t) => (
                           <ToolCard key={t.to} tool={t} onClick={() => setMobileOpen(false)} isActive={isActive(t.to)} />
