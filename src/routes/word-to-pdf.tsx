@@ -60,7 +60,7 @@ function WordToPdfPage() {
     setBusy(true);
     setProgress("Reading document…");
     try {
-      const mammoth = await import("mammoth/mammoth.browser");
+      const mammoth: any = await import("mammoth/mammoth.browser.js" as any);
       const arr = await file.arrayBuffer();
       const { value: html } = await mammoth.convertToHtml({ arrayBuffer: arr });
 
