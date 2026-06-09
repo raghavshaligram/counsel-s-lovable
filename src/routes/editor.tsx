@@ -345,11 +345,28 @@ function Editor() {
 function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
   const [signOpen, setSignOpen] = useState(false);
   const [stampOpen, setStampOpen] = useState(false);
+  const [watermarkOpen, setWatermarkOpen] = useState(false);
+  const [protectOpen, setProtectOpen] = useState(false);
   const setPendingImageFromCanvas = (canvas: HTMLCanvasElement) => {
     const dataUrl = canvas.toDataURL("image/png");
     dispatch({ type: "SET_PENDING_IMAGE", img: { dataUrl, mime: "image/png", w: canvas.width, h: canvas.height } });
     dispatch({ type: "SET_TOOL", t: "image" });
     toast.message("Click on the page to place it");
+  };
+  const addDateStamp = () => {
+    if (!state.doc) return;
+    const txt = new Date().toLocaleDateString();
+    const page = state.doc.pages[state.current];
+    dispatch({ type: "ADD_ANNO", a: {
+      id: Math.random().toString(36).slice(2, 10),
+      kind: "text", page: state.current,
+      x: page.width / 2 - 60, y: page.height / 2 - 10,
+      w: 160, h: 24,
+      color: { r: 0.05, g: 0.07, b: 0.16 }, opacity: 1,
+      text: txt, fontSize: 14,
+    } });
+    dispatch({ type: "SET_TOOL", t: "select" });
+    toast.success("Date placed — drag to position");
   };
   const selectedAnno = state.selectedAnnoId && state.doc
     ? state.doc.annotations.find((a) => a.id === state.selectedAnnoId) ?? null
@@ -431,6 +448,30 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
         >
           <BadgeCheck className="h-4 w-4" />
         </button>
+        <button
+          onClick={addDateStamp}
+          title="Insert today's date"
+          className="grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent text-muted-foreground"
+        >
+          <CalendarDays className="h-4 w-4" />
+        </button>
+        <div className="mx-1 h-6 w-px bg-border" />
+        <button
+          onClick={() => setWatermarkOpen(true)}
+          title={state.watermark ? `Watermark: "${state.watermark.text}"` : "Watermark"}
+          className={cn("grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent",
+            state.watermark ? "text-vault" : "text-muted-foreground")}
+        >
+          <Droplets className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setProtectOpen(true)}
+          title={state.protect ? "Password protection ON" : "Password protect"}
+          className={cn("grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent",
+            state.protect ? "text-vault" : "text-muted-foreground")}
+        >
+          <Lock className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="mx-1 h-6 w-px bg-border" />
@@ -499,6 +540,18 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
 
       <SignatureDialog open={signOpen} onOpenChange={setSignOpen} onSave={setPendingImageFromCanvas} />
       <StampDialog open={stampOpen} onOpenChange={setStampOpen} onSave={setPendingImageFromCanvas} />
+      <WatermarkDialog
+        open={watermarkOpen}
+        onOpenChange={setWatermarkOpen}
+        value={state.watermark}
+        onSave={(w) => dispatch({ type: "SET_WATERMARK", w })}
+      />
+      <ProtectDialog
+        open={protectOpen}
+        onOpenChange={setProtectOpen}
+        value={state.protect}
+        onSave={(p) => dispatch({ type: "SET_PROTECT", p })}
+      />
     </div>
   );
 }
