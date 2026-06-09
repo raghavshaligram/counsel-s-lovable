@@ -318,6 +318,49 @@ function OcrPage() {
                       untouched — no OCR runs on them.
                       {device.tier === "low" && " Your device looks modestly specced — expect slower runs."}
                     </p>
+
+                    <div className="w-full flex flex-col gap-1.5">
+                      <div className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                        <Languages className="h-3.5 w-3.5 text-vault" />
+                        Document language
+                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm hover:border-vault/50 transition-colors w-full sm:w-72"
+                          >
+                            <span className="truncate">{langSummary}</span>
+                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-72 p-0 max-h-80 overflow-y-auto">
+                          <div className="p-2">
+                            {OCR_LANGUAGES.map((lang) => {
+                              const checked = languages.includes(lang.code);
+                              return (
+                                <label
+                                  key={lang.code}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleLang(lang.code)}
+                                    className="h-3.5 w-3.5 accent-vault"
+                                  />
+                                  <span className="flex-1">{lang.label}</span>
+                                  <span className="text-[10px] text-muted-foreground">~{lang.sizeMb} MB</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Pick one language for best accuracy. Combining languages (e.g. bilingual docs) costs accuracy and memory. First-time use of a language downloads ~{downloadEstimate} MB to your browser, then cached forever.
+                      </p>
+                    </div>
                     <label className="flex items-start gap-2 text-xs text-foreground/80 cursor-pointer select-none">
                       <input
                         type="checkbox"
