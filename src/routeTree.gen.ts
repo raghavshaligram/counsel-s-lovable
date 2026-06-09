@@ -18,7 +18,6 @@ import { Route as ToImagesRouteImport } from './routes/to-images'
 import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
 import { Route as RotateRouteImport } from './routes/rotate'
-import { Route as RedactRouteImport } from './routes/redact'
 import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PrivilegeScanRouteImport } from './routes/privilege-scan'
 import { Route as PricingRouteImport } from './routes/pricing'
@@ -76,11 +75,6 @@ const SignRoute = SignRouteImport.update({
 const RotateRoute = RotateRouteImport.update({
   id: '/rotate',
   path: '/rotate',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RedactRoute = RedactRouteImport.update({
-  id: '/redact',
-  path: '/redact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProtectRoute = ProtectRouteImport.update({
@@ -163,7 +157,6 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
-  '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
@@ -188,7 +181,6 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
-  '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
@@ -214,7 +206,6 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
-  '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
@@ -241,7 +232,6 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/privilege-scan'
     | '/protect'
-    | '/redact'
     | '/rotate'
     | '/sign'
     | '/split'
@@ -266,7 +256,6 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/privilege-scan'
     | '/protect'
-    | '/redact'
     | '/rotate'
     | '/sign'
     | '/split'
@@ -291,7 +280,6 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/privilege-scan'
     | '/protect'
-    | '/redact'
     | '/rotate'
     | '/sign'
     | '/split'
@@ -317,7 +305,6 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRoute
   PrivilegeScanRoute: typeof PrivilegeScanRoute
   ProtectRoute: typeof ProtectRoute
-  RedactRoute: typeof RedactRoute
   RotateRoute: typeof RotateRoute
   SignRoute: typeof SignRoute
   SplitRoute: typeof SplitRoute
@@ -392,13 +379,6 @@ declare module '@tanstack/react-router' {
       path: '/rotate'
       fullPath: '/rotate'
       preLoaderRoute: typeof RotateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/redact': {
-      id: '/redact'
-      path: '/redact'
-      fullPath: '/redact'
-      preLoaderRoute: typeof RedactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/protect': {
@@ -509,7 +489,6 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRoute,
   PrivilegeScanRoute: PrivilegeScanRoute,
   ProtectRoute: ProtectRoute,
-  RedactRoute: RedactRoute,
   RotateRoute: RotateRoute,
   SignRoute: SignRoute,
   SplitRoute: SplitRoute,
@@ -523,3 +502,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
