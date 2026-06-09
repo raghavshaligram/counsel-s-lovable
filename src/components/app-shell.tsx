@@ -225,25 +225,10 @@ function ShellInner({ children }: { children: ReactNode }) {
   return (
     <>
       {/* Full-width top bar */}
-      <header className="sticky top-0 z-40 h-14 flex items-stretch border-b border-slate-800/70 bg-background/85 backdrop-blur-xl">
-        {/* Left slot — matches sidebar width, holds brand when collapsed */}
-        <div
-          className={cn(
-            "flex items-center gap-2 border-r border-slate-800/70 transition-[width] duration-200 ease-linear shrink-0",
-            collapsed
-              ? "w-[var(--sidebar-width-icon)] justify-center px-0"
-              : "w-[var(--sidebar-width)] px-3",
-          )}
-        >
-          <SidebarTrigger className="shrink-0" />
-          {collapsed && (
-            <Link to="/" aria-label="VaultPDF home" className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
-              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-            </Link>
-          )}
-        </div>
+      <header className="sticky top-0 z-40 h-14 flex items-center justify-between border-b border-slate-800/70 bg-background/85 backdrop-blur-xl pl-4 pr-4 md:pl-6 md:pr-6">
+        <BrandMark />
 
-        <div className="flex flex-1 items-center justify-between px-4 md:px-6 min-w-0">
+        <div className="flex items-center gap-4 min-w-0">
           <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground truncate">
             100% in your browser
           </span>
@@ -260,10 +245,11 @@ function ShellInner({ children }: { children: ReactNode }) {
       <div className="flex flex-1 min-h-0">
         <Sidebar collapsible="icon" variant="sidebar" className="border-r border-slate-800/70 top-14 h-[calc(100svh-3.5rem)]">
           <SidebarHeader>
-            <div className="flex items-center px-2 py-1 h-9 group-data-[collapsible=icon]:hidden">
-              <BrandMark />
+            <div className="flex items-center justify-end px-1 py-1 group-data-[collapsible=icon]:justify-center">
+              <SidebarTrigger className="h-7 w-7" />
             </div>
           </SidebarHeader>
+
 
           <SidebarContent>
             <SidebarGroup>
