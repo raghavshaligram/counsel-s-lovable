@@ -37,7 +37,7 @@ const editTools = [
   { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon },
 ];
 
-type NavItem = { to: string; label: string; icon: (p: { className?: string }) => JSX.Element; beta?: boolean };
+type NavItem = { to: string; label: string; icon: (p: { className?: string }) => ReactNode; beta?: boolean };
 
 const convertGroups: { label: string; items: NavItem[] }[] = [
   {
