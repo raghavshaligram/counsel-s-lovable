@@ -135,3 +135,15 @@
     background-size: 48px 48px;
   }
 }
+
+/* Hide scrollbars across the app while keeping scroll functionality. */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
