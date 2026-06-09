@@ -9,7 +9,7 @@ import {
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
   ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
   Underline as UnderlineIcon, Strikethrough, Minus, ArrowRight,
-  EyeOff, Droplets, Lock, CalendarDays,
+  EyeOff, Droplets, Lock, CalendarDays, MessageSquare,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
