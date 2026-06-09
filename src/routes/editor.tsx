@@ -636,7 +636,7 @@ function Thumbnail({ op, srcBytes }: { op: PageOp; srcBytes: Uint8Array }) {
 
 // ---------- page canvas + annotation layer ----------
 
-type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean };
+type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; transform?: number[]; fontName?: string };
 
 function PageCanvas({
   op, srcBytes, annos, state, dispatch,
@@ -696,7 +696,7 @@ function PageCanvas({
           "sans";
         const bold = /bold|black|heavy|semibold|demibold/.test(ffl);
         const italic = /italic|oblique/.test(ffl);
-        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str, family, bold, italic }];
+        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName }];
       });
       setTextItems(items);
     })();
