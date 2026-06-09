@@ -114,12 +114,15 @@ function CompressPage() {
       const scale = dpi / 72;
 
       const pdfjs = await loadPdfjs();
-      const srcBytes = await file.arrayBuffer();
-      const srcDoc = await pdfjs.getDocument({ data: new Uint8Array(srcBytes) })
-        .promise;
+      const srcBytes = new Uint8Array(await file.arrayBuffer());
+      // pdf.js transfers the underlying buffer to its worker (detaching it),
+      // so hand each consumer its own copy.
+      const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
 
       // Get original page dimensions (in pt) from pdf-lib so output PDF matches
-      const sizingDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+      const sizingDoc = await PDFDocument.load(srcBytes.slice(), {
+        ignoreEncryption: true,
+      });
       const sizes = sizingDoc.getPages().map((p) => ({
         w: p.getWidth(),
         h: p.getHeight(),
