@@ -290,9 +290,22 @@ function OcrPage() {
                   <div className="rounded-lg border border-border bg-card/30 p-6 flex flex-col items-start gap-3">
                     <p className="text-sm text-muted-foreground">
                       OCR is CPU-intensive. A 10-page scan typically takes 30–90 seconds depending
-                      on your device.
+                      on your device. Pages that already contain real text are copied through
+                      untouched — no OCR runs on them.
                       {device.tier === "low" && " Your device looks modestly specced — expect slower runs."}
                     </p>
+                    <label className="flex items-start gap-2 text-xs text-foreground/80 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={highAccuracy}
+                        onChange={(e) => setHighAccuracy(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-vault mt-0.5"
+                      />
+                      <span>
+                        <span className="font-medium text-foreground">High accuracy</span>
+                        <span className="text-muted-foreground"> — render at 2× instead of 1.5×. Better on small fonts and dense layouts, but ~80% slower per OCR'd page.</span>
+                      </span>
+                    </label>
                     <Button
                       onClick={run}
                       disabled={
@@ -302,7 +315,6 @@ function OcrPage() {
                       }
                       className="bg-vault text-vault-foreground hover:opacity-90 disabled:opacity-50"
                     >
-
                       <ScanText className="h-4 w-4 mr-2" />
                       {preflight?.level === "block" ? "Too large to OCR here" : "Run OCR locally"}
                     </Button>
