@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
   Download,
   FileText,
@@ -142,6 +142,7 @@ function RedactPage() {
   // Export settings (persisted)
   const [stripMetadata, setStripMetadata] = useState(true);
   const [defaultLabel, setDefaultLabel] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"detect" | "find" | "label">("detect");
   useEffect(() => {
     try {
       const s = localStorage.getItem("vault.redact.stripMetadata");
@@ -548,22 +549,46 @@ function RedactPage() {
               </div>
             </div>
 
-            <aside className="lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)] flex flex-col gap-4 min-h-0">
-              <Tabs defaultValue="detect" className="flex-1 flex flex-col min-h-0">
-                <TabsList className="grid grid-cols-3 w-full">
-                  <TabsTrigger value="detect" className="text-xs gap-1.5">
-                    <Wand2 className="h-3.5 w-3.5" /> Detect
-                  </TabsTrigger>
-                  <TabsTrigger value="find" className="text-xs gap-1.5">
-                    <Search className="h-3.5 w-3.5" /> Find
-                  </TabsTrigger>
-                  <TabsTrigger value="label" className="text-xs gap-1.5">
-                    <Tag className="h-3.5 w-3.5" /> Label
-                  </TabsTrigger>
-                </TabsList>
+            <aside className="lg:sticky lg:top-20 rounded-xl border border-border bg-card/80 backdrop-blur-sm h-auto transition-all duration-500 ease-out overflow-hidden">
+              {/* Global Header */}
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+                <div className="flex items-center gap-1">
+                  {[
+                    { id: "detect" as const, icon: Wand2, label: "Detect" },
+                    { id: "find" as const, icon: Search, label: "Find" },
+                    { id: "label" as const, icon: Tag, label: "Label" },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveTab(t.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
+                        activeTab === t.id
+                          ? "bg-vault/15 text-vault border-vault/30"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40 border-transparent"
+                      )}
+                    >
+                      <t.icon className="h-3.5 w-3.5" />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
 
-                <div className="flex-1 min-h-0 mt-3 rounded-lg border border-border bg-card/50 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <TabsContent value="detect" className="m-0 p-5 space-y-3 data-[state=inactive]:hidden">
+                <Button
+                  onClick={exportRedacted}
+                  disabled={allBoxes.length === 0 || exporting || loading}
+                  size="sm"
+                  className="bg-vault text-vault-foreground hover:opacity-90 shrink-0"
+                >
+                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                  {exporting ? "Exporting…" : "Export"}
+                </Button>
+              </div>
+
+              {/* Dynamic Content Area */}
+              <div className="p-4 space-y-4">
+                {activeTab === "detect" && (
+                  <div className="space-y-3">
                     <div>
                       <div className="flex items-center gap-2 text-foreground font-medium text-sm">
                         <Wand2 className="h-4 w-4 text-vault" />
@@ -571,7 +596,7 @@ function RedactPage() {
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
                         Scans for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls back to
-                        on-device OCR for scanned pages (first run downloads ~10MB).
+                        on-device OCR for scanned pages.
                       </p>
                     </div>
                     <Button
@@ -593,7 +618,7 @@ function RedactPage() {
                       </div>
                     )}
                     {detections.length > 0 && (
-                      <div className="space-y-1.5 pt-1">
+                      <div className="space-y-1.5">
                         {(Object.keys(CATEGORY_META) as PiiCategory[])
                           .filter((c) => (catCounts.get(c) ?? 0) > 0)
                           .map((c) => {
@@ -623,9 +648,11 @@ function RedactPage() {
                           })}
                       </div>
                     )}
-                  </TabsContent>
+                  </div>
+                )}
 
-                  <TabsContent value="find" className="m-0 p-5 space-y-3 data-[state=inactive]:hidden">
+                {activeTab === "find" && (
+                  <div className="space-y-3">
                     <div>
                       <div className="flex items-center gap-2 text-foreground font-medium text-sm">
                         <Search className="h-4 w-4 text-vault" />
@@ -675,7 +702,7 @@ function RedactPage() {
                       </Button>
                     </form>
                     {keywordGroups.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
+                      <div className="flex flex-wrap gap-1.5">
                         {keywordGroups.map((g) => (
                           <span
                             key={g.id}
@@ -696,9 +723,11 @@ function RedactPage() {
                         ))}
                       </div>
                     )}
-                  </TabsContent>
+                  </div>
+                )}
 
-                  <TabsContent value="label" className="m-0 p-5 space-y-3 data-[state=inactive]:hidden">
+                {activeTab === "label" && (
+                  <div className="space-y-3">
                     <div>
                       <div className="flex items-center gap-2 text-foreground font-medium text-sm">
                         <Tag className="h-4 w-4 text-vault" />
@@ -739,49 +768,42 @@ function RedactPage() {
                       replaces the page. With metadata stripping on, the info dict, XMP, form
                       fields, and structure tree are removed.
                     </div>
-                  </TabsContent>
-                </div>
-              </Tabs>
-
-              <div className="shrink-0 rounded-lg border border-border bg-card/70 backdrop-blur p-4">
-                <div className="flex items-baseline justify-between mb-2">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                      Redactions
-                    </div>
-                    <div className="text-2xl font-display leading-none mt-1">
-                      {allBoxes.length}
-                    </div>
                   </div>
-                  {(boxes.length > 0 ||
-                    detections.length > 0 ||
-                    keywordBoxes.length > 0) && (
-                    <button
-                      onClick={() => {
-                        setBoxes([]);
-                        setDetections([]);
-                        setDetectionLabels({});
-                        setKeywordGroups([]);
-                        setKeywordBoxes([]);
-                      }}
-                      className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                    >
-                      <Trash2 className="h-3 w-3" /> Clear
-                    </button>
-                  )}
+                )}
+
+                {/* Persistent Summary Footer */}
+                <div className="pt-3 border-t border-border space-y-3">
+                  <div className="flex items-baseline justify-between">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        Redactions
+                      </div>
+                      <div className="text-2xl font-display leading-none mt-1">
+                        {allBoxes.length}
+                      </div>
+                    </div>
+                    {(boxes.length > 0 ||
+                      detections.length > 0 ||
+                      keywordBoxes.length > 0) && (
+                      <button
+                        onClick={() => {
+                          setBoxes([]);
+                          setDetections([]);
+                          setDetectionLabels({});
+                          setKeywordGroups([]);
+                          setKeywordBoxes([]);
+                        }}
+                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                      >
+                        <Trash2 className="h-3 w-3" /> Clear
+                      </button>
+                    )}
+                  </div>
+                  <label className="flex items-center justify-between gap-3 text-xs py-1">
+                    <span className="text-muted-foreground">Strip hidden metadata</span>
+                    <Switch checked={stripMetadata} onCheckedChange={setStripMetadata} />
+                  </label>
                 </div>
-                <label className="flex items-center justify-between gap-3 text-xs py-1">
-                  <span className="text-muted-foreground">Strip hidden metadata</span>
-                  <Switch checked={stripMetadata} onCheckedChange={setStripMetadata} />
-                </label>
-                <Button
-                  onClick={exportRedacted}
-                  disabled={allBoxes.length === 0 || exporting || loading}
-                  className="w-full mt-3 bg-vault text-vault-foreground hover:opacity-90"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  {exporting ? "Exporting…" : "Export redacted PDF"}
-                </Button>
               </div>
             </aside>
           </div>
