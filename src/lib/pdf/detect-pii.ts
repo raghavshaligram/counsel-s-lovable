@@ -187,3 +187,67 @@ function collectWords(data: unknown): OcrWord[] {
   return out;
 }
 
+export type KeywordMatch = {
+  id: string;
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  snippet: string;
+};
+
+// Find every text-layer item that contains `query` and return redaction-sized
+// boxes in the same coordinate space the redact route uses (scale 1.5).
+// Skips scanned pages (no text layer) silently — keyword search is text-only.
+export async function findKeywordInPdf(
+  file: File,
+  query: string,
+  opts: { matchCase?: boolean; wholeWord?: boolean } = {},
+  scale = 1.5,
+): Promise<KeywordMatch[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const pdfjs = await getPdfjs();
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
+
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = opts.wholeWord ? `\\b${escaped}\\b` : escaped;
+  const re = new RegExp(pattern, opts.matchCase ? "" : "i");
+
+  const matches: KeywordMatch[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const viewport = page.getViewport({ scale });
+    const content = await page.getTextContent();
+    const items = content.items as Array<{
+      str: string;
+      transform: number[];
+      width: number;
+      height: number;
+    }>;
+    for (const raw of items) {
+      if (!raw.str || !re.test(raw.str)) continue;
+      const m = pdfjs.Util.transform(viewport.transform, raw.transform);
+      const fontHeight = Math.hypot(m[2], m[3]);
+      const itemWidth = raw.width * scale;
+      const x = m[4];
+      const y = m[5] - fontHeight;
+      const pad = Math.max(2, fontHeight * 0.15);
+      matches.push({
+        id: `kw-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
+        page: i,
+        x: x - pad,
+        y: y - pad,
+        w: itemWidth + pad * 2,
+        h: fontHeight + pad * 2,
+        snippet: snippet(raw.str),
+      });
+    }
+  }
+  return matches;
+}
+
+
+
