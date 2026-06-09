@@ -239,7 +239,7 @@ function Editor() {
         e.preventDefault();
         dispatch({ type: "DELETE_ANNO", id: state.selectedAnnoId });
       }
-      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", u: "underline", s: "strikethrough", r: "rect", o: "ellipse", l: "line", a: "arrow", p: "freehand", n: "note", i: "image", e: "edit-text" };
+      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", u: "underline", s: "strikethrough", r: "rect", o: "ellipse", l: "line", a: "arrow", p: "freehand", n: "note", i: "image", e: "edit-text", d: "redact" };
       if (map[e.key.toLowerCase()]) dispatch({ type: "SET_TOOL", t: map[e.key.toLowerCase()] });
     };
     window.addEventListener("keydown", onKey);
@@ -270,7 +270,11 @@ function Editor() {
     if (!state.doc) return;
     try {
       toast.loading("Building PDF…", { id: "exp" });
-      const bytes = await exportEditedPdf(state.doc);
+      const settings: ExportSettings = {
+        watermark: state.watermark ?? undefined,
+        protect: state.protect ?? undefined,
+      };
+      const bytes = await exportEditedPdf(state.doc, settings);
       toast.success("Done", { id: "exp" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -282,7 +286,7 @@ function Editor() {
     } catch (err) {
       toast.error("Export failed", { id: "exp", description: (err as Error).message });
     }
-  }, [state.doc]);
+  }, [state.doc, state.watermark, state.protect]);
 
   if (!state.doc) {
     return (
