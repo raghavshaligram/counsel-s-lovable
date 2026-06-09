@@ -132,6 +132,11 @@ function RedactPage() {
   const [enabledCats, setEnabledCats] = useState<Set<PiiCategory>>(
     () => new Set(Object.keys(CATEGORY_META) as PiiCategory[]),
   );
+  // Cache the parsed pdf.js document so auto-detect / keyword search don't
+  // re-parse the file. Held in a ref since we never render from it directly.
+  const docRef = useRef<{ numPages: number; getPage: (n: number) => Promise<unknown> } | null>(null);
+  const [totalPages, setTotalPages] = useState(0);
+  const [detectConfirm, setDetectConfirm] = useState(false);
 
   // Keyword search-and-redact
   const [keywordGroups, setKeywordGroups] = useState<KeywordGroup[]>([]);
