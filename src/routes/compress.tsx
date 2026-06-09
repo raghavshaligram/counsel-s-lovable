@@ -283,27 +283,33 @@ function CompressPage() {
               {!result && (
                 <div className="space-y-3">
                   {/* Estimator */}
-                  <div className="text-xs text-muted-foreground text-center tabular-nums">
-                    Current size:{" "}
-                    <span className="text-foreground/80">{fmtBytes(file.size)}</span>
-                    {" → "}
-                    Estimated size:{" "}
-                    <span className="text-foreground/80">
-                      {fmtBytes(
-                        Math.max(
-                          50_000,
-                          Math.round(file.size * (grayscale ? PRESETS[preset].estimatedRatio * 0.75 : PRESETS[preset].estimatedRatio)),
-                        ),
-                      )}
-                    </span>
-                    <span className="text-vault font-medium ml-1.5">
-                      (Save ~
-                      {Math.round(
-                        (1 - (grayscale ? PRESETS[preset].estimatedRatio * 0.75 : PRESETS[preset].estimatedRatio)) * 100,
-                      )}
-                      %)
-                    </span>
-                  </div>
+                  {(() => {
+                    const ratio = grayscale
+                      ? PRESETS[preset].estimatedRatio * 0.75
+                      : PRESETS[preset].estimatedRatio;
+                    const estimated = Math.max(
+                      50_000,
+                      Math.round(file.size * ratio),
+                    );
+                    const savedPct = Math.max(
+                      0,
+                      Math.round((1 - estimated / file.size) * 100),
+                    );
+                    return (
+                      <div className="text-xs text-muted-foreground text-center tabular-nums">
+                        Current size:{" "}
+                        <span className="text-foreground/80">{fmtBytes(file.size)}</span>
+                        {" → "}
+                        Estimated size:{" "}
+                        <span className="text-foreground/80">{fmtBytes(estimated)}</span>
+                        {savedPct > 0 && (
+                          <span className="text-vault font-medium ml-1.5">
+                            (Save ~{savedPct}%)
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <Button
                     onClick={run}
