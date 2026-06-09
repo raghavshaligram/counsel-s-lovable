@@ -116,6 +116,7 @@ function OcrPage() {
   const [inspecting, setInspecting] = useState(false);
   const [preflight, setPreflight] = useState<PreflightWarning | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [highAccuracy, setHighAccuracy] = useState(false);
   const [device] = useState<DeviceProfile>(() => profileDevice());
   const abortRef = useRef<AbortController | null>(null);
 
