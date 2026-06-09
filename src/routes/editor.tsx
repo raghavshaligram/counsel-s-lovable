@@ -774,10 +774,20 @@ function PageCanvas({
     if (w < 3 || h < 3) return;
     if (state.tool === "highlight") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "highlight", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: Math.min(state.opacity, 0.5) } });
+    } else if (state.tool === "underline") {
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "underline", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
+    } else if (state.tool === "strikethrough") {
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "strikethrough", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
     } else if (state.tool === "rect") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, fill: state.fillShape } });
     } else if (state.tool === "ellipse") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "ellipse", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, fill: state.fillShape } });
+    } else if (state.tool === "line" || state.tool === "arrow") {
+      // Preserve drag direction so the arrowhead points where the user dragged
+      const start = toPdf(x0, y0);
+      const end = toPdf(x, y);
+      const flipX = start.x > end.x;
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: state.tool, page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, flipX } });
     }
   };
 
