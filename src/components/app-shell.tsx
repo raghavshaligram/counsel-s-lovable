@@ -203,17 +203,66 @@ function StampIcon({ className }: { className?: string }) {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
-  const currentPath = useRouterState({ select: (s) => s.location.pathname });
+function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
+  const mark = size === "sm" ? "h-7 w-7" : "h-7 w-7";
+  const text = size === "sm" ? "text-[17px]" : "text-[19px]";
+  return (
+    <Link to="/" className="flex items-center gap-2.5 min-w-0">
+      <span className={cn("grid place-items-center rounded-md bg-vault text-vault-foreground shrink-0", mark)}>
+        <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+      </span>
+      <span className={cn("font-display leading-none truncate", text)}>VaultPDF</span>
+    </Link>
+  );
+}
 
+function ShellInner({ children }: { children: ReactNode }) {
+  const { state, isMobile } = useSidebar();
+  const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (path: string) => currentPath === path;
+  const collapsed = state === "collapsed" || isMobile;
 
   return (
-    <SidebarProvider defaultOpen={false}>
-      <div className="flex min-h-svh w-full">
-        <Sidebar collapsible="icon" variant="sidebar">
+    <>
+      {/* Full-width top bar */}
+      <header className="sticky top-0 z-40 h-14 flex items-stretch border-b border-slate-800/70 bg-background/85 backdrop-blur-xl">
+        {/* Left slot — matches sidebar width, holds brand when collapsed */}
+        <div
+          className={cn(
+            "flex items-center gap-2 border-r border-slate-800/70 transition-[width] duration-200 ease-linear shrink-0",
+            collapsed
+              ? "w-[var(--sidebar-width-icon)] justify-center px-0"
+              : "w-[var(--sidebar-width)] px-3",
+          )}
+        >
+          <SidebarTrigger className="shrink-0" />
+          {collapsed && (
+            <Link to="/" aria-label="VaultPDF home" className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
+              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </Link>
+          )}
+        </div>
+
+        <div className="flex flex-1 items-center justify-between px-4 md:px-6 min-w-0">
+          <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground truncate">
+            100% in your browser
+          </span>
+          <Link
+            to="/pricing"
+            className="inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
+            activeProps={{ className: "bg-vault/25" }}
+          >
+            Lifetime deal
+          </Link>
+        </div>
+      </header>
+
+      <div className="flex flex-1 min-h-0">
+        <Sidebar collapsible="icon" variant="sidebar" className="border-r border-slate-800/70 top-14 h-[calc(100svh-3.5rem)]">
           <SidebarHeader>
-            <div className="h-2" />
+            <div className="flex items-center px-2 py-1 h-9 group-data-[collapsible=icon]:hidden">
+              <BrandMark />
+            </div>
           </SidebarHeader>
 
           <SidebarContent>
@@ -311,34 +360,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Sidebar>
 
         <SidebarInset>
-          {/* Compact top bar */}
-          <header className="sticky top-0 z-40 h-14 flex items-center justify-between px-4 md:px-6 border-b border-border bg-background/80 backdrop-blur-xl">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger />
-              <Link to="/" className="flex items-center gap-2.5">
-                <span className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
-                  <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-                </span>
-                <span className="font-display text-[17px] leading-none">VaultPDF</span>
-              </Link>
-              <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground ml-2">
-                100% in your browser
-              </span>
-            </div>
-
-            <Link
-              to="/pricing"
-              className="inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
-              activeProps={{ className: "bg-vault/25" }}
-            >
-              Lifetime deal
-            </Link>
-          </header>
-
-
           <main className="flex-1 min-h-0">{children}</main>
 
-          <footer className="border-t border-border px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
+          <footer className="border-t border-slate-800/70 px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
             <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
             <div className="flex gap-4">
               <Link to="/" className="hover:text-foreground">Home</Link>
@@ -348,6 +372,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           </footer>
         </SidebarInset>
       </div>
+    </>
+  );
+}
+
+export function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <SidebarProvider defaultOpen={false} className="flex-col">
+      <ShellInner>{children}</ShellInner>
     </SidebarProvider>
   );
 }
