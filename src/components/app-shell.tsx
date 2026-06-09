@@ -342,29 +342,40 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="font-display text-[19px] leading-none">VaultPDF</span>
           </Link>
 
-          {/* Desktop nav */}
+          {/* Desktop nav — 5 primary tools + All tools disclosure */}
           <NavigationMenu className="hidden md:flex flex-1 justify-center">
-            <NavigationMenuList>
-              {groups.map((group) => {
-                const hasActive = group.items.some((t) => isActive(t.to));
-                return (
-                  <NavigationMenuItem key={group.id}>
-                    <NavigationMenuTrigger
-                      className={cn(
-                        "h-9 bg-transparent text-sm",
-                        hasActive && "text-vault"
-                      )}
-                    >
-                      {group.label}
-                    </NavigationMenuTrigger>
-                    <NavigationMenuContent>
-                      <MegaPanel group={group} isActive={isActive} />
-                    </NavigationMenuContent>
-                  </NavigationMenuItem>
-                );
-              })}
+            <NavigationMenuList className="gap-1">
+              {primaryNav.map((p) => (
+                <NavigationMenuItem key={p.to}>
+                  <Link
+                    to={p.to}
+                    className={cn(
+                      "inline-flex h-9 items-center rounded-md px-3 text-sm transition-colors hover:bg-accent/60",
+                      isActive(p.to) && "text-vault"
+                    )}
+                  >
+                    {p.label}
+                  </Link>
+                </NavigationMenuItem>
+              ))}
+              <NavigationMenuItem>
+                <NavigationMenuTrigger
+                  className={cn(
+                    "h-9 bg-transparent text-sm",
+                    groups.some((g) => g.items.some((t) => isActive(t.to))) &&
+                      !primaryNav.some((p) => isActive(p.to)) &&
+                      "text-vault"
+                  )}
+                >
+                  All tools
+                </NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <AllToolsPanel isActive={isActive} />
+                </NavigationMenuContent>
+              </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
+
 
           <div className="flex items-center gap-3 shrink-0">
             <span className="hidden lg:inline text-xs uppercase tracking-[0.22em] text-muted-foreground">
