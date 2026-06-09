@@ -724,9 +724,11 @@ function RedactPage() {
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
                         Scans for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls back to
-                        on-device OCR for scanned pages.
+                        on-device OCR for scanned pages. You'll review findings before anything
+                        is redacted.
                       </p>
                     </div>
+                    <LabelHint defaultLabel={defaultLabel} onEdit={() => setActiveTab("label")} />
                     {detectConfirm && !detecting && (() => {
                       const [best, worst] = estimateDetectMinutes(totalPages);
                       return (
@@ -756,7 +758,7 @@ function RedactPage() {
                         ? "Scanning…"
                         : detectConfirm
                           ? `Yes, scan ${totalPages} pages`
-                          : detections.length > 0
+                          : pendingDetections || detections.length > 0
                             ? "Re-scan"
                             : "Scan this PDF"}
                     </Button>
@@ -766,8 +768,83 @@ function RedactPage() {
                         {detectStatus}
                       </div>
                     )}
-                    {detections.length > 0 && (
+
+                    {/* Pending preview — review before committing */}
+                    {pendingDetections && (
+                      <div className="rounded-md border border-vault/40 bg-vault/5 p-3 space-y-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <AlertTriangle className="h-3.5 w-3.5 text-vault" />
+                            Found {pendingDetections.length} potential item
+                            {pendingDetections.length === 1 ? "" : "s"} — review before redacting
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            {pendingUsedOcr
+                              ? "Some pages were scanned — OCR was used. "
+                              : ""}
+                            Toggle categories below to include or exclude them.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          {(Object.keys(CATEGORY_META) as PiiCategory[])
+                            .filter((c) => (pendingCatCounts.get(c) ?? 0) > 0)
+                            .map((c) => {
+                              const on = enabledCats.has(c);
+                              const count = pendingCatCounts.get(c) ?? 0;
+                              return (
+                                <button
+                                  key={c}
+                                  onClick={() => toggleCategory(c)}
+                                  className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition ${
+                                    on
+                                      ? "border-vault/50 bg-vault/10 text-foreground"
+                                      : "border-border bg-card/30 text-muted-foreground hover:bg-card"
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span
+                                      className={`inline-block h-2 w-2 rounded-full ${
+                                        on ? "bg-vault" : "bg-muted-foreground/40"
+                                      }`}
+                                    />
+                                    {CATEGORY_META[c].label}
+                                  </span>
+                                  <span className="tabular-nums">{count}</span>
+                                </button>
+                              );
+                            })}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Will be labeled as{" "}
+                          <span className="text-foreground font-medium">
+                            {defaultLabel || "No label"}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={confirmDetectRedact}
+                            className="flex-1 bg-vault text-vault-foreground hover:bg-vault/90"
+                            disabled={pendingSelectedCount === 0}
+                          >
+                            Redact {pendingSelectedCount}
+                          </Button>
+                          <Button
+                            onClick={discardPendingDetections}
+                            variant="ghost"
+                            className="flex-1"
+                          >
+                            Discard
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Committed detections — live toggle (post-confirm refinement) */}
+                    {!pendingDetections && detections.length > 0 && (
                       <div className="space-y-1.5">
+                        <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                          Active detections
+                        </div>
                         {(Object.keys(CATEGORY_META) as PiiCategory[])
                           .filter((c) => (catCounts.get(c) ?? 0) > 0)
                           .map((c) => {
