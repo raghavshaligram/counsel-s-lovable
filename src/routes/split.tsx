@@ -124,8 +124,9 @@ function SplitPage() {
         tag="Split"
         title="Split a PDF. Pages or ranges."
         sub="Extract pages 1–5 as one PDF. Or every page as its own file in a zip. Your file stays on this tab."
+        collapsed={!!file}
       />
-      <div className="mx-auto max-w-3xl px-5 md:px-8 py-10">
+      <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
         {!file ? (
           <FileDropzone onFile={onFile} label="Drop a PDF to split" sublabel="no upload, no page limit" />
         ) : (
@@ -213,7 +214,37 @@ function parseRanges(input: string, total: number): { groups: number[][]; error?
   return { groups };
 }
 
-export function ToolHeader({ tag, title, sub }: { tag: string; title: string; sub: string }) {
+export function ToolHeader({
+  tag,
+  title,
+  sub,
+  collapsed = false,
+}: {
+  tag: string;
+  title: React.ReactNode;
+  sub: React.ReactNode;
+  collapsed?: boolean;
+}) {
+  if (collapsed) {
+    return (
+      <div className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+        <div className="mx-auto max-w-6xl px-5 md:px-8 h-12 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-vault shrink-0">
+              {tag}
+            </span>
+            <span className="h-3 w-px bg-border shrink-0" />
+            <h1 className="font-display text-sm md:text-base text-foreground truncate">
+              {title}
+            </h1>
+          </div>
+          <div className="hidden sm:flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground shrink-0">
+            <Lock className="h-3 w-3 text-vault" /> In-browser
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="border-b border-border">
       <div className="mx-auto max-w-3xl px-5 md:px-8 py-10">

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { ToolHeader } from "@/routes/split";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -476,31 +477,20 @@ function RedactPage() {
 
   return (
     <AppShell>
-      <div className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
-          <div className="flex items-start justify-between gap-6 flex-wrap">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-vault mb-3">
-                Tool · Smart Redact
-              </div>
-              <h1 className="font-display text-4xl md:text-5xl leading-tight">
-                Permanently remove anything sensitive.
-              </h1>
-              <p className="mt-3 text-muted-foreground max-w-2xl">
-                Auto-detect PII, batch-redact every instance of a keyword, and stamp legal
-                exemption codes on each box. On export every page is rasterised and re-baked —
-                the original text is{" "}
-                <span className="text-foreground">destroyed in the file bytes</span>, not just
-                covered.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground rounded-md border border-border bg-card/50 px-3 py-2">
-              <Lock className="h-3.5 w-3.5 text-vault" />
-              Processed in your browser
-            </div>
-          </div>
-        </div>
-      </div>
+      <ToolHeader
+        tag="Smart Redact"
+        title="Permanently remove anything sensitive."
+        sub={
+          <>
+            Auto-detect PII, batch-redact every instance of a keyword, and stamp legal
+            exemption codes on each box. On export every page is rasterised and re-baked —
+            the original text is{" "}
+            <span className="text-foreground">destroyed in the file bytes</span>, not just
+            covered.
+          </>
+        }
+        collapsed={!!file}
+      />
 
       <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
         {!file ? (

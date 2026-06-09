@@ -124,8 +124,9 @@ function WatermarkPage() {
         tag="Watermark"
         title="Stamp every page. Diagonally."
         sub="DRAFT, CONFIDENTIAL, or any text. Adjustable size, opacity, and position. Your file never leaves the tab."
+        collapsed={!!file}
       />
-      <div className="mx-auto max-w-3xl px-5 md:px-8 py-10">
+      <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
         {!file ? (
           <FileDropzone onFile={onFile} label="Drop a PDF to watermark" sublabel="no upload" />
         ) : (

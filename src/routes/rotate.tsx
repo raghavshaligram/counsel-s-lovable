@@ -95,8 +95,9 @@ function RotatePage() {
         tag="Rotate"
         title="Rotate pages. All or some."
         sub="Fix sideways scans or upside-down pages in seconds. Choose all, odd, even, or specific page numbers."
+        collapsed={!!file}
       />
-      <div className="mx-auto max-w-3xl px-5 md:px-8 py-10">
+      <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
         {!file ? (
           <FileDropzone onFile={onFile} label="Drop a PDF to rotate" sublabel="no upload" />
         ) : (
