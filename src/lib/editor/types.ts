@@ -48,6 +48,25 @@ export interface ExportSettings {
 
 export type RGB = { r: number; g: number; b: number };
 
+// Quad covering a single line of text (PDF points, top-left origin).
+export interface Quad { x: number; y: number; w: number; h: number }
+
+// Threaded comment reply.
+export interface Reply {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: number;
+}
+
+// Source metadata captured from pdf.js text item — used by the destructive
+// rewriter to find the matching Tj operand in the page's content stream.
+export interface TextSource {
+  originalString: string;
+  transform?: number[]; // a,b,c,d,e,f (pdf.js text item transform)
+  fontName?: string;
+}
+
 export interface BaseAnno {
   id: string;
   page: number; // index into the working page list
@@ -58,6 +77,12 @@ export interface BaseAnno {
   h: number;
   color: RGB;
   opacity: number;
+  // optional review/comment metadata — populated by the Comments panel
+  contents?: string;
+  author?: string;
+  createdAt?: number;
+  replies?: Reply[];
+  resolved?: boolean;
 }
 
 export interface TextAnno extends BaseAnno {
@@ -68,16 +93,20 @@ export interface TextAnno extends BaseAnno {
 
 export interface HighlightAnno extends BaseAnno {
   kind: "highlight";
+  // When present, draw one rectangle per quad instead of the bbox.
+  quads?: Quad[];
 }
 
 export interface UnderlineAnno extends BaseAnno {
   kind: "underline";
   stroke: number;
+  quads?: Quad[];
 }
 
 export interface StrikethroughAnno extends BaseAnno {
   kind: "strikethrough";
   stroke: number;
+  quads?: Quad[];
 }
 
 export interface LineAnno extends BaseAnno {
@@ -126,6 +155,9 @@ export interface ImageAnno extends BaseAnno {
 }
 
 // "Edit existing text" — covers original text bbox with whiteout, redraws.
+// When `source` is present, the export pipeline will additionally try to
+// rewrite the underlying content-stream Tj operator so search/copy reflects
+// the new text. Falls back silently to whiteout-only on unsafe pages.
 export type FontFamily = "sans" | "serif" | "mono";
 export interface TextEditAnno extends BaseAnno {
   kind: "text-edit";
@@ -137,9 +169,16 @@ export interface TextEditAnno extends BaseAnno {
   bold?: boolean;
   italic?: boolean;
   // top offset (in PDF points) inside the bbox where the text should start.
-  // Lets us oversize the whiteout box for full glyph coverage while keeping
-  // the replacement text aligned to the original baseline.
   textOffsetY?: number;
+  source?: TextSource;
+}
+
+// Destructive redaction: draws a solid fill over the bbox AND attempts to
+// erase overlapping text from the content stream on export.
+export interface RedactAnno extends BaseAnno {
+  kind: "redact";
+  // captured text strings that fall inside this redaction box (best-effort)
+  sources?: TextSource[];
 }
 
 export type Anno =
@@ -154,7 +193,8 @@ export type Anno =
   | FreehandAnno
   | NoteAnno
   | ImageAnno
-  | TextEditAnno;
+  | TextEditAnno
+  | RedactAnno;
 
 export interface PageOp {
   // index into the original source PDF
