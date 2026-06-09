@@ -1,14 +1,14 @@
 // PDF Editor — single-page route holding the working document, toolbar,
 // page thumbnails sidebar, and the active page canvas with annotations.
 
-import { createFileRoute, useRouterState, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PDFDocument } from "pdf-lib";
 import {
   MousePointer2, Type, Highlighter, Square, Circle, Pen, StickyNote,
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
   ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
-  Layers, Edit3,
+  Underline as UnderlineIcon, Strikethrough, Minus, ArrowRight,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { Anno, EditorDoc, PageOp, RGB, Tool } from "@/lib/editor/types";
-import { AnnotationWorkspace } from "./annotate";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -211,24 +210,10 @@ function EditorRoute() {
   );
 }
 
-type EditorMode = "edit" | "annotate";
-
 function Editor() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loading, setLoading] = useState(false);
-  const routerHash = useRouterState({ select: (s) => s.location.hash });
-  const navigate = useNavigate();
-  const [mode, setMode] = useState<EditorMode>(() => (routerHash === "annotate" ? "annotate" : "edit"));
 
-  // sync mode → url hash so refresh/back works
-  useEffect(() => {
-    if (mode === "annotate" && routerHash !== "annotate") {
-      navigate({ to: "/editor", hash: "annotate", replace: true });
-    } else if (mode === "edit" && routerHash === "annotate") {
-      navigate({ to: "/editor", hash: "", replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
 
 
   // keyboard shortcuts
@@ -245,7 +230,7 @@ function Editor() {
         e.preventDefault();
         dispatch({ type: "DELETE_ANNO", id: state.selectedAnnoId });
       }
-      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", r: "rect", o: "ellipse", p: "freehand", n: "note", i: "image", e: "edit-text" };
+      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", u: "underline", s: "strikethrough", r: "rect", o: "ellipse", l: "line", a: "arrow", p: "freehand", n: "note", i: "image", e: "edit-text" };
       if (map[e.key.toLowerCase()]) dispatch({ type: "SET_TOOL", t: map[e.key.toLowerCase()] });
     };
     window.addEventListener("keydown", onKey);
@@ -307,76 +292,39 @@ function Editor() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
-      <ModeTabs mode={mode} setMode={setMode} fileName={state.doc.fileName} />
-      {mode === "annotate" ? (
-        <div className="flex-1 min-h-0">
-          <AnnotationWorkspace fileName={state.doc.fileName} bytes={state.doc.srcBytes} />
-        </div>
-      ) : (
-        <>
-          <Toolbar state={state} dispatch={dispatch} onExport={onExport} />
-          <div className="flex flex-1 min-h-0">
-            <PagesSidebar state={state} dispatch={dispatch} />
-            <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
-              <div className="mx-auto py-6 px-4 flex flex-col items-center gap-3">
-                <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Page {state.current + 1} of {state.doc.pages.length}
-                  {currentPage.blank ? " · Blank" : ""}
-                  {currentPage.rotation ? ` · Rotated ${currentPage.rotation}°` : ""}
-                </div>
-                <PageCanvas
-                  key={`${state.current}-${currentPage.srcPage}-${currentPage.rotation}-${currentPage.blank ? 1 : 0}`}
-                  op={currentPage}
-                  srcBytes={state.doc.srcBytes}
-                  annos={annosForPage}
-                  state={state}
-                  dispatch={dispatch}
-                />
-                <div className="flex items-center gap-2 pt-2">
-                  <Button size="sm" variant="outline" disabled={state.current === 0} onClick={() => dispatch({ type: "SET_PAGE", n: state.current - 1 })}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" disabled={state.current >= state.doc.pages.length - 1} onClick={() => dispatch({ type: "SET_PAGE", n: state.current + 1 })}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+      <Toolbar state={state} dispatch={dispatch} onExport={onExport} />
+      <div className="flex flex-1 min-h-0">
+        <PagesSidebar state={state} dispatch={dispatch} />
+        <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
+          <div className="mx-auto py-6 px-4 flex flex-col items-center gap-3">
+            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Page {state.current + 1} of {state.doc.pages.length}
+              {currentPage.blank ? " · Blank" : ""}
+              {currentPage.rotation ? ` · Rotated ${currentPage.rotation}°` : ""}
+            </div>
+            <PageCanvas
+              key={`${state.current}-${currentPage.srcPage}-${currentPage.rotation}-${currentPage.blank ? 1 : 0}`}
+              op={currentPage}
+              srcBytes={state.doc.srcBytes}
+              annos={annosForPage}
+              state={state}
+              dispatch={dispatch}
+            />
+            <div className="flex items-center gap-2 pt-2">
+              <Button size="sm" variant="outline" disabled={state.current === 0} onClick={() => dispatch({ type: "SET_PAGE", n: state.current - 1 })}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button size="sm" variant="outline" disabled={state.current >= state.doc.pages.length - 1} onClick={() => dispatch({ type: "SET_PAGE", n: state.current + 1 })}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function ModeTabs({ mode, setMode, fileName }: { mode: EditorMode; setMode: (m: EditorMode) => void; fileName: string }) {
-  return (
-    <div className="flex items-center gap-1 border-b bg-card/60 px-3 py-1.5">
-      <span className="text-xs text-muted-foreground mr-2 truncate max-w-[200px]" title={fileName}>{fileName}</span>
-      <button
-        onClick={() => setMode("edit")}
-        className={cn(
-          "inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors",
-          mode === "edit" ? "bg-vault/15 text-vault font-medium" : "text-muted-foreground hover:bg-accent",
-        )}
-      >
-        <Edit3 className="h-3.5 w-3.5" /> Edit &amp; Pages
-      </button>
-      <button
-        onClick={() => setMode("annotate")}
-        className={cn(
-          "inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors",
-          mode === "annotate" ? "bg-vault/15 text-vault font-medium" : "text-muted-foreground hover:bg-accent",
-        )}
-      >
-        <Layers className="h-3.5 w-3.5" /> Annotate
-      </button>
-      <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-        {mode === "annotate" ? "Native PDF annotations" : "Pages · text · images · shapes"}
-      </span>
-    </div>
-  );
-}
 
 
 // ---------- toolbar ----------
@@ -396,14 +344,18 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
   const effOpacity = (selectedAnno && "opacity" in selectedAnno ? (selectedAnno as { opacity: number }).opacity : state.opacity);
   const effFont = selectedAnno && "fontSize" in selectedAnno ? (selectedAnno as { fontSize: number }).fontSize : state.fontSize;
   const effStroke = selectedAnno && "stroke" in selectedAnno ? (selectedAnno as { stroke: number }).stroke : state.stroke;
-  const supportsStroke = selectedAnno ? ["rect", "ellipse", "freehand"].includes(selectedAnno.kind) : (state.tool === "rect" || state.tool === "ellipse" || state.tool === "freehand");
+  const supportsStroke = selectedAnno ? ["rect", "ellipse", "freehand", "underline", "strikethrough", "line", "arrow"].includes(selectedAnno.kind) : (["rect", "ellipse", "freehand", "underline", "strikethrough", "line", "arrow"].includes(state.tool));
   const supportsFont = selectedAnno ? ["text", "note", "text-edit"].includes(selectedAnno.kind) : (state.tool === "text" || state.tool === "edit-text" || state.tool === "note");
   const tools: { id: Tool; icon: React.FC<{ className?: string }>; label: string }[] = [
     { id: "select", icon: MousePointer2, label: "Select" },
     { id: "text", icon: Type, label: "Text" },
     { id: "highlight", icon: Highlighter, label: "Highlight" },
+    { id: "underline", icon: UnderlineIcon, label: "Underline" },
+    { id: "strikethrough", icon: Strikethrough, label: "Strikethrough" },
     { id: "rect", icon: Square, label: "Rectangle" },
     { id: "ellipse", icon: Circle, label: "Ellipse" },
+    { id: "line", icon: Minus, label: "Line" },
+    { id: "arrow", icon: ArrowRight, label: "Arrow" },
     { id: "freehand", icon: Pen, label: "Draw" },
     { id: "note", icon: StickyNote, label: "Note" },
     { id: "image", icon: ImageIcon, label: "Image" },
@@ -822,10 +774,20 @@ function PageCanvas({
     if (w < 3 || h < 3) return;
     if (state.tool === "highlight") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "highlight", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: Math.min(state.opacity, 0.5) } });
+    } else if (state.tool === "underline") {
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "underline", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
+    } else if (state.tool === "strikethrough") {
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "strikethrough", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
     } else if (state.tool === "rect") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, fill: state.fillShape } });
     } else if (state.tool === "ellipse") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "ellipse", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, fill: state.fillShape } });
+    } else if (state.tool === "line" || state.tool === "arrow") {
+      // Preserve drag direction so the arrowhead points where the user dragged
+      const start = toPdf(x0, y0);
+      const end = toPdf(x, y);
+      const flipX = start.x > end.x;
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: state.tool, page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, flipX } });
     }
   };
 
@@ -945,6 +907,40 @@ function PageCanvas({
       case "highlight":
         inner = <div style={{ width: "100%", height: "100%", background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />;
         break;
+      case "underline":
+        inner = <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity) }} />;
+        break;
+      case "strikethrough":
+        inner = <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity), transform: "translateY(-50%)" }} />;
+        break;
+      case "line":
+      case "arrow": {
+        const sw = a.w, sh = a.h;
+        const x1 = a.flipX ? sw : 0;
+        const y1 = 0;
+        const x2 = a.flipX ? 0 : sw;
+        const y2 = sh;
+        const stroke = rgbCss(a.color, a.opacity);
+        const ang = Math.atan2(y2 - y1, x2 - x1);
+        const headLen = 10 + a.stroke * 1.5;
+        const sp = Math.PI / 7;
+        const hx1 = x2 - headLen * Math.cos(ang - sp);
+        const hy1 = y2 - headLen * Math.sin(ang - sp);
+        const hx2 = x2 - headLen * Math.cos(ang + sp);
+        const hy2 = y2 - headLen * Math.sin(ang + sp);
+        inner = (
+          <svg width="100%" height="100%" viewBox={`0 0 ${sw} ${sh}`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={a.stroke} strokeLinecap="round" />
+            {a.kind === "arrow" && (
+              <>
+                <line x1={x2} y1={y2} x2={hx1} y2={hy1} stroke={stroke} strokeWidth={a.stroke} strokeLinecap="round" />
+                <line x1={x2} y1={y2} x2={hx2} y2={hy2} stroke={stroke} strokeWidth={a.stroke} strokeLinecap="round" />
+              </>
+            )}
+          </svg>
+        );
+        break;
+      }
       case "rect":
         inner = <div style={{ width: "100%", height: "100%", border: `${a.stroke * displayScale}px solid ${rgbCss(a.color, a.opacity)}`, background: a.fill ? rgbCss(a.color, a.opacity) : "transparent" }} />;
         break;
@@ -1078,8 +1074,11 @@ function PageCanvas({
   };
 
   const cursorByTool: Record<Tool, string> = {
-    select: "default", text: "text", highlight: "crosshair", rect: "crosshair",
-    ellipse: "crosshair", freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
+    select: "default", text: "text", highlight: "crosshair",
+    underline: "crosshair", strikethrough: "crosshair",
+    rect: "crosshair", ellipse: "crosshair",
+    line: "crosshair", arrow: "crosshair",
+    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
   };
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1175,8 +1174,17 @@ function DrawingPreview({ drawing, state }: { drawing: DrawingState; state: Stat
   const w = Math.abs(drawing.x - drawing.x0), h = Math.abs(drawing.y - drawing.y0);
   const style: React.CSSProperties = { position: "absolute", left: x, top: y, width: w, height: h, pointerEvents: "none" };
   if (state.tool === "highlight") return <div style={{ ...style, background: rgbCss(state.color, Math.min(state.opacity, 0.5)), mixBlendMode: "multiply" }} />;
+  if (state.tool === "underline") return <div style={{ ...style, borderBottom: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}` }} />;
+  if (state.tool === "strikethrough") return <div style={{ ...style, borderTop: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, marginTop: h / 2 }} />;
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
+  if (state.tool === "line" || state.tool === "arrow") {
+    return (
+      <svg style={{ position: "absolute", inset: 0, pointerEvents: "none" }} width="100%" height="100%">
+        <line x1={drawing.x0} y1={drawing.y0} x2={drawing.x} y2={drawing.y} stroke={rgbCss(state.color, state.opacity)} strokeWidth={state.stroke} strokeLinecap="round" />
+      </svg>
+    );
+  }
   return null;
 }
 

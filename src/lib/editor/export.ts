@@ -101,6 +101,52 @@ function drawAnno(
         opacity: a.opacity,
       });
       break;
+    case "underline":
+      page.drawRectangle({
+        x: a.x,
+        y: yFlip(a.y, a.h),
+        width: a.w,
+        height: Math.max(0.5, a.stroke),
+        color: col(a.color),
+        opacity: a.opacity,
+      });
+      break;
+    case "strikethrough":
+      page.drawRectangle({
+        x: a.x,
+        y: yFlip(a.y, a.h) + a.h / 2 - Math.max(0.5, a.stroke) / 2,
+        width: a.w,
+        height: Math.max(0.5, a.stroke),
+        color: col(a.color),
+        opacity: a.opacity,
+      });
+      break;
+    case "line":
+    case "arrow": {
+      const sx = a.flipX ? a.x + a.w : a.x;
+      const ex = a.flipX ? a.x : a.x + a.w;
+      const sy = ph - a.y;
+      const ey = ph - (a.y + a.h);
+      page.drawLine({
+        start: { x: sx, y: sy },
+        end: { x: ex, y: ey },
+        color: col(a.color),
+        thickness: a.stroke,
+        opacity: a.opacity,
+      });
+      if (a.kind === "arrow") {
+        const ang = Math.atan2(ey - sy, ex - sx);
+        const headLen = 10 + a.stroke * 1.5;
+        const sp = Math.PI / 7;
+        const hx1 = ex - headLen * Math.cos(ang - sp);
+        const hy1 = ey - headLen * Math.sin(ang - sp);
+        const hx2 = ex - headLen * Math.cos(ang + sp);
+        const hy2 = ey - headLen * Math.sin(ang + sp);
+        page.drawLine({ start: { x: ex, y: ey }, end: { x: hx1, y: hy1 }, color: col(a.color), thickness: a.stroke, opacity: a.opacity });
+        page.drawLine({ start: { x: ex, y: ey }, end: { x: hx2, y: hy2 }, color: col(a.color), thickness: a.stroke, opacity: a.opacity });
+      }
+      break;
+    }
     case "rect":
       page.drawRectangle({
         x: a.x,
