@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatermarkRouteImport } from './routes/watermark'
+import { Route as ToWordRouteImport } from './routes/to-word'
+import { Route as ToImagesRouteImport } from './routes/to-images'
 import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
 import { Route as RotateRouteImport } from './routes/rotate'
@@ -27,6 +29,16 @@ import { Route as IndexRouteImport } from './routes/index'
 const WatermarkRoute = WatermarkRouteImport.update({
   id: '/watermark',
   path: '/watermark',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ToWordRoute = ToWordRouteImport.update({
+  id: '/to-word',
+  path: '/to-word',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ToImagesRoute = ToImagesRouteImport.update({
+  id: '/to-images',
+  path: '/to-images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SplitRoute = SplitRouteImport.update({
@@ -109,6 +121,8 @@ export interface FileRoutesByFullPath {
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
+  '/to-images': typeof ToImagesRoute
+  '/to-word': typeof ToWordRoute
   '/watermark': typeof WatermarkRoute
 }
 export interface FileRoutesByTo {
@@ -125,6 +139,8 @@ export interface FileRoutesByTo {
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
+  '/to-images': typeof ToImagesRoute
+  '/to-word': typeof ToWordRoute
   '/watermark': typeof WatermarkRoute
 }
 export interface FileRoutesById {
@@ -142,6 +158,8 @@ export interface FileRoutesById {
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
+  '/to-images': typeof ToImagesRoute
+  '/to-word': typeof ToWordRoute
   '/watermark': typeof WatermarkRoute
 }
 export interface FileRouteTypes {
@@ -160,6 +178,8 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/sign'
     | '/split'
+    | '/to-images'
+    | '/to-word'
     | '/watermark'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -176,6 +196,8 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/sign'
     | '/split'
+    | '/to-images'
+    | '/to-word'
     | '/watermark'
   id:
     | '__root__'
@@ -192,6 +214,8 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/sign'
     | '/split'
+    | '/to-images'
+    | '/to-word'
     | '/watermark'
   fileRoutesById: FileRoutesById
 }
@@ -209,6 +233,8 @@ export interface RootRouteChildren {
   RotateRoute: typeof RotateRoute
   SignRoute: typeof SignRoute
   SplitRoute: typeof SplitRoute
+  ToImagesRoute: typeof ToImagesRoute
+  ToWordRoute: typeof ToWordRoute
   WatermarkRoute: typeof WatermarkRoute
 }
 
@@ -219,6 +245,20 @@ declare module '@tanstack/react-router' {
       path: '/watermark'
       fullPath: '/watermark'
       preLoaderRoute: typeof WatermarkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/to-word': {
+      id: '/to-word'
+      path: '/to-word'
+      fullPath: '/to-word'
+      preLoaderRoute: typeof ToWordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/to-images': {
+      id: '/to-images'
+      path: '/to-images'
+      fullPath: '/to-images'
+      preLoaderRoute: typeof ToImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/split': {
@@ -329,18 +369,10 @@ const rootRouteChildren: RootRouteChildren = {
   RotateRoute: RotateRoute,
   SignRoute: SignRoute,
   SplitRoute: SplitRoute,
+  ToImagesRoute: ToImagesRoute,
+  ToWordRoute: ToWordRoute,
   WatermarkRoute: WatermarkRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
