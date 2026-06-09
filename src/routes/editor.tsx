@@ -211,9 +211,25 @@ function EditorRoute() {
   );
 }
 
+type EditorMode = "edit" | "annotate";
+
 function Editor() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loading, setLoading] = useState(false);
+  const routerHash = useRouterState({ select: (s) => s.location.hash });
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<EditorMode>(() => (routerHash === "annotate" ? "annotate" : "edit"));
+
+  // sync mode → url hash so refresh/back works
+  useEffect(() => {
+    if (mode === "annotate" && routerHash !== "annotate") {
+      navigate({ to: "/editor", hash: "annotate", replace: true });
+    } else if (mode === "edit" && routerHash === "annotate") {
+      navigate({ to: "/editor", hash: "", replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
 
   // keyboard shortcuts
   useEffect(() => {
