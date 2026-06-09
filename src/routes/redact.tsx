@@ -170,11 +170,22 @@ function RedactPage() {
   const [kwMatchCase, setKwMatchCase] = useState(false);
   const [kwWholeWord, setKwWholeWord] = useState(false);
   const [kwSearching, setKwSearching] = useState(false);
+  // Two-step: hold matches until the user confirms.
+  const [pendingMatches, setPendingMatches] = useState<{
+    query: string;
+    matchCase: boolean;
+    wholeWord: boolean;
+    matches: KeywordMatch[];
+  } | null>(null);
+
+  // Two-step auto-detect: scan results are staged here until the user commits.
+  const [pendingDetections, setPendingDetections] = useState<Detection[] | null>(null);
+  const [pendingUsedOcr, setPendingUsedOcr] = useState(false);
 
   // Export settings (persisted)
   const [stripMetadata, setStripMetadata] = useState(true);
   const [defaultLabel, setDefaultLabel] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"detect" | "find" | "label">("detect");
+  const [activeTab, setActiveTab] = useState<"label" | "detect" | "find">("label");
   useEffect(() => {
     try {
       const s = localStorage.getItem("vault.redact.stripMetadata");
