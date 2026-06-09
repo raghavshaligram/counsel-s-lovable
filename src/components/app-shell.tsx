@@ -67,6 +67,16 @@ const groups: Group[] = [
     ],
   },
   {
+    id: "legal",
+    label: "Legal",
+    tagline: "Courtroom-grade tooling for paralegals and counsel.",
+    items: [
+      { to: "/bates", label: "Bates Numbering", icon: HashIcon, desc: "Stamp sequential discovery IDs across every page" },
+      { to: "/redact", label: "Verifiable Redaction", icon: ShieldCheckIcon, desc: "Redact + auto-generate Certificate of Redaction" },
+      { to: "/privilege-scan", label: "Privilege Scan", icon: ScanSearchIcon, desc: "Catch attorney–client language before production" },
+    ],
+  },
+  {
     id: "ai",
     label: "AI",
     tagline: "Smart features that still respect your privacy.",
@@ -75,6 +85,31 @@ const groups: Group[] = [
     ],
   },
 ];
+
+function HashIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <line x1="4" y1="9" x2="20" y2="9" />
+      <line x1="4" y1="15" x2="20" y2="15" />
+      <line x1="10" y1="3" x2="8" y2="21" />
+      <line x1="16" y1="3" x2="14" y2="21" />
+    </svg>
+  );
+}
+
+function ScanSearchIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="m16 16-2-2" />
+    </svg>
+  );
+}
+
 
 function WordToPdfIcon({ className }: { className?: string }) {
   return (
