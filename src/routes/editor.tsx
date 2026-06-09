@@ -309,7 +309,13 @@ function Editor() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
-      <Toolbar state={state} dispatch={dispatch} onExport={onExport} />
+      <Toolbar
+        state={state}
+        dispatch={dispatch}
+        onExport={onExport}
+        commentsOpen={commentsOpen}
+        onToggleComments={() => setCommentsOpen((v) => !v)}
+      />
       <div className="flex flex-1 min-h-0">
         <PagesSidebar state={state} dispatch={dispatch} />
         <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
@@ -337,6 +343,19 @@ function Editor() {
             </div>
           </div>
         </div>
+        {commentsOpen && (
+          <CommentsPanel
+            annos={state.doc.annotations}
+            author={author}
+            onAuthorChange={setAuthor}
+            onClose={() => setCommentsOpen(false)}
+            onJump={(a) => {
+              if (a.page !== state.current) dispatch({ type: "SET_PAGE", n: a.page });
+              dispatch({ type: "SELECT_ANNO", id: a.id });
+            }}
+            onPatch={(id, patch) => dispatch({ type: "UPDATE_ANNO", id, patch: patch as Partial<Anno> })}
+          />
+        )}
       </div>
     </div>
   );
