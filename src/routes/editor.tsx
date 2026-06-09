@@ -9,6 +9,7 @@ import {
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
   ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
   Underline as UnderlineIcon, Strikethrough, Minus, ArrowRight,
+  EyeOff, Droplets, Lock, CalendarDays,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -20,7 +21,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
-import type { Anno, EditorDoc, PageOp, RGB, Tool } from "@/lib/editor/types";
+import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, WatermarkSettings } from "@/lib/editor/types";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -52,6 +53,8 @@ type State = {
   fontSize: number;
   opacity: number;
   pendingImage: { dataUrl: string; mime: "image/png" | "image/jpeg"; w: number; h: number } | null;
+  watermark: WatermarkSettings | null;
+  protect: ProtectSettings | null;
   // history
   past: EditorDoc[];
   future: EditorDoc[];
@@ -75,6 +78,8 @@ type Action =
   | { type: "INSERT_BLANK"; after: number; width: number; height: number }
   | { type: "ROTATE_PAGE"; n: number }
   | { type: "SET_PENDING_IMAGE"; img: State["pendingImage"] }
+  | { type: "SET_WATERMARK"; w: WatermarkSettings | null }
+  | { type: "SET_PROTECT"; p: ProtectSettings | null }
   | { type: "UNDO" }
   | { type: "REDO" };
 
@@ -98,6 +103,8 @@ const initialState: State = {
   fontSize: 14,
   opacity: 1,
   pendingImage: null,
+  watermark: null,
+  protect: null,
   past: [],
   future: [],
 };
@@ -117,6 +124,8 @@ function reducer(s: State, a: Action): State {
     case "SET_FILL": return { ...s, fillShape: a.v };
     case "SELECT_ANNO": return { ...s, selectedAnnoId: a.id };
     case "SET_PENDING_IMAGE": return { ...s, pendingImage: a.img };
+    case "SET_WATERMARK": return { ...s, watermark: a.w };
+    case "SET_PROTECT": return { ...s, protect: a.p };
     case "ADD_ANNO": {
       if (!s.doc) return s;
       return commit(s, { ...s.doc, annotations: [...s.doc.annotations, a.a] });
@@ -230,7 +239,7 @@ function Editor() {
         e.preventDefault();
         dispatch({ type: "DELETE_ANNO", id: state.selectedAnnoId });
       }
-      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", u: "underline", s: "strikethrough", r: "rect", o: "ellipse", l: "line", a: "arrow", p: "freehand", n: "note", i: "image", e: "edit-text" };
+      const map: Record<string, Tool> = { v: "select", t: "text", h: "highlight", u: "underline", s: "strikethrough", r: "rect", o: "ellipse", l: "line", a: "arrow", p: "freehand", n: "note", i: "image", e: "edit-text", d: "redact" };
       if (map[e.key.toLowerCase()]) dispatch({ type: "SET_TOOL", t: map[e.key.toLowerCase()] });
     };
     window.addEventListener("keydown", onKey);
@@ -261,7 +270,11 @@ function Editor() {
     if (!state.doc) return;
     try {
       toast.loading("Building PDF…", { id: "exp" });
-      const bytes = await exportEditedPdf(state.doc);
+      const settings: ExportSettings = {
+        watermark: state.watermark ?? undefined,
+        protect: state.protect ?? undefined,
+      };
+      const bytes = await exportEditedPdf(state.doc, settings);
       toast.success("Done", { id: "exp" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -273,7 +286,7 @@ function Editor() {
     } catch (err) {
       toast.error("Export failed", { id: "exp", description: (err as Error).message });
     }
-  }, [state.doc]);
+  }, [state.doc, state.watermark, state.protect]);
 
   if (!state.doc) {
     return (
@@ -332,11 +345,28 @@ function Editor() {
 function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
   const [signOpen, setSignOpen] = useState(false);
   const [stampOpen, setStampOpen] = useState(false);
+  const [watermarkOpen, setWatermarkOpen] = useState(false);
+  const [protectOpen, setProtectOpen] = useState(false);
   const setPendingImageFromCanvas = (canvas: HTMLCanvasElement) => {
     const dataUrl = canvas.toDataURL("image/png");
     dispatch({ type: "SET_PENDING_IMAGE", img: { dataUrl, mime: "image/png", w: canvas.width, h: canvas.height } });
     dispatch({ type: "SET_TOOL", t: "image" });
     toast.message("Click on the page to place it");
+  };
+  const addDateStamp = () => {
+    if (!state.doc) return;
+    const txt = new Date().toLocaleDateString();
+    const page = state.doc.pages[state.current];
+    dispatch({ type: "ADD_ANNO", a: {
+      id: Math.random().toString(36).slice(2, 10),
+      kind: "text", page: state.current,
+      x: page.width / 2 - 60, y: page.height / 2 - 10,
+      w: 160, h: 24,
+      color: { r: 0.05, g: 0.07, b: 0.16 }, opacity: 1,
+      text: txt, fontSize: 14,
+    } });
+    dispatch({ type: "SET_TOOL", t: "select" });
+    toast.success("Date placed — drag to position");
   };
   const selectedAnno = state.selectedAnnoId && state.doc
     ? state.doc.annotations.find((a) => a.id === state.selectedAnnoId) ?? null
@@ -360,6 +390,7 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
     { id: "note", icon: StickyNote, label: "Note" },
     { id: "image", icon: ImageIcon, label: "Image" },
     { id: "edit-text", icon: PencilLine, label: "Edit text" },
+    { id: "redact", icon: EyeOff, label: "Redact (D)" },
   ];
 
   const onPickImage = async (file: File) => {
@@ -416,6 +447,30 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
           className="grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent text-muted-foreground"
         >
           <BadgeCheck className="h-4 w-4" />
+        </button>
+        <button
+          onClick={addDateStamp}
+          title="Insert today's date"
+          className="grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent text-muted-foreground"
+        >
+          <CalendarDays className="h-4 w-4" />
+        </button>
+        <div className="mx-1 h-6 w-px bg-border" />
+        <button
+          onClick={() => setWatermarkOpen(true)}
+          title={state.watermark ? `Watermark: "${state.watermark.text}"` : "Watermark"}
+          className={cn("grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent",
+            state.watermark ? "text-vault" : "text-muted-foreground")}
+        >
+          <Droplets className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setProtectOpen(true)}
+          title={state.protect ? "Password protection ON" : "Password protect"}
+          className={cn("grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-accent",
+            state.protect ? "text-vault" : "text-muted-foreground")}
+        >
+          <Lock className="h-4 w-4" />
         </button>
       </div>
 
@@ -485,6 +540,18 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
 
       <SignatureDialog open={signOpen} onOpenChange={setSignOpen} onSave={setPendingImageFromCanvas} />
       <StampDialog open={stampOpen} onOpenChange={setStampOpen} onSave={setPendingImageFromCanvas} />
+      <WatermarkDialog
+        open={watermarkOpen}
+        onOpenChange={setWatermarkOpen}
+        value={state.watermark}
+        onSave={(w) => dispatch({ type: "SET_WATERMARK", w })}
+      />
+      <ProtectDialog
+        open={protectOpen}
+        onOpenChange={setProtectOpen}
+        value={state.protect}
+        onSave={(p) => dispatch({ type: "SET_PROTECT", p })}
+      />
     </div>
   );
 }
@@ -788,6 +855,8 @@ function PageCanvas({
       const end = toPdf(x, y);
       const flipX = start.x > end.x;
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: state.tool, page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, flipX } });
+    } else if (state.tool === "redact") {
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, stroke: 0, fill: true } });
     }
   };
 
@@ -1078,7 +1147,7 @@ function PageCanvas({
     underline: "crosshair", strikethrough: "crosshair",
     rect: "crosshair", ellipse: "crosshair",
     line: "crosshair", arrow: "crosshair",
-    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
+    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer", redact: "crosshair",
   };
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1178,6 +1247,7 @@ function DrawingPreview({ drawing, state }: { drawing: DrawingState; state: Stat
   if (state.tool === "strikethrough") return <div style={{ ...style, borderTop: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, marginTop: h / 2 }} />;
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
+  if (state.tool === "redact") return <div style={{ ...style, background: "#000" }} />;
   if (state.tool === "line" || state.tool === "arrow") {
     return (
       <svg style={{ position: "absolute", inset: 0, pointerEvents: "none" }} width="100%" height="100%">
@@ -1421,6 +1491,178 @@ function StampDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={save} className="bg-vault text-vault-foreground hover:opacity-90">Use stamp</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------- Watermark dialog ----------
+
+const WM_POSITIONS: WatermarkSettings["position"][] = ["diagonal", "center", "top", "bottom"];
+
+function WatermarkDialog({
+  open, onOpenChange, value, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  value: WatermarkSettings | null;
+  onSave: (w: WatermarkSettings | null) => void;
+}) {
+  const [text, setText] = useState(value?.text ?? "CONFIDENTIAL");
+  const [size, setSize] = useState(value?.size ?? 72);
+  const [opacity, setOpacity] = useState(Math.round((value?.opacity ?? 0.2) * 100));
+  const [position, setPosition] = useState<WatermarkSettings["position"]>(value?.position ?? "diagonal");
+  const [hex, setHex] = useState("#808080");
+  useEffect(() => {
+    if (!open) return;
+    setText(value?.text ?? "CONFIDENTIAL");
+    setSize(value?.size ?? 72);
+    setOpacity(Math.round((value?.opacity ?? 0.2) * 100));
+    setPosition(value?.position ?? "diagonal");
+  }, [open, value]);
+
+  const save = () => {
+    if (!text.trim()) { onSave(null); onOpenChange(false); return; }
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    onSave({ text: text.trim(), size, opacity: opacity / 100, position, color: { r, g, b } });
+    onOpenChange(false);
+    toast.success("Watermark will be applied on export");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader><DialogTitle>Watermark every page</DialogTitle></DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Text</label>
+            <input value={text} onChange={(e) => setText(e.target.value)}
+              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Position</div>
+            <div className="grid grid-cols-4 gap-2">
+              {WM_POSITIONS.map((p) => (
+                <button key={p} onClick={() => setPosition(p)}
+                  className={cn("rounded-md border px-2 py-1.5 text-xs capitalize",
+                    position === p ? "border-vault bg-vault/10 text-foreground" : "border-border text-muted-foreground hover:bg-accent")}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="text-xs">
+              <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground"><span>Size</span><span className="font-mono">{size}pt</span></div>
+              <input type="range" min={12} max={160} value={size} onChange={(e) => setSize(parseInt(e.target.value, 10))} className="mt-1 w-full accent-vault" />
+            </label>
+            <label className="text-xs">
+              <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground"><span>Opacity</span><span className="font-mono">{opacity}%</span></div>
+              <input type="range" min={5} max={100} value={opacity} onChange={(e) => setOpacity(parseInt(e.target.value, 10))} className="mt-1 w-full accent-vault" />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-xs">Color
+            <input type="color" value={hex} onChange={(e) => setHex(e.target.value)} className="h-7 w-9 rounded border border-border bg-transparent" />
+          </label>
+        </div>
+        <DialogFooter>
+          {value && <Button variant="ghost" onClick={() => { onSave(null); onOpenChange(false); toast.message("Watermark removed"); }}>Remove</Button>}
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={save} className="bg-vault text-vault-foreground hover:opacity-90">Apply on export</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------- Protect dialog ----------
+
+const PERM_ROWS: { key: keyof ProtectSettings["permissions"]; label: string }[] = [
+  { key: "printing", label: "Allow printing" },
+  { key: "copying", label: "Allow copying text" },
+  { key: "modifying", label: "Allow editing" },
+  { key: "annotating", label: "Allow annotating" },
+  { key: "fillingForms", label: "Allow filling forms" },
+  { key: "documentAssembly", label: "Allow page assembly" },
+  { key: "contentAccessibility", label: "Allow screen readers" },
+];
+
+function ProtectDialog({
+  open, onOpenChange, value, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  value: ProtectSettings | null;
+  onSave: (p: ProtectSettings | null) => void;
+}) {
+  const [pw, setPw] = useState(value?.userPassword ?? "");
+  const [pw2, setPw2] = useState(value?.userPassword ?? "");
+  const [useOwner, setUseOwner] = useState(!!value?.ownerPassword);
+  const [ownerPw, setOwnerPw] = useState(value?.ownerPassword ?? "");
+  const [perms, setPerms] = useState<ProtectSettings["permissions"]>(
+    value?.permissions ?? {
+      printing: true, modifying: false, copying: false,
+      annotating: true, fillingForms: true,
+      contentAccessibility: true, documentAssembly: false,
+    },
+  );
+  useEffect(() => {
+    if (!open) return;
+    setPw(value?.userPassword ?? "");
+    setPw2(value?.userPassword ?? "");
+    setUseOwner(!!value?.ownerPassword);
+    setOwnerPw(value?.ownerPassword ?? "");
+    if (value?.permissions) setPerms(value.permissions);
+  }, [open, value]);
+
+  const save = () => {
+    if (pw.length < 4) { toast.error("Password must be at least 4 characters."); return; }
+    if (pw !== pw2) { toast.error("Passwords don't match."); return; }
+    onSave({ userPassword: pw, ownerPassword: useOwner ? ownerPw : undefined, permissions: perms });
+    onOpenChange(false);
+    toast.success("Encryption will be applied on export");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader><DialogTitle>Password-protect the exported PDF</DialogTitle></DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Password"
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm" autoComplete="new-password" />
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="Confirm"
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm" autoComplete="new-password" />
+          </div>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={useOwner} onChange={(e) => setUseOwner(e.target.checked)} className="h-4 w-4 accent-vault" />
+            Set separate owner password (controls permissions)
+          </label>
+          {useOwner && (
+            <input type="password" value={ownerPw} onChange={(e) => setOwnerPw(e.target.value)} placeholder="Owner password"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" autoComplete="new-password" />
+          )}
+          <div className="space-y-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Permissions</div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {PERM_ROWS.map((row) => (
+                <label key={row.key} className="flex items-center gap-2 rounded border border-border bg-background/40 px-2 py-1.5 text-xs">
+                  <input type="checkbox" checked={perms[row.key]}
+                    onChange={() => setPerms((p) => ({ ...p, [row.key]: !p[row.key] }))}
+                    className="h-3.5 w-3.5 accent-vault" />
+                  {row.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          {value && <Button variant="ghost" onClick={() => { onSave(null); onOpenChange(false); toast.message("Password removed"); }}>Remove</Button>}
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={save} className="bg-vault text-vault-foreground hover:opacity-90">Set password</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

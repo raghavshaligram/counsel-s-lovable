@@ -14,7 +14,37 @@ export type Tool =
   | "freehand"
   | "note"
   | "image"
-  | "edit-text";
+  | "edit-text"
+  | "redact";
+
+export interface WatermarkSettings {
+  text: string;
+  opacity: number; // 0..1
+  size: number;
+  position: "diagonal" | "top" | "bottom" | "center";
+  color: RGB;
+}
+
+export interface ProtectPermissions {
+  printing: boolean;
+  modifying: boolean;
+  copying: boolean;
+  annotating: boolean;
+  fillingForms: boolean;
+  contentAccessibility: boolean;
+  documentAssembly: boolean;
+}
+
+export interface ProtectSettings {
+  userPassword: string;
+  ownerPassword?: string;
+  permissions: ProtectPermissions;
+}
+
+export interface ExportSettings {
+  watermark?: WatermarkSettings;
+  protect?: ProtectSettings;
+}
 
 export type RGB = { r: number; g: number; b: number };
 

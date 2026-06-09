@@ -8,11 +8,11 @@
 // call converts: pdfY = pageHeight - (y + h).
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
-import type { Anno, EditorDoc, PageOp, RGB } from "./types";
+import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
-export async function exportEditedPdf(doc: EditorDoc): Promise<Uint8Array> {
+export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
   const srcDoc = await PDFDocument.load(doc.srcBytes);
   const out = await PDFDocument.create();
   const fonts = {
@@ -62,9 +62,62 @@ export async function exportEditedPdf(doc: EditorDoc): Promise<Uint8Array> {
     const { width: pw, height: ph } = outPage.getSize();
     const annos = doc.annotations.filter((a) => a.page === i);
     for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts);
+
+    // Watermark (drawn on top of annotations so it is visible)
+    if (settings?.watermark && settings.watermark.text.trim()) {
+      drawWatermark(outPage, settings.watermark, font, pw, ph);
+    }
   }
 
-  return out.save();
+  let bytes = await out.save();
+
+  // Optional encryption + permissions
+  if (settings?.protect && settings.protect.userPassword) {
+    const { PDFDocument: CantooPDFDocument } = await import("@cantoo/pdf-lib");
+    const cantooDoc = await CantooPDFDocument.load(bytes, { ignoreEncryption: true });
+    const p = settings.protect.permissions;
+    await cantooDoc.encrypt({
+      userPassword: settings.protect.userPassword,
+      ownerPassword: settings.protect.ownerPassword || settings.protect.userPassword,
+      permissions: {
+        printing: p.printing ? "highResolution" : undefined,
+        modifying: p.modifying,
+        copying: p.copying,
+        annotating: p.annotating,
+        fillingForms: p.fillingForms,
+        contentAccessibility: p.contentAccessibility,
+        documentAssembly: p.documentAssembly,
+      },
+    });
+    bytes = await cantooDoc.save();
+  }
+
+  return bytes;
+}
+
+function drawWatermark(
+  page: import("pdf-lib").PDFPage,
+  wm: WatermarkSettings,
+  font: import("pdf-lib").PDFFont,
+  pw: number,
+  ph: number,
+) {
+  const tw = font.widthOfTextAtSize(wm.text, wm.size);
+  const th = wm.size;
+  if (wm.position === "diagonal") {
+    const rot = Math.atan2(ph, pw) * (180 / Math.PI);
+    page.drawText(wm.text, {
+      x: pw / 2 - tw / 2, y: ph / 2 - th / 2,
+      size: wm.size, font, color: col(wm.color), opacity: wm.opacity,
+      rotate: degrees(rot),
+    });
+    return;
+  }
+  let x = pw / 2 - tw / 2;
+  let y = ph / 2 - th / 2;
+  if (wm.position === "top") y = ph - th - 36;
+  else if (wm.position === "bottom") y = 36;
+  page.drawText(wm.text, { x, y, size: wm.size, font, color: col(wm.color), opacity: wm.opacity });
 }
 
 type FontSet = {
