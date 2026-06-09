@@ -292,76 +292,39 @@ function Editor() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
-      <ModeTabs mode={mode} setMode={setMode} fileName={state.doc.fileName} />
-      {mode === "annotate" ? (
-        <div className="flex-1 min-h-0">
-          <AnnotationWorkspace fileName={state.doc.fileName} bytes={state.doc.srcBytes} />
-        </div>
-      ) : (
-        <>
-          <Toolbar state={state} dispatch={dispatch} onExport={onExport} />
-          <div className="flex flex-1 min-h-0">
-            <PagesSidebar state={state} dispatch={dispatch} />
-            <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
-              <div className="mx-auto py-6 px-4 flex flex-col items-center gap-3">
-                <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Page {state.current + 1} of {state.doc.pages.length}
-                  {currentPage.blank ? " · Blank" : ""}
-                  {currentPage.rotation ? ` · Rotated ${currentPage.rotation}°` : ""}
-                </div>
-                <PageCanvas
-                  key={`${state.current}-${currentPage.srcPage}-${currentPage.rotation}-${currentPage.blank ? 1 : 0}`}
-                  op={currentPage}
-                  srcBytes={state.doc.srcBytes}
-                  annos={annosForPage}
-                  state={state}
-                  dispatch={dispatch}
-                />
-                <div className="flex items-center gap-2 pt-2">
-                  <Button size="sm" variant="outline" disabled={state.current === 0} onClick={() => dispatch({ type: "SET_PAGE", n: state.current - 1 })}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" disabled={state.current >= state.doc.pages.length - 1} onClick={() => dispatch({ type: "SET_PAGE", n: state.current + 1 })}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+      <Toolbar state={state} dispatch={dispatch} onExport={onExport} />
+      <div className="flex flex-1 min-h-0">
+        <PagesSidebar state={state} dispatch={dispatch} />
+        <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
+          <div className="mx-auto py-6 px-4 flex flex-col items-center gap-3">
+            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Page {state.current + 1} of {state.doc.pages.length}
+              {currentPage.blank ? " · Blank" : ""}
+              {currentPage.rotation ? ` · Rotated ${currentPage.rotation}°` : ""}
+            </div>
+            <PageCanvas
+              key={`${state.current}-${currentPage.srcPage}-${currentPage.rotation}-${currentPage.blank ? 1 : 0}`}
+              op={currentPage}
+              srcBytes={state.doc.srcBytes}
+              annos={annosForPage}
+              state={state}
+              dispatch={dispatch}
+            />
+            <div className="flex items-center gap-2 pt-2">
+              <Button size="sm" variant="outline" disabled={state.current === 0} onClick={() => dispatch({ type: "SET_PAGE", n: state.current - 1 })}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button size="sm" variant="outline" disabled={state.current >= state.doc.pages.length - 1} onClick={() => dispatch({ type: "SET_PAGE", n: state.current + 1 })}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function ModeTabs({ mode, setMode, fileName }: { mode: EditorMode; setMode: (m: EditorMode) => void; fileName: string }) {
-  return (
-    <div className="flex items-center gap-1 border-b bg-card/60 px-3 py-1.5">
-      <span className="text-xs text-muted-foreground mr-2 truncate max-w-[200px]" title={fileName}>{fileName}</span>
-      <button
-        onClick={() => setMode("edit")}
-        className={cn(
-          "inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors",
-          mode === "edit" ? "bg-vault/15 text-vault font-medium" : "text-muted-foreground hover:bg-accent",
-        )}
-      >
-        <Edit3 className="h-3.5 w-3.5" /> Edit &amp; Pages
-      </button>
-      <button
-        onClick={() => setMode("annotate")}
-        className={cn(
-          "inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors",
-          mode === "annotate" ? "bg-vault/15 text-vault font-medium" : "text-muted-foreground hover:bg-accent",
-        )}
-      >
-        <Layers className="h-3.5 w-3.5" /> Annotate
-      </button>
-      <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-        {mode === "annotate" ? "Native PDF annotations" : "Pages · text · images · shapes"}
-      </span>
-    </div>
-  );
-}
 
 
 // ---------- toolbar ----------
