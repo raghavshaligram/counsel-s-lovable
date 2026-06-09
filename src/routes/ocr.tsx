@@ -191,12 +191,40 @@ function OcrPage() {
     setProgress(null);
     abortRef.current = new AbortController();
     try {
-      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
+      let bytes: Uint8Array;
+      let outName: string;
+      if (isImage(file)) {
+        // Single-image flow → 1-page searchable PDF. We translate the
+        // image-OCR progress events onto the same OcrProgress shape the UI
+        // already knows how to render.
+        const onImgProgress = (p: ImageOcrProgress) => {
+          setProgress({
+            page: p.stage === "embedding" ? 1 : 0,
+            totalPages: 1,
+            stage:
+              p.stage === "decoding"
+                ? "rendering"
+                : p.stage === "embedding"
+                  ? "embedding"
+                  : p.stage,
+            message: p.message,
+          });
+        };
+        bytes = await ocrImageToSearchable(
+          file,
+          onImgProgress,
+          abortRef.current.signal,
+          { languages },
+        );
+        outName = file.name.replace(/\.(jpe?g|png|webp)$/i, "") + " (searchable).pdf";
+      } else {
+        bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
+        outName = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
+      }
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      const name = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
       setResultUrl(url);
-      setResultName(name);
+      setResultName(outName);
       toast.success("Searchable PDF ready");
     } catch (err) {
       console.error(err);
