@@ -21,41 +21,29 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const secureTools = [
-  { to: "/redact", label: "Redact", icon: ShieldCheckIcon },
-  { to: "/protect", label: "Protect", icon: Lock },
-  { to: "/unlock", label: "Unlock", icon: UnlockIcon },
-  { to: "/sign", label: "Sign & Fill", icon: PenIcon },
+const heroTools = [
+  { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
+  { to: "/sign", label: "Sign & Fill", icon: PenIcon, desc: "Draw, type, or upload your signature" },
+  { to: "/chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
+  { to: "/merge", label: "Mail Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
+  { to: "/extract", label: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
 ];
 
-const editTools = [
-  { to: "/editor", label: "Editor", icon: EditIcon },
-  { to: "/split", label: "Split", icon: ScissorsIcon },
-  { to: "/rotate", label: "Rotate", icon: RotateCwIcon },
-  { to: "/watermark", label: "Watermark", icon: StampIcon },
-  { to: "/compress", label: "Compress", icon: CompressIcon },
-  { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon },
+const converters = [
+  { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
+  { to: "/to-images", label: "PDF → Images", icon: ImageIcon, desc: "Export every page as PNG or JPG" },
+  { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon, desc: "Combine JPG/PNG into one PDF" },
 ];
 
-type NavItem = { to: string; label: string; icon: (p: { className?: string }) => ReactNode; beta?: boolean };
-
-const convertGroups: { label: string; items: NavItem[] }[] = [
-  {
-    label: "From PDF",
-    items: [
-      { to: "/to-word", label: "PDF → Word", icon: FileTextIcon },
-      { to: "/to-images", label: "PDF → Images", icon: ImageIcon },
-      { to: "/extract", label: "Extract", icon: Table2Icon },
-      { to: "/chat", label: "Search inside PDF", icon: ChatIcon, beta: true },
-    ],
-  },
-  {
-    label: "To PDF",
-    items: [
-      { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon },
-      { to: "/merge", label: "Mail Merge", icon: FileStackIcon },
-    ],
-  },
+const utilities = [
+  { to: "/editor", label: "Editor", icon: EditIcon, desc: "Full PDF editor — annotate, edit text, reorder pages" },
+  { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
+  { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
+  { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
+  { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
+  { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
+  { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
+  { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
 ];
 
 function UnlockIcon({ className }: { className?: string }) {
@@ -203,60 +191,55 @@ function StampIcon({ className }: { className?: string }) {
   );
 }
 
-function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
-  const mark = size === "sm" ? "h-7 w-7" : "h-7 w-7";
-  const text = size === "sm" ? "text-[17px]" : "text-[19px]";
-  return (
-    <Link to="/" className="flex items-center gap-2.5 min-w-0">
-      <span className={cn("grid place-items-center rounded-md bg-vault text-vault-foreground shrink-0", mark)}>
-        <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-      </span>
-      <span className={cn("font-display leading-none truncate", text)}>VaultPDF</span>
-    </Link>
-  );
-}
-
-function ShellInner({ children }: { children: ReactNode }) {
-  const { state, isMobile } = useSidebar();
+export function AppShell({ children }: { children: ReactNode }) {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
+
   const isActive = (path: string) => currentPath === path;
-  const collapsed = state === "collapsed" || isMobile;
 
   return (
-    <>
-      {/* Full-width top bar */}
-      <header className="sticky top-0 z-40 h-14 flex items-center justify-between border-b border-slate-800/70 bg-background/85 backdrop-blur-xl pl-4 pr-4 md:pl-6 md:pr-6">
-        <div className="flex items-center gap-3 min-w-0">
-          <BrandMark />
-          <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground truncate ml-2">
-            100% in your browser
-          </span>
-        </div>
-
-        <Link
-          to="/pricing"
-          className="inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
-          activeProps={{ className: "bg-vault/25" }}
-        >
-          Lifetime deal
-        </Link>
-      </header>
-
-
-      <div className="flex flex-1 min-h-0">
-        <Sidebar collapsible="icon" variant="sidebar" className="border-r border-slate-800/70 top-14 h-[calc(100svh-3.5rem)]">
+    <SidebarProvider defaultOpen={false}>
+      <div className="flex min-h-svh w-full">
+        <Sidebar collapsible="icon" variant="sidebar">
           <SidebarHeader>
-            <div className="h-1" />
+            <div className="flex items-center gap-2.5 px-2 py-1">
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
+                <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </span>
+              <span className="font-display text-[19px] leading-none group-data-[collapsible=icon]:hidden">VaultPDF</span>
+            </div>
           </SidebarHeader>
-
-
 
           <SidebarContent>
             <SidebarGroup>
-              <SidebarGroupLabel>Secure</SidebarGroupLabel>
+              <SidebarGroupLabel>Core Tools</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {secureTools.map((t) => (
+                  {heroTools.map((t) => (
+                    <SidebarMenuItem key={t.to}>
+                      <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
+                        <Link to={t.to} className="flex items-center gap-2">
+                          <t.icon className="h-4 w-4 opacity-80" />
+                          <span>{t.label}</span>
+                          {(t as any).beta && (
+                            <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
+                              Beta
+                            </span>
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarSeparator />
+
+            <SidebarGroup>
+              <SidebarGroupLabel>Convert</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {converters.map((t) => (
                     <SidebarMenuItem key={t.to}>
                       <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
                         <Link to={t.to} className="flex items-center gap-2">
@@ -273,10 +256,10 @@ function ShellInner({ children }: { children: ReactNode }) {
             <SidebarSeparator />
 
             <SidebarGroup>
-              <SidebarGroupLabel>Edit</SidebarGroupLabel>
+              <SidebarGroupLabel>Utilities</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {editTools.map((t) => (
+                  {utilities.map((t) => (
                     <SidebarMenuItem key={t.to}>
                       <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
                         <Link to={t.to} className="flex items-center gap-2">
@@ -287,38 +270,6 @@ function ShellInner({ children }: { children: ReactNode }) {
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarSeparator />
-
-            <SidebarGroup>
-              <SidebarGroupLabel>Convert & Extract</SidebarGroupLabel>
-              <SidebarGroupContent>
-                {convertGroups.map((sg, i) => (
-                  <div key={sg.label} className={cn(i > 0 && "mt-2")}>
-                    <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70 group-data-[collapsible=icon]:hidden">
-                      {sg.label}
-                    </div>
-                    <SidebarMenu>
-                      {sg.items.map((t) => (
-                        <SidebarMenuItem key={t.to}>
-                          <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                            <Link to={t.to} className="flex items-center gap-2">
-                              <t.icon className="h-4 w-4 opacity-80" />
-                              <span>{t.label}</span>
-                              {t.beta && (
-                                <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
-                                  Beta
-                                </span>
-                              )}
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenu>
-                  </div>
-                ))}
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
@@ -345,13 +296,28 @@ function ShellInner({ children }: { children: ReactNode }) {
           <SidebarRail />
         </Sidebar>
 
-        <SidebarInset className="relative">
-          <SidebarTrigger className="absolute top-2 left-2 z-30 h-7 w-7 rounded-md border border-slate-800/70 bg-background/70 hover:bg-background backdrop-blur" />
+        <SidebarInset>
+          {/* Compact top bar */}
+          <header className="sticky top-0 z-40 h-14 flex items-center justify-between px-4 md:px-6 border-b border-border bg-background/80 backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <SidebarTrigger />
+              <span className="hidden sm:inline text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                100% in your browser
+              </span>
+            </div>
+
+            <Link
+              to="/pricing"
+              className="inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
+              activeProps={{ className: "bg-vault/25" }}
+            >
+              Lifetime deal
+            </Link>
+          </header>
+
           <main className="flex-1 min-h-0">{children}</main>
 
-
-
-          <footer className="border-t border-slate-800/70 px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
+          <footer className="border-t border-border px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
             <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
             <div className="flex gap-4">
               <Link to="/" className="hover:text-foreground">Home</Link>
@@ -361,14 +327,6 @@ function ShellInner({ children }: { children: ReactNode }) {
           </footer>
         </SidebarInset>
       </div>
-    </>
-  );
-}
-
-export function AppShell({ children }: { children: ReactNode }) {
-  return (
-    <SidebarProvider defaultOpen={false} className="flex-col">
-      <ShellInner>{children}</ShellInner>
     </SidebarProvider>
   );
 }
