@@ -213,45 +213,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-h-svh w-full">
         <Sidebar collapsible="icon" variant="sidebar">
           <SidebarHeader>
-            <div className="flex items-center gap-2.5 px-2 py-1">
-              <span className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
-                <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </span>
-              <span className="font-display text-[19px] leading-none group-data-[collapsible=icon]:hidden">VaultPDF</span>
-            </div>
+            <div className="h-2" />
           </SidebarHeader>
 
           <SidebarContent>
             <SidebarGroup>
-              <SidebarGroupLabel>Core Tools</SidebarGroupLabel>
+              <SidebarGroupLabel>Secure</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {heroTools.map((t) => (
-                    <SidebarMenuItem key={t.to}>
-                      <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                        <Link to={t.to} className="flex items-center gap-2">
-                          <t.icon className="h-4 w-4 opacity-80" />
-                          <span>{t.label}</span>
-                          {(t as any).beta && (
-                            <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
-                              Beta
-                            </span>
-                          )}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarSeparator />
-
-            <SidebarGroup>
-              <SidebarGroupLabel>Convert</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {converters.map((t) => (
+                  {secureTools.map((t) => (
                     <SidebarMenuItem key={t.to}>
                       <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
                         <Link to={t.to} className="flex items-center gap-2">
@@ -268,10 +238,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <SidebarSeparator />
 
             <SidebarGroup>
-              <SidebarGroupLabel>Utilities</SidebarGroupLabel>
+              <SidebarGroupLabel>Edit</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {utilities.map((t) => (
+                  {editTools.map((t) => (
                     <SidebarMenuItem key={t.to}>
                       <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
                         <Link to={t.to} className="flex items-center gap-2">
@@ -282,6 +252,38 @@ export function AppShell({ children }: { children: ReactNode }) {
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarSeparator />
+
+            <SidebarGroup>
+              <SidebarGroupLabel>Convert & Extract</SidebarGroupLabel>
+              <SidebarGroupContent>
+                {convertGroups.map((sg, i) => (
+                  <div key={sg.label} className={cn(i > 0 && "mt-2")}>
+                    <div className="px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70 group-data-[collapsible=icon]:hidden">
+                      {sg.label}
+                    </div>
+                    <SidebarMenu>
+                      {sg.items.map((t) => (
+                        <SidebarMenuItem key={t.to}>
+                          <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
+                            <Link to={t.to} className="flex items-center gap-2">
+                              <t.icon className="h-4 w-4 opacity-80" />
+                              <span>{t.label}</span>
+                              {t.beta && (
+                                <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
+                                  Beta
+                                </span>
+                              )}
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </div>
+                ))}
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
@@ -313,7 +315,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           <header className="sticky top-0 z-40 h-14 flex items-center justify-between px-4 md:px-6 border-b border-border bg-background/80 backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <SidebarTrigger />
-              <span className="hidden sm:inline text-xs uppercase tracking-[0.22em] text-muted-foreground">
+              <Link to="/" className="flex items-center gap-2.5">
+                <span className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
+                  <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+                </span>
+                <span className="font-display text-[17px] leading-none">VaultPDF</span>
+              </Link>
+              <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground ml-2">
                 100% in your browser
               </span>
             </div>
@@ -326,6 +334,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               Lifetime deal
             </Link>
           </header>
+
 
           <main className="flex-1 min-h-0">{children}</main>
 
