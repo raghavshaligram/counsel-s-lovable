@@ -15,7 +15,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
-  SidebarSeparator,
+  
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
