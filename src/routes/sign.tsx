@@ -333,6 +333,7 @@ function SignPage() {
                 file={file}
                 info={`${pages.length} page${pages.length === 1 ? "" : "s"} · ${placed.length} placement${placed.length === 1 ? "" : "s"}`}
                 onClose={reset}
+              onReplace={onFile}
               />
 
               {loading ? (
