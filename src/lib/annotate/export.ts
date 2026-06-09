@@ -206,7 +206,7 @@ function rgbArray(pdf: PDFDocument, c: RGB): PDFArray {
 
 function buildNativeAnnotation(pdf: PDFDocument, a: Annot, _pw: number, ph: number): PDFRef | null {
   const ctx = pdf.context;
-  const base: Record<string, unknown> = {
+  const base: Record<string, any> = {
     Type: "Annot",
     CA: a.opacity,
     NM: PDFString.of(a.id),
@@ -261,7 +261,7 @@ function buildNativeAnnotation(pdf: PDFDocument, a: Annot, _pw: number, ph: numb
         Math.min(a.x1, a.x2) - 10, Math.min(ly1, ly2) - 10,
         Math.max(a.x1, a.x2) + 10, Math.max(ly1, ly2) + 10,
       ]) as PDFArray;
-      const fields: Record<string, unknown> = {
+      const fields: Record<string, any> = {
         ...base, Subtype: "Line", Rect: rect,
         L: ctx.obj([a.x1, ly1, a.x2, ly2]),
         C: rgbArray(pdf, a.color),
