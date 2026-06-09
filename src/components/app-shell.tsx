@@ -72,7 +72,7 @@ const groups: Group[] = [
     tagline: "Courtroom-grade tooling for paralegals and counsel.",
     items: [
       { to: "/bates", label: "Bates Numbering", icon: HashIcon, desc: "Stamp sequential discovery IDs across every page" },
-      { to: "/redact", label: "Verifiable Redaction", icon: ShieldCheckIcon, desc: "Redact + auto-generate Certificate of Redaction" },
+      { to: "/verifiable-redaction", label: "Verifiable Redaction", icon: ShieldCheckIcon, desc: "Mandatory codes + signed Certificate + Privilege Log" },
       { to: "/privilege-scan", label: "Privilege Scan", icon: ScanSearchIcon, desc: "Catch attorney–client language before production" },
     ],
   },
