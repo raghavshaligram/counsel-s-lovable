@@ -30,6 +30,7 @@ import {
   Wand2,
   Search,
   Tag,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -131,6 +132,11 @@ function RedactPage() {
   const [enabledCats, setEnabledCats] = useState<Set<PiiCategory>>(
     () => new Set(Object.keys(CATEGORY_META) as PiiCategory[]),
   );
+  // Cache the parsed pdf.js document so auto-detect / keyword search don't
+  // re-parse the file. Held in a ref since we never render from it directly.
+  const docRef = useRef<{ numPages: number; getPage: (n: number) => Promise<unknown> } | null>(null);
+  const [totalPages, setTotalPages] = useState(0);
+  const [detectConfirm, setDetectConfirm] = useState(false);
 
   // Keyword search-and-redact
   const [keywordGroups, setKeywordGroups] = useState<KeywordGroup[]>([]);
@@ -180,12 +186,18 @@ function RedactPage() {
     setDetectionLabels({});
     setKeywordGroups([]);
     setKeywordBoxes([]);
+    setDetectConfirm(false);
+    docRef.current = null;
+    setTotalPages(0);
     (async () => {
       try {
         const { getPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await getPdfjs();
         const buf = await file.arrayBuffer();
         const doc = await pdfjs.getDocument({ data: buf }).promise;
+        if (cancelled) return;
+        docRef.current = doc as unknown as typeof docRef.current;
+        setTotalPages(doc.numPages);
         const out: RenderedPage[] = [];
         const SCALE = 1.5;
         for (let i = 1; i <= doc.numPages; i++) {
@@ -230,23 +242,40 @@ function RedactPage() {
     setDetectionLabels({});
     setKeywordGroups([]);
     setKeywordBoxes([]);
+    setDetectConfirm(false);
+    docRef.current = null;
+    setTotalPages(0);
   };
 
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
 
   const runAutoDetect = useCallback(async () => {
     if (!file) return;
+    // Confirmation gate for large PDFs — auto-detect on 400+ pages can pin
+    // the browser tab for a long time, especially when any page falls back to
+    // OCR. Require an explicit second click before we burn the cycles.
+    const pages = docRef.current?.numPages ?? totalPages;
+    if (pages > 100 && !detectConfirm) {
+      setDetectConfirm(true);
+      return;
+    }
+    setDetectConfirm(false);
     setDetecting(true);
     setDetectStatus("Reading text layer…");
     try {
       const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
-      const { detections: found, usedOcr } = await detectPiiInPdf(file, 1.5, (p) => {
-        if (p.stage === "ocr") {
-          setDetectStatus(`OCR scanning page ${p.page} of ${p.totalPages}…`);
-        } else {
-          setDetectStatus(`Reading page ${p.page} of ${p.totalPages}…`);
-        }
-      });
+      const { detections: found, usedOcr } = await detectPiiInPdf(
+        file,
+        1.5,
+        (p) => {
+          if (p.stage === "ocr") {
+            setDetectStatus(`OCR scanning page ${p.page} of ${p.totalPages}…`);
+          } else {
+            setDetectStatus(`Reading page ${p.page} of ${p.totalPages}…`);
+          }
+        },
+        docRef.current ?? undefined,
+      );
       setDetections(found);
       if (found.length === 0) {
         toast.info("No obvious PII patterns found.", {
@@ -271,7 +300,7 @@ function RedactPage() {
       setDetecting(false);
       setDetectStatus(null);
     }
-  }, [file]);
+  }, [file, totalPages, detectConfirm]);
 
   const runKeywordSearch = useCallback(async () => {
     if (!file) return;
@@ -577,6 +606,17 @@ function RedactPage() {
                         on-device OCR for scanned pages.
                       </p>
                     </div>
+                    {detectConfirm && !detecting && (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                          {totalPages} pages — this may take a while
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Reading the text layer of every page and OCRing any scanned ones runs in your browser. Click again to start.
+                        </p>
+                      </div>
+                    )}
                     <Button
                       onClick={runAutoDetect}
                       disabled={detecting || loading}
@@ -586,10 +626,13 @@ function RedactPage() {
                       <Wand2 className="h-3.5 w-3.5 mr-2" />
                       {detecting
                         ? "Scanning…"
-                        : detections.length > 0
-                          ? "Re-scan"
-                          : "Scan this PDF"}
+                        : detectConfirm
+                          ? `Yes, scan ${totalPages} pages`
+                          : detections.length > 0
+                            ? "Re-scan"
+                            : "Scan this PDF"}
                     </Button>
+
                     {detectStatus && (
                       <div className="text-[11px] text-muted-foreground text-center">
                         {detectStatus}
