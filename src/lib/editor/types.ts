@@ -115,6 +115,10 @@ export interface TextEditAnno extends BaseAnno {
 export type Anno =
   | TextAnno
   | HighlightAnno
+  | UnderlineAnno
+  | StrikethroughAnno
+  | LineAnno
+  | ArrowAnno
   | RectAnno
   | EllipseAnno
   | FreehandAnno
