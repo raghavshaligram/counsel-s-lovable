@@ -512,6 +512,24 @@ function RedactPage() {
 
   const exportRedacted = useCallback(async () => {
     if (!file || pages.length === 0) return;
+
+    // Premium: every redaction must carry an exemption code before export.
+    if (isPremium) {
+      const unlabeled = allBoxes.filter((b) => !b.label || !b.label.trim());
+      if (unlabeled.length > 0) {
+        const byPage = new Map<number, number>();
+        for (const b of unlabeled) byPage.set(b.page, (byPage.get(b.page) ?? 0) + 1);
+        const pageList = [...byPage.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([p, n]) => `p.${p} (${n})`)
+          .join(", ");
+        toast.error(`${unlabeled.length} redaction${unlabeled.length === 1 ? "" : "s"} need an exemption code`, {
+          description: `Set a default in Label, or double-click each box. Missing: ${pageList}`,
+        });
+        return;
+      }
+    }
+
     setExporting(true);
     try {
       const { PDFDocument, PDFName } = await import("pdf-lib");
@@ -579,39 +597,67 @@ function RedactPage() {
       a.click();
       URL.revokeObjectURL(url);
 
-      // Certificate of Redaction — court-ready audit trail, generated locally.
-      try {
-        const certBytes = await buildRedactionCertificate({
-          sourceName: file.name,
-          pageCount: pages.length,
-          boxes: allBoxes,
-          stripMetadata,
-        });
-        const certAb = new ArrayBuffer(certBytes.byteLength);
-        new Uint8Array(certAb).set(certBytes);
-        const certBlob = new Blob([certAb], { type: "application/pdf" });
-        const certUrl = URL.createObjectURL(certBlob);
-        const certA = document.createElement("a");
-        certA.href = certUrl;
-        certA.download = baseName + "-certificate.pdf";
-        certA.click();
-        URL.revokeObjectURL(certUrl);
-      } catch (e) {
-        console.error("Certificate generation failed", e);
-      }
+      if (isPremium) {
+        // Hash source + output for the chain-of-custody section of the certificate.
+        const [sourceHash, redactedHash] = await Promise.all([
+          sha256Hex(new Uint8Array(await file.arrayBuffer())),
+          sha256Hex(bytes),
+        ]);
 
-      toast.success("Redacted PDF + Certificate saved", {
-        description: stripMetadata
-          ? "Pages rasterised, original text destroyed, metadata wiped."
-          : "Pages rasterised and original text destroyed. (Metadata kept per your setting.)",
-      });
+        try {
+          const certBytes = await buildRedactionCertificate({
+            sourceName: file.name,
+            sourceBytes: file.size,
+            pageCount: pages.length,
+            boxes: allBoxes,
+            stripMetadata,
+            sourceHashSHA256: sourceHash,
+            redactedHashSHA256: redactedHash,
+          });
+          const certAb = new ArrayBuffer(certBytes.byteLength);
+          new Uint8Array(certAb).set(certBytes);
+          const certBlob = new Blob([certAb], { type: "application/pdf" });
+          const certUrl = URL.createObjectURL(certBlob);
+          const certA = document.createElement("a");
+          certA.href = certUrl;
+          certA.download = baseName + "-certificate.pdf";
+          certA.click();
+          URL.revokeObjectURL(certUrl);
+        } catch (e) {
+          console.error("Certificate generation failed", e);
+        }
+
+        // Privilege log CSV — what counsel attaches to the production set.
+        try {
+          const csv = buildPrivilegeLogCsv(file.name, allBoxes);
+          const csvBlob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+          const csvUrl = URL.createObjectURL(csvBlob);
+          const csvA = document.createElement("a");
+          csvA.href = csvUrl;
+          csvA.download = baseName + "-privilege-log.csv";
+          csvA.click();
+          URL.revokeObjectURL(csvUrl);
+        } catch (e) {
+          console.error("Privilege log generation failed", e);
+        }
+
+        toast.success("Redacted PDF + Certificate + Privilege Log saved", {
+          description: "SHA-256 hashes recorded. Keep all three together for chain of custody.",
+        });
+      } else {
+        toast.success("Redacted PDF saved", {
+          description: stripMetadata
+            ? "Pages rasterised, original text destroyed, metadata wiped."
+            : "Pages rasterised and original text destroyed.",
+        });
+      }
     } catch (err) {
       console.error(err);
       toast.error("Export failed");
     } finally {
       setExporting(false);
     }
-  }, [file, pages, allBoxes, stripMetadata]);
+  }, [file, pages, allBoxes, stripMetadata, isPremium]);
 
 
   const addBox = useCallback(
