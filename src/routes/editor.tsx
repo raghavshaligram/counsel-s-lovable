@@ -802,6 +802,8 @@ function PageCanvas({
       const end = toPdf(x, y);
       const flipX = start.x > end.x;
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: state.tool, page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, flipX } });
+    } else if (state.tool === "redact") {
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, stroke: 0, fill: true } });
     }
   };
 
