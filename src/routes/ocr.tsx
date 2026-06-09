@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { ToolHeader } from "@/routes/split";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info } from "lucide-react";
+import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info, Languages, ChevronDown } from "lucide-react";
 import { ocrPdfToSearchable, type OcrProgress } from "@/lib/pdf/ocr-pdf";
+import { OCR_LANGUAGES, estimateDownloadMb, getLanguageLabel } from "@/lib/pdf/ocr-languages";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
 
@@ -117,6 +119,7 @@ function OcrPage() {
   const [preflight, setPreflight] = useState<PreflightWarning | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [highAccuracy, setHighAccuracy] = useState(false);
+  const [languages, setLanguages] = useState<string[]>(["eng"]);
   const [device] = useState<DeviceProfile>(() => profileDevice());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -177,7 +180,7 @@ function OcrPage() {
     setProgress(null);
     abortRef.current = new AbortController();
     try {
-      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy });
+      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const name = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
@@ -193,7 +196,7 @@ function OcrPage() {
       setBusy(false);
       abortRef.current = null;
     }
-  }, [file, highAccuracy]);
+  }, [file, highAccuracy, languages]);
 
   const cancel = () => abortRef.current?.abort();
 
