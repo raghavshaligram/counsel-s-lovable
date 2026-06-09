@@ -42,6 +42,7 @@ import {
 } from "@/lib/pdf/detect-pii";
 
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
+import { buildRedactionCertificate } from "@/lib/pdf/redaction-certificate";
 
 export const Route = createFileRoute("/redact")({
   head: () => ({
