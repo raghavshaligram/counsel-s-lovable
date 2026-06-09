@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { RotateCw, RotateCcw } from "lucide-react";
+import { RotateCw, RotateCcw, Download } from "lucide-react";
 import { PDFDocument, degrees } from "pdf-lib";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import { useActiveFile, useWorkspace } from "@/lib/workspace/store";
 
 export const Route = createFileRoute("/rotate")({
   head: () => ({
@@ -31,41 +32,60 @@ export const Route = createFileRoute("/rotate")({
 });
 
 type Scope = "all" | "odd" | "even" | "custom";
+type OutputMode = "replace" | "add";
 
 function RotatePage() {
-  const [file, setFile] = useState<File | null>(null);
+  const active = useActiveFile();
+  const addFile = useWorkspace((s) => s.addFile);
+  const replaceFileBytes = useWorkspace((s) => s.replaceFileBytes);
+  const addDerivedFile = useWorkspace((s) => s.addDerivedFile);
+  const recordOp = useWorkspace((s) => s.recordOp);
+
   const [pageCount, setPageCount] = useState(0);
   const [angle, setAngle] = useState<90 | 180 | 270>(90);
   const [scope, setScope] = useState<Scope>("all");
   const [custom, setCustom] = useState("");
+  const [outputMode, setOutputMode] = useState<OutputMode>("add");
   const [busy, setBusy] = useState(false);
 
-  const onFile = useCallback(async (f: File) => {
-    setFile(f);
-    try {
-      const doc = await PDFDocument.load(await f.arrayBuffer(), {
-        ignoreEncryption: true,
-      });
-      setPageCount(doc.getPageCount());
-    } catch {
-      toast.error("Couldn't open that PDF.");
-      setFile(null);
+  // Refresh page count when the active file changes.
+  useEffect(() => {
+    let cancelled = false;
+    if (!active) {
+      setPageCount(0);
+      return;
     }
-  }, []);
+    (async () => {
+      try {
+        const doc = await PDFDocument.load(await active.blob.arrayBuffer(), {
+          ignoreEncryption: true,
+        });
+        if (!cancelled) setPageCount(doc.getPageCount());
+      } catch {
+        if (!cancelled) {
+          toast.error("Couldn't open that PDF.");
+          setPageCount(0);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
 
-  const reset = () => {
-    setFile(null);
-    setPageCount(0);
-    setCustom("");
-  };
+  const onFile = useCallback(
+    async (f: File) => {
+      await addFile(f);
+    },
+    [addFile],
+  );
 
   const run = async () => {
-    if (!file) return;
+    if (!active) return;
     setBusy(true);
     try {
-      const doc = await PDFDocument.load(await file.arrayBuffer(), {
-        ignoreEncryption: true,
-      });
+      const srcBytes = new Uint8Array(await active.blob.arrayBuffer());
+      const doc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
       const targets = resolveScope(scope, custom, doc.getPageCount());
       if (targets.error) {
         toast.error(targets.error);
@@ -79,9 +99,20 @@ function RotatePage() {
         }
       });
       const bytes = await doc.save();
-      const base = file.name.replace(/\.pdf$/i, "");
-      downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${base}-rotated.pdf`);
-      toast.success(`Rotated ${set.size} page${set.size === 1 ? "" : "s"}`);
+      const base = active.name.replace(/\.pdf$/i, "");
+      const outName = `${base}-rotated.pdf`;
+
+      if (outputMode === "replace") {
+        // Snapshot pre-op bytes for undo (only persisted when persistence is on).
+        await recordOp(active.id, "rotate", srcBytes, {
+          label: `Rotated ${set.size}p · ${angle}°`,
+        });
+        await replaceFileBytes(active.id, bytes, outName);
+        toast.success(`Rotated ${set.size} page${set.size === 1 ? "" : "s"} (in place)`);
+      } else {
+        await addDerivedFile(active.id, bytes, outName, "rotate");
+        toast.success(`Rotated ${set.size} page${set.size === 1 ? "" : "s"} (new file)`);
+      }
     } catch (err) {
       console.error(err);
       toast.error("Rotate failed");
@@ -90,21 +121,32 @@ function RotatePage() {
     }
   };
 
-  useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
+  const downloadCurrent = () => {
+    if (!active) return;
+    downloadBlob(active.blob, active.name);
+  };
+
+  useHotkey("mod+Enter", () => { void run(); }, !!active && !busy);
+
   return (
     <AppShell>
       <ToolHeader
         tag="Rotate"
         title="Rotate pages. All or some."
         sub="Fix sideways scans or upside-down pages in seconds. Choose all, odd, even, or specific page numbers."
-        collapsed={!!file}
+        collapsed={!!active}
       />
-      <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
-        {!file ? (
+      <div className={`mx-auto px-5 md:px-8 py-10 ${active ? "max-w-5xl" : "max-w-3xl"}`}>
+        {!active ? (
           <FileDropzone onFile={onFile} label="Drop a PDF to rotate" sublabel="no upload" />
         ) : (
           <div className="space-y-6">
-            <FileBar file={file} info={`${pageCount} page${pageCount === 1 ? "" : "s"}`} onClose={reset} onReplace={onFile} />
+            <FileBar
+              file={asFile(active.blob, active.name)}
+              info={`${pageCount} page${pageCount === 1 ? "" : "s"}`}
+              onClose={() => void useWorkspace.getState().removeFile(active.id)}
+              onReplace={onFile}
+            />
 
             <div className="rounded-lg border border-border bg-card/50 p-5 space-y-5">
               <div>
@@ -143,15 +185,51 @@ function RotatePage() {
                 )}
               </div>
 
-              <Button onClick={run} disabled={busy} className="bg-vault text-vault-foreground hover:opacity-90 w-full">
-                {busy ? "Rotating…" : "Rotate & download"}
-              </Button>
+              <div>
+                <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-2">
+                  Output
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <ModeBtn active={outputMode === "add"} onClick={() => setOutputMode("add")}>
+                    Add to workspace
+                  </ModeBtn>
+                  <ModeBtn active={outputMode === "replace"} onClick={() => setOutputMode("replace")}>
+                    Replace in place
+                  </ModeBtn>
+                </div>
+                <div className="mt-2 text-[10px] text-muted-foreground">
+                  {outputMode === "add"
+                    ? "Keeps the original file alongside the rotated copy."
+                    : "Updates the active file. Undo is available from the workspace rail."}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={run} disabled={busy} className="bg-vault text-vault-foreground hover:opacity-90 flex-1">
+                  {busy ? "Rotating…" : "Rotate"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={downloadCurrent}
+                  className="shrink-0"
+                  title="Download current file"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         )}
       </div>
     </AppShell>
   );
+}
+
+/** FileBar expects a File — wrap the workspace Blob to keep the existing API. */
+function asFile(blob: Blob, name: string): File {
+  if (blob instanceof File && blob.name === name) return blob;
+  return new File([blob], name, { type: blob.type || "application/pdf" });
 }
 
 function resolveScope(scope: Scope, custom: string, total: number): { indices: number[]; error?: string } {
