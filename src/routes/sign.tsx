@@ -317,6 +317,7 @@ function SignPage() {
         tag="Sign & Fill"
         title="Sign documents you'd never email."
         sub="Draw, type, or upload your signature. Drop it on any page, add text and dates, then flatten. Your file never leaves this tab."
+        collapsed={!!file}
       />
 
       <div className="mx-auto max-w-7xl px-5 md:px-8 py-8">
