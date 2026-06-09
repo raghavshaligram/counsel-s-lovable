@@ -213,6 +213,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             <SidebarSeparator />
 
             <SidebarGroup>
+              <SidebarGroupLabel>Convert</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {converters.map((t) => (
+                    <SidebarMenuItem key={t.to}>
+                      <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
+                        <Link to={t.to} className="flex items-center gap-2">
+                          <t.icon className="h-4 w-4 opacity-80" />
+                          <span>{t.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarSeparator />
+
+            <SidebarGroup>
               <SidebarGroupLabel>Utilities</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
