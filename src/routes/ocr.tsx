@@ -177,7 +177,7 @@ function OcrPage() {
     setProgress(null);
     abortRef.current = new AbortController();
     try {
-      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal);
+      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const name = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
