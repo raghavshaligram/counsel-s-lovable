@@ -263,88 +263,36 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </SidebarHeader>
 
-          <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Core Tools</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {heroTools.map((t) => (
-                    <SidebarMenuItem key={t.to}>
-                      <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                        <Link to={t.to} className="flex items-center gap-2">
-                          <t.icon className="h-4 w-4 opacity-80" />
-                          <span>{t.label}</span>
-                          {(t as any).beta && (
-                            <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
-                              Beta
-                            </span>
-                          )}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarSeparator />
-
-            <Collapsible defaultOpen={false} className="group/collapsible">
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer select-none">
-                    <span>Convert</span>
-                    <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
+          <SidebarContent className="no-scrollbar">
+            {groups.map((group, idx) => (
+              <div key={group.label}>
+                {idx > 0 && <SidebarSeparator />}
+                <SidebarGroup>
+                  <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
                   <SidebarGroupContent>
                     <SidebarMenu>
-                      {converters.map((t) => (
+                      {group.items.map((t) => (
                         <SidebarMenuItem key={t.to}>
                           <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
                             <Link to={t.to} className="flex items-center gap-2">
                               <t.icon className="h-4 w-4 opacity-80" />
                               <span>{t.label}</span>
+                              {t.beta && (
+                                <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
+                                  Beta
+                                </span>
+                              )}
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       ))}
                     </SidebarMenu>
                   </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
-
-            <SidebarSeparator />
-
-            <Collapsible defaultOpen={false} className="group/collapsible">
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer select-none">
-                    <span>Utilities</span>
-                    <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {utilities.map((t) => (
-                        <SidebarMenuItem key={t.to}>
-                          <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                            <Link to={t.to} className="flex items-center gap-2">
-                              <t.icon className="h-4 w-4 opacity-80" />
-                              <span>{t.label}</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
+                </SidebarGroup>
+              </div>
+            ))}
           </SidebarContent>
+
 
           <SidebarFooter>
             <div className="px-2 py-2 group-data-[collapsible=icon]:hidden">
