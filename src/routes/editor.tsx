@@ -344,14 +344,18 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
   const effOpacity = (selectedAnno && "opacity" in selectedAnno ? (selectedAnno as { opacity: number }).opacity : state.opacity);
   const effFont = selectedAnno && "fontSize" in selectedAnno ? (selectedAnno as { fontSize: number }).fontSize : state.fontSize;
   const effStroke = selectedAnno && "stroke" in selectedAnno ? (selectedAnno as { stroke: number }).stroke : state.stroke;
-  const supportsStroke = selectedAnno ? ["rect", "ellipse", "freehand"].includes(selectedAnno.kind) : (state.tool === "rect" || state.tool === "ellipse" || state.tool === "freehand");
+  const supportsStroke = selectedAnno ? ["rect", "ellipse", "freehand", "underline", "strikethrough", "line", "arrow"].includes(selectedAnno.kind) : (["rect", "ellipse", "freehand", "underline", "strikethrough", "line", "arrow"].includes(state.tool));
   const supportsFont = selectedAnno ? ["text", "note", "text-edit"].includes(selectedAnno.kind) : (state.tool === "text" || state.tool === "edit-text" || state.tool === "note");
   const tools: { id: Tool; icon: React.FC<{ className?: string }>; label: string }[] = [
     { id: "select", icon: MousePointer2, label: "Select" },
     { id: "text", icon: Type, label: "Text" },
     { id: "highlight", icon: Highlighter, label: "Highlight" },
+    { id: "underline", icon: UnderlineIcon, label: "Underline" },
+    { id: "strikethrough", icon: Strikethrough, label: "Strikethrough" },
     { id: "rect", icon: Square, label: "Rectangle" },
     { id: "ellipse", icon: Circle, label: "Ellipse" },
+    { id: "line", icon: Minus, label: "Line" },
+    { id: "arrow", icon: ArrowRight, label: "Arrow" },
     { id: "freehand", icon: Pen, label: "Draw" },
     { id: "note", icon: StickyNote, label: "Note" },
     { id: "image", icon: ImageIcon, label: "Image" },
