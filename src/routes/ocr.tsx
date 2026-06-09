@@ -112,11 +112,19 @@ function OcrPage() {
   const [progress, setProgress] = useState<OcrProgress | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultName, setResultName] = useState<string | null>(null);
+  const [pageCount, setPageCount] = useState<number | null>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const [preflight, setPreflight] = useState<PreflightWarning | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [device] = useState<DeviceProfile>(() => profileDevice());
   const abortRef = useRef<AbortController | null>(null);
 
   const reset = () => {
     setFile(null);
     setProgress(null);
+    setPageCount(null);
+    setPreflight(null);
+    setAcknowledged(false);
     if (resultUrl) URL.revokeObjectURL(resultUrl);
     setResultUrl(null);
     setResultName(null);
@@ -127,8 +135,40 @@ function OcrPage() {
     setResultUrl(null);
     setResultName(null);
     setProgress(null);
+    setPageCount(null);
+    setPreflight(null);
+    setAcknowledged(false);
     setFile(f);
   }, [resultUrl]);
+
+  // Pre-flight inspection: read page count, build a warning if the file is heavy
+  // relative to the user's device. No OCR runs here — just metadata.
+  useEffect(() => {
+    if (!file) return;
+    let cancelled = false;
+    (async () => {
+      setInspecting(true);
+      try {
+        const pdfjs = await loadPdfjs();
+        const buf = await file.arrayBuffer();
+        const doc = await pdfjs.getDocument({ data: buf }).promise;
+        if (cancelled) return;
+        const pages = doc.numPages;
+        const sizeMb = file.size / (1024 * 1024);
+        setPageCount(pages);
+        setPreflight(buildPreflight(pages, sizeMb, device));
+      } catch (err) {
+        console.error("Preflight failed", err);
+      } finally {
+        if (!cancelled) setInspecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file, device]);
+
+
 
   const run = useCallback(async () => {
     if (!file) return;
