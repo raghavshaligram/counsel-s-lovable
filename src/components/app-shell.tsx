@@ -435,9 +435,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div className="mt-4 space-y-6">
                   {groups.map((group) => (
                     <div key={group.id}>
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2 px-1">
+                      <div className="font-display text-sm text-vault mb-2 px-1">
                         {group.label}
                       </div>
+
                       <div className="flex flex-col">
                         {group.items.map((t) => (
                           <ToolCard key={t.to} tool={t} onClick={() => setMobileOpen(false)} isActive={isActive(t.to)} />
