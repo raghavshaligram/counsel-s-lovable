@@ -551,38 +551,26 @@ function RedactPage() {
 
             <aside className="lg:sticky lg:top-20 rounded-xl border border-border bg-card/80 backdrop-blur-sm h-auto transition-all duration-500 ease-out overflow-hidden">
               {/* Global Header */}
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
-                <div className="flex items-center gap-1">
-                  {[
-                    { id: "detect" as const, icon: Wand2, label: "Detect" },
-                    { id: "find" as const, icon: Search, label: "Find" },
-                    { id: "label" as const, icon: Tag, label: "Label" },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setActiveTab(t.id)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
-                        activeTab === t.id
-                          ? "bg-vault/15 text-vault border-vault/30"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40 border-transparent"
-                      )}
-                    >
-                      <t.icon className="h-3.5 w-3.5" />
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                <Button
-                  onClick={exportRedacted}
-                  disabled={allBoxes.length === 0 || exporting || loading}
-                  size="sm"
-                  className="bg-vault text-vault-foreground hover:opacity-90 shrink-0"
-                >
-                  <Download className="h-3.5 w-3.5 mr-1.5" />
-                  {exporting ? "Exporting…" : "Export"}
-                </Button>
+              <div className="grid grid-cols-3 gap-1 px-3 py-3 border-b border-border">
+                {[
+                  { id: "detect" as const, icon: Wand2, label: "Detect" },
+                  { id: "find" as const, icon: Search, label: "Find" },
+                  { id: "label" as const, icon: Tag, label: "Label" },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTab(t.id)}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all border",
+                      activeTab === t.id
+                        ? "bg-vault/15 text-vault border-vault/30"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40 border-transparent"
+                    )}
+                  >
+                    <t.icon className="h-3.5 w-3.5" />
+                    {t.label}
+                  </button>
+                ))}
               </div>
 
               {/* Dynamic Content Area */}
