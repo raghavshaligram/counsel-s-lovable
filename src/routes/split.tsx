@@ -124,8 +124,9 @@ function SplitPage() {
         tag="Split"
         title="Split a PDF. Pages or ranges."
         sub="Extract pages 1–5 as one PDF. Or every page as its own file in a zip. Your file stays on this tab."
+        collapsed={!!file}
       />
-      <div className="mx-auto max-w-3xl px-5 md:px-8 py-10">
+      <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
         {!file ? (
           <FileDropzone onFile={onFile} label="Drop a PDF to split" sublabel="no upload, no page limit" />
         ) : (
