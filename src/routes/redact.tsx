@@ -469,6 +469,29 @@ function RedactPage() {
     return m;
   }, [detections]);
 
+  // Per-category counts for the *pending* preview, used in the review step.
+  const pendingCatCounts = useMemo(() => {
+    const m = new Map<PiiCategory, number>();
+    if (!pendingDetections) return m;
+    for (const d of pendingDetections) m.set(d.category, (m.get(d.category) ?? 0) + 1);
+    return m;
+  }, [pendingDetections]);
+
+  const pendingSelectedCount = useMemo(() => {
+    if (!pendingDetections) return 0;
+    return pendingDetections.filter((d) => enabledCats.has(d.category)).length;
+  }, [pendingDetections, enabledCats]);
+
+  // Per-page breakdown for pending keyword matches (top 6 pages, "+N more").
+  const pendingMatchPageBreakdown = useMemo(() => {
+    if (!pendingMatches) return [] as Array<{ page: number; count: number }>;
+    const m = new Map<number, number>();
+    for (const x of pendingMatches.matches) m.set(x.page, (m.get(x.page) ?? 0) + 1);
+    return [...m.entries()]
+      .map(([page, count]) => ({ page, count }))
+      .sort((a, b) => a.page - b.page);
+  }, [pendingMatches]);
+
   const setBoxLabel = useCallback((id: string, label: string) => {
     // auto-detect ids start with "det-", keyword ids with "kw-"
     if (id.startsWith("det-")) {
