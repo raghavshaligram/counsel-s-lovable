@@ -30,6 +30,7 @@ import {
   Wand2,
   Search,
   Tag,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
