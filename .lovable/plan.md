@@ -1,76 +1,53 @@
-# Editor Upgrade — Track 1 then Track 2
 
-Two passes, landed in order. Track 1 ships before Track 2 begins so you can sanity-check the destructive rewrite before annotations grow.
+# OCR speedups
 
-## Track 1 — Destructive text + redact rewrite
+Re-read the OCR pipeline. The three tactics you listed are mostly already in place — but the implementation leaves real wins on the table. Here's what to change.
 
-Goal: editing or redacting text actually removes the underlying glyphs from the PDF stream. Search/copy in Acrobat/Preview/pdftotext returns the new text, not the original.
+## Already done (no change)
 
-### Capture (editor side)
-- Extend the `edit-text` flow so when pdf.js detects a text item we store:
-  - `originalString` (decoded text from `getTextContent()`)
-  - `transform` matrix (a..f)
-  - `fontName` (pdf.js style entry)
-  - `page` index
-- Store these on a new optional `source` field on `TextEditAnno`.
-- Add a new annotation kind `redact` with: bbox, optional `overlayLabel`, and a captured list of text items it overlaps (same `source` shape, one per item).
+- **Native-first bypass** — `ocr-pdf.ts` line 228 already calls `getTextContent()` and skips Tesseract when the page has ≥12 text items.
+- **Worker pool** — lines 138–155 spin up `min(4, cores/2)` persistent Tesseract workers and dispatch pages in parallel.
+- **Render scale** — set to 1.5x (≈108 dpi), a notch below your 2x recommendation.
 
-### Rewrite (export side, `src/lib/editor/text-rewrite.ts`)
-- New helper `rewritePageText(page, edits, redactions)`:
-  1. Read the page's content stream(s) via `page.node.normalizedEntries().Contents` → flatten to a single decoded operator list using pdf-lib's `PDFContentStream` / `PDFOperator`.
-  2. Walk operators tracking current font (`Tf`) and text matrix (`Tm`/`Td`/`TD`/`T*`).
-  3. For each `Tj` / `TJ` / `'` / `"` operator:
-     - Decode operand into a glyph string using the active font's `/ToUnicode` CMap (fallback: WinAnsi for Standard 14).
-     - Match against any pending edit/redact by (string fuzzy-eq, matrix close-enough, font ref).
-     - **Edit:** replace operand with the new string re-encoded for the same font when possible; if the font lacks glyphs, swap to a standard font via `Tf` + `Tj` (still removes original).
-     - **Redact:** delete the operator entirely.
-  4. Re-serialise operators back to the page's content stream.
-- Best-effort: unsafe cases (Form XObjects, CID fonts with no /ToUnicode, scanned pages) fall back to the existing whiteout overlay + a visible "overlay only" badge in the editor list so you know it didn't truly erase.
+## What to add
 
-### Visual layer (kept)
-- Whiteout + redraw stays as the user-visible result of `text-edit` (looks identical regardless of rewrite success).
-- Redact draws a solid black rectangle (configurable colour) over the bbox.
-- New "Apply redactions" preview button: re-renders the page from the rewritten bytes so you can confirm before export.
+### 1. Copy-through native pages (biggest win)
 
-### Files
-- New: `src/lib/editor/text-rewrite.ts`, `src/lib/editor/cmap.ts` (ToUnicode decoder).
-- Edited: `src/lib/editor/types.ts` (add `source`, `redact` kind), `src/lib/editor/export.ts` (call `rewritePageText` before drawing annos), `src/routes/editor.tsx` (capture pdf.js text item metadata, add Redact tool wiring + apply-preview).
+The native-first check skips Tesseract, but the page still gets rasterised to a canvas and JPEG-encoded. For a Word-exported 400-page PDF, that's 400 unnecessary canvas renders + JPEG encodes — minutes of work for zero benefit.
 
-### Validation
-- Round-trip: edit a word → export → reopen → copy text → contains the new word, not the old.
-- Redaction: redact a word → export → `pdftotext` output omits it.
-- CID font sample: edit gracefully falls back; export still succeeds and overlay shows the new text.
+Fix: when a page has a real text layer, skip the raster entirely and use pdf-lib's `copyPages` to clone the original page bytes into the output PDF. The output stays searchable (text layer already there) and we touch the page in milliseconds instead of seconds.
 
----
+Expected impact: on a mostly-native PDF, ~20–50x faster. On a fully-scanned PDF, no change.
 
-## Track 2 — Comments sidebar + quad highlights
+Edge case: mixed PDFs with some native + some scanned pages need page ordering preserved across two code paths. The existing `pending` map + `nextToEmbed` cursor already handles out-of-order completion, so this slots in cleanly.
 
-Goal: text-selection-driven highlight/underline/strike, threaded comments on every annotation, Acrobat-style sticky-note popups.
+### 2. Parallel OCR pool in redact's auto-detect
 
-### Quad highlights
-- Mount pdf.js text layer over each page canvas (existing `PageCanvas`).
-- When highlight/underline/strike tool is active, native selection is used; on `mouseup` compute selection rects via `range.getClientRects()`, convert to PDF points, store as `quads: {x,y,w,h}[]` on the annotation.
-- Extend `HighlightAnno` / `UnderlineAnno` / `StrikethroughAnno` with optional `quads`. Drag-rectangle behaviour stays as fallback when no text is selected.
-- Export: when `quads` present, draw one rect per quad instead of a single bbox.
+`src/lib/pdf/detect-pii.ts` has a serial OCR pass (lines 87–115) using a single Tesseract worker. On a 426-page scanned PDF this is the bottleneck. Mirror the pool pattern from `ocr-pdf.ts` — 4 workers, dispatch in parallel.
 
-### Comments + replies
-- Add `contents: string`, `author: string`, `createdAt: number`, `replies: { id, author, text, createdAt }[]` to `BaseAnno`.
-- New `src/components/editor/CommentsPanel.tsx` — right-side collapsible panel listing every annotation grouped by page, with reply box and resolve toggle. Clicking a comment scrolls/zooms to its annotation.
-- New `src/components/editor/StickyNotePopup.tsx` — opens on click for `note` annotations, shows author/timestamp, contents, replies. Replaces the current inline textarea for notes.
-- Author defaults to "Me" (no auth required); editable per-session in panel header.
+Expected impact: ~3–4x faster auto-detect on scanned PDFs.
 
-### Files
-- New: `src/components/editor/CommentsPanel.tsx`, `src/components/editor/StickyNotePopup.tsx`, `src/lib/editor/quad-capture.ts`.
-- Edited: `src/lib/editor/types.ts`, `src/lib/editor/export.ts`, `src/routes/editor.tsx` (mount text layer, swap inline note UI for popup, mount panel).
+### 3. Optional "High accuracy" toggle (2x render)
 
-### Validation
-- Select two lines of text → highlight tool → produces 2 quads, exports as 2 rects.
-- Add a reply on a sticky note → reload (in-memory) → reply persists for the session.
-- Comments panel "jump to" navigates and flashes the annotation.
+Add a checkbox on the OCR page: "High accuracy (slower)". When on, bump `RENDER_SCALE` from 1.5 to 2.0. Default stays at 1.5 to keep speed for the common case; users who get garbled output on small text or tight kerning can opt in.
 
----
+Expected impact: ~80% slower when enabled, but noticeably better accuracy on small fonts and dense layouts.
 
-## Out of scope (this round)
-- Persistence to backend (still in-memory per session).
-- Native `/Highlight`, `/Square`, `/Ink` PDF annotation dictionaries (flatten-only for now — works in every viewer).
-- Measurement tools, form-field editing, multi-user comment sync.
+## Files touched
+
+- `src/lib/pdf/ocr-pdf.ts` — add copy-through branch + accept a `highAccuracy` option.
+- `src/lib/pdf/detect-pii.ts` — refactor the OCR pass to use a worker pool.
+- `src/routes/ocr.tsx` — add the High accuracy checkbox + pass the flag through.
+
+## What I'm NOT changing
+
+- Pool size formula. `min(4, cores/2)` is already a safe ceiling — each Tesseract worker holds ~15 MB of language data, and going higher OOMs cheap laptops faster than it speeds things up.
+- Default render scale. 1.5x is the right default; 2x as opt-in.
+- Compression / JPEG quality. Already tuned at 0.78.
+
+## Order of work
+
+1. Copy-through native pages (single biggest win, isolated to `ocr-pdf.ts`).
+2. Worker pool in `detect-pii.ts`.
+3. High-accuracy toggle on the OCR route.
+

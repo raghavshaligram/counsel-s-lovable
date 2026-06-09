@@ -21,15 +21,22 @@
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { loadPdfjs } from "./worker";
 
-const RENDER_SCALE = 1.5;
+const RENDER_SCALE_DEFAULT = 1.5;
+const RENDER_SCALE_HIGH = 2.0;
 const JPEG_QUALITY = 0.78;
 const MIN_TEXT_ITEMS_TO_SKIP_OCR = 12;
 
 export interface OcrProgress {
   page: number;
   totalPages: number;
-  stage: "rendering" | "ocr" | "embedding" | "skipped";
+  stage: "rendering" | "ocr" | "embedding" | "skipped" | "copied";
   message: string;
+}
+
+export interface OcrOptions {
+  // Render canvases at 2x instead of 1.5x. Slower (~80%) but more accurate
+  // on small fonts and tight kerning. Default false.
+  highAccuracy?: boolean;
 }
 
 interface OcrWord {
@@ -37,7 +44,10 @@ interface OcrWord {
   bbox: { x0: number; y0: number; x1: number; y1: number };
 }
 
+// Rasterised page bound for OCR + re-embed. Native pages bypass this
+// entirely and are copied through with pdf-lib's copyPages.
 interface PageJob {
+  kind: "raster";
   index: number;
   pageNum: number;
   words: OcrWord[];
@@ -46,6 +56,14 @@ interface PageJob {
   pageHeight: number;
   skipped: boolean;
 }
+
+interface CopyJob {
+  kind: "copy";
+  index: number;
+  pageNum: number;
+}
+
+type AnyJob = PageJob | CopyJob;
 
 function collectWords(data: unknown): OcrWord[] {
   const out: OcrWord[] = [];
@@ -95,9 +113,15 @@ async function canvasToJpegBytes(canvas: AnyCanvas): Promise<Uint8Array> {
   });
 }
 
-function drawWordsOnPage(outPage: PDFPage, font: PDFFont, img: PDFImage, job: PageJob) {
+function drawWordsOnPage(
+  outPage: PDFPage,
+  font: PDFFont,
+  img: PDFImage,
+  job: PageJob,
+  renderScale: number,
+) {
   outPage.drawImage(img, { x: 0, y: 0, width: job.pageWidth, height: job.pageHeight });
-  const inv = 1 / RENDER_SCALE;
+  const inv = 1 / renderScale;
   for (const w of job.words) {
     const text = w.text.replace(/\s+/g, " ").trim();
     if (!text) continue;
@@ -124,7 +148,9 @@ export async function ocrPdfToSearchable(
   file: File,
   onProgress?: (p: OcrProgress) => void,
   signal?: AbortSignal,
+  options: OcrOptions = {},
 ): Promise<Uint8Array> {
+  const renderScale = options.highAccuracy ? RENDER_SCALE_HIGH : RENDER_SCALE_DEFAULT;
   const pdfjs = await loadPdfjs();
   const tess = await import("tesseract.js");
 
@@ -134,6 +160,17 @@ export async function ocrPdfToSearchable(
 
   const outPdf = await PDFDocument.create();
   const font = await outPdf.embedFont(StandardFonts.Helvetica);
+
+  // Load the source via pdf-lib once so we can copy native pages through
+  // without rasterising them. Lazy: only initialised if we hit a native page.
+  let srcPdfLib: PDFDocument | null = null;
+  const getSrcPdfLib = async () => {
+    if (!srcPdfLib) {
+      // pdf-lib mutates the bytes view; pass a fresh copy.
+      srcPdfLib = await PDFDocument.load(srcBytes.slice(), { updateMetadata: false });
+    }
+    return srcPdfLib;
+  };
 
   const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
   const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2)));
@@ -179,18 +216,21 @@ export async function ocrPdfToSearchable(
       totalPages,
       stage,
       message:
-        stage === "skipped"
-          ? `Page ${pageNum} already had text — skipped OCR (${completed}/${totalPages})`
-          : stage === "embedding"
-            ? `Embedded page ${pageNum} (${completed}/${totalPages})`
-            : `Processed page ${pageNum} (${completed}/${totalPages})`,
+        stage === "copied"
+          ? `Page ${pageNum} already searchable — copied through (${completed}/${totalPages})`
+          : stage === "skipped"
+            ? `Page ${pageNum} already had text — skipped OCR (${completed}/${totalPages})`
+            : stage === "embedding"
+              ? `Embedded page ${pageNum} (${completed}/${totalPages})`
+              : `Processed page ${pageNum} (${completed}/${totalPages})`,
     });
   };
 
-  // Streaming embed: pages can finish OCR out of order, but we must add
-  // them to the output PDF in order. We maintain a "next index to embed"
-  // cursor and a buffer of completed-but-not-yet-embedded jobs.
-  const pending = new Map<number, PageJob>();
+  // Streaming embed: pages can finish out of order, but we must add them to
+  // the output PDF in order. A "next index to embed" cursor + buffer keeps
+  // page order intact whether the job is a raster OCR result or a
+  // copy-through of a native page.
+  const pending = new Map<number, AnyJob>();
   let nextToEmbed = 0;
   let embedChain: Promise<void> = Promise.resolve();
 
@@ -200,11 +240,17 @@ export async function ocrPdfToSearchable(
         if (signal?.aborted) return;
         const job = pending.get(nextToEmbed)!;
         pending.delete(nextToEmbed);
-        const img = await outPdf.embedJpg(job.jpegBytes);
-        const outPage = outPdf.addPage([job.pageWidth, job.pageHeight]);
-        drawWordsOnPage(outPage, font, img, job);
-        // Drop the bytes ASAP so memory doesn't balloon on 400-page jobs.
-        (job as { jpegBytes?: Uint8Array }).jpegBytes = undefined;
+        if (job.kind === "copy") {
+          const src = await getSrcPdfLib();
+          const [copied] = await outPdf.copyPages(src, [job.pageNum - 1]);
+          outPdf.addPage(copied);
+        } else {
+          const img = await outPdf.embedJpg(job.jpegBytes);
+          const outPage = outPdf.addPage([job.pageWidth, job.pageHeight]);
+          drawWordsOnPage(outPage, font, img, job, renderScale);
+          // Drop the bytes ASAP so memory doesn't balloon on 400-page jobs.
+          (job as { jpegBytes?: Uint8Array }).jpegBytes = undefined;
+        }
         nextToEmbed++;
       }
     });
@@ -212,30 +258,42 @@ export async function ocrPdfToSearchable(
 
   const processPage = async (pageNum: number): Promise<void> => {
     if (signal?.aborted) throw new Error("Cancelled");
+
+    // Cheap probe FIRST: check for a text layer before doing any raster work.
+    // If the page is native (Word-export style), skip the canvas + JPEG +
+    // OCR entirely and just copy the original page through. Massive win on
+    // mostly-native PDFs.
+    const page = await srcDoc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const realItems = (
+      textContent.items as Array<{
+        str?: string;
+        transform?: number[];
+        width?: number;
+        height?: number;
+      }>
+    ).filter((it) => typeof it.str === "string" && it.str.trim().length > 0);
+
+    if (realItems.length >= MIN_TEXT_ITEMS_TO_SKIP_OCR) {
+      pending.set(pageNum - 1, { kind: "copy", index: pageNum - 1, pageNum });
+      report(pageNum, "copied");
+      flushEmbeds();
+      return;
+    }
+
+    // Scanned page — needs raster + OCR.
     await acquireRender();
     let words: OcrWord[] = [];
-    let skipped = false;
-    let pageWidth = 0;
-    let pageHeight = 0;
     let jpegBytes: Uint8Array;
     let canvas: AnyCanvas | null = null;
+    let pageWidth = 0;
+    let pageHeight = 0;
     try {
-      const page = await srcDoc.getPage(pageNum);
       const baseViewport = page.getViewport({ scale: 1 });
       pageWidth = baseViewport.width;
       pageHeight = baseViewport.height;
 
-      const textContent = await page.getTextContent();
-      const realItems = (
-        textContent.items as Array<{
-          str?: string;
-          transform?: number[];
-          width?: number;
-          height?: number;
-        }>
-      ).filter((it) => typeof it.str === "string" && it.str.trim().length > 0);
-
-      const viewport = page.getViewport({ scale: RENDER_SCALE });
+      const viewport = page.getViewport({ scale: renderScale });
       const cw = Math.ceil(viewport.width);
       const ch = Math.ceil(viewport.height);
       canvas = makeCanvas(cw, ch);
@@ -253,49 +311,33 @@ export async function ocrPdfToSearchable(
       }).promise;
       jpegBytes = await canvasToJpegBytes(canvas);
 
-      if (realItems.length >= MIN_TEXT_ITEMS_TO_SKIP_OCR) {
-        for (const it of realItems) {
-          const tx = it.transform ?? [1, 0, 0, 1, 0, 0];
-          const fontHeight = Math.hypot(tx[2], tx[3]) || it.height || 10;
-          const x0Pdf = tx[4];
-          const y0Pdf = tx[5];
-          const wPdf = it.width || font.widthOfTextAtSize(it.str || "", fontHeight);
-          const x0 = x0Pdf * RENDER_SCALE;
-          const x1 = (x0Pdf + wPdf) * RENDER_SCALE;
-          const y1 = (pageHeight - y0Pdf) * RENDER_SCALE;
-          const y0 = y1 - fontHeight * RENDER_SCALE;
-          words.push({ text: it.str || "", bbox: { x0, y0, x1, y1 } });
-        }
-        skipped = true;
-        report(pageNum, "skipped");
-      } else {
-        const worker = await acquire();
-        try {
-          if (signal?.aborted) throw new Error("Cancelled");
-          const { data } = await worker.recognize(
-            canvas as HTMLCanvasElement,
-            {},
-            { blocks: true },
-          );
-          words = collectWords(data);
-        } finally {
-          release(worker);
-        }
-        report(pageNum, "ocr");
+      const worker = await acquire();
+      try {
+        if (signal?.aborted) throw new Error("Cancelled");
+        const { data } = await worker.recognize(
+          canvas as HTMLCanvasElement,
+          {},
+          { blocks: true },
+        );
+        words = collectWords(data);
+      } finally {
+        release(worker);
       }
+      report(pageNum, "ocr");
     } finally {
       releaseRender();
       canvas = null;
     }
 
     pending.set(pageNum - 1, {
+      kind: "raster",
       index: pageNum - 1,
       pageNum,
       words,
       jpegBytes: jpegBytes!,
       pageWidth,
       pageHeight,
-      skipped,
+      skipped: false,
     });
     flushEmbeds();
   };

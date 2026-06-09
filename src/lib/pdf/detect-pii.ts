@@ -116,50 +116,83 @@ export async function detectPiiInPdf(
     }
   }
 
-  // Pass 2 — OCR for image-only pages
+  // Pass 2 — OCR for image-only pages, parallelised across a worker pool.
+  // One worker per scan is wasteful (15 MB language data per init) and
+  // serial OCR pins a 400-page scan for tens of minutes. Mirror the pool
+  // pattern from ocr-pdf.ts.
   if (ocrPages.length > 0) {
     const { createWorker } = await import("tesseract.js");
-    const worker = await createWorker("eng");
-    try {
-      for (const i of ocrPages) {
-        onProgress?.({ stage: "ocr", page: i, totalPages: doc.numPages });
-        const page = await doc.getPage(i);
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        await page.render({
-          canvasContext: ctx,
-          viewport,
-          canvas,
-        } as Parameters<typeof page.render>[0]).promise;
+    const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
+    const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2), ocrPages.length));
+    const workers = await Promise.all(
+      Array.from({ length: poolSize }, () => createWorker("eng")),
+    );
+    const idle = [...workers];
+    const waiters: Array<(w: (typeof workers)[number]) => void> = [];
+    const acquire = (): Promise<(typeof workers)[number]> =>
+      new Promise((res) => {
+        const w = idle.pop();
+        if (w) return res(w);
+        waiters.push(res);
+      });
+    const release = (w: (typeof workers)[number]) => {
+      const next = waiters.shift();
+      if (next) next(w);
+      else idle.push(w);
+    };
 
-        const { data } = await worker.recognize(canvas, {}, { blocks: true });
-        const words = collectWords(data);
-        for (const w of words) {
-          if (!w.text || !w.text.trim()) continue;
-          const cat = matchCategory(w.text);
-          if (!cat) continue;
-          const { x0, y0, x1, y1 } = w.bbox;
-          const pad = Math.max(2, (y1 - y0) * 0.15);
-          detections.push({
-            id: `det-ocr-${i}-${detections.length}`,
-            page: i,
-            x: x0 - pad,
-            y: y0 - pad,
-            w: x1 - x0 + pad * 2,
-            h: y1 - y0 + pad * 2,
-            category: cat,
-            snippet: snippet(w.text),
-          });
-        }
-      }
+    let done = 0;
+    try {
+      await Promise.all(
+        ocrPages.map(async (i) => {
+          const page = await doc.getPage(i);
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          await page.render({
+            canvasContext: ctx,
+            viewport,
+            canvas,
+          } as Parameters<typeof page.render>[0]).promise;
+
+          const worker = await acquire();
+          let words: OcrWord[];
+          try {
+            const { data } = await worker.recognize(canvas, {}, { blocks: true });
+            words = collectWords(data);
+          } finally {
+            release(worker);
+          }
+          done++;
+          onProgress?.({ stage: "ocr", page: done, totalPages: ocrPages.length });
+
+          for (const w of words) {
+            if (!w.text || !w.text.trim()) continue;
+            const cat = matchCategory(w.text);
+            if (!cat) continue;
+            const { x0, y0, x1, y1 } = w.bbox;
+            const pad = Math.max(2, (y1 - y0) * 0.15);
+            detections.push({
+              id: `det-ocr-${i}-${detections.length}`,
+              page: i,
+              x: x0 - pad,
+              y: y0 - pad,
+              w: x1 - x0 + pad * 2,
+              h: y1 - y0 + pad * 2,
+              category: cat,
+              snippet: snippet(w.text),
+            });
+          }
+        }),
+      );
     } finally {
-      await worker.terminate();
+      await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
     }
   }
+
 
   return { detections, usedOcr: ocrPages.length > 0 };
 }
