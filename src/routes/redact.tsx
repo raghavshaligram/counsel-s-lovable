@@ -251,17 +251,31 @@ function RedactPage() {
 
   const runAutoDetect = useCallback(async () => {
     if (!file) return;
+    // Confirmation gate for large PDFs — auto-detect on 400+ pages can pin
+    // the browser tab for a long time, especially when any page falls back to
+    // OCR. Require an explicit second click before we burn the cycles.
+    const pages = docRef.current?.numPages ?? totalPages;
+    if (pages > 100 && !detectConfirm) {
+      setDetectConfirm(true);
+      return;
+    }
+    setDetectConfirm(false);
     setDetecting(true);
     setDetectStatus("Reading text layer…");
     try {
       const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
-      const { detections: found, usedOcr } = await detectPiiInPdf(file, 1.5, (p) => {
-        if (p.stage === "ocr") {
-          setDetectStatus(`OCR scanning page ${p.page} of ${p.totalPages}…`);
-        } else {
-          setDetectStatus(`Reading page ${p.page} of ${p.totalPages}…`);
-        }
-      });
+      const { detections: found, usedOcr } = await detectPiiInPdf(
+        file,
+        1.5,
+        (p) => {
+          if (p.stage === "ocr") {
+            setDetectStatus(`OCR scanning page ${p.page} of ${p.totalPages}…`);
+          } else {
+            setDetectStatus(`Reading page ${p.page} of ${p.totalPages}…`);
+          }
+        },
+        docRef.current ?? undefined,
+      );
       setDetections(found);
       if (found.length === 0) {
         toast.info("No obvious PII patterns found.", {
@@ -286,7 +300,7 @@ function RedactPage() {
       setDetecting(false);
       setDetectStatus(null);
     }
-  }, [file]);
+  }, [file, totalPages, detectConfirm]);
 
   const runKeywordSearch = useCallback(async () => {
     if (!file) return;
