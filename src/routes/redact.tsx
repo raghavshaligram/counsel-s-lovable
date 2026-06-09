@@ -1126,9 +1126,15 @@ function RedactPage() {
                         Exemption label
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Pick this first — it's stamped in white over every redaction you add
-                        from Detect, Find, or by hand. Double-click any box to override.
+                        {isPremium
+                          ? "Required — every redaction must carry an exemption code before export. Pick a default here; double-click any box to override."
+                          : "Pick this first — it's stamped in white over every redaction you add from Detect, Find, or by hand. Double-click any box to override."}
                       </p>
+                      {isPremium && (
+                        <div className="mt-2 rounded-md border border-vault/30 bg-vault/10 p-2 text-[11px] text-vault leading-relaxed">
+                          Export is blocked if any box is missing a code.
+                        </div>
+                      )}
                     </div>
                     <Select
                       value={defaultLabel || "__none"}
