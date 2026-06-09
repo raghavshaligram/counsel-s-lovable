@@ -232,77 +232,39 @@ export function AnnotationWorkspace({ fileName, bytes, headerSlot }: {
 
   // Export
   const handleExport = useCallback(async (mode: "flatten" | "native" | "both") => {
-    if (!bytes || !file) return;
+    if (!bytes) return;
     try {
       const out = await exportAnnotatedPdf(bytes, annots, { mode });
       const blob = new Blob([out as unknown as ArrayBuffer], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = file.name.replace(/\.pdf$/i, "") + "-annotated.pdf";
+      a.href = url; a.download = fileName.replace(/\.pdf$/i, "") + "-annotated.pdf";
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported", { description: mode === "flatten" ? "Annotations burned in." : mode === "native" ? "Native PDF annotations." : "Native + flattened." });
     } catch (err) {
       toast.error("Export failed", { description: String(err) });
     }
-  }, [bytes, file, annots]);
+  }, [bytes, fileName, annots]);
 
   const handleExportComments = useCallback(() => {
-    if (!file) return;
-    const json = exportCommentsJson(annots, file.name);
+    const json = exportCommentsJson(annots, fileName);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = file.name.replace(/\.pdf$/i, "") + "-comments.json";
+    a.href = url; a.download = fileName.replace(/\.pdf$/i, "") + "-comments.json";
     a.click();
     URL.revokeObjectURL(url);
-  }, [annots, file]);
-
-  // ----- empty state -----
-  if (!file || !bytes) {
-    return (
-      <AppShell>
-        <div className="p-6 md:p-10 max-w-3xl mx-auto">
-          <div className="mb-6">
-            <h1 className="font-display text-3xl tracking-tight">Annotate PDF</h1>
-            <p className="text-muted-foreground mt-2 text-sm">
-              Highlight, underline, draw, comment, stamp. Real PDF annotations that open
-              correctly in Acrobat, Preview, and any other reader. Files never leave this tab.
-            </p>
-          </div>
-          <FileDropzone
-            accept="application/pdf"
-            onFile={onFile}
-            label="Drop a PDF to start annotating"
-            sublabel="or click to browse"
-          />
-          <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-muted-foreground">
-            <ShortcutHint k="V">Select</ShortcutHint>
-            <ShortcutHint k="H">Highlight</ShortcutHint>
-            <ShortcutHint k="U">Underline</ShortcutHint>
-            <ShortcutHint k="S">Strikethrough</ShortcutHint>
-            <ShortcutHint k="N">Sticky note</ShortcutHint>
-            <ShortcutHint k="D">Draw</ShortcutHint>
-            <ShortcutHint k="R">Rectangle</ShortcutHint>
-            <ShortcutHint k="A">Arrow</ShortcutHint>
-            <ShortcutHint k="T">Text box</ShortcutHint>
-            <ShortcutHint k="⌘Z">Undo</ShortcutHint>
-            <ShortcutHint k="⇧⌘Z">Redo</ShortcutHint>
-            <ShortcutHint k="⌘F">Search</ShortcutHint>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
+  }, [annots, fileName]);
 
   return (
-    <AppShell>
-      <TooltipProvider delayDuration={300}>
-        <div className="flex flex-col h-svh">
-          {/* Toolbar */}
-          <div className="flex items-center gap-1 px-3 py-2 border-b bg-card">
-            <div className="text-sm font-medium truncate max-w-[200px]" title={file.name}>{file.name}</div>
-            <span className="text-xs text-muted-foreground ml-1">{pageMetas.length} pages</span>
+    <TooltipProvider delayDuration={300}>
+      <div className="flex flex-col h-full">
+        {/* Toolbar */}
+        <div className="flex items-center gap-1 px-3 py-2 border-b bg-card">
+          {headerSlot}
+          <div className="text-sm font-medium truncate max-w-[200px]" title={fileName}>{fileName}</div>
+          <span className="text-xs text-muted-foreground ml-1">{pageMetas.length} pages</span>
             <div className="h-5 w-px bg-border mx-2" />
             <ToolBtn icon={MousePointer2} label="Select (V)" active={tool === "select"} onClick={() => setTool("select")} />
             <div className="h-5 w-px bg-border mx-1" />
@@ -318,6 +280,7 @@ export function AnnotationWorkspace({ fileName, bytes, headerSlot }: {
             <ToolBtn icon={Circle} label="Ellipse (E)" active={tool === "ellipse"} onClick={() => setTool("ellipse")} />
             <ToolBtn icon={Minus} label="Line (L)" active={tool === "line"} onClick={() => setTool("line")} />
             <ToolBtn icon={ArrowRight} label="Arrow (A)" active={tool === "arrow"} onClick={() => setTool("arrow")} />
+
 
             <div className="h-5 w-px bg-border mx-2" />
             {/* Color */}
