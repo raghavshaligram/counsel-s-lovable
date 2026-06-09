@@ -277,7 +277,7 @@ function OcrPage() {
             Turn scans into <span className="text-vault italic">searchable PDFs</span>.
           </>
         }
-        sub="Drop a scanned or image-only PDF and get one back with a real text layer — copy, search, redact, extract. Tesseract OCR runs entirely in your browser. Pages never leave the tab."
+        sub="Drop a scanned PDF or an image (JPG, PNG, WebP) and get back a PDF with a real text layer — copy, search, redact, extract. Tesseract OCR runs entirely in your browser. Pages never leave the tab."
         collapsed={!!file}
       />
 
@@ -287,8 +287,9 @@ function OcrPage() {
             {!file ? (
               <FileDropzone
                 onFile={onFile}
-                label="Drop a scanned PDF"
-                sublabel="image-only or mixed PDFs · processed locally"
+                accept={ACCEPTED_TYPES}
+                label="Drop a scanned PDF or image"
+                sublabel="PDF, JPG, PNG, WebP · processed locally"
               />
             ) : (
               <>
