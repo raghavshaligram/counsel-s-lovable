@@ -302,13 +302,13 @@ function ToolCard({ tool, onClick, isActive }: { tool: Tool; onClick?: () => voi
   );
 }
 
-function MegaPanel({ group }: { group: Group }) {
+function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string) => boolean }) {
   return (
     <div className="w-[640px] p-4">
       <div className="grid grid-cols-[1fr_180px] gap-4">
         <div className="grid grid-cols-2 gap-1">
           {group.items.map((t) => (
-            <ToolCard key={t.to} tool={t} />
+            <ToolCard key={t.to} tool={t} isActive={isActive(t.to)} />
           ))}
         </div>
         <div className="rounded-lg border border-vault/20 bg-vault/5 p-4 flex flex-col justify-between">
