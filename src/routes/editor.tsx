@@ -21,7 +21,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
-import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, WatermarkSettings } from "@/lib/editor/types";
+import { computeQuads } from "@/lib/editor/quad-capture";
+import { CommentsPanel } from "@/components/editor/CommentsPanel";
+import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, TextSource, WatermarkSettings } from "@/lib/editor/types";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -846,11 +848,14 @@ function PageCanvas({
     const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
     if (w < 3 || h < 3) return;
     if (state.tool === "highlight") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "highlight", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: Math.min(state.opacity, 0.5) } });
+      const quads = computeQuads({ x: a.x, y: a.y, w, h }, textItems);
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "highlight", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: Math.min(state.opacity, 0.5), quads: quads.length ? quads : undefined } });
     } else if (state.tool === "underline") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "underline", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
+      const quads = computeQuads({ x: a.x, y: a.y, w, h }, textItems);
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "underline", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, quads: quads.length ? quads : undefined } });
     } else if (state.tool === "strikethrough") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "strikethrough", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
+      const quads = computeQuads({ x: a.x, y: a.y, w, h }, textItems);
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "strikethrough", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, quads: quads.length ? quads : undefined } });
     } else if (state.tool === "rect") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, fill: state.fillShape } });
     } else if (state.tool === "ellipse") {
@@ -862,7 +867,18 @@ function PageCanvas({
       const flipX = start.x > end.x;
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: state.tool, page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, flipX } });
     } else if (state.tool === "redact") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, stroke: 0, fill: true } });
+      // Capture overlapping text item strings so the export rewriter can
+      // erase them from the underlying content stream.
+      const sources: TextSource[] = [];
+      for (const it of textItems) {
+        const ix2 = it.x + it.w, iy2 = it.y + it.h;
+        const ox = Math.max(0, Math.min(a.x + w, ix2) - Math.max(a.x, it.x));
+        const oy = Math.max(0, Math.min(a.y + h, iy2) - Math.max(a.y, it.y));
+        if (ox > 1 && oy > it.h * 0.35) {
+          sources.push({ originalString: it.str, transform: it.transform, fontName: it.fontName });
+        }
+      }
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: state.current, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });
     }
   };
 
