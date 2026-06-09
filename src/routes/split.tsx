@@ -221,8 +221,8 @@ export function ToolHeader({
   collapsed = false,
 }: {
   tag: string;
-  title: string;
-  sub: string;
+  title: React.ReactNode;
+  sub: React.ReactNode;
   collapsed?: boolean;
 }) {
   if (collapsed) {
