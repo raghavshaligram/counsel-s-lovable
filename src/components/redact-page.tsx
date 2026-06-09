@@ -160,7 +160,7 @@ function buildPrivilegeLogCsv(sourceName: string, boxes: Box[]): string {
 }
 
 
-function RedactPage() {
+export function RedactPage() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isPremium = pathname === "/verifiable-redaction";
 
