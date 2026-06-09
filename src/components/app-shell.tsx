@@ -21,29 +21,41 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const heroTools = [
-  { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
-  { to: "/sign", label: "Sign & Fill", icon: PenIcon, desc: "Draw, type, or upload your signature" },
-  { to: "/chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
-  { to: "/merge", label: "Mail Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
-  { to: "/extract", label: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
+const secureTools = [
+  { to: "/redact", label: "Redact", icon: ShieldCheckIcon },
+  { to: "/protect", label: "Protect", icon: Lock },
+  { to: "/unlock", label: "Unlock", icon: UnlockIcon },
+  { to: "/sign", label: "Sign & Fill", icon: PenIcon },
 ];
 
-const converters = [
-  { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
-  { to: "/to-images", label: "PDF → Images", icon: ImageIcon, desc: "Export every page as PNG or JPG" },
-  { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon, desc: "Combine JPG/PNG into one PDF" },
+const editTools = [
+  { to: "/editor", label: "Editor", icon: EditIcon },
+  { to: "/split", label: "Split", icon: ScissorsIcon },
+  { to: "/rotate", label: "Rotate", icon: RotateCwIcon },
+  { to: "/watermark", label: "Watermark", icon: StampIcon },
+  { to: "/compress", label: "Compress", icon: CompressIcon },
+  { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon },
 ];
 
-const utilities = [
-  { to: "/editor", label: "Editor", icon: EditIcon, desc: "Full PDF editor — annotate, edit text, reorder pages" },
-  { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
-  { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
-  { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
-  { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
-  { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
-  { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
-  { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
+type NavItem = { to: string; label: string; icon: (p: { className?: string }) => JSX.Element; beta?: boolean };
+
+const convertGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: "From PDF",
+    items: [
+      { to: "/to-word", label: "PDF → Word", icon: FileTextIcon },
+      { to: "/to-images", label: "PDF → Images", icon: ImageIcon },
+      { to: "/extract", label: "Extract", icon: Table2Icon },
+      { to: "/chat", label: "Search inside PDF", icon: ChatIcon, beta: true },
+    ],
+  },
+  {
+    label: "To PDF",
+    items: [
+      { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon },
+      { to: "/merge", label: "Mail Merge", icon: FileStackIcon },
+    ],
+  },
 ];
 
 function UnlockIcon({ className }: { className?: string }) {
