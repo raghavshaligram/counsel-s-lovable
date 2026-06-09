@@ -251,7 +251,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isActive = (path: string) => currentPath === path;
 
   return (
-    <SidebarProvider defaultOpen={false}>
+    <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-svh w-full">
         <Sidebar collapsible="icon" variant="sidebar">
           <SidebarHeader>
