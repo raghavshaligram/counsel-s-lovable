@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Download, Gauge, Loader2, Lock, Minimize2 } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Lock, Minimize2 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
@@ -35,31 +35,42 @@ type Preset = "low" | "medium" | "high" | "extreme";
 
 const PRESETS: Record<
   Preset,
-  { label: string; dpi: number; quality: number; blurb: string }
+  {
+    label: string;
+    dpi: number;
+    quality: number;
+    blurb: string;
+    /** Rough expected output / input ratio for a typical image-heavy PDF. */
+    estimatedRatio: number;
+  }
 > = {
   low: {
     label: "Light",
     dpi: 200,
     quality: 0.92,
     blurb: "Near-original quality. Good for archival or print.",
+    estimatedRatio: 0.65,
   },
   medium: {
     label: "Balanced",
-    dpi: 144,
-    quality: 0.78,
-    blurb: "Best size/quality trade-off. Email-ready.",
+    dpi: 150,
+    quality: 0.8,
+    blurb: "Good for standard emails.",
+    estimatedRatio: 0.35,
   },
   high: {
     label: "Strong",
-    dpi: 110,
-    quality: 0.6,
-    blurb: "Big size win. Text stays readable on screen.",
+    dpi: 100,
+    quality: 0.65,
+    blurb: "Web-optimized.",
+    estimatedRatio: 0.2,
   },
   extreme: {
     label: "Maximum",
-    dpi: 80,
-    quality: 0.45,
-    blurb: "Smallest possible. Acceptable for previews.",
+    dpi: 72,
+    quality: 0.5,
+    blurb: "Maximum compression for rigid web forms.",
+    estimatedRatio: 0.12,
   },
 };
 
@@ -269,49 +280,98 @@ function CompressPage() {
                 </span>
               </label>
 
-              <Button
-                onClick={run}
-                disabled={busy}
-                className="bg-vault text-vault-foreground hover:opacity-90 w-full"
-              >
-                {busy ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {progress
-                      ? `Compressing ${progress.done}/${progress.total}…`
-                      : "Working…"}
-                  </>
-                ) : (
-                  <>
-                    <Minimize2 className="h-4 w-4 mr-2" />
-                    Compress PDF
-                  </>
-                )}
-              </Button>
+              {!result && (
+                <div className="space-y-3">
+                  {/* Estimator */}
+                  <div className="text-xs text-muted-foreground text-center tabular-nums">
+                    Current size:{" "}
+                    <span className="text-foreground/80">{fmtBytes(file.size)}</span>
+                    {" → "}
+                    Estimated size:{" "}
+                    <span className="text-foreground/80">
+                      {fmtBytes(
+                        Math.max(
+                          50_000,
+                          Math.round(file.size * (grayscale ? PRESETS[preset].estimatedRatio * 0.75 : PRESETS[preset].estimatedRatio)),
+                        ),
+                      )}
+                    </span>
+                    <span className="text-vault font-medium ml-1.5">
+                      (Save ~
+                      {Math.round(
+                        (1 - (grayscale ? PRESETS[preset].estimatedRatio * 0.75 : PRESETS[preset].estimatedRatio)) * 100,
+                      )}
+                      %)
+                    </span>
+                  </div>
 
-              {busy && progress && (
-                <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-vault transition-all"
-                    style={{
-                      width: `${(progress.done / progress.total) * 100}%`,
-                    }}
-                  />
+                  <Button
+                    onClick={run}
+                    disabled={busy}
+                    className="bg-vault text-vault-foreground hover:opacity-90 w-full relative overflow-hidden h-11"
+                  >
+                    {busy ? (
+                      <>
+                        <span className="relative z-10 inline-flex items-center">
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          {progress
+                            ? `Compressing… (Page ${progress.done} of ${progress.total})`
+                            : "Compressing…"}
+                        </span>
+                        {progress && (
+                          <span
+                            className="absolute inset-y-0 left-0 bg-white/15 transition-[width] duration-200"
+                            style={{
+                              width: `${(progress.done / progress.total) * 100}%`,
+                            }}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Minimize2 className="h-4 w-4 mr-2" />
+                        Compress PDF
+                      </>
+                    )}
+                  </Button>
+
+                  <div className="text-[11px] text-muted-foreground text-center flex items-center justify-center gap-1.5">
+                    <Lock className="h-3 w-3 text-vault" />
+                    Processed securely in your browser memory. 0 bytes uploaded.
+                  </div>
                 </div>
               )}
             </div>
 
             {result && (
-              <div className="rounded-lg border border-vault/40 bg-vault/10 p-6 space-y-4">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-vault">
-                  <Gauge className="h-3.5 w-3.5" />
-                  Result
+              <div className="rounded-lg border border-vault/40 bg-vault/10 p-6 space-y-5 animate-fade-in">
+                <div className="flex items-start gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-full bg-vault/20 text-vault shrink-0">
+                    <CheckCircle2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="font-display text-xl text-foreground">
+                      Success!
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-0.5">
+                      Reduced from{" "}
+                      <span className="text-foreground tabular-nums">
+                        {fmtBytes(result.originalSize)}
+                      </span>{" "}
+                      to{" "}
+                      <span className="text-vault font-semibold tabular-nums">
+                        {fmtBytes(result.newSize)}
+                      </span>
+                      {pct > 0 && (
+                        <span className="text-vault"> · {pct}% smaller</span>
+                      )}
+                      .
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <Stat
-                    label="Original"
-                    value={fmtBytes(result.originalSize)}
-                  />
+
+                <div className="grid grid-cols-3 gap-4 pt-1">
+                  <Stat label="Original" value={fmtBytes(result.originalSize)} />
                   <Stat label="Compressed" value={fmtBytes(result.newSize)} />
                   <Stat
                     label="Saved"
@@ -319,20 +379,32 @@ function CompressPage() {
                     accent={pct > 0}
                   />
                 </div>
+
                 {pct <= 0 && (
                   <div className="text-xs text-muted-foreground">
                     This PDF was already heavily compressed — try the "Strong" or
                     "Maximum" preset, or enable grayscale.
                   </div>
                 )}
+
                 <a
                   href={result.url}
                   download={result.name}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-vault text-vault-foreground px-4 py-2.5 text-sm font-semibold hover:opacity-90"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-vault text-vault-foreground px-4 py-3 text-sm font-semibold hover:opacity-90"
                 >
                   <Download className="h-4 w-4" />
-                  Download {result.name}
+                  Download compressed PDF
                 </a>
+
+                <button
+                  onClick={() => {
+                    if (result) URL.revokeObjectURL(result.url);
+                    setResult(null);
+                  }}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground transition"
+                >
+                  Try a different preset
+                </button>
               </div>
             )}
           </div>
