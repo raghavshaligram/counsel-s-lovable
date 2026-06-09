@@ -103,30 +103,16 @@ function OcrPage() {
 
   return (
     <AppShell>
-      <div className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
-          <div className="flex items-start justify-between gap-6 flex-wrap">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-vault mb-3">
-                Tool · Make PDF Searchable
-              </div>
-              <h1 className="font-display text-4xl md:text-5xl leading-tight">
-                Turn scans into{" "}
-                <span className="text-vault italic">searchable PDFs</span>.
-              </h1>
-              <p className="mt-3 text-muted-foreground max-w-2xl">
-                Drop a scanned or image-only PDF and get one back with a real text layer — copy,
-                search, redact, extract. Tesseract OCR runs entirely in your browser. Pages never
-                leave the tab.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground rounded-md border border-border bg-card/50 px-3 py-2">
-              <Lock className="h-3.5 w-3.5 text-vault" />
-              On-device OCR · No upload
-            </div>
-          </div>
-        </div>
-      </div>
+      <ToolHeader
+        tag="Make PDF Searchable"
+        title={
+          <>
+            Turn scans into <span className="text-vault italic">searchable PDFs</span>.
+          </>
+        }
+        sub="Drop a scanned or image-only PDF and get one back with a real text layer — copy, search, redact, extract. Tesseract OCR runs entirely in your browser. Pages never leave the tab."
+        collapsed={!!file}
+      />
 
       <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
         <div className="grid lg:grid-cols-[1fr_300px] gap-6 items-start">
