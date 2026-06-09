@@ -5,8 +5,12 @@ export type Tool =
   | "select"
   | "text"
   | "highlight"
+  | "underline"
+  | "strikethrough"
   | "rect"
   | "ellipse"
+  | "line"
+  | "arrow"
   | "freehand"
   | "note"
   | "image"
@@ -34,6 +38,30 @@ export interface TextAnno extends BaseAnno {
 
 export interface HighlightAnno extends BaseAnno {
   kind: "highlight";
+}
+
+export interface UnderlineAnno extends BaseAnno {
+  kind: "underline";
+  stroke: number;
+}
+
+export interface StrikethroughAnno extends BaseAnno {
+  kind: "strikethrough";
+  stroke: number;
+}
+
+export interface LineAnno extends BaseAnno {
+  kind: "line";
+  stroke: number;
+  // diagonal direction inside bbox: false = top-left → bottom-right,
+  // true = top-right → bottom-left
+  flipX?: boolean;
+}
+
+export interface ArrowAnno extends BaseAnno {
+  kind: "arrow";
+  stroke: number;
+  flipX?: boolean;
 }
 
 export interface RectAnno extends BaseAnno {
