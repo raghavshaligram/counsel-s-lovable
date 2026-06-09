@@ -300,7 +300,7 @@ function OcrPage() {
                       <div className="text-sm font-medium truncate">{file.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {(file.size / (1024 * 1024)).toFixed(1)} MB
-                        {pageCount !== null && ` · ${pageCount} pages`}
+                        {pageCount !== null && ` · ${pageCount} ${pageCount === 1 ? "page" : "pages"}`}
                         {inspecting && " · inspecting…"}
                       </div>
                     </div>
