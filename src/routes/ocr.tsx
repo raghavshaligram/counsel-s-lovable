@@ -193,7 +193,7 @@ function OcrPage() {
       setBusy(false);
       abortRef.current = null;
     }
-  }, [file]);
+  }, [file, highAccuracy]);
 
   const cancel = () => abortRef.current?.abort();
 
