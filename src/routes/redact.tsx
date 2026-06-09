@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Download,
   FileText,
@@ -547,220 +548,240 @@ function RedactPage() {
               </div>
             </div>
 
-            <aside className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 space-y-4 [scrollbar-width:thin]">
-              <div className="rounded-lg border border-border bg-card/50 p-5">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-3">
-                  Redactions
-                </div>
-                <div className="text-3xl font-display">{allBoxes.length}</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  region{allBoxes.length === 1 ? "" : "s"} marked across {pages.length} page
-                  {pages.length === 1 ? "" : "s"}
-                </div>
+            <aside className="lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)] flex flex-col gap-4 min-h-0">
+              <Tabs defaultValue="detect" className="flex-1 flex flex-col min-h-0">
+                <TabsList className="grid grid-cols-3 w-full">
+                  <TabsTrigger value="detect" className="text-xs gap-1.5">
+                    <Wand2 className="h-3.5 w-3.5" /> Detect
+                  </TabsTrigger>
+                  <TabsTrigger value="find" className="text-xs gap-1.5">
+                    <Search className="h-3.5 w-3.5" /> Find
+                  </TabsTrigger>
+                  <TabsTrigger value="label" className="text-xs gap-1.5">
+                    <Tag className="h-3.5 w-3.5" /> Label
+                  </TabsTrigger>
+                </TabsList>
 
-                <label className="flex items-center justify-between gap-3 mt-4 text-xs">
+                <div className="flex-1 min-h-0 mt-3 rounded-lg border border-border bg-card/50 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <TabsContent value="detect" className="m-0 p-5 space-y-3 data-[state=inactive]:hidden">
+                    <div>
+                      <div className="flex items-center gap-2 text-foreground font-medium text-sm">
+                        <Wand2 className="h-4 w-4 text-vault" />
+                        Auto-detect PII
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                        Scans for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls back to
+                        on-device OCR for scanned pages (first run downloads ~10MB).
+                      </p>
+                    </div>
+                    <Button
+                      onClick={runAutoDetect}
+                      disabled={detecting || loading}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <Wand2 className="h-3.5 w-3.5 mr-2" />
+                      {detecting
+                        ? "Scanning…"
+                        : detections.length > 0
+                          ? "Re-scan"
+                          : "Scan this PDF"}
+                    </Button>
+                    {detectStatus && (
+                      <div className="text-[11px] text-muted-foreground text-center">
+                        {detectStatus}
+                      </div>
+                    )}
+                    {detections.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {(Object.keys(CATEGORY_META) as PiiCategory[])
+                          .filter((c) => (catCounts.get(c) ?? 0) > 0)
+                          .map((c) => {
+                            const on = enabledCats.has(c);
+                            const count = catCounts.get(c) ?? 0;
+                            return (
+                              <button
+                                key={c}
+                                onClick={() => toggleCategory(c)}
+                                className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition ${
+                                  on
+                                    ? "border-vault/50 bg-vault/10 text-foreground"
+                                    : "border-border bg-card/30 text-muted-foreground hover:bg-card"
+                                }`}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <span
+                                    className={`inline-block h-2 w-2 rounded-full ${
+                                      on ? "bg-vault" : "bg-muted-foreground/40"
+                                    }`}
+                                  />
+                                  {CATEGORY_META[c].label}
+                                </span>
+                                <span className="tabular-nums">{count}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="find" className="m-0 p-5 space-y-3 data-[state=inactive]:hidden">
+                    <div>
+                      <div className="flex items-center gap-2 text-foreground font-medium text-sm">
+                        <Search className="h-4 w-4 text-vault" />
+                        Find &amp; redact all
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                        Type a word or phrase — every match across all pages is redacted in one
+                        click.
+                      </p>
+                    </div>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        runKeywordSearch();
+                      }}
+                      className="space-y-2"
+                    >
+                      <Input
+                        value={kwQuery}
+                        onChange={(e) => setKwQuery(e.target.value)}
+                        placeholder="e.g. Acme Corp"
+                        disabled={kwSearching}
+                      />
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <Checkbox
+                            checked={kwMatchCase}
+                            onCheckedChange={(v) => setKwMatchCase(v === true)}
+                          />
+                          Match case
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <Checkbox
+                            checked={kwWholeWord}
+                            onCheckedChange={(v) => setKwWholeWord(v === true)}
+                          />
+                          Whole word
+                        </label>
+                      </div>
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        className="w-full"
+                        disabled={!kwQuery.trim() || kwSearching}
+                      >
+                        {kwSearching ? "Searching…" : "Redact all matches"}
+                      </Button>
+                    </form>
+                    {keywordGroups.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {keywordGroups.map((g) => (
+                          <span
+                            key={g.id}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-vault/40 bg-vault/10 px-2.5 py-1 text-[11px]"
+                          >
+                            <span className="font-medium">{g.query}</span>
+                            <span className="text-muted-foreground tabular-nums">
+                              · {g.count}
+                            </span>
+                            <button
+                              onClick={() => removeKeywordGroup(g.id)}
+                              className="ml-0.5 text-muted-foreground hover:text-foreground"
+                              aria-label={`Remove ${g.query}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="label" className="m-0 p-5 space-y-3 data-[state=inactive]:hidden">
+                    <div>
+                      <div className="flex items-center gap-2 text-foreground font-medium text-sm">
+                        <Tag className="h-4 w-4 text-vault" />
+                        Default exemption label
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                        Stamped in white over every new redaction. Double-click any box to
+                        override.
+                      </p>
+                    </div>
+                    <Select
+                      value={defaultLabel || "__none"}
+                      onValueChange={(v) => setDefaultLabel(v === "__none" ? "" : v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="No label" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">No label</SelectItem>
+                        {EXEMPTION_PRESETS.map((p) => (
+                          <SelectItem key={p.value} value={p.value}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="Or type a custom label"
+                      value={defaultLabel}
+                      onChange={(e) => setDefaultLabel(e.target.value)}
+                    />
+                    <div className="rounded-md border border-border bg-card/30 p-3 text-[11px] text-muted-foreground leading-relaxed">
+                      <div className="flex items-center gap-1.5 text-foreground font-medium mb-1">
+                        <ShieldCheck className="h-3 w-3 text-vault" />
+                        How export works
+                      </div>
+                      Each page is rasterised, redactions and labels are baked in, and the image
+                      replaces the page. With metadata stripping on, the info dict, XMP, form
+                      fields, and structure tree are removed.
+                    </div>
+                  </TabsContent>
+                </div>
+              </Tabs>
+
+              <div className="shrink-0 rounded-lg border border-border bg-card/70 backdrop-blur p-4">
+                <div className="flex items-baseline justify-between mb-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                      Redactions
+                    </div>
+                    <div className="text-2xl font-display leading-none mt-1">
+                      {allBoxes.length}
+                    </div>
+                  </div>
+                  {(boxes.length > 0 ||
+                    detections.length > 0 ||
+                    keywordBoxes.length > 0) && (
+                    <button
+                      onClick={() => {
+                        setBoxes([]);
+                        setDetections([]);
+                        setDetectionLabels({});
+                        setKeywordGroups([]);
+                        setKeywordBoxes([]);
+                      }}
+                      className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                    >
+                      <Trash2 className="h-3 w-3" /> Clear
+                    </button>
+                  )}
+                </div>
+                <label className="flex items-center justify-between gap-3 text-xs py-1">
                   <span className="text-muted-foreground">Strip hidden metadata</span>
                   <Switch checked={stripMetadata} onCheckedChange={setStripMetadata} />
                 </label>
-
                 <Button
                   onClick={exportRedacted}
                   disabled={allBoxes.length === 0 || exporting || loading}
-                  className="w-full mt-4 bg-vault text-vault-foreground hover:opacity-90"
+                  className="w-full mt-3 bg-vault text-vault-foreground hover:opacity-90"
                 >
                   <Download className="h-4 w-4 mr-2" />
                   {exporting ? "Exporting…" : "Export redacted PDF"}
                 </Button>
-                {(boxes.length > 0 ||
-                  detections.length > 0 ||
-                  keywordBoxes.length > 0) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full mt-2"
-                    onClick={() => {
-                      setBoxes([]);
-                      setDetections([]);
-                      setDetectionLabels({});
-                      setKeywordGroups([]);
-                      setKeywordBoxes([]);
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Clear all
-                  </Button>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-border bg-card/50 p-5">
-                <div className="flex items-center gap-2 text-foreground font-medium mb-1 text-sm">
-                  <Search className="h-4 w-4 text-vault" />
-                  Find &amp; redact all
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Type a word or phrase — every match across all pages is redacted in one click.
-                </p>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    runKeywordSearch();
-                  }}
-                  className="mt-3 space-y-2"
-                >
-                  <Input
-                    value={kwQuery}
-                    onChange={(e) => setKwQuery(e.target.value)}
-                    placeholder="e.g. Acme Corp"
-                    disabled={kwSearching}
-                  />
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <Checkbox
-                        checked={kwMatchCase}
-                        onCheckedChange={(v) => setKwMatchCase(v === true)}
-                      />
-                      Match case
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <Checkbox
-                        checked={kwWholeWord}
-                        onCheckedChange={(v) => setKwWholeWord(v === true)}
-                      />
-                      Whole word
-                    </label>
-                  </div>
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    className="w-full"
-                    disabled={!kwQuery.trim() || kwSearching}
-                  >
-                    {kwSearching ? "Searching…" : "Redact all matches"}
-                  </Button>
-                </form>
-                {keywordGroups.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {keywordGroups.map((g) => (
-                      <span
-                        key={g.id}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-vault/40 bg-vault/10 px-2.5 py-1 text-[11px]"
-                      >
-                        <span className="font-medium">{g.query}</span>
-                        <span className="text-muted-foreground tabular-nums">· {g.count}</span>
-                        <button
-                          onClick={() => removeKeywordGroup(g.id)}
-                          className="ml-0.5 text-muted-foreground hover:text-foreground"
-                          aria-label={`Remove ${g.query}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-border bg-card/50 p-5">
-                <div className="flex items-center gap-2 text-foreground font-medium mb-1 text-sm">
-                  <Tag className="h-4 w-4 text-vault" />
-                  Default exemption label
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-                  Stamped in white over every new redaction. Double-click any box to override.
-                </p>
-                <Select
-                  value={defaultLabel || "__none"}
-                  onValueChange={(v) => setDefaultLabel(v === "__none" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No label" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">No label</SelectItem>
-                    {EXEMPTION_PRESETS.map((p) => (
-                      <SelectItem key={p.value} value={p.value}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  className="mt-2"
-                  placeholder="Or type a custom label"
-                  value={defaultLabel}
-                  onChange={(e) => setDefaultLabel(e.target.value)}
-                />
-              </div>
-
-              <div className="rounded-lg border border-border bg-card/50 p-5">
-                <div className="flex items-center gap-2 text-foreground font-medium mb-1 text-sm">
-                  <Wand2 className="h-4 w-4 text-vault" />
-                  Auto-detect PII
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Scans for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls back to
-                  on-device OCR for scanned pages (first run downloads ~10MB).
-                </p>
-                <Button
-                  onClick={runAutoDetect}
-                  disabled={detecting || loading}
-                  variant="outline"
-                  className="w-full mt-3"
-                >
-                  <Wand2 className="h-3.5 w-3.5 mr-2" />
-                  {detecting
-                    ? "Scanning…"
-                    : detections.length > 0
-                      ? "Re-scan"
-                      : "Scan this PDF"}
-                </Button>
-                {detectStatus && (
-                  <div className="mt-2 text-[11px] text-muted-foreground text-center">
-                    {detectStatus}
-                  </div>
-                )}
-
-                {detections.length > 0 && (
-                  <div className="mt-4 space-y-1.5">
-                    {(Object.keys(CATEGORY_META) as PiiCategory[])
-                      .filter((c) => (catCounts.get(c) ?? 0) > 0)
-                      .map((c) => {
-                        const on = enabledCats.has(c);
-                        const count = catCounts.get(c) ?? 0;
-                        return (
-                          <button
-                            key={c}
-                            onClick={() => toggleCategory(c)}
-                            className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition ${
-                              on
-                                ? "border-vault/50 bg-vault/10 text-foreground"
-                                : "border-border bg-card/30 text-muted-foreground hover:bg-card"
-                            }`}
-                          >
-                            <span className="flex items-center gap-2">
-                              <span
-                                className={`inline-block h-2 w-2 rounded-full ${
-                                  on ? "bg-vault" : "bg-muted-foreground/40"
-                                }`}
-                              />
-                              {CATEGORY_META[c].label}
-                            </span>
-                            <span className="tabular-nums">{count}</span>
-                          </button>
-                        );
-                      })}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-border bg-card/30 p-5 text-xs text-muted-foreground leading-relaxed">
-                <div className="flex items-center gap-2 text-foreground font-medium mb-2">
-                  <ShieldCheck className="h-3.5 w-3.5 text-vault" />
-                  How export works
-                </div>
-                Each page is rendered to an image, redactions and labels are painted on, and the
-                image is embedded as the new page. No selectable text remains underneath. With
-                metadata stripping on, the document info dict, XMP stream, form fields, and
-                structure tree are removed.
               </div>
             </aside>
           </div>
