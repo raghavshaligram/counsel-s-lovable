@@ -1,35 +1,62 @@
-## Fix scrollbars + redesign sidebar
+## Replace sidebar with top nav + mega menu
 
-### 1. Restore global scrollbars
+### Layout change
 
-- Remove the global `* { scrollbar-width: none }` + `::-webkit-scrollbar { display: none }` block I added to `src/styles.css`. Normal scrollbars come back everywhere (page, modals, dropdowns, etc.).
-- Scope the hide rule to the sidebar only via a `.no-scrollbar` utility class, and apply it to the sidebar's scroll container (`SidebarContent`).
+- Delete the left `Sidebar` entirely from `src/components/app-shell.tsx`.
+- The top header becomes the primary nav, full width, sticky, backdrop-blurred.
+- Main content gets the whole viewport width — no more left rail eating space.
 
-### 2. New sidebar design — every tool reachable without digging
+### Top bar structure
 
-Problems with the current sidebar:
-- Convert and Utilities are inside `Collapsible` groups that are `defaultOpen={false}`, so 13 of 18 tools are hidden behind two clicks.
-- Defaults to collapsed (`defaultOpen={false}` on `SidebarProvider`), so you land on an icon rail with no labels.
-- Hero/Convert/Utilities split is arbitrary — Rotate and Split live under "Utilities" while Merge sits under "Core."
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│ 🔒 VaultPDF │ All tools ▾ │ Organize ▾  Convert ▾  Edit ▾  …  │  Lifetime deal │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-Proposed structure:
+- **Left:** VaultPDF wordmark (links home).
+- **Center:** 5 group triggers (Organize, Convert, Edit, Secure, AI). Each opens a mega-menu panel on hover/click. "Optimize" merges into Edit (just Compress) to keep the bar at 5.
+- **Right:** "Lifetime deal" pill (kept) + "100% in your browser" trust line on wide screens.
 
-- **Default state:** sidebar open on desktop (`defaultOpen={true}`), still collapsible to icon rail via the header trigger.
-- **Flat, scannable groups — all expanded by default, no collapsibles:**
-  - `Organize` — Merge, Split, Rotate, Extract
-  - `Convert` — PDF→Word, Word→PDF, PDF→Images, Images→PDF
-  - `Edit` — Editor, Sign & Fill, Watermark, Redact
-  - `Secure` — Protect, Unlock, Compare, Make Searchable (OCR)
-  - `Optimize` — Compress
-  - `AI` — Search inside PDF (Beta), Mail Merge
-- Replace `Collapsible` wrappers with plain `SidebarGroup` blocks so labels + items are always visible.
-- Sidebar body uses the new `.no-scrollbar` class — scrolls when the list overflows, but no visible scrollbar (this was the user's original ask).
-- Keep the Lifetime deal CTA + "Files never leave this tab" footer.
-- Keep `collapsible="icon"` so the trigger still gives a compact icon-only mode for users who want screen space.
+### Mega menu panel
 
-### 3. Files touched
+Built with shadcn `NavigationMenu` (already in the stack) — no new deps.
 
-- `src/styles.css` — drop the global scrollbar-hide block; add a single `.no-scrollbar` utility.
-- `src/components/app-shell.tsx` — regroup tools, remove `Collapsible` wrappers, flip `defaultOpen` to `true`, add `.no-scrollbar` to `SidebarContent`.
+- Panel is full-width-of-container, drops below the header with a soft shadow and the same backdrop-blur as the header.
+- Inside each panel: a 2-column grid of tool cards.
+  - Each card = icon tile (40×40, vault-tinted) + tool name + one-line description (the `desc` strings we already had on the old `heroTools` / `converters` / `utilities` arrays — restoring them).
+  - Hover lifts the card and brightens the icon tile.
+- Right edge of each panel: a small "featured" block — for now a static illustration/icon + the tagline for that category (e.g. Organize → "Move pages around without uploading them"). Keeps the mega-menu visually rich rather than a bare grid.
 
-No other files, no behavior changes to the tools themselves.
+### Mobile (`< md`)
+
+- Replace the mega menu with a single hamburger that opens a shadcn `Sheet` from the right.
+- Sheet contains the same grouped tool list, scrollable, with normal scrollbars.
+
+### Tool data
+
+One source of truth at the top of `app-shell.tsx`:
+
+```ts
+const groups = [
+  { id: "organize", label: "Organize", tagline: "...", items: [{ to, label, desc, icon }, ...] },
+  ...
+];
+```
+
+Same `to` / `icon` set as today; `desc` strings come back from the pre-redesign version.
+
+### Scrollbars
+
+No change to global scrollbar behavior — global scrollbars stay visible (already restored last turn). The `.no-scrollbar` utility stays in `styles.css` but is no longer used; can remove later if unused.
+
+### Files touched
+
+- `src/components/app-shell.tsx` — rewrite: drop `Sidebar*` imports, add `NavigationMenu` + `Sheet` based top nav. Keep header CTA + footer + the existing custom icon components.
+- No other files.
+
+### Out of scope
+
+- No images yet — using existing lucide-style custom icons + tinted tiles. If you want real illustrations per category later, that's a follow-up (one image per group, 5 total).
+- No route changes.
+- No changes to any individual tool page.
