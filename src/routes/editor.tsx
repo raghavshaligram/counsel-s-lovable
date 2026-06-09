@@ -907,6 +907,40 @@ function PageCanvas({
       case "highlight":
         inner = <div style={{ width: "100%", height: "100%", background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />;
         break;
+      case "underline":
+        inner = <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity) }} />;
+        break;
+      case "strikethrough":
+        inner = <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity), transform: "translateY(-50%)" }} />;
+        break;
+      case "line":
+      case "arrow": {
+        const sw = a.w, sh = a.h;
+        const x1 = a.flipX ? sw : 0;
+        const y1 = 0;
+        const x2 = a.flipX ? 0 : sw;
+        const y2 = sh;
+        const stroke = rgbCss(a.color, a.opacity);
+        const ang = Math.atan2(y2 - y1, x2 - x1);
+        const headLen = 10 + a.stroke * 1.5;
+        const sp = Math.PI / 7;
+        const hx1 = x2 - headLen * Math.cos(ang - sp);
+        const hy1 = y2 - headLen * Math.sin(ang - sp);
+        const hx2 = x2 - headLen * Math.cos(ang + sp);
+        const hy2 = y2 - headLen * Math.sin(ang + sp);
+        inner = (
+          <svg width="100%" height="100%" viewBox={`0 0 ${sw} ${sh}`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={a.stroke} strokeLinecap="round" />
+            {a.kind === "arrow" && (
+              <>
+                <line x1={x2} y1={y2} x2={hx1} y2={hy1} stroke={stroke} strokeWidth={a.stroke} strokeLinecap="round" />
+                <line x1={x2} y1={y2} x2={hx2} y2={hy2} stroke={stroke} strokeWidth={a.stroke} strokeLinecap="round" />
+              </>
+            )}
+          </svg>
+        );
+        break;
+      }
       case "rect":
         inner = <div style={{ width: "100%", height: "100%", border: `${a.stroke * displayScale}px solid ${rgbCss(a.color, a.opacity)}`, background: a.fill ? rgbCss(a.color, a.opacity) : "transparent" }} />;
         break;
@@ -1040,8 +1074,11 @@ function PageCanvas({
   };
 
   const cursorByTool: Record<Tool, string> = {
-    select: "default", text: "text", highlight: "crosshair", rect: "crosshair",
-    ellipse: "crosshair", freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
+    select: "default", text: "text", highlight: "crosshair",
+    underline: "crosshair", strikethrough: "crosshair",
+    rect: "crosshair", ellipse: "crosshair",
+    line: "crosshair", arrow: "crosshair",
+    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
   };
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1137,8 +1174,17 @@ function DrawingPreview({ drawing, state }: { drawing: DrawingState; state: Stat
   const w = Math.abs(drawing.x - drawing.x0), h = Math.abs(drawing.y - drawing.y0);
   const style: React.CSSProperties = { position: "absolute", left: x, top: y, width: w, height: h, pointerEvents: "none" };
   if (state.tool === "highlight") return <div style={{ ...style, background: rgbCss(state.color, Math.min(state.opacity, 0.5)), mixBlendMode: "multiply" }} />;
+  if (state.tool === "underline") return <div style={{ ...style, borderBottom: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}` }} />;
+  if (state.tool === "strikethrough") return <div style={{ ...style, borderTop: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, marginTop: h / 2 }} />;
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
+  if (state.tool === "line" || state.tool === "arrow") {
+    return (
+      <svg style={{ position: "absolute", inset: 0, pointerEvents: "none" }} width="100%" height="100%">
+        <line x1={drawing.x0} y1={drawing.y0} x2={drawing.x} y2={drawing.y} stroke={rgbCss(state.color, state.opacity)} strokeWidth={state.stroke} strokeLinecap="round" />
+      </svg>
+    );
+  }
   return null;
 }
 
