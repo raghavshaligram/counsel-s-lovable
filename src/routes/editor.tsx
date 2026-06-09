@@ -1073,7 +1073,7 @@ function PageCanvas({
           resize: "none",
           caretColor: rgbCss(a.color),
         };
-        inner = isEditing ? (
+        inner = isEditing && a.kind === "text" ? (
           <textarea
             autoFocus
             value={a.text}
