@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WordToPdfRouteImport } from './routes/word-to-pdf'
 import { Route as WatermarkRouteImport } from './routes/watermark'
+import { Route as VerifiableRedactionRouteImport } from './routes/verifiable-redaction'
 import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as ToWordRouteImport } from './routes/to-word'
 import { Route as ToImagesRouteImport } from './routes/to-images'
@@ -40,6 +41,11 @@ const WordToPdfRoute = WordToPdfRouteImport.update({
 const WatermarkRoute = WatermarkRouteImport.update({
   id: '/watermark',
   path: '/watermark',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerifiableRedactionRoute = VerifiableRedactionRouteImport.update({
+  id: '/verifiable-redaction',
+  path: '/verifiable-redaction',
   getParentRoute: () => rootRouteImport,
 } as any)
 const UnlockRoute = UnlockRouteImport.update({
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
+  '/verifiable-redaction': typeof VerifiableRedactionRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
 }
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
+  '/verifiable-redaction': typeof VerifiableRedactionRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
 }
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
+  '/verifiable-redaction': typeof VerifiableRedactionRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
 }
@@ -239,6 +248,7 @@ export interface FileRouteTypes {
     | '/to-images'
     | '/to-word'
     | '/unlock'
+    | '/verifiable-redaction'
     | '/watermark'
     | '/word-to-pdf'
   fileRoutesByTo: FileRoutesByTo
@@ -263,6 +273,7 @@ export interface FileRouteTypes {
     | '/to-images'
     | '/to-word'
     | '/unlock'
+    | '/verifiable-redaction'
     | '/watermark'
     | '/word-to-pdf'
   id:
@@ -287,6 +298,7 @@ export interface FileRouteTypes {
     | '/to-images'
     | '/to-word'
     | '/unlock'
+    | '/verifiable-redaction'
     | '/watermark'
     | '/word-to-pdf'
   fileRoutesById: FileRoutesById
@@ -312,6 +324,7 @@ export interface RootRouteChildren {
   ToImagesRoute: typeof ToImagesRoute
   ToWordRoute: typeof ToWordRoute
   UnlockRoute: typeof UnlockRoute
+  VerifiableRedactionRoute: typeof VerifiableRedactionRoute
   WatermarkRoute: typeof WatermarkRoute
   WordToPdfRoute: typeof WordToPdfRoute
 }
@@ -330,6 +343,13 @@ declare module '@tanstack/react-router' {
       path: '/watermark'
       fullPath: '/watermark'
       preLoaderRoute: typeof WatermarkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verifiable-redaction': {
+      id: '/verifiable-redaction'
+      path: '/verifiable-redaction'
+      fullPath: '/verifiable-redaction'
+      preLoaderRoute: typeof VerifiableRedactionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/unlock': {
@@ -496,6 +516,7 @@ const rootRouteChildren: RootRouteChildren = {
   ToImagesRoute: ToImagesRoute,
   ToWordRoute: ToWordRoute,
   UnlockRoute: UnlockRoute,
+  VerifiableRedactionRoute: VerifiableRedactionRoute,
   WatermarkRoute: WatermarkRoute,
   WordToPdfRoute: WordToPdfRoute,
 }

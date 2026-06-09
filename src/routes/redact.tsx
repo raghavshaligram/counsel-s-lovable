@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { ToolHeader } from "@/routes/split";
@@ -79,6 +79,8 @@ export const Route = createFileRoute("/redact")({
   component: RedactPage,
 });
 
+export { RedactPage };
+
 type Box = {
   id: string;
   page: number;
@@ -145,7 +147,60 @@ function estimateDetectMinutes(pages: number): [number, number] {
   return [Math.max(1, Math.round(best)), Math.max(1, Math.round(worst))];
 }
 
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", ab);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function csvCell(v: string | number): string {
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function buildPrivilegeLogCsv(sourceName: string, boxes: Box[]): string {
+  const sorted = [...boxes].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+  const header = [
+    "Entry",
+    "Source",
+    "Page",
+    "Exemption / Privilege",
+    "Origin",
+    "Category",
+    "X",
+    "Y",
+    "Width",
+    "Height",
+  ];
+  const rows: string[] = [header.map(csvCell).join(",")];
+  sorted.forEach((b, i) => {
+    const origin = b.auto ? "Auto-detect" : b.keywordId ? "Keyword find" : "Manual";
+    rows.push(
+      [
+        i + 1,
+        sourceName,
+        b.page,
+        b.label ?? "",
+        origin,
+        b.category ?? "",
+        Math.round(b.x),
+        Math.round(b.y),
+        Math.round(b.w),
+        Math.round(b.h),
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  });
+  return rows.join("\n");
+}
+
+
 function RedactPage() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isPremium = pathname === "/verifiable-redaction";
+
   const [file, setFile] = useState<File | null>(null);
   const [pages, setPages] = useState<RenderedPage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -507,6 +562,24 @@ function RedactPage() {
 
   const exportRedacted = useCallback(async () => {
     if (!file || pages.length === 0) return;
+
+    // Premium: every redaction must carry an exemption code before export.
+    if (isPremium) {
+      const unlabeled = allBoxes.filter((b) => !b.label || !b.label.trim());
+      if (unlabeled.length > 0) {
+        const byPage = new Map<number, number>();
+        for (const b of unlabeled) byPage.set(b.page, (byPage.get(b.page) ?? 0) + 1);
+        const pageList = [...byPage.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([p, n]) => `p.${p} (${n})`)
+          .join(", ");
+        toast.error(`${unlabeled.length} redaction${unlabeled.length === 1 ? "" : "s"} need an exemption code`, {
+          description: `Set a default in Label, or double-click each box. Missing: ${pageList}`,
+        });
+        return;
+      }
+    }
+
     setExporting(true);
     try {
       const { PDFDocument, PDFName } = await import("pdf-lib");
@@ -574,39 +647,67 @@ function RedactPage() {
       a.click();
       URL.revokeObjectURL(url);
 
-      // Certificate of Redaction — court-ready audit trail, generated locally.
-      try {
-        const certBytes = await buildRedactionCertificate({
-          sourceName: file.name,
-          pageCount: pages.length,
-          boxes: allBoxes,
-          stripMetadata,
-        });
-        const certAb = new ArrayBuffer(certBytes.byteLength);
-        new Uint8Array(certAb).set(certBytes);
-        const certBlob = new Blob([certAb], { type: "application/pdf" });
-        const certUrl = URL.createObjectURL(certBlob);
-        const certA = document.createElement("a");
-        certA.href = certUrl;
-        certA.download = baseName + "-certificate.pdf";
-        certA.click();
-        URL.revokeObjectURL(certUrl);
-      } catch (e) {
-        console.error("Certificate generation failed", e);
-      }
+      if (isPremium) {
+        // Hash source + output for the chain-of-custody section of the certificate.
+        const [sourceHash, redactedHash] = await Promise.all([
+          sha256Hex(new Uint8Array(await file.arrayBuffer())),
+          sha256Hex(bytes),
+        ]);
 
-      toast.success("Redacted PDF + Certificate saved", {
-        description: stripMetadata
-          ? "Pages rasterised, original text destroyed, metadata wiped."
-          : "Pages rasterised and original text destroyed. (Metadata kept per your setting.)",
-      });
+        try {
+          const certBytes = await buildRedactionCertificate({
+            sourceName: file.name,
+            sourceBytes: file.size,
+            pageCount: pages.length,
+            boxes: allBoxes,
+            stripMetadata,
+            sourceHashSHA256: sourceHash,
+            redactedHashSHA256: redactedHash,
+          });
+          const certAb = new ArrayBuffer(certBytes.byteLength);
+          new Uint8Array(certAb).set(certBytes);
+          const certBlob = new Blob([certAb], { type: "application/pdf" });
+          const certUrl = URL.createObjectURL(certBlob);
+          const certA = document.createElement("a");
+          certA.href = certUrl;
+          certA.download = baseName + "-certificate.pdf";
+          certA.click();
+          URL.revokeObjectURL(certUrl);
+        } catch (e) {
+          console.error("Certificate generation failed", e);
+        }
+
+        // Privilege log CSV — what counsel attaches to the production set.
+        try {
+          const csv = buildPrivilegeLogCsv(file.name, allBoxes);
+          const csvBlob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+          const csvUrl = URL.createObjectURL(csvBlob);
+          const csvA = document.createElement("a");
+          csvA.href = csvUrl;
+          csvA.download = baseName + "-privilege-log.csv";
+          csvA.click();
+          URL.revokeObjectURL(csvUrl);
+        } catch (e) {
+          console.error("Privilege log generation failed", e);
+        }
+
+        toast.success("Redacted PDF + Certificate + Privilege Log saved", {
+          description: "SHA-256 hashes recorded. Keep all three together for chain of custody.",
+        });
+      } else {
+        toast.success("Redacted PDF saved", {
+          description: stripMetadata
+            ? "Pages rasterised, original text destroyed, metadata wiped."
+            : "Pages rasterised and original text destroyed.",
+        });
+      }
     } catch (err) {
       console.error(err);
       toast.error("Export failed");
     } finally {
       setExporting(false);
     }
-  }, [file, pages, allBoxes, stripMetadata]);
+  }, [file, pages, allBoxes, stripMetadata, isPremium]);
 
 
   const addBox = useCallback(
@@ -628,16 +729,28 @@ function RedactPage() {
   return (
     <AppShell>
       <ToolHeader
-        tag="Smart Redact"
-        title="Permanently remove anything sensitive."
+        tag={isPremium ? "Verifiable Redaction · Legal" : "Smart Redact"}
+        title={
+          isPremium
+            ? "Court-defensible redaction with a signed audit trail."
+            : "Permanently remove anything sensitive."
+        }
         sub={
-          <>
-            Auto-detect PII, batch-redact every instance of a keyword, and stamp legal
-            exemption codes on each box. On export every page is rasterised and re-baked —
-            the original text is{" "}
-            <span className="text-foreground">destroyed in the file bytes</span>, not just
-            covered.
-          </>
+          isPremium ? (
+            <>
+              Every box requires an exemption code. On export you get the redacted PDF, a
+              Certificate of Redaction with{" "}
+              <span className="text-foreground">SHA-256 hashes of source and output</span>,
+              and a privilege log ready to file alongside production.
+            </>
+          ) : (
+            <>
+              Auto-detect PII, batch-redact every instance of a keyword, and optionally label
+              each box. On export every page is rasterised and re-baked — the original text
+              is <span className="text-foreground">destroyed in the file bytes</span>, not
+              just covered.
+            </>
+          )
         }
         collapsed={!!file}
       />
@@ -1013,9 +1126,15 @@ function RedactPage() {
                         Exemption label
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Pick this first — it's stamped in white over every redaction you add
-                        from Detect, Find, or by hand. Double-click any box to override.
+                        {isPremium
+                          ? "Required — every redaction must carry an exemption code before export. Pick a default here; double-click any box to override."
+                          : "Pick this first — it's stamped in white over every redaction you add from Detect, Find, or by hand. Double-click any box to override."}
                       </p>
+                      {isPremium && (
+                        <div className="mt-2 rounded-md border border-vault/30 bg-vault/10 p-2 text-[11px] text-vault leading-relaxed">
+                          Export is blocked if any box is missing a code.
+                        </div>
+                      )}
                     </div>
                     <Select
                       value={defaultLabel || "__none"}
