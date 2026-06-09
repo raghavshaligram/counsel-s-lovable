@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Eye, EyeOff, Lock, ShieldCheck, KeyRound } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
-import { PDFDocument as CantooPDFDocument } from "@cantoo/pdf-lib";
 import { FileBar, ToolHeader, downloadBlob } from "@/routes/split";
 
 export const Route = createFileRoute("/protect")({
@@ -116,6 +115,7 @@ function ProtectPage() {
     }
     setBusy(true);
     try {
+      const { PDFDocument: CantooPDFDocument } = await import("@cantoo/pdf-lib");
       const doc = await CantooPDFDocument.load(await file.arrayBuffer(), {
         ignoreEncryption: true,
       });
