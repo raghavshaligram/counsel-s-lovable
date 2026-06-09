@@ -223,8 +223,9 @@ function CompressPage() {
         tag="Compress"
         title="Shrink PDFs without uploading them."
         sub="Re-encode pages at the quality you choose. A 50 MB report becomes a 5 MB email attachment, processed entirely on your device."
+        collapsed={!!file}
       />
-      <div className="mx-auto max-w-3xl px-5 md:px-8 py-10">
+      <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
         {!file ? (
           <FileDropzone
             onFile={onFile}
