@@ -606,6 +606,17 @@ function RedactPage() {
                         on-device OCR for scanned pages.
                       </p>
                     </div>
+                    {detectConfirm && !detecting && (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                          {totalPages} pages — this may take a while
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Reading the text layer of every page and OCRing any scanned ones runs in your browser. Click again to start.
+                        </p>
+                      </div>
+                    )}
                     <Button
                       onClick={runAutoDetect}
                       disabled={detecting || loading}
@@ -615,10 +626,13 @@ function RedactPage() {
                       <Wand2 className="h-3.5 w-3.5 mr-2" />
                       {detecting
                         ? "Scanning…"
-                        : detections.length > 0
-                          ? "Re-scan"
-                          : "Scan this PDF"}
+                        : detectConfirm
+                          ? `Yes, scan ${totalPages} pages`
+                          : detections.length > 0
+                            ? "Re-scan"
+                            : "Scan this PDF"}
                     </Button>
+
                     {detectStatus && (
                       <div className="text-[11px] text-muted-foreground text-center">
                         {detectStatus}
