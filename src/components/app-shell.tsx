@@ -37,7 +37,7 @@ const converters = [
 ];
 
 const utilities = [
-  { to: "/editor", label: "Editor", icon: EditIcon, desc: "Full PDF editor — annotate, edit text, reorder pages" },
+  { to: "/editor", label: "Editor", icon: EditIcon, desc: "Edit pages, text, images — and annotate" },
   { to: "/compare", label: "Compare", icon: CompareIcon, desc: "Visual diff between two PDFs" },
   { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
   { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
