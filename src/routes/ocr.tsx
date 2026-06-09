@@ -8,8 +8,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { toast } from "sonner";
 import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info, Languages, ChevronDown } from "lucide-react";
 import { ocrPdfToSearchable, type OcrProgress } from "@/lib/pdf/ocr-pdf";
+import { ocrImageToSearchable, type ImageOcrProgress } from "@/lib/pdf/ocr-image";
 import { OCR_LANGUAGES, estimateDownloadMb, getLanguageLabel } from "@/lib/pdf/ocr-languages";
 import { loadPdfjs } from "@/lib/pdf/worker";
+
+const ACCEPTED_TYPES = "application/pdf,image/jpeg,image/png,image/webp";
+const isImage = (f: File) =>
+  f.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(f.name);
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
 
 interface DeviceProfile {
