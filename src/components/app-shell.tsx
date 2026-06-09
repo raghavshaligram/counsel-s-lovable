@@ -240,7 +240,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </SidebarHeader>
 
           <SidebarContent>
-            <SidebarGroup>
+            <SidebarGroup defaultOpen={true}>
               <SidebarGroupLabel>Core Tools</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -265,7 +265,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <SidebarSeparator />
 
-            <SidebarGroup>
+            <SidebarGroup defaultOpen={false}>
               <SidebarGroupLabel>Convert</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -285,7 +285,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <SidebarSeparator />
 
-            <SidebarGroup>
+            <SidebarGroup defaultOpen={false}>
               <SidebarGroupLabel>Utilities</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
