@@ -405,15 +405,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 
           <div className="flex items-center gap-3 shrink-0">
-            <span className="hidden lg:inline text-xs uppercase tracking-[0.22em] text-muted-foreground">
+            <span className="hidden lg:inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-vault animate-pulse" />
               100% in your browser
             </span>
             <Link
               to="/pricing"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-sm font-medium transition-colors"
             >
               Lifetime deal
             </Link>
+
 
             {/* Mobile trigger */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
