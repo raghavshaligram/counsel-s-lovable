@@ -1,12 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Lock, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Lock } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -23,36 +17,60 @@ import {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
 
 
-const heroTools = [
-  { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
-  { to: "/sign", label: "Sign & Fill", icon: PenIcon, desc: "Draw, type, or upload your signature" },
-  { to: "/chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
-  { to: "/merge", label: "Mail Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
-  { to: "/extract", label: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
+const groups: { label: string; items: { to: string; label: string; icon: any; beta?: boolean }[] }[] = [
+  {
+    label: "Organize",
+    items: [
+      { to: "/merge", label: "Mail Merge", icon: FileStackIcon },
+      { to: "/split", label: "Split", icon: ScissorsIcon },
+      { to: "/rotate", label: "Rotate", icon: RotateCwIcon },
+      { to: "/extract", label: "Extract", icon: Table2Icon },
+    ],
+  },
+  {
+    label: "Convert",
+    items: [
+      { to: "/to-word", label: "PDF → Word", icon: FileTextIcon },
+      { to: "/word-to-pdf", label: "Word → PDF", icon: WordToPdfIcon },
+      { to: "/to-images", label: "PDF → Images", icon: ImageIcon },
+      { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon },
+    ],
+  },
+  {
+    label: "Edit",
+    items: [
+      { to: "/editor", label: "Editor", icon: EditIcon },
+      { to: "/sign", label: "Sign & Fill", icon: PenIcon },
+      { to: "/watermark", label: "Watermark", icon: StampIcon },
+      { to: "/redact", label: "Redact", icon: ShieldCheckIcon },
+    ],
+  },
+  {
+    label: "Secure",
+    items: [
+      { to: "/protect", label: "Protect", icon: Lock },
+      { to: "/unlock", label: "Unlock", icon: UnlockIcon },
+      { to: "/compare", label: "Compare", icon: CompareIcon },
+      { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon },
+    ],
+  },
+  {
+    label: "Optimize",
+    items: [
+      { to: "/compress", label: "Compress", icon: CompressIcon },
+    ],
+  },
+  {
+    label: "AI",
+    items: [
+      { to: "/chat", label: "Search inside PDF", icon: ChatIcon, beta: true },
+    ],
+  },
 ];
 
-const converters = [
-  { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
-  { to: "/word-to-pdf", label: "Word → PDF", icon: WordToPdfIcon, desc: "Convert .docx to a clean PDF" },
-  { to: "/to-images", label: "PDF → Images", icon: ImageIcon, desc: "Export every page as PNG or JPG" },
-  { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon, desc: "Combine JPG/PNG into one PDF" },
-];
-
-const utilities = [
-  { to: "/editor", label: "Editor", icon: EditIcon, desc: "Edit pages, text, images — and annotate" },
-  { to: "/compare", label: "Compare", icon: CompareIcon, desc: "Visual diff between two PDFs" },
-  { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
-  { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
-  { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
-  { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
-  { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
-  { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
-  { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
-];
 
 function WordToPdfIcon({ className }: { className?: string }) {
   return (
@@ -233,7 +251,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isActive = (path: string) => currentPath === path;
 
   return (
-    <SidebarProvider defaultOpen={false}>
+    <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-svh w-full">
         <Sidebar collapsible="icon" variant="sidebar">
           <SidebarHeader>
@@ -245,88 +263,36 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </SidebarHeader>
 
-          <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Core Tools</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {heroTools.map((t) => (
-                    <SidebarMenuItem key={t.to}>
-                      <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                        <Link to={t.to} className="flex items-center gap-2">
-                          <t.icon className="h-4 w-4 opacity-80" />
-                          <span>{t.label}</span>
-                          {(t as any).beta && (
-                            <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
-                              Beta
-                            </span>
-                          )}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarSeparator />
-
-            <Collapsible defaultOpen={false} className="group/collapsible">
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer select-none">
-                    <span>Convert</span>
-                    <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
+          <SidebarContent className="no-scrollbar">
+            {groups.map((group, idx) => (
+              <div key={group.label}>
+                {idx > 0 && <SidebarSeparator />}
+                <SidebarGroup>
+                  <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
                   <SidebarGroupContent>
                     <SidebarMenu>
-                      {converters.map((t) => (
+                      {group.items.map((t) => (
                         <SidebarMenuItem key={t.to}>
                           <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
                             <Link to={t.to} className="flex items-center gap-2">
                               <t.icon className="h-4 w-4 opacity-80" />
                               <span>{t.label}</span>
+                              {t.beta && (
+                                <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
+                                  Beta
+                                </span>
+                              )}
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       ))}
                     </SidebarMenu>
                   </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
-
-            <SidebarSeparator />
-
-            <Collapsible defaultOpen={false} className="group/collapsible">
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer select-none">
-                    <span>Utilities</span>
-                    <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {utilities.map((t) => (
-                        <SidebarMenuItem key={t.to}>
-                          <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                            <Link to={t.to} className="flex items-center gap-2">
-                              <t.icon className="h-4 w-4 opacity-80" />
-                              <span>{t.label}</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
+                </SidebarGroup>
+              </div>
+            ))}
           </SidebarContent>
+
 
           <SidebarFooter>
             <div className="px-2 py-2 group-data-[collapsible=icon]:hidden">

@@ -136,14 +136,14 @@
   }
 }
 
-/* Hide scrollbars across the app while keeping scroll functionality. */
-* {
+@utility no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
 }
-*::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
+
 
