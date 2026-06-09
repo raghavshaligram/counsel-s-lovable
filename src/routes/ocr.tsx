@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { ToolHeader } from "@/routes/split";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info } from "lucide-react";
+import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info, Languages, ChevronDown } from "lucide-react";
 import { ocrPdfToSearchable, type OcrProgress } from "@/lib/pdf/ocr-pdf";
+import { OCR_LANGUAGES, estimateDownloadMb, getLanguageLabel } from "@/lib/pdf/ocr-languages";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
 
@@ -117,6 +119,7 @@ function OcrPage() {
   const [preflight, setPreflight] = useState<PreflightWarning | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [highAccuracy, setHighAccuracy] = useState(false);
+  const [languages, setLanguages] = useState<string[]>(["eng"]);
   const [device] = useState<DeviceProfile>(() => profileDevice());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -177,7 +180,7 @@ function OcrPage() {
     setProgress(null);
     abortRef.current = new AbortController();
     try {
-      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy });
+      const bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const name = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
@@ -193,17 +196,38 @@ function OcrPage() {
       setBusy(false);
       abortRef.current = null;
     }
-  }, [file, highAccuracy]);
+  }, [file, highAccuracy, languages]);
 
   const cancel = () => abortRef.current?.abort();
 
   const pct = progress
-    ? Math.round(
-        ((progress.page - 1 + (progress.stage === "ocr" ? 0.4 : progress.stage === "embedding" ? 0.85 : 0.05)) /
-          progress.totalPages) *
-          100,
-      )
+    ? progress.stage === "loading-language"
+      ? 1
+      : Math.round(
+          ((progress.page - 1 + (progress.stage === "ocr" ? 0.4 : progress.stage === "embedding" ? 0.85 : 0.05)) /
+            progress.totalPages) *
+            100,
+        )
     : 0;
+
+  const langSummary = useMemo(() => {
+    if (languages.length === 0) return "English";
+    if (languages.length === 1) return getLanguageLabel(languages[0]);
+    if (languages.length <= 2) return languages.map(getLanguageLabel).join(" + ");
+    return `${getLanguageLabel(languages[0])} +${languages.length - 1}`;
+  }, [languages]);
+
+  const toggleLang = (code: string) => {
+    setLanguages((prev) =>
+      prev.includes(code)
+        ? prev.length === 1
+          ? prev // can't remove the last one
+          : prev.filter((c) => c !== code)
+        : [...prev, code],
+    );
+  };
+
+  const downloadEstimate = estimateDownloadMb(languages);
 
   return (
     <AppShell>
@@ -294,6 +318,49 @@ function OcrPage() {
                       untouched — no OCR runs on them.
                       {device.tier === "low" && " Your device looks modestly specced — expect slower runs."}
                     </p>
+
+                    <div className="w-full flex flex-col gap-1.5">
+                      <div className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                        <Languages className="h-3.5 w-3.5 text-vault" />
+                        Document language
+                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm hover:border-vault/50 transition-colors w-full sm:w-72"
+                          >
+                            <span className="truncate">{langSummary}</span>
+                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-72 p-0 max-h-80 overflow-y-auto">
+                          <div className="p-2">
+                            {OCR_LANGUAGES.map((lang) => {
+                              const checked = languages.includes(lang.code);
+                              return (
+                                <label
+                                  key={lang.code}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleLang(lang.code)}
+                                    className="h-3.5 w-3.5 accent-vault"
+                                  />
+                                  <span className="flex-1">{lang.label}</span>
+                                  <span className="text-[10px] text-muted-foreground">~{lang.sizeMb} MB</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Pick one language for best accuracy. Combining languages (e.g. bilingual docs) costs accuracy and memory. First-time use of a language downloads ~{downloadEstimate} MB to your browser, then cached forever.
+                      </p>
+                    </div>
                     <label className="flex items-start gap-2 text-xs text-foreground/80 cursor-pointer select-none">
                       <input
                         type="checkbox"

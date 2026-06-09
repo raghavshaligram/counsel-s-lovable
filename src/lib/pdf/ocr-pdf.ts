@@ -20,6 +20,7 @@
 
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { loadPdfjs } from "./worker";
+import { toTesseractLang } from "./ocr-languages";
 
 const RENDER_SCALE_DEFAULT = 1.5;
 const RENDER_SCALE_HIGH = 2.0;
@@ -29,7 +30,7 @@ const MIN_TEXT_ITEMS_TO_SKIP_OCR = 12;
 export interface OcrProgress {
   page: number;
   totalPages: number;
-  stage: "rendering" | "ocr" | "embedding" | "skipped" | "copied";
+  stage: "rendering" | "ocr" | "embedding" | "skipped" | "copied" | "loading-language";
   message: string;
 }
 
@@ -37,6 +38,10 @@ export interface OcrOptions {
   // Render canvases at 2x instead of 1.5x. Slower (~80%) but more accurate
   // on small fonts and tight kerning. Default false.
   highAccuracy?: boolean;
+  // Tesseract language codes (e.g. ["eng"], ["spa", "eng"]). Defaults to
+  // English. Combining languages costs accuracy and memory, so keep the
+  // list tight — usually just the document's primary language.
+  languages?: string[];
 }
 
 interface OcrWord {
@@ -151,6 +156,8 @@ export async function ocrPdfToSearchable(
   options: OcrOptions = {},
 ): Promise<Uint8Array> {
   const renderScale = options.highAccuracy ? RENDER_SCALE_HIGH : RENDER_SCALE_DEFAULT;
+  const langs = options.languages && options.languages.length > 0 ? options.languages : ["eng"];
+  const langArg = toTesseractLang(langs);
   const pdfjs = await loadPdfjs();
   const tess = await import("tesseract.js");
 
@@ -174,8 +181,21 @@ export async function ocrPdfToSearchable(
 
   const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
   const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2)));
+
+  // Surface the (one-time) language-pack download in the progress UI.
+  // Tesseract caches the traineddata in IndexedDB so this only takes time
+  // on the first run with a given language.
+  onProgress?.({
+    page: 0,
+    totalPages,
+    stage: "loading-language",
+    message:
+      langs.length > 1
+        ? `Loading language packs (${langs.join(", ")})…`
+        : `Loading ${langs[0]} language pack…`,
+  });
   const workers = await Promise.all(
-    Array.from({ length: poolSize }, () => tess.createWorker("eng")),
+    Array.from({ length: poolSize }, () => tess.createWorker(langArg)),
   );
   const idleWorkers = [...workers];
   const waiters: Array<(w: (typeof workers)[number]) => void> = [];
