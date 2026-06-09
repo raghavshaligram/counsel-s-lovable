@@ -270,8 +270,8 @@ function OcrPage() {
                       {preflight.title}
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">{preflight.body}</p>
-                    {preflight.level === "warn" && !acknowledged && (
-                      <label className="flex items-center gap-2 text-xs text-foreground/80 pt-1">
+                    {(preflight.level === "warn" || preflight.level === "info") && (
+                      <label className="flex items-center gap-2 text-xs text-foreground/80 pt-1 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={acknowledged}
@@ -297,10 +297,11 @@ function OcrPage() {
                       disabled={
                         inspecting ||
                         preflight?.level === "block" ||
-                        (preflight?.level === "warn" && !acknowledged)
+                        ((preflight?.level === "warn" || preflight?.level === "info") && !acknowledged)
                       }
                       className="bg-vault text-vault-foreground hover:opacity-90 disabled:opacity-50"
                     >
+
                       <ScanText className="h-4 w-4 mr-2" />
                       {preflight?.level === "block" ? "Too large to OCR here" : "Run OCR locally"}
                     </Button>
