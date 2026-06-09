@@ -1,13 +1,75 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { ToolHeader } from "@/routes/split";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Download, FileText, Lock, ScanText, X, Loader2 } from "lucide-react";
+import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info } from "lucide-react";
 import { ocrPdfToSearchable, type OcrProgress } from "@/lib/pdf/ocr-pdf";
+import { loadPdfjs } from "@/lib/pdf/worker";
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
+
+interface DeviceProfile {
+  cores: number;
+  memoryGb: number | null;
+  tier: "low" | "mid" | "high";
+}
+
+function profileDevice(): DeviceProfile {
+  const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 4;
+  const memoryGb =
+    typeof navigator !== "undefined" && "deviceMemory" in navigator
+      ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null
+      : null;
+  let tier: DeviceProfile["tier"] = "mid";
+  if (cores <= 4 || (memoryGb !== null && memoryGb <= 4)) tier = "low";
+  else if (cores >= 8 && (memoryGb === null || memoryGb >= 8)) tier = "high";
+  return { cores, memoryGb, tier };
+}
+
+interface PreflightWarning {
+  level: "info" | "warn" | "block";
+  title: string;
+  body: string;
+  estimateMinutes: [number, number];
+}
+
+function buildPreflight(pages: number, sizeMb: number, dev: DeviceProfile): PreflightWarning | null {
+  const perPageSec = dev.tier === "high" ? 1.6 : dev.tier === "mid" ? 2.8 : 5.5;
+  const lowSec = pages * perPageSec * 0.7;
+  const highSec = pages * perPageSec * 1.3;
+  const estimateMinutes: [number, number] = [
+    Math.max(1, Math.round(lowSec / 60)),
+    Math.max(1, Math.round(highSec / 60)),
+  ];
+
+  if (pages > 600 || sizeMb > 400) {
+    return {
+      level: "block",
+      title: "This file is too large for in-browser OCR",
+      body: `${pages} pages · ${sizeMb.toFixed(0)} MB. Browser OCR is unreliable past ~600 pages or ~400 MB — tabs can run out of memory. Split the PDF into smaller chunks (e.g. 100–200 pages) and OCR each separately.`,
+      estimateMinutes,
+    };
+  }
+  if (pages > 150 && dev.tier === "low") {
+    return {
+      level: "warn",
+      title: "This will be slow on your device",
+      body: `${pages} pages on a ${dev.cores}-core machine${dev.memoryGb ? ` with ~${dev.memoryGb} GB RAM` : ""}. Estimated ${estimateMinutes[0]}–${estimateMinutes[1]} minutes. Keep this tab in the foreground, or split the PDF first for faster results.`,
+      estimateMinutes,
+    };
+  }
+  if (pages > 100) {
+    return {
+      level: "info",
+      title: `Heads up — ${pages} pages`,
+      body: `Estimated ${estimateMinutes[0]}–${estimateMinutes[1]} minutes on your device. Browser OCR works best in the foreground. You can cancel at any time.`,
+      estimateMinutes,
+    };
+  }
+  return null;
+}
 
 export const Route = createFileRoute("/ocr")({
   head: () => ({
@@ -50,11 +112,19 @@ function OcrPage() {
   const [progress, setProgress] = useState<OcrProgress | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultName, setResultName] = useState<string | null>(null);
+  const [pageCount, setPageCount] = useState<number | null>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const [preflight, setPreflight] = useState<PreflightWarning | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [device] = useState<DeviceProfile>(() => profileDevice());
   const abortRef = useRef<AbortController | null>(null);
 
   const reset = () => {
     setFile(null);
     setProgress(null);
+    setPageCount(null);
+    setPreflight(null);
+    setAcknowledged(false);
     if (resultUrl) URL.revokeObjectURL(resultUrl);
     setResultUrl(null);
     setResultName(null);
@@ -65,8 +135,40 @@ function OcrPage() {
     setResultUrl(null);
     setResultName(null);
     setProgress(null);
+    setPageCount(null);
+    setPreflight(null);
+    setAcknowledged(false);
     setFile(f);
   }, [resultUrl]);
+
+  // Pre-flight inspection: read page count, build a warning if the file is heavy
+  // relative to the user's device. No OCR runs here — just metadata.
+  useEffect(() => {
+    if (!file) return;
+    let cancelled = false;
+    (async () => {
+      setInspecting(true);
+      try {
+        const pdfjs = await loadPdfjs();
+        const buf = await file.arrayBuffer();
+        const doc = await pdfjs.getDocument({ data: buf }).promise;
+        if (cancelled) return;
+        const pages = doc.numPages;
+        const sizeMb = file.size / (1024 * 1024);
+        setPageCount(pages);
+        setPreflight(buildPreflight(pages, sizeMb, device));
+      } catch (err) {
+        console.error("Preflight failed", err);
+      } finally {
+        if (!cancelled) setInspecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file, device]);
+
+
 
   const run = useCallback(async () => {
     if (!file) return;
@@ -132,7 +234,9 @@ function OcrPage() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">{file.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {(file.size / 1024).toFixed(1)} KB
+                        {(file.size / (1024 * 1024)).toFixed(1)} MB
+                        {pageCount !== null && ` · ${pageCount} pages`}
+                        {inspecting && " · inspecting…"}
                       </div>
                     </div>
                   </div>
@@ -141,21 +245,68 @@ function OcrPage() {
                   </Button>
                 </div>
 
+                {!busy && !resultUrl && preflight && (
+                  <div
+                    className={
+                      preflight.level === "block"
+                        ? "rounded-lg border border-destructive/40 bg-destructive/10 p-5 space-y-2"
+                        : preflight.level === "warn"
+                          ? "rounded-lg border border-amber-500/40 bg-amber-500/10 p-5 space-y-2"
+                          : "rounded-lg border border-vault/30 bg-vault/5 p-5 space-y-2"
+                    }
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {preflight.level === "info" ? (
+                        <Info className="h-4 w-4 text-vault" />
+                      ) : (
+                        <AlertTriangle
+                          className={
+                            preflight.level === "block"
+                              ? "h-4 w-4 text-destructive"
+                              : "h-4 w-4 text-amber-500"
+                          }
+                        />
+                      )}
+                      {preflight.title}
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{preflight.body}</p>
+                    {preflight.level === "warn" && !acknowledged && (
+                      <label className="flex items-center gap-2 text-xs text-foreground/80 pt-1">
+                        <input
+                          type="checkbox"
+                          checked={acknowledged}
+                          onChange={(e) => setAcknowledged(e.target.checked)}
+                          className="h-3.5 w-3.5 accent-vault"
+                        />
+                        I understand this may take {preflight.estimateMinutes[0]}–
+                        {preflight.estimateMinutes[1]} minutes. Proceed anyway.
+                      </label>
+                    )}
+                  </div>
+                )}
+
                 {!busy && !resultUrl && (
                   <div className="rounded-lg border border-border bg-card/30 p-6 flex flex-col items-start gap-3">
                     <p className="text-sm text-muted-foreground">
                       OCR is CPU-intensive. A 10-page scan typically takes 30–90 seconds depending
                       on your device.
+                      {device.tier === "low" && " Your device looks modestly specced — expect slower runs."}
                     </p>
                     <Button
                       onClick={run}
-                      className="bg-vault text-vault-foreground hover:opacity-90"
+                      disabled={
+                        inspecting ||
+                        preflight?.level === "block" ||
+                        (preflight?.level === "warn" && !acknowledged)
+                      }
+                      className="bg-vault text-vault-foreground hover:opacity-90 disabled:opacity-50"
                     >
                       <ScanText className="h-4 w-4 mr-2" />
-                      Run OCR locally
+                      {preflight?.level === "block" ? "Too large to OCR here" : "Run OCR locally"}
                     </Button>
                   </div>
                 )}
+
 
                 {busy && (
                   <div className="rounded-lg border border-vault/30 bg-vault/5 p-6 space-y-3">
