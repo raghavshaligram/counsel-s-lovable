@@ -186,12 +186,18 @@ function RedactPage() {
     setDetectionLabels({});
     setKeywordGroups([]);
     setKeywordBoxes([]);
+    setDetectConfirm(false);
+    docRef.current = null;
+    setTotalPages(0);
     (async () => {
       try {
         const { getPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await getPdfjs();
         const buf = await file.arrayBuffer();
         const doc = await pdfjs.getDocument({ data: buf }).promise;
+        if (cancelled) return;
+        docRef.current = doc as unknown as typeof docRef.current;
+        setTotalPages(doc.numPages);
         const out: RenderedPage[] = [];
         const SCALE = 1.5;
         for (let i = 1; i <= doc.numPages; i++) {
@@ -236,6 +242,9 @@ function RedactPage() {
     setDetectionLabels({});
     setKeywordGroups([]);
     setKeywordBoxes([]);
+    setDetectConfirm(false);
+    docRef.current = null;
+    setTotalPages(0);
   };
 
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
