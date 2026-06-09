@@ -9,6 +9,7 @@
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
+import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
@@ -68,6 +69,23 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       drawWatermark(outPage, settings.watermark, font, pw, ph);
     }
   }
+
+  // Best-effort destructive text rewrite: erase content-stream Tj operands
+  // matching captured originals for text-edit + redact annotations.
+  const rewrites = new Map<number, PageRewrite>();
+  for (const a of doc.annotations) {
+    if (a.kind === "text-edit" && a.source?.originalString) {
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [] };
+      job.edits.push({ original: a.source.originalString, replacement: a.text });
+      rewrites.set(a.page, job);
+    } else if (a.kind === "redact" && a.sources?.length) {
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [] };
+      for (const s of a.sources) job.redacts.push({ original: s.originalString });
+      rewrites.set(a.page, job);
+    }
+  }
+  if (rewrites.size) await rewriteDocument(out, rewrites);
+
 
   let bytes = await out.save();
 
@@ -144,34 +162,42 @@ function drawAnno(
   const yFlip = (y: number, h: number) => ph - (y + h);
 
   switch (a.kind) {
-    case "highlight":
-      page.drawRectangle({
-        x: a.x,
-        y: yFlip(a.y, a.h),
-        width: a.w,
-        height: a.h,
-        color: col(a.color),
-        opacity: a.opacity,
-      });
+    case "highlight": {
+      const quads = a.quads?.length ? a.quads : [{ x: a.x, y: a.y, w: a.w, h: a.h }];
+      for (const q of quads) {
+        page.drawRectangle({
+          x: q.x, y: yFlip(q.y, q.h), width: q.w, height: q.h,
+          color: col(a.color), opacity: a.opacity,
+        });
+      }
       break;
-    case "underline":
-      page.drawRectangle({
-        x: a.x,
-        y: yFlip(a.y, a.h),
-        width: a.w,
-        height: Math.max(0.5, a.stroke),
-        color: col(a.color),
-        opacity: a.opacity,
-      });
+    }
+    case "underline": {
+      const quads = a.quads?.length ? a.quads : [{ x: a.x, y: a.y, w: a.w, h: a.h }];
+      for (const q of quads) {
+        page.drawRectangle({
+          x: q.x, y: yFlip(q.y, q.h), width: q.w, height: Math.max(0.5, a.stroke),
+          color: col(a.color), opacity: a.opacity,
+        });
+      }
       break;
-    case "strikethrough":
+    }
+    case "strikethrough": {
+      const quads = a.quads?.length ? a.quads : [{ x: a.x, y: a.y, w: a.w, h: a.h }];
+      for (const q of quads) {
+        page.drawRectangle({
+          x: q.x,
+          y: yFlip(q.y, q.h) + q.h / 2 - Math.max(0.5, a.stroke) / 2,
+          width: q.w, height: Math.max(0.5, a.stroke),
+          color: col(a.color), opacity: a.opacity,
+        });
+      }
+      break;
+    }
+    case "redact":
       page.drawRectangle({
-        x: a.x,
-        y: yFlip(a.y, a.h) + a.h / 2 - Math.max(0.5, a.stroke) / 2,
-        width: a.w,
-        height: Math.max(0.5, a.stroke),
-        color: col(a.color),
-        opacity: a.opacity,
+        x: a.x, y: yFlip(a.y, a.h), width: a.w, height: a.h,
+        color: rgb(0, 0, 0), opacity: 1,
       });
       break;
     case "line":

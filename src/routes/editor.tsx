@@ -9,7 +9,7 @@ import {
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
   ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
   Underline as UnderlineIcon, Strikethrough, Minus, ArrowRight,
-  EyeOff, Droplets, Lock, CalendarDays,
+  EyeOff, Droplets, Lock, CalendarDays, MessageSquare,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -21,7 +21,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
-import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, WatermarkSettings } from "@/lib/editor/types";
+import { computeQuads } from "@/lib/editor/quad-capture";
+import { CommentsPanel } from "@/components/editor/CommentsPanel";
+import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, TextSource, WatermarkSettings } from "@/lib/editor/types";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -222,6 +224,8 @@ function EditorRoute() {
 function Editor() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loading, setLoading] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [author, setAuthor] = useState("Me");
 
 
 
@@ -305,7 +309,13 @@ function Editor() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
-      <Toolbar state={state} dispatch={dispatch} onExport={onExport} />
+      <Toolbar
+        state={state}
+        dispatch={dispatch}
+        onExport={onExport}
+        commentsOpen={commentsOpen}
+        onToggleComments={() => setCommentsOpen((v) => !v)}
+      />
       <div className="flex flex-1 min-h-0">
         <PagesSidebar state={state} dispatch={dispatch} />
         <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
@@ -333,6 +343,19 @@ function Editor() {
             </div>
           </div>
         </div>
+        {commentsOpen && (
+          <CommentsPanel
+            annos={state.doc.annotations}
+            author={author}
+            onAuthorChange={setAuthor}
+            onClose={() => setCommentsOpen(false)}
+            onJump={(a) => {
+              if (a.page !== state.current) dispatch({ type: "SET_PAGE", n: a.page });
+              dispatch({ type: "SELECT_ANNO", id: a.id });
+            }}
+            onPatch={(id, patch) => dispatch({ type: "UPDATE_ANNO", id, patch: patch as Partial<Anno> })}
+          />
+        )}
       </div>
     </div>
   );
@@ -342,7 +365,7 @@ function Editor() {
 
 // ---------- toolbar ----------
 
-function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
+function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void; commentsOpen: boolean; onToggleComments: () => void }) {
   const [signOpen, setSignOpen] = useState(false);
   const [stampOpen, setStampOpen] = useState(false);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
@@ -532,11 +555,24 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
       </Button>
 
       <div className="ml-auto flex items-center gap-2">
+        <Button
+          size="sm"
+          variant={commentsOpen ? "default" : "outline"}
+          onClick={onToggleComments}
+          title="Toggle comments panel"
+        >
+          <MessageSquare className="h-4 w-4 mr-1.5" />
+          Comments
+          {state.doc && state.doc.annotations.length > 0 && (
+            <span className="ml-1.5 text-[10px] opacity-70">{state.doc.annotations.length}</span>
+          )}
+        </Button>
         <Button size="sm" onClick={onExport} className="bg-vault text-vault-foreground hover:opacity-90">
           <Download className="h-4 w-4 mr-1.5" />
           Export PDF
         </Button>
       </div>
+
 
       <SignatureDialog open={signOpen} onOpenChange={setSignOpen} onSave={setPendingImageFromCanvas} />
       <StampDialog open={stampOpen} onOpenChange={setStampOpen} onSave={setPendingImageFromCanvas} />
@@ -636,7 +672,7 @@ function Thumbnail({ op, srcBytes }: { op: PageOp; srcBytes: Uint8Array }) {
 
 // ---------- page canvas + annotation layer ----------
 
-type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean };
+type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; transform?: number[]; fontName?: string };
 
 function PageCanvas({
   op, srcBytes, annos, state, dispatch,
@@ -696,7 +732,7 @@ function PageCanvas({
           "sans";
         const bold = /bold|black|heavy|semibold|demibold/.test(ffl);
         const italic = /italic|oblique/.test(ffl);
-        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str, family, bold, italic }];
+        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName }];
       });
       setTextItems(items);
     })();
@@ -846,11 +882,14 @@ function PageCanvas({
     const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
     if (w < 3 || h < 3) return;
     if (state.tool === "highlight") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "highlight", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: Math.min(state.opacity, 0.5) } });
+      const quads = computeQuads({ x: a.x, y: a.y, w, h }, textItems);
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "highlight", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: Math.min(state.opacity, 0.5), quads: quads.length ? quads : undefined } });
     } else if (state.tool === "underline") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "underline", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
+      const quads = computeQuads({ x: a.x, y: a.y, w, h }, textItems);
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "underline", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, quads: quads.length ? quads : undefined } });
     } else if (state.tool === "strikethrough") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "strikethrough", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke } });
+      const quads = computeQuads({ x: a.x, y: a.y, w, h }, textItems);
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "strikethrough", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, quads: quads.length ? quads : undefined } });
     } else if (state.tool === "rect") {
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, fill: state.fillShape } });
     } else if (state.tool === "ellipse") {
@@ -862,7 +901,18 @@ function PageCanvas({
       const flipX = start.x > end.x;
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: state.tool, page: state.current, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, flipX } });
     } else if (state.tool === "redact") {
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "rect", page: state.current, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, stroke: 0, fill: true } });
+      // Capture overlapping text item strings so the export rewriter can
+      // erase them from the underlying content stream.
+      const sources: TextSource[] = [];
+      for (const it of textItems) {
+        const ix2 = it.x + it.w, iy2 = it.y + it.h;
+        const ox = Math.max(0, Math.min(a.x + w, ix2) - Math.max(a.x, it.x));
+        const oy = Math.max(0, Math.min(a.y + h, iy2) - Math.max(a.y, it.y));
+        if (ox > 1 && oy > it.h * 0.35) {
+          sources.push({ originalString: it.str, transform: it.transform, fontName: it.fontName });
+        }
+      }
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: state.current, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });
     }
   };
 
@@ -903,6 +953,7 @@ function PageCanvas({
         bold: payload.bold,
         italic: payload.italic,
         textOffsetY: padTop,
+        source: { originalString: it.str, transform: it.transform, fontName: it.fontName },
       } });
       dispatch({ type: "SELECT_ANNO", id });
     } else {
@@ -1000,14 +1051,63 @@ function PageCanvas({
 
     let inner: React.ReactNode = null;
     switch (a.kind) {
-      case "highlight":
-        inner = <div style={{ width: "100%", height: "100%", background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />;
+      case "highlight": {
+        if (a.quads?.length) {
+          inner = (
+            <div style={{ position: "absolute", inset: 0 }}>
+              {a.quads.map((q, qi) => (
+                <div key={qi} style={{ position: "absolute",
+                  left: (q.x - a.x) * displayScale, top: (q.y - a.y) * displayScale,
+                  width: q.w * displayScale, height: q.h * displayScale,
+                  background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />
+              ))}
+            </div>
+          );
+        } else {
+          inner = <div style={{ width: "100%", height: "100%", background: rgbCss(a.color, a.opacity), mixBlendMode: "multiply" }} />;
+        }
         break;
-      case "underline":
-        inner = <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity) }} />;
+      }
+      case "underline": {
+        const sw = Math.max(1, a.stroke * displayScale);
+        if (a.quads?.length) {
+          inner = (
+            <div style={{ position: "absolute", inset: 0 }}>
+              {a.quads.map((q, qi) => (
+                <div key={qi} style={{ position: "absolute",
+                  left: (q.x - a.x) * displayScale,
+                  top: (q.y - a.y + q.h) * displayScale - sw,
+                  width: q.w * displayScale, height: sw,
+                  background: rgbCss(a.color, a.opacity) }} />
+              ))}
+            </div>
+          );
+        } else {
+          inner = <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: sw, background: rgbCss(a.color, a.opacity) }} />;
+        }
         break;
-      case "strikethrough":
-        inner = <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: Math.max(1, a.stroke * displayScale), background: rgbCss(a.color, a.opacity), transform: "translateY(-50%)" }} />;
+      }
+      case "strikethrough": {
+        const sw = Math.max(1, a.stroke * displayScale);
+        if (a.quads?.length) {
+          inner = (
+            <div style={{ position: "absolute", inset: 0 }}>
+              {a.quads.map((q, qi) => (
+                <div key={qi} style={{ position: "absolute",
+                  left: (q.x - a.x) * displayScale,
+                  top: (q.y - a.y + q.h / 2) * displayScale - sw / 2,
+                  width: q.w * displayScale, height: sw,
+                  background: rgbCss(a.color, a.opacity) }} />
+              ))}
+            </div>
+          );
+        } else {
+          inner = <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: sw, background: rgbCss(a.color, a.opacity), transform: "translateY(-50%)" }} />;
+        }
+        break;
+      }
+      case "redact":
+        inner = <div style={{ width: "100%", height: "100%", background: "#000" }} />;
         break;
       case "line":
       case "arrow": {
