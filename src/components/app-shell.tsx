@@ -1,76 +1,80 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import type { ReactNode } from "react";
-import { Lock } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Lock, Menu } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarRail,
-  
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "@/components/ui/navigation-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetHeader,
+} from "@/components/ui/sheet";
 
+type Tool = { to: string; label: string; desc: string; icon: any; beta?: boolean };
+type Group = { id: string; label: string; tagline: string; items: Tool[] };
 
-const groups: { label: string; items: { to: string; label: string; icon: any; beta?: boolean }[] }[] = [
+const groups: Group[] = [
   {
+    id: "organize",
     label: "Organize",
+    tagline: "Reshape pages without uploading them.",
     items: [
-      { to: "/merge", label: "Mail Merge", icon: FileStackIcon },
-      { to: "/split", label: "Split", icon: ScissorsIcon },
-      { to: "/rotate", label: "Rotate", icon: RotateCwIcon },
-      { to: "/extract", label: "Extract", icon: Table2Icon },
+      { to: "/merge", label: "Mail Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
+      { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
+      { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
+      { to: "/extract", label: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
     ],
   },
   {
+    id: "convert",
     label: "Convert",
+    tagline: "Move between formats — fully on-device.",
     items: [
-      { to: "/to-word", label: "PDF → Word", icon: FileTextIcon },
-      { to: "/word-to-pdf", label: "Word → PDF", icon: WordToPdfIcon },
-      { to: "/to-images", label: "PDF → Images", icon: ImageIcon },
-      { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon },
+      { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
+      { to: "/word-to-pdf", label: "Word → PDF", icon: WordToPdfIcon, desc: "Convert .docx to a clean PDF" },
+      { to: "/to-images", label: "PDF → Images", icon: ImageIcon, desc: "Export every page as PNG or JPG" },
+      { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon, desc: "Combine JPG/PNG into one PDF" },
     ],
   },
   {
+    id: "edit",
     label: "Edit",
+    tagline: "Mark up, sign, and shrink in the browser.",
     items: [
-      { to: "/editor", label: "Editor", icon: EditIcon },
-      { to: "/sign", label: "Sign & Fill", icon: PenIcon },
-      { to: "/watermark", label: "Watermark", icon: StampIcon },
-      { to: "/redact", label: "Redact", icon: ShieldCheckIcon },
+      { to: "/editor", label: "Editor", icon: EditIcon, desc: "Edit pages, text, images — and annotate" },
+      { to: "/sign", label: "Sign & Fill", icon: PenIcon, desc: "Draw, type, or upload your signature" },
+      { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
+      { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
+      { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
     ],
   },
   {
+    id: "secure",
     label: "Secure",
+    tagline: "Lock, unlock, and verify your documents.",
     items: [
-      { to: "/protect", label: "Protect", icon: Lock },
-      { to: "/unlock", label: "Unlock", icon: UnlockIcon },
-      { to: "/compare", label: "Compare", icon: CompareIcon },
-      { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon },
+      { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
+      { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
+      { to: "/compare", label: "Compare", icon: CompareIcon, desc: "Visual diff between two PDFs" },
+      { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
     ],
   },
   {
-    label: "Optimize",
-    items: [
-      { to: "/compress", label: "Compress", icon: CompressIcon },
-    ],
-  },
-  {
+    id: "ai",
     label: "AI",
+    tagline: "Smart features that still respect your privacy.",
     items: [
-      { to: "/chat", label: "Search inside PDF", icon: ChatIcon, beta: true },
+      { to: "/chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
     ],
   },
 ];
-
 
 function WordToPdfIcon({ className }: { className?: string }) {
   return (
@@ -112,7 +116,6 @@ function ImagesPlusIcon({ className }: { className?: string }) {
   );
 }
 
-
 function FileTextIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -131,8 +134,6 @@ function ImageIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
-
 
 function CompressIcon({ className }: { className?: string }) {
   return (
@@ -228,14 +229,6 @@ function RotateCwIcon({ className }: { className?: string }) {
   );
 }
 
-function HighlighterIcon({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m9 11-6 6v3h9l3-3" /><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
-    </svg>
-  );
-}
-
 function StampIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -245,108 +238,160 @@ function StampIcon({ className }: { className?: string }) {
   );
 }
 
+function ToolCard({ tool, onClick }: { tool: Tool; onClick?: () => void }) {
+  return (
+    <Link
+      to={tool.to}
+      onClick={onClick}
+      className="group/card flex items-start gap-3 rounded-lg p-3 hover:bg-accent/60 transition-colors"
+    >
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-vault/10 text-vault group-hover/card:bg-vault/20 transition-colors">
+        <tool.icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium leading-tight">{tool.label}</span>
+          {tool.beta && (
+            <span className="text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">Beta</span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{tool.desc}</p>
+      </div>
+    </Link>
+  );
+}
+
+function MegaPanel({ group }: { group: Group }) {
+  return (
+    <div className="w-[640px] p-4">
+      <div className="grid grid-cols-[1fr_180px] gap-4">
+        <div className="grid grid-cols-2 gap-1">
+          {group.items.map((t) => (
+            <ToolCard key={t.to} tool={t} />
+          ))}
+        </div>
+        <div className="rounded-lg border border-vault/20 bg-vault/5 p-4 flex flex-col justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-vault/80">{group.label}</div>
+            <p className="text-sm text-foreground mt-2 leading-snug font-display">{group.tagline}</p>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground mt-4">
+            <span className="h-1.5 w-1.5 rounded-full bg-vault" />
+            <span>Stays in your tab</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
-
+  const [mobileOpen, setMobileOpen] = useState(false);
   const isActive = (path: string) => currentPath === path;
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-svh w-full">
-        <Sidebar collapsible="icon" variant="sidebar">
-          <SidebarHeader>
-            <div className="flex items-center gap-2.5 px-2 py-1 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center">
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-vault text-vault-foreground">
-                <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </span>
-              <span className="font-display text-[19px] leading-none group-data-[collapsible=icon]:hidden">VaultPDF</span>
-            </div>
-          </SidebarHeader>
+    <div className="flex min-h-svh w-full flex-col">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
+        <div className="flex h-14 items-center justify-between px-4 md:px-6 gap-4">
+          <Link to="/" className="flex items-center gap-2.5 shrink-0">
+            <span className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
+              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </span>
+            <span className="font-display text-[19px] leading-none">VaultPDF</span>
+          </Link>
 
-          <SidebarContent className="no-scrollbar gap-0 py-1">
-            {groups.map((group) => (
-              <SidebarGroup key={group.label} className="py-1">
-                <SidebarGroupLabel className="h-5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
-                  {group.label}
-                </SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {group.items.map((t) => (
-                      <SidebarMenuItem key={t.to}>
-                        <SidebarMenuButton asChild size="sm" isActive={isActive(t.to)} tooltip={t.label}>
-                          <Link to={t.to} className="flex items-center gap-2">
-                            <t.icon className="h-4 w-4 opacity-80" />
-                            <span>{t.label}</span>
-                            {t.beta && (
-                              <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
-                                Beta
-                              </span>
-                            )}
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))}
-          </SidebarContent>
+          {/* Desktop nav */}
+          <NavigationMenu className="hidden md:flex flex-1 justify-center">
+            <NavigationMenuList>
+              {groups.map((group) => {
+                const hasActive = group.items.some((t) => isActive(t.to));
+                return (
+                  <NavigationMenuItem key={group.id}>
+                    <NavigationMenuTrigger
+                      className={cn(
+                        "h-9 bg-transparent text-sm",
+                        hasActive && "text-vault"
+                      )}
+                    >
+                      {group.label}
+                    </NavigationMenuTrigger>
+                    <NavigationMenuContent>
+                      <MegaPanel group={group} />
+                    </NavigationMenuContent>
+                  </NavigationMenuItem>
+                );
+              })}
+            </NavigationMenuList>
+          </NavigationMenu>
 
-
-
-          <SidebarFooter>
-            <div className="px-2 py-2 group-data-[collapsible=icon]:hidden">
-              <Link
-                to="/pricing"
-                className="flex items-center gap-3 rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-vault">Lifetime deal</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">One payment, every tool, forever.</div>
-                </div>
-                <span className="text-vault text-xs">→</span>
-              </Link>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground group-data-[collapsible=icon]:hidden">
-              <span className="h-1.5 w-1.5 rounded-full bg-vault" />
-              <span>Files never leave this tab</span>
-            </div>
-          </SidebarFooter>
-
-          <SidebarRail />
-        </Sidebar>
-
-        <SidebarInset>
-          {/* Compact top bar */}
-          <header className="sticky top-0 z-40 h-14 flex items-center justify-between px-4 md:px-6 border-b border-border bg-background/80 backdrop-blur-xl">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger />
-              <span className="hidden sm:inline text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                100% in your browser
-              </span>
-            </div>
-
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="hidden lg:inline text-xs uppercase tracking-[0.22em] text-muted-foreground">
+              100% in your browser
+            </span>
             <Link
               to="/pricing"
-              className="inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
-              activeProps={{ className: "bg-vault/25" }}
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
             >
               Lifetime deal
             </Link>
-          </header>
 
-          <main className="flex-1 min-h-0">{children}</main>
+            {/* Mobile trigger */}
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Open menu"
+                  className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-accent"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[320px] sm:w-[380px] overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>All tools</SheetTitle>
+                </SheetHeader>
+                <div className="mt-4 space-y-6">
+                  {groups.map((group) => (
+                    <div key={group.id}>
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2 px-1">
+                        {group.label}
+                      </div>
+                      <div className="flex flex-col">
+                        {group.items.map((t) => (
+                          <ToolCard key={t.to} tool={t} onClick={() => setMobileOpen(false)} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <Link
+                    to="/pricing"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-between rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-vault">Lifetime deal</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">One payment, every tool, forever.</div>
+                    </div>
+                    <span className="text-vault text-xs">→</span>
+                  </Link>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </header>
 
-          <footer className="border-t border-border px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
-            <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
-            <div className="flex gap-4">
-              <Link to="/" className="hover:text-foreground">Home</Link>
-              <Link to="/pricing" className="hover:text-foreground">Pricing</Link>
-              <a href="/#trust" className="hover:text-foreground">How privacy works</a>
-            </div>
-          </footer>
-        </SidebarInset>
-      </div>
-    </SidebarProvider>
+      <main className="flex-1 min-h-0">{children}</main>
+
+      <footer className="border-t border-border px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
+        <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
+        <div className="flex gap-4">
+          <Link to="/" className="hover:text-foreground">Home</Link>
+          <Link to="/pricing" className="hover:text-foreground">Pricing</Link>
+          <a href="/#trust" className="hover:text-foreground">How privacy works</a>
+        </div>
+      </footer>
+    </div>
   );
 }
