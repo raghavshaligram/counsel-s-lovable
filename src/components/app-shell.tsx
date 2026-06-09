@@ -15,7 +15,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
-  SidebarSeparator,
+  
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
@@ -263,35 +263,35 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </SidebarHeader>
 
-          <SidebarContent className="no-scrollbar">
-            {groups.map((group, idx) => (
-              <div key={group.label}>
-                {idx > 0 && <SidebarSeparator />}
-                <SidebarGroup>
-                  <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {group.items.map((t) => (
-                        <SidebarMenuItem key={t.to}>
-                          <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                            <Link to={t.to} className="flex items-center gap-2">
-                              <t.icon className="h-4 w-4 opacity-80" />
-                              <span>{t.label}</span>
-                              {t.beta && (
-                                <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
-                                  Beta
-                                </span>
-                              )}
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              </div>
+          <SidebarContent className="no-scrollbar gap-0 py-1">
+            {groups.map((group) => (
+              <SidebarGroup key={group.label} className="py-1">
+                <SidebarGroupLabel className="h-5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+                  {group.label}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {group.items.map((t) => (
+                      <SidebarMenuItem key={t.to}>
+                        <SidebarMenuButton asChild size="sm" isActive={isActive(t.to)} tooltip={t.label}>
+                          <Link to={t.to} className="flex items-center gap-2">
+                            <t.icon className="h-4 w-4 opacity-80" />
+                            <span>{t.label}</span>
+                            {t.beta && (
+                              <span className="ml-auto text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px">
+                                Beta
+                              </span>
+                            )}
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
             ))}
           </SidebarContent>
+
 
 
           <SidebarFooter>
