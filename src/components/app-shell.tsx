@@ -32,17 +32,40 @@ const heroTools = [
 const converters = [
   { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
   { to: "/to-images", label: "PDF → Images", icon: ImageIcon, desc: "Export every page as PNG or JPG" },
+  { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon, desc: "Combine JPG/PNG into one PDF" },
 ];
 
 const utilities = [
   { to: "/editor", label: "Editor", icon: EditIcon, desc: "Full PDF editor — annotate, edit text, reorder pages" },
   { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
+  { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
   { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
   { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
   { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
   { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
   { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
 ];
+
+function UnlockIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect width="18" height="11" x="3" y="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+    </svg>
+  );
+}
+
+function ImagesPlusIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h7" />
+      <circle cx="9" cy="11" r="2" />
+      <path d="m21 17-3.5-3.5L9 21" />
+      <path d="M18 2v6" /><path d="M15 5h6" />
+    </svg>
+  );
+}
+
 
 function FileTextIcon({ className }: { className?: string }) {
   return (
