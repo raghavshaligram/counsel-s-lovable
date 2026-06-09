@@ -1496,3 +1496,175 @@ function StampDialog({
     </Dialog>
   );
 }
+
+// ---------- Watermark dialog ----------
+
+const WM_POSITIONS: WatermarkSettings["position"][] = ["diagonal", "center", "top", "bottom"];
+
+function WatermarkDialog({
+  open, onOpenChange, value, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  value: WatermarkSettings | null;
+  onSave: (w: WatermarkSettings | null) => void;
+}) {
+  const [text, setText] = useState(value?.text ?? "CONFIDENTIAL");
+  const [size, setSize] = useState(value?.size ?? 72);
+  const [opacity, setOpacity] = useState(Math.round((value?.opacity ?? 0.2) * 100));
+  const [position, setPosition] = useState<WatermarkSettings["position"]>(value?.position ?? "diagonal");
+  const [hex, setHex] = useState("#808080");
+  useEffect(() => {
+    if (!open) return;
+    setText(value?.text ?? "CONFIDENTIAL");
+    setSize(value?.size ?? 72);
+    setOpacity(Math.round((value?.opacity ?? 0.2) * 100));
+    setPosition(value?.position ?? "diagonal");
+  }, [open, value]);
+
+  const save = () => {
+    if (!text.trim()) { onSave(null); onOpenChange(false); return; }
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    onSave({ text: text.trim(), size, opacity: opacity / 100, position, color: { r, g, b } });
+    onOpenChange(false);
+    toast.success("Watermark will be applied on export");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader><DialogTitle>Watermark every page</DialogTitle></DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Text</label>
+            <input value={text} onChange={(e) => setText(e.target.value)}
+              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Position</div>
+            <div className="grid grid-cols-4 gap-2">
+              {WM_POSITIONS.map((p) => (
+                <button key={p} onClick={() => setPosition(p)}
+                  className={cn("rounded-md border px-2 py-1.5 text-xs capitalize",
+                    position === p ? "border-vault bg-vault/10 text-foreground" : "border-border text-muted-foreground hover:bg-accent")}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="text-xs">
+              <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground"><span>Size</span><span className="font-mono">{size}pt</span></div>
+              <input type="range" min={12} max={160} value={size} onChange={(e) => setSize(parseInt(e.target.value, 10))} className="mt-1 w-full accent-vault" />
+            </label>
+            <label className="text-xs">
+              <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground"><span>Opacity</span><span className="font-mono">{opacity}%</span></div>
+              <input type="range" min={5} max={100} value={opacity} onChange={(e) => setOpacity(parseInt(e.target.value, 10))} className="mt-1 w-full accent-vault" />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-xs">Color
+            <input type="color" value={hex} onChange={(e) => setHex(e.target.value)} className="h-7 w-9 rounded border border-border bg-transparent" />
+          </label>
+        </div>
+        <DialogFooter>
+          {value && <Button variant="ghost" onClick={() => { onSave(null); onOpenChange(false); toast.message("Watermark removed"); }}>Remove</Button>}
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={save} className="bg-vault text-vault-foreground hover:opacity-90">Apply on export</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------- Protect dialog ----------
+
+const PERM_ROWS: { key: keyof ProtectSettings["permissions"]; label: string }[] = [
+  { key: "printing", label: "Allow printing" },
+  { key: "copying", label: "Allow copying text" },
+  { key: "modifying", label: "Allow editing" },
+  { key: "annotating", label: "Allow annotating" },
+  { key: "fillingForms", label: "Allow filling forms" },
+  { key: "documentAssembly", label: "Allow page assembly" },
+  { key: "contentAccessibility", label: "Allow screen readers" },
+];
+
+function ProtectDialog({
+  open, onOpenChange, value, onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  value: ProtectSettings | null;
+  onSave: (p: ProtectSettings | null) => void;
+}) {
+  const [pw, setPw] = useState(value?.userPassword ?? "");
+  const [pw2, setPw2] = useState(value?.userPassword ?? "");
+  const [useOwner, setUseOwner] = useState(!!value?.ownerPassword);
+  const [ownerPw, setOwnerPw] = useState(value?.ownerPassword ?? "");
+  const [perms, setPerms] = useState<ProtectSettings["permissions"]>(
+    value?.permissions ?? {
+      printing: true, modifying: false, copying: false,
+      annotating: true, fillingForms: true,
+      contentAccessibility: true, documentAssembly: false,
+    },
+  );
+  useEffect(() => {
+    if (!open) return;
+    setPw(value?.userPassword ?? "");
+    setPw2(value?.userPassword ?? "");
+    setUseOwner(!!value?.ownerPassword);
+    setOwnerPw(value?.ownerPassword ?? "");
+    if (value?.permissions) setPerms(value.permissions);
+  }, [open, value]);
+
+  const save = () => {
+    if (pw.length < 4) { toast.error("Password must be at least 4 characters."); return; }
+    if (pw !== pw2) { toast.error("Passwords don't match."); return; }
+    onSave({ userPassword: pw, ownerPassword: useOwner ? ownerPw : undefined, permissions: perms });
+    onOpenChange(false);
+    toast.success("Encryption will be applied on export");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader><DialogTitle>Password-protect the exported PDF</DialogTitle></DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Password"
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm" autoComplete="new-password" />
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="Confirm"
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm" autoComplete="new-password" />
+          </div>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={useOwner} onChange={(e) => setUseOwner(e.target.checked)} className="h-4 w-4 accent-vault" />
+            Set separate owner password (controls permissions)
+          </label>
+          {useOwner && (
+            <input type="password" value={ownerPw} onChange={(e) => setOwnerPw(e.target.value)} placeholder="Owner password"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" autoComplete="new-password" />
+          )}
+          <div className="space-y-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Permissions</div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {PERM_ROWS.map((row) => (
+                <label key={row.key} className="flex items-center gap-2 rounded border border-border bg-background/40 px-2 py-1.5 text-xs">
+                  <input type="checkbox" checked={perms[row.key]}
+                    onChange={() => setPerms((p) => ({ ...p, [row.key]: !p[row.key] }))}
+                    className="h-3.5 w-3.5 accent-vault" />
+                  {row.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          {value && <Button variant="ghost" onClick={() => { onSave(null); onOpenChange(false); toast.message("Password removed"); }}>Remove</Button>}
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={save} className="bg-vault text-vault-foreground hover:opacity-90">Set password</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
