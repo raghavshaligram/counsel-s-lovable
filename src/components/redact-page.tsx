@@ -1,4 +1,4 @@
-import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { ToolHeader } from "@/routes/split";
@@ -41,45 +41,8 @@ import {
   type KeywordMatch,
 } from "@/lib/pdf/detect-pii";
 
-import { softwareAppSchema } from "@/lib/seo/tool-schema";
 import { buildRedactionCertificate } from "@/lib/pdf/redaction-certificate";
 
-export const Route = createFileRoute("/redact")({
-  head: () => ({
-    meta: [
-      { title: "Smart Redact — VaultPDF" },
-      {
-        name: "description",
-        content:
-          "Permanently remove sensitive content from PDFs. AI PII auto-detection, keyword batch redact, exemption codes — 100% in your browser.",
-      },
-      { property: "og:title", content: "Smart Redact — VaultPDF" },
-      {
-        property: "og:description",
-        content:
-          "Redact PDFs without uploading them. Auto-detect PII, find-and-redact-all, FOIA exemption labels, true content removal.",
-      },
-      { property: "og:url", content: "/redact" },
-    ],
-    links: [{ rel: "canonical", href: "/redact" }],
-    scripts: [
-      {
-        type: "application/ld+json",
-        children: JSON.stringify(
-          softwareAppSchema({
-            name: "VaultPDF Smart Redact",
-            url: "/redact",
-            description:
-              "AI-detected PII redaction with keyword batching and legal exemption codes. Content is permanently removed in your browser.",
-          }),
-        ),
-      },
-    ],
-  }),
-  component: RedactPage,
-});
-
-export { RedactPage };
 
 type Box = {
   id: string;
