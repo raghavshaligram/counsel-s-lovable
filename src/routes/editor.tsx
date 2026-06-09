@@ -365,7 +365,7 @@ function Editor() {
 
 // ---------- toolbar ----------
 
-function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void }) {
+function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void; commentsOpen: boolean; onToggleComments: () => void }) {
   const [signOpen, setSignOpen] = useState(false);
   const [stampOpen, setStampOpen] = useState(false);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
