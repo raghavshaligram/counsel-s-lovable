@@ -152,8 +152,14 @@ function OcrPage() {
 
   // Pre-flight inspection: read page count, build a warning if the file is heavy
   // relative to the user's device. No OCR runs here — just metadata.
+  // For images we skip the whole thing — they're always single-page.
   useEffect(() => {
     if (!file) return;
+    if (isImage(file)) {
+      setPageCount(1);
+      setPreflight(null);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setInspecting(true);
