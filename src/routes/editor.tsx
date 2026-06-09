@@ -373,6 +373,7 @@ function Toolbar({ state, dispatch, onExport }: { state: State; dispatch: React.
     { id: "note", icon: StickyNote, label: "Note" },
     { id: "image", icon: ImageIcon, label: "Image" },
     { id: "edit-text", icon: PencilLine, label: "Edit text" },
+    { id: "redact", icon: EyeOff, label: "Redact (D)" },
   ];
 
   const onPickImage = async (file: File) => {
