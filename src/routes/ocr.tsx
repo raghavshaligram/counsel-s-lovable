@@ -201,12 +201,33 @@ function OcrPage() {
   const cancel = () => abortRef.current?.abort();
 
   const pct = progress
-    ? Math.round(
-        ((progress.page - 1 + (progress.stage === "ocr" ? 0.4 : progress.stage === "embedding" ? 0.85 : 0.05)) /
-          progress.totalPages) *
-          100,
-      )
+    ? progress.stage === "loading-language"
+      ? 1
+      : Math.round(
+          ((progress.page - 1 + (progress.stage === "ocr" ? 0.4 : progress.stage === "embedding" ? 0.85 : 0.05)) /
+            progress.totalPages) *
+            100,
+        )
     : 0;
+
+  const langSummary = useMemo(() => {
+    if (languages.length === 0) return "English";
+    if (languages.length === 1) return getLanguageLabel(languages[0]);
+    if (languages.length <= 2) return languages.map(getLanguageLabel).join(" + ");
+    return `${getLanguageLabel(languages[0])} +${languages.length - 1}`;
+  }, [languages]);
+
+  const toggleLang = (code: string) => {
+    setLanguages((prev) =>
+      prev.includes(code)
+        ? prev.length === 1
+          ? prev // can't remove the last one
+          : prev.filter((c) => c !== code)
+        : [...prev, code],
+    );
+  };
+
+  const downloadEstimate = estimateDownloadMb(languages);
 
   return (
     <AppShell>
