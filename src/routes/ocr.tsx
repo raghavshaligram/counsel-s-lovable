@@ -1,13 +1,75 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { ToolHeader } from "@/routes/split";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Download, FileText, Lock, ScanText, X, Loader2 } from "lucide-react";
+import { Download, FileText, Lock, ScanText, X, Loader2, AlertTriangle, Info } from "lucide-react";
 import { ocrPdfToSearchable, type OcrProgress } from "@/lib/pdf/ocr-pdf";
+import { loadPdfjs } from "@/lib/pdf/worker";
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
+
+interface DeviceProfile {
+  cores: number;
+  memoryGb: number | null;
+  tier: "low" | "mid" | "high";
+}
+
+function profileDevice(): DeviceProfile {
+  const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 4;
+  const memoryGb =
+    typeof navigator !== "undefined" && "deviceMemory" in navigator
+      ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null
+      : null;
+  let tier: DeviceProfile["tier"] = "mid";
+  if (cores <= 4 || (memoryGb !== null && memoryGb <= 4)) tier = "low";
+  else if (cores >= 8 && (memoryGb === null || memoryGb >= 8)) tier = "high";
+  return { cores, memoryGb, tier };
+}
+
+interface PreflightWarning {
+  level: "info" | "warn" | "block";
+  title: string;
+  body: string;
+  estimateMinutes: [number, number];
+}
+
+function buildPreflight(pages: number, sizeMb: number, dev: DeviceProfile): PreflightWarning | null {
+  const perPageSec = dev.tier === "high" ? 1.6 : dev.tier === "mid" ? 2.8 : 5.5;
+  const lowSec = pages * perPageSec * 0.7;
+  const highSec = pages * perPageSec * 1.3;
+  const estimateMinutes: [number, number] = [
+    Math.max(1, Math.round(lowSec / 60)),
+    Math.max(1, Math.round(highSec / 60)),
+  ];
+
+  if (pages > 600 || sizeMb > 400) {
+    return {
+      level: "block",
+      title: "This file is too large for in-browser OCR",
+      body: `${pages} pages · ${sizeMb.toFixed(0)} MB. Browser OCR is unreliable past ~600 pages or ~400 MB — tabs can run out of memory. Split the PDF into smaller chunks (e.g. 100–200 pages) and OCR each separately.`,
+      estimateMinutes,
+    };
+  }
+  if (pages > 150 && dev.tier === "low") {
+    return {
+      level: "warn",
+      title: "This will be slow on your device",
+      body: `${pages} pages on a ${dev.cores}-core machine${dev.memoryGb ? ` with ~${dev.memoryGb} GB RAM` : ""}. Estimated ${estimateMinutes[0]}–${estimateMinutes[1]} minutes. Keep this tab in the foreground, or split the PDF first for faster results.`,
+      estimateMinutes,
+    };
+  }
+  if (pages > 100) {
+    return {
+      level: "info",
+      title: `Heads up — ${pages} pages`,
+      body: `Estimated ${estimateMinutes[0]}–${estimateMinutes[1]} minutes on your device. Browser OCR works best in the foreground. You can cancel at any time.`,
+      estimateMinutes,
+    };
+  }
+  return null;
+}
 
 export const Route = createFileRoute("/ocr")({
   head: () => ({
