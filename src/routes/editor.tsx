@@ -555,11 +555,24 @@ function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments }: 
       </Button>
 
       <div className="ml-auto flex items-center gap-2">
+        <Button
+          size="sm"
+          variant={commentsOpen ? "default" : "outline"}
+          onClick={onToggleComments}
+          title="Toggle comments panel"
+        >
+          <MessageSquare className="h-4 w-4 mr-1.5" />
+          Comments
+          {state.doc && state.doc.annotations.length > 0 && (
+            <span className="ml-1.5 text-[10px] opacity-70">{state.doc.annotations.length}</span>
+          )}
+        </Button>
         <Button size="sm" onClick={onExport} className="bg-vault text-vault-foreground hover:opacity-90">
           <Download className="h-4 w-4 mr-1.5" />
           Export PDF
         </Button>
       </div>
+
 
       <SignatureDialog open={signOpen} onOpenChange={setSignOpen} onSave={setPendingImageFromCanvas} />
       <StampDialog open={stampOpen} onOpenChange={setStampOpen} onSave={setPendingImageFromCanvas} />
