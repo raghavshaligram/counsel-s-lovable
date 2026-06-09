@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/sidebar";
 
 const heroTools = [
-  { to: "/annotate", label: "Annotate", icon: HighlighterIcon, desc: "Highlight, draw, comment — real PDF annotations" },
   { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
   { to: "/sign", label: "Sign & Fill", icon: PenIcon, desc: "Draw, type, or upload your signature" },
   { to: "/chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
