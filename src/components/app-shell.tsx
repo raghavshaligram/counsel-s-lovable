@@ -226,29 +226,29 @@ function ShellInner({ children }: { children: ReactNode }) {
     <>
       {/* Full-width top bar */}
       <header className="sticky top-0 z-40 h-14 flex items-center justify-between border-b border-slate-800/70 bg-background/85 backdrop-blur-xl pl-4 pr-4 md:pl-6 md:pr-6">
-        <BrandMark />
-
-        <div className="flex items-center gap-4 min-w-0">
-          <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground truncate">
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandMark />
+          <SidebarTrigger className="h-7 w-7 ml-1" />
+          <span className="hidden md:inline text-xs uppercase tracking-[0.22em] text-muted-foreground truncate ml-2">
             100% in your browser
           </span>
-          <Link
-            to="/pricing"
-            className="inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
-            activeProps={{ className: "bg-vault/25" }}
-          >
-            Lifetime deal
-          </Link>
         </div>
+
+        <Link
+          to="/pricing"
+          className="inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-[12px] font-medium uppercase tracking-[0.14em] transition-colors"
+          activeProps={{ className: "bg-vault/25" }}
+        >
+          Lifetime deal
+        </Link>
       </header>
 
       <div className="flex flex-1 min-h-0">
         <Sidebar collapsible="icon" variant="sidebar" className="border-r border-slate-800/70 top-14 h-[calc(100svh-3.5rem)]">
           <SidebarHeader>
-            <div className="flex items-center justify-end px-1 py-1 group-data-[collapsible=icon]:justify-center">
-              <SidebarTrigger className="h-7 w-7" />
-            </div>
+            <div className="h-1" />
           </SidebarHeader>
+
 
 
           <SidebarContent>
