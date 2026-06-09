@@ -1194,6 +1194,7 @@ function DrawingPreview({ drawing, state }: { drawing: DrawingState; state: Stat
   if (state.tool === "strikethrough") return <div style={{ ...style, borderTop: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, marginTop: h / 2 }} />;
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
+  if (state.tool === "redact") return <div style={{ ...style, background: "#000" }} />;
   if (state.tool === "line" || state.tool === "arrow") {
     return (
       <svg style={{ position: "absolute", inset: 0, pointerEvents: "none" }} width="100%" height="100%">
