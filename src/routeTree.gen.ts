@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatermarkRouteImport } from './routes/watermark'
+import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as ToWordRouteImport } from './routes/to-word'
 import { Route as ToImagesRouteImport } from './routes/to-images'
 import { Route as SplitRouteImport } from './routes/split'
@@ -20,6 +21,7 @@ import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
+import { Route as ImagesToPdfRouteImport } from './routes/images-to-pdf'
 import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as CompressRouteImport } from './routes/compress'
@@ -29,6 +31,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const WatermarkRoute = WatermarkRouteImport.update({
   id: '/watermark',
   path: '/watermark',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UnlockRoute = UnlockRouteImport.update({
+  id: '/unlock',
+  path: '/unlock',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ToWordRoute = ToWordRouteImport.update({
@@ -81,6 +88,11 @@ const MergeRoute = MergeRouteImport.update({
   path: '/merge',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ImagesToPdfRoute = ImagesToPdfRouteImport.update({
+  id: '/images-to-pdf',
+  path: '/images-to-pdf',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExtractRoute = ExtractRouteImport.update({
   id: '/extract',
   path: '/extract',
@@ -113,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
+  '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
@@ -123,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/split': typeof SplitRoute
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
+  '/unlock': typeof UnlockRoute
   '/watermark': typeof WatermarkRoute
 }
 export interface FileRoutesByTo {
@@ -131,6 +145,7 @@ export interface FileRoutesByTo {
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
+  '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
@@ -141,6 +156,7 @@ export interface FileRoutesByTo {
   '/split': typeof SplitRoute
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
+  '/unlock': typeof UnlockRoute
   '/watermark': typeof WatermarkRoute
 }
 export interface FileRoutesById {
@@ -150,6 +166,7 @@ export interface FileRoutesById {
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
+  '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/pricing': typeof PricingRoute
@@ -160,6 +177,7 @@ export interface FileRoutesById {
   '/split': typeof SplitRoute
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
+  '/unlock': typeof UnlockRoute
   '/watermark': typeof WatermarkRoute
 }
 export interface FileRouteTypes {
@@ -170,6 +188,7 @@ export interface FileRouteTypes {
     | '/compress'
     | '/editor'
     | '/extract'
+    | '/images-to-pdf'
     | '/merge'
     | '/ocr'
     | '/pricing'
@@ -180,6 +199,7 @@ export interface FileRouteTypes {
     | '/split'
     | '/to-images'
     | '/to-word'
+    | '/unlock'
     | '/watermark'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -188,6 +208,7 @@ export interface FileRouteTypes {
     | '/compress'
     | '/editor'
     | '/extract'
+    | '/images-to-pdf'
     | '/merge'
     | '/ocr'
     | '/pricing'
@@ -198,6 +219,7 @@ export interface FileRouteTypes {
     | '/split'
     | '/to-images'
     | '/to-word'
+    | '/unlock'
     | '/watermark'
   id:
     | '__root__'
@@ -206,6 +228,7 @@ export interface FileRouteTypes {
     | '/compress'
     | '/editor'
     | '/extract'
+    | '/images-to-pdf'
     | '/merge'
     | '/ocr'
     | '/pricing'
@@ -216,6 +239,7 @@ export interface FileRouteTypes {
     | '/split'
     | '/to-images'
     | '/to-word'
+    | '/unlock'
     | '/watermark'
   fileRoutesById: FileRoutesById
 }
@@ -225,6 +249,7 @@ export interface RootRouteChildren {
   CompressRoute: typeof CompressRoute
   EditorRoute: typeof EditorRoute
   ExtractRoute: typeof ExtractRoute
+  ImagesToPdfRoute: typeof ImagesToPdfRoute
   MergeRoute: typeof MergeRoute
   OcrRoute: typeof OcrRoute
   PricingRoute: typeof PricingRoute
@@ -235,6 +260,7 @@ export interface RootRouteChildren {
   SplitRoute: typeof SplitRoute
   ToImagesRoute: typeof ToImagesRoute
   ToWordRoute: typeof ToWordRoute
+  UnlockRoute: typeof UnlockRoute
   WatermarkRoute: typeof WatermarkRoute
 }
 
@@ -245,6 +271,13 @@ declare module '@tanstack/react-router' {
       path: '/watermark'
       fullPath: '/watermark'
       preLoaderRoute: typeof WatermarkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/unlock': {
+      id: '/unlock'
+      path: '/unlock'
+      fullPath: '/unlock'
+      preLoaderRoute: typeof UnlockRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/to-word': {
@@ -317,6 +350,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MergeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/images-to-pdf': {
+      id: '/images-to-pdf'
+      path: '/images-to-pdf'
+      fullPath: '/images-to-pdf'
+      preLoaderRoute: typeof ImagesToPdfRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/extract': {
       id: '/extract'
       path: '/extract'
@@ -361,6 +401,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompressRoute: CompressRoute,
   EditorRoute: EditorRoute,
   ExtractRoute: ExtractRoute,
+  ImagesToPdfRoute: ImagesToPdfRoute,
   MergeRoute: MergeRoute,
   OcrRoute: OcrRoute,
   PricingRoute: PricingRoute,
@@ -371,18 +412,9 @@ const rootRouteChildren: RootRouteChildren = {
   SplitRoute: SplitRoute,
   ToImagesRoute: ToImagesRoute,
   ToWordRoute: ToWordRoute,
+  UnlockRoute: UnlockRoute,
   WatermarkRoute: WatermarkRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
