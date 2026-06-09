@@ -346,7 +346,11 @@ function ShellInner({ children }: { children: ReactNode }) {
         </Sidebar>
 
         <SidebarInset>
+          <div className="sticky top-14 z-30 flex items-center h-9 px-2 border-b border-slate-800/70 bg-background/80 backdrop-blur-xl">
+            <SidebarTrigger className="h-7 w-7" />
+          </div>
           <main className="flex-1 min-h-0">{children}</main>
+
 
           <footer className="border-t border-slate-800/70 px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
             <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
