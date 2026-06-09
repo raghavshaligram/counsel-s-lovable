@@ -281,6 +281,9 @@ function RedactPage() {
     setDetectionLabels({});
     setKeywordGroups([]);
     setKeywordBoxes([]);
+    setPendingMatches(null);
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
     setDetectConfirm(false);
     docRef.current = null;
     setTotalPages(0);
