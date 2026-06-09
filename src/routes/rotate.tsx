@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { RotateCw, RotateCcw } from "lucide-react";
 import { PDFDocument, degrees } from "pdf-lib";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
+import { useHotkey } from "@/lib/use-hotkey";
 
 export const Route = createFileRoute("/rotate")({
   head: () => ({
@@ -89,6 +90,7 @@ function RotatePage() {
     }
   };
 
+  useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
     <AppShell>
       <ToolHeader

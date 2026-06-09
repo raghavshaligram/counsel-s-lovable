@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Eye, EyeOff, Lock, ShieldCheck, KeyRound } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { FileBar, ToolHeader, downloadBlob } from "@/routes/split";
+import { useHotkey } from "@/lib/use-hotkey";
 
 export const Route = createFileRoute("/protect")({
   head: () => ({
@@ -147,6 +148,7 @@ function ProtectPage() {
     }
   };
 
+  useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
     <AppShell>
       <ToolHeader
