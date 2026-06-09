@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Download, FileText, Lock, Scissors, X } from "lucide-react";
+import { Download, FileText, Lock, Scissors, X, RefreshCw } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
+import { useHotkey, modKey } from "@/lib/use-hotkey";
 
 export const Route = createFileRoute("/split")({
   head: () => ({
@@ -238,8 +239,16 @@ export function ToolHeader({
               {title}
             </h1>
           </div>
-          <div className="hidden sm:flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground shrink-0">
-            <Lock className="h-3 w-3 text-vault" /> In-browser
+          <div className="hidden sm:flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground shrink-0">
+            <span className="inline-flex items-center gap-1.5">
+              <Lock className="h-3 w-3 text-vault" /> In-browser
+            </span>
+            <span className="h-3 w-px bg-border" />
+            <span className="inline-flex items-center gap-1 normal-case tracking-normal">
+              <kbd className="rounded border border-border bg-background/70 px-1 py-px text-[10px] font-mono">{modKey()}</kbd>
+              <kbd className="rounded border border-border bg-background/70 px-1 py-px text-[10px] font-mono">Enter</kbd>
+              <span className="text-muted-foreground/70">run</span>
+            </span>
           </div>
         </div>
       </div>
@@ -263,23 +272,76 @@ export function ToolHeader({
   );
 }
 
-export function FileBar({ file, info, onClose }: { file: File; info?: string; onClose: () => void }) {
+export function FileBar({
+  file,
+  info,
+  onClose,
+  onReplace,
+}: {
+  file: File;
+  info?: string;
+  onClose: () => void;
+  onReplace?: (f: File) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Esc closes the current file
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-4 py-3 flex-wrap">
       <div className="flex items-center gap-3 min-w-0">
-        <FileText className="h-4 w-4 text-vault shrink-0" />
+        <span className="grid h-8 w-8 place-items-center rounded-md bg-vault/10 text-vault shrink-0">
+          <FileText className="h-4 w-4" />
+        </span>
         <div className="min-w-0">
           <div className="text-sm font-medium truncate">{file.name}</div>
           <div className="text-xs text-muted-foreground">
-            {(file.size / 1024).toFixed(1)} KB{info && ` · ${info}`}
+            {formatSize(file.size)}{info && ` · ${info}`}
           </div>
         </div>
       </div>
-      <Button variant="ghost" size="sm" onClick={onClose}>
-        <X className="h-4 w-4 mr-1" /> Close
-      </Button>
+      <div className="flex items-center gap-1">
+        {onReplace && (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="application/pdf"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onReplace(f);
+                e.target.value = "";
+              }}
+            />
+            <Button variant="ghost" size="sm" onClick={() => inputRef.current?.click()}>
+              <RefreshCw className="h-3.5 w-3.5 mr-1" /> Replace
+            </Button>
+          </>
+        )}
+        <Button variant="ghost" size="sm" onClick={onClose} title="Close (Esc)">
+          <X className="h-4 w-4 mr-1" /> Close
+        </Button>
+      </div>
     </div>
   );
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 export function ModeBtn({
