@@ -401,18 +401,20 @@ function OcrPage() {
                         Pick one language for best accuracy. Combining languages (e.g. bilingual docs) costs accuracy and memory. First-time use of a language downloads ~{downloadEstimate} MB to your browser, then cached forever.
                       </p>
                     </div>
-                    <label className="flex items-start gap-2 text-xs text-foreground/80 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={highAccuracy}
-                        onChange={(e) => setHighAccuracy(e.target.checked)}
-                        className="h-3.5 w-3.5 accent-vault mt-0.5"
-                      />
-                      <span>
-                        <span className="font-medium text-foreground">High accuracy</span>
-                        <span className="text-muted-foreground"> — render at 2× instead of 1.5×. Better on small fonts and dense layouts, but ~80% slower per OCR'd page.</span>
-                      </span>
-                    </label>
+                    {file && !isImage(file) && (
+                      <label className="flex items-start gap-2 text-xs text-foreground/80 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={highAccuracy}
+                          onChange={(e) => setHighAccuracy(e.target.checked)}
+                          className="h-3.5 w-3.5 accent-vault mt-0.5"
+                        />
+                        <span>
+                          <span className="font-medium text-foreground">High accuracy</span>
+                          <span className="text-muted-foreground"> — render at 2× instead of 1.5×. Better on small fonts and dense layouts, but ~80% slower per OCR'd page.</span>
+                        </span>
+                      </label>
+                    )}
                     <Button
                       onClick={run}
                       disabled={
