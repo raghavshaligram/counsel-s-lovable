@@ -1,13 +1,14 @@
 // PDF Editor — single-page route holding the working document, toolbar,
 // page thumbnails sidebar, and the active page canvas with annotations.
 
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PDFDocument } from "pdf-lib";
 import {
   MousePointer2, Type, Highlighter, Square, Circle, Pen, StickyNote,
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
   ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
+  Layers, Edit3,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { Anno, EditorDoc, PageOp, RGB, Tool } from "@/lib/editor/types";
+import { AnnotationWorkspace } from "./annotate";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
