@@ -170,11 +170,22 @@ function RedactPage() {
   const [kwMatchCase, setKwMatchCase] = useState(false);
   const [kwWholeWord, setKwWholeWord] = useState(false);
   const [kwSearching, setKwSearching] = useState(false);
+  // Two-step: hold matches until the user confirms.
+  const [pendingMatches, setPendingMatches] = useState<{
+    query: string;
+    matchCase: boolean;
+    wholeWord: boolean;
+    matches: KeywordMatch[];
+  } | null>(null);
+
+  // Two-step auto-detect: scan results are staged here until the user commits.
+  const [pendingDetections, setPendingDetections] = useState<Detection[] | null>(null);
+  const [pendingUsedOcr, setPendingUsedOcr] = useState(false);
 
   // Export settings (persisted)
   const [stripMetadata, setStripMetadata] = useState(true);
   const [defaultLabel, setDefaultLabel] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"detect" | "find" | "label">("detect");
+  const [activeTab, setActiveTab] = useState<"label" | "detect" | "find">("label");
   useEffect(() => {
     try {
       const s = localStorage.getItem("vault.redact.stripMetadata");
@@ -211,6 +222,9 @@ function RedactPage() {
     setDetectionLabels({});
     setKeywordGroups([]);
     setKeywordBoxes([]);
+    setPendingMatches(null);
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
     setDetectConfirm(false);
     docRef.current = null;
     setTotalPages(0);
@@ -267,6 +281,9 @@ function RedactPage() {
     setDetectionLabels({});
     setKeywordGroups([]);
     setKeywordBoxes([]);
+    setPendingMatches(null);
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
     setDetectConfirm(false);
     docRef.current = null;
     setTotalPages(0);
@@ -287,6 +304,9 @@ function RedactPage() {
     setDetectConfirm(false);
     setDetecting(true);
     setDetectStatus("Reading text layer…");
+    // Clear any previous pending preview so it doesn't blend with new results.
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
     try {
       const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
       const { detections: found, usedOcr } = await detectPiiInPdf(
@@ -301,7 +321,6 @@ function RedactPage() {
         },
         docRef.current ?? undefined,
       );
-      setDetections(found);
       if (found.length === 0) {
         toast.info("No obvious PII patterns found.", {
           description: usedOcr
@@ -309,13 +328,13 @@ function RedactPage() {
             : "Mark sensitive regions manually with click-and-drag.",
         });
       } else {
-        toast.success(
-          `Found ${found.length} likely PII region${found.length === 1 ? "" : "s"}`,
-          {
-            description: usedOcr
-              ? "Some pages were scanned — OCR was used. Review categories on the right."
-              : "Review and toggle categories on the right, then export.",
-          },
+        // Stage — do NOT commit to `detections` yet.
+        setPendingDetections(found);
+        setPendingUsedOcr(usedOcr);
+        // Reset category filter so the preview shows everything selected.
+        setEnabledCats(new Set(Object.keys(CATEGORY_META) as PiiCategory[]));
+        toast.info(
+          `Found ${found.length} potential PII region${found.length === 1 ? "" : "s"} — review before redacting`,
         );
       }
     } catch (err) {
@@ -327,11 +346,31 @@ function RedactPage() {
     }
   }, [file, totalPages, detectConfirm]);
 
+  const confirmDetectRedact = useCallback(() => {
+    if (!pendingDetections) return;
+    const filtered = pendingDetections.filter((d) => enabledCats.has(d.category));
+    if (filtered.length === 0) {
+      toast.info("No categories selected — nothing redacted.");
+      return;
+    }
+    setDetections(filtered);
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
+    toast.success(`Redacted ${filtered.length} region${filtered.length === 1 ? "" : "s"}`);
+  }, [pendingDetections, enabledCats]);
+
+  const discardPendingDetections = useCallback(() => {
+    setPendingDetections(null);
+    setPendingUsedOcr(false);
+  }, []);
+
   const runKeywordSearch = useCallback(async () => {
     if (!file) return;
     const q = kwQuery.trim();
     if (!q) return;
     setKwSearching(true);
+    // Clear previous preview before running again.
+    setPendingMatches(null);
     try {
       const matches = await findKeywordInPdf(
         file,
@@ -345,37 +384,47 @@ function RedactPage() {
         });
         return;
       }
-      const groupId = `kg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const newBoxes: Box[] = matches.map((m: KeywordMatch) => ({
-        id: m.id,
-        page: m.page,
-        x: m.x,
-        y: m.y,
-        w: m.w,
-        h: m.h,
-        keywordId: groupId,
-        label: defaultLabel || undefined,
-      }));
-      setKeywordBoxes((prev) => [...prev, ...newBoxes]);
-      setKeywordGroups((prev) => [
-        ...prev,
-        {
-          id: groupId,
-          query: q,
-          matchCase: kwMatchCase,
-          wholeWord: kwWholeWord,
-          count: matches.length,
-        },
-      ]);
-      setKwQuery("");
-      toast.success(`Redacted ${matches.length} instance${matches.length === 1 ? "" : "s"} of "${q}"`);
+      // Stage matches; the user confirms before they become redaction boxes.
+      setPendingMatches({ query: q, matchCase: kwMatchCase, wholeWord: kwWholeWord, matches });
     } catch (err) {
       console.error(err);
       toast.error("Search failed");
     } finally {
       setKwSearching(false);
     }
-  }, [file, kwQuery, kwMatchCase, kwWholeWord, defaultLabel]);
+  }, [file, kwQuery, kwMatchCase, kwWholeWord]);
+
+  const confirmKeywordRedact = useCallback(() => {
+    if (!pendingMatches) return;
+    const { query, matchCase, wholeWord, matches } = pendingMatches;
+    const groupId = `kg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newBoxes: Box[] = matches.map((m: KeywordMatch) => ({
+      id: m.id,
+      page: m.page,
+      x: m.x,
+      y: m.y,
+      w: m.w,
+      h: m.h,
+      keywordId: groupId,
+      label: defaultLabel || undefined,
+    }));
+    setKeywordBoxes((prev) => [...prev, ...newBoxes]);
+    setKeywordGroups((prev) => [
+      ...prev,
+      { id: groupId, query, matchCase, wholeWord, count: matches.length },
+    ]);
+    setPendingMatches(null);
+    setKwQuery("");
+    toast.success(`Redacted ${matches.length} instance${matches.length === 1 ? "" : "s"} of "${query}"`);
+  }, [pendingMatches, defaultLabel]);
+
+  const discardPendingMatches = useCallback(() => setPendingMatches(null), []);
+
+  // Invalidate any pending preview if the user changes the query / options —
+  // otherwise they could click Redact on stale results.
+  useEffect(() => {
+    setPendingMatches(null);
+  }, [kwQuery, kwMatchCase, kwWholeWord]);
 
   const removeKeywordGroup = (id: string) => {
     setKeywordGroups((prev) => prev.filter((g) => g.id !== id));
@@ -419,6 +468,29 @@ function RedactPage() {
     for (const d of detections) m.set(d.category, (m.get(d.category) ?? 0) + 1);
     return m;
   }, [detections]);
+
+  // Per-category counts for the *pending* preview, used in the review step.
+  const pendingCatCounts = useMemo(() => {
+    const m = new Map<PiiCategory, number>();
+    if (!pendingDetections) return m;
+    for (const d of pendingDetections) m.set(d.category, (m.get(d.category) ?? 0) + 1);
+    return m;
+  }, [pendingDetections]);
+
+  const pendingSelectedCount = useMemo(() => {
+    if (!pendingDetections) return 0;
+    return pendingDetections.filter((d) => enabledCats.has(d.category)).length;
+  }, [pendingDetections, enabledCats]);
+
+  // Per-page breakdown for pending keyword matches (top 6 pages, "+N more").
+  const pendingMatchPageBreakdown = useMemo(() => {
+    if (!pendingMatches) return [] as Array<{ page: number; count: number }>;
+    const m = new Map<number, number>();
+    for (const x of pendingMatches.matches) m.set(x.page, (m.get(x.page) ?? 0) + 1);
+    return [...m.entries()]
+      .map(([page, count]) => ({ page, count }))
+      .sort((a, b) => a.page - b.page);
+  }, [pendingMatches]);
 
   const setBoxLabel = useCallback((id: string, label: string) => {
     // auto-detect ids start with "det-", keyword ids with "kw-"
@@ -621,9 +693,9 @@ function RedactPage() {
               {/* Global Header */}
               <div className="grid grid-cols-3 gap-1 px-3 py-3 border-b border-border">
                 {[
+                  { id: "label" as const, icon: Tag, label: "Label" },
                   { id: "detect" as const, icon: Wand2, label: "Detect" },
                   { id: "find" as const, icon: Search, label: "Find" },
-                  { id: "label" as const, icon: Tag, label: "Label" },
                 ].map((t) => (
                   <button
                     key={t.id}
@@ -652,9 +724,11 @@ function RedactPage() {
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
                         Scans for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls back to
-                        on-device OCR for scanned pages.
+                        on-device OCR for scanned pages. You'll review findings before anything
+                        is redacted.
                       </p>
                     </div>
+                    <LabelHint defaultLabel={defaultLabel} onEdit={() => setActiveTab("label")} />
                     {detectConfirm && !detecting && (() => {
                       const [best, worst] = estimateDetectMinutes(totalPages);
                       return (
@@ -684,7 +758,7 @@ function RedactPage() {
                         ? "Scanning…"
                         : detectConfirm
                           ? `Yes, scan ${totalPages} pages`
-                          : detections.length > 0
+                          : pendingDetections || detections.length > 0
                             ? "Re-scan"
                             : "Scan this PDF"}
                     </Button>
@@ -694,8 +768,83 @@ function RedactPage() {
                         {detectStatus}
                       </div>
                     )}
-                    {detections.length > 0 && (
+
+                    {/* Pending preview — review before committing */}
+                    {pendingDetections && (
+                      <div className="rounded-md border border-vault/40 bg-vault/5 p-3 space-y-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <AlertTriangle className="h-3.5 w-3.5 text-vault" />
+                            Found {pendingDetections.length} potential item
+                            {pendingDetections.length === 1 ? "" : "s"} — review before redacting
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            {pendingUsedOcr
+                              ? "Some pages were scanned — OCR was used. "
+                              : ""}
+                            Toggle categories below to include or exclude them.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          {(Object.keys(CATEGORY_META) as PiiCategory[])
+                            .filter((c) => (pendingCatCounts.get(c) ?? 0) > 0)
+                            .map((c) => {
+                              const on = enabledCats.has(c);
+                              const count = pendingCatCounts.get(c) ?? 0;
+                              return (
+                                <button
+                                  key={c}
+                                  onClick={() => toggleCategory(c)}
+                                  className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition ${
+                                    on
+                                      ? "border-vault/50 bg-vault/10 text-foreground"
+                                      : "border-border bg-card/30 text-muted-foreground hover:bg-card"
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span
+                                      className={`inline-block h-2 w-2 rounded-full ${
+                                        on ? "bg-vault" : "bg-muted-foreground/40"
+                                      }`}
+                                    />
+                                    {CATEGORY_META[c].label}
+                                  </span>
+                                  <span className="tabular-nums">{count}</span>
+                                </button>
+                              );
+                            })}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Will be labeled as{" "}
+                          <span className="text-foreground font-medium">
+                            {defaultLabel || "No label"}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={confirmDetectRedact}
+                            className="flex-1 bg-vault text-vault-foreground hover:bg-vault/90"
+                            disabled={pendingSelectedCount === 0}
+                          >
+                            Redact {pendingSelectedCount}
+                          </Button>
+                          <Button
+                            onClick={discardPendingDetections}
+                            variant="ghost"
+                            className="flex-1"
+                          >
+                            Discard
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Committed detections — live toggle (post-confirm refinement) */}
+                    {!pendingDetections && detections.length > 0 && (
                       <div className="space-y-1.5">
+                        <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                          Active detections
+                        </div>
                         {(Object.keys(CATEGORY_META) as PiiCategory[])
                           .filter((c) => (catCounts.get(c) ?? 0) > 0)
                           .map((c) => {
@@ -736,10 +885,11 @@ function RedactPage() {
                         Find &amp; redact all
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Type a word or phrase — every match across all pages is redacted in one
-                        click.
+                        Type a word or phrase to find every match across all pages. You'll see
+                        the count before anything is redacted.
                       </p>
                     </div>
+                    <LabelHint defaultLabel={defaultLabel} onEdit={() => setActiveTab("label")} />
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
@@ -775,9 +925,61 @@ function RedactPage() {
                         className="w-full"
                         disabled={!kwQuery.trim() || kwSearching}
                       >
-                        {kwSearching ? "Searching…" : "Redact all matches"}
+                        {kwSearching ? "Searching…" : "Find matches"}
                       </Button>
                     </form>
+
+                    {/* Pending matches — confirm before redacting */}
+                    {pendingMatches && (
+                      <div className="rounded-md border border-vault/40 bg-vault/5 p-3 space-y-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <AlertTriangle className="h-3.5 w-3.5 text-vault" />
+                            {pendingMatches.matches.length} match
+                            {pendingMatches.matches.length === 1 ? "" : "es"} across{" "}
+                            {pendingMatchPageBreakdown.length} page
+                            {pendingMatchPageBreakdown.length === 1 ? "" : "s"} for{" "}
+                            <span className="text-vault">"{pendingMatches.query}"</span>
+                          </div>
+                        </div>
+                        <div className="max-h-32 overflow-y-auto rounded border border-border bg-card/40 px-2 py-1.5 text-[11px] font-mono space-y-0.5">
+                          {pendingMatchPageBreakdown.slice(0, 8).map((row) => (
+                            <div key={row.page} className="flex justify-between">
+                              <span className="text-muted-foreground">Page {row.page}</span>
+                              <span className="tabular-nums">{row.count}</span>
+                            </div>
+                          ))}
+                          {pendingMatchPageBreakdown.length > 8 && (
+                            <div className="text-muted-foreground italic">
+                              +{pendingMatchPageBreakdown.length - 8} more page
+                              {pendingMatchPageBreakdown.length - 8 === 1 ? "" : "s"}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Will be labeled as{" "}
+                          <span className="text-foreground font-medium">
+                            {defaultLabel || "No label"}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={confirmKeywordRedact}
+                            className="flex-1 bg-vault text-vault-foreground hover:bg-vault/90"
+                          >
+                            Redact all {pendingMatches.matches.length}
+                          </Button>
+                          <Button
+                            onClick={discardPendingMatches}
+                            variant="ghost"
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     {keywordGroups.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
                         {keywordGroups.map((g) => (
@@ -808,11 +1010,11 @@ function RedactPage() {
                     <div>
                       <div className="flex items-center gap-2 text-foreground font-medium text-sm">
                         <Tag className="h-4 w-4 text-vault" />
-                        Default exemption label
+                        Exemption label
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Stamped in white over every new redaction. Double-click any box to
-                        override.
+                        Pick this first — it's stamped in white over every redaction you add
+                        from Detect, Find, or by hand. Double-click any box to override.
                       </p>
                     </div>
                     <Select
@@ -895,6 +1097,33 @@ function RedactPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function LabelHint({
+  defaultLabel,
+  onEdit,
+}: {
+  defaultLabel: string;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-card/40 px-2.5 py-1.5 text-[11px]">
+      <span className="flex items-center gap-1.5 text-muted-foreground min-w-0">
+        <Tag className="h-3 w-3 text-vault shrink-0" />
+        Labeling as{" "}
+        <span className="text-foreground font-medium truncate">
+          {defaultLabel || "No label"}
+        </span>
+      </span>
+      <button
+        onClick={onEdit}
+        className="text-vault hover:underline shrink-0"
+        type="button"
+      >
+        Change
+      </button>
+    </div>
   );
 }
 
