@@ -224,6 +224,8 @@ function EditorRoute() {
 function Editor() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loading, setLoading] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [author, setAuthor] = useState("Me");
 
 
 
