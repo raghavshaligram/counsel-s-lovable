@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WordToPdfRouteImport } from './routes/word-to-pdf'
 import { Route as WatermarkRouteImport } from './routes/watermark'
 import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as ToWordRouteImport } from './routes/to-word'
@@ -25,9 +26,15 @@ import { Route as ImagesToPdfRouteImport } from './routes/images-to-pdf'
 import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as CompressRouteImport } from './routes/compress'
+import { Route as CompareRouteImport } from './routes/compare'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 
+const WordToPdfRoute = WordToPdfRouteImport.update({
+  id: '/word-to-pdf',
+  path: '/word-to-pdf',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WatermarkRoute = WatermarkRouteImport.update({
   id: '/watermark',
   path: '/watermark',
@@ -108,6 +115,11 @@ const CompressRoute = CompressRouteImport.update({
   path: '/compress',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompareRoute = CompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
@@ -122,6 +134,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
@@ -138,10 +151,12 @@ export interface FileRoutesByFullPath {
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/watermark': typeof WatermarkRoute
+  '/word-to-pdf': typeof WordToPdfRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
@@ -158,11 +173,13 @@ export interface FileRoutesByTo {
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/watermark': typeof WatermarkRoute
+  '/word-to-pdf': typeof WordToPdfRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
@@ -179,12 +196,14 @@ export interface FileRoutesById {
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/watermark': typeof WatermarkRoute
+  '/word-to-pdf': typeof WordToPdfRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/chat'
+    | '/compare'
     | '/compress'
     | '/editor'
     | '/extract'
@@ -201,10 +220,12 @@ export interface FileRouteTypes {
     | '/to-word'
     | '/unlock'
     | '/watermark'
+    | '/word-to-pdf'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/chat'
+    | '/compare'
     | '/compress'
     | '/editor'
     | '/extract'
@@ -221,10 +242,12 @@ export interface FileRouteTypes {
     | '/to-word'
     | '/unlock'
     | '/watermark'
+    | '/word-to-pdf'
   id:
     | '__root__'
     | '/'
     | '/chat'
+    | '/compare'
     | '/compress'
     | '/editor'
     | '/extract'
@@ -241,11 +264,13 @@ export interface FileRouteTypes {
     | '/to-word'
     | '/unlock'
     | '/watermark'
+    | '/word-to-pdf'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChatRoute: typeof ChatRoute
+  CompareRoute: typeof CompareRoute
   CompressRoute: typeof CompressRoute
   EditorRoute: typeof EditorRoute
   ExtractRoute: typeof ExtractRoute
@@ -262,10 +287,18 @@ export interface RootRouteChildren {
   ToWordRoute: typeof ToWordRoute
   UnlockRoute: typeof UnlockRoute
   WatermarkRoute: typeof WatermarkRoute
+  WordToPdfRoute: typeof WordToPdfRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/word-to-pdf': {
+      id: '/word-to-pdf'
+      path: '/word-to-pdf'
+      fullPath: '/word-to-pdf'
+      preLoaderRoute: typeof WordToPdfRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/watermark': {
       id: '/watermark'
       path: '/watermark'
@@ -378,6 +411,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CompressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/compare': {
+      id: '/compare'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof CompareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/chat': {
       id: '/chat'
       path: '/chat'
@@ -398,6 +438,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChatRoute: ChatRoute,
+  CompareRoute: CompareRoute,
   CompressRoute: CompressRoute,
   EditorRoute: EditorRoute,
   ExtractRoute: ExtractRoute,
@@ -414,6 +455,7 @@ const rootRouteChildren: RootRouteChildren = {
   ToWordRoute: ToWordRoute,
   UnlockRoute: UnlockRoute,
   WatermarkRoute: WatermarkRoute,
+  WordToPdfRoute: WordToPdfRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

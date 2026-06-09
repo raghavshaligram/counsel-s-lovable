@@ -31,12 +31,14 @@ const heroTools = [
 
 const converters = [
   { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
+  { to: "/word-to-pdf", label: "Word → PDF", icon: WordToPdfIcon, desc: "Convert .docx to a clean PDF" },
   { to: "/to-images", label: "PDF → Images", icon: ImageIcon, desc: "Export every page as PNG or JPG" },
   { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon, desc: "Combine JPG/PNG into one PDF" },
 ];
 
 const utilities = [
   { to: "/editor", label: "Editor", icon: EditIcon, desc: "Full PDF editor — annotate, edit text, reorder pages" },
+  { to: "/compare", label: "Compare", icon: CompareIcon, desc: "Visual diff between two PDFs" },
   { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
   { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
   { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
@@ -45,6 +47,26 @@ const utilities = [
   { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
   { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
 ];
+
+function WordToPdfIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M8 13h2l1 4 1-4 1 4 1-4h2" />
+    </svg>
+  );
+}
+
+function CompareIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 3v18" />
+      <path d="M5 7h4v10H5z" />
+      <path d="M15 7h4v10h-4z" />
+    </svg>
+  );
+}
 
 function UnlockIcon({ className }: { className?: string }) {
   return (
