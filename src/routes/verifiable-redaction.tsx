@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { RedactPage } from "@/routes/redact";
+import { RedactPage } from "@/components/redact-page";
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
 
 export const Route = createFileRoute("/verifiable-redaction")({
