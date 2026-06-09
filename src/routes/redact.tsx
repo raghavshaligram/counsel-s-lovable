@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { ToolHeader } from "@/routes/split";
@@ -78,6 +78,8 @@ export const Route = createFileRoute("/redact")({
   }),
   component: RedactPage,
 });
+
+export { RedactPage };
 
 type Box = {
   id: string;
