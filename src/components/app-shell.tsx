@@ -1,7 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Lock } from "lucide-react";
+import { Lock, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -240,7 +245,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </SidebarHeader>
 
           <SidebarContent>
-            <SidebarGroup defaultOpen={true}>
+            <SidebarGroup>
               <SidebarGroupLabel>Core Tools</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -265,43 +270,61 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <SidebarSeparator />
 
-            <SidebarGroup defaultOpen={false}>
-              <SidebarGroupLabel>Convert</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {converters.map((t) => (
-                    <SidebarMenuItem key={t.to}>
-                      <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                        <Link to={t.to} className="flex items-center gap-2">
-                          <t.icon className="h-4 w-4 opacity-80" />
-                          <span>{t.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <Collapsible defaultOpen={false} className="group/collapsible">
+              <SidebarGroup>
+                <CollapsibleTrigger asChild>
+                  <SidebarGroupLabel className="cursor-pointer select-none">
+                    <span>Convert</span>
+                    <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                  </SidebarGroupLabel>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {converters.map((t) => (
+                        <SidebarMenuItem key={t.to}>
+                          <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
+                            <Link to={t.to} className="flex items-center gap-2">
+                              <t.icon className="h-4 w-4 opacity-80" />
+                              <span>{t.label}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
 
             <SidebarSeparator />
 
-            <SidebarGroup defaultOpen={false}>
-              <SidebarGroupLabel>Utilities</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {utilities.map((t) => (
-                    <SidebarMenuItem key={t.to}>
-                      <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
-                        <Link to={t.to} className="flex items-center gap-2">
-                          <t.icon className="h-4 w-4 opacity-80" />
-                          <span>{t.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <Collapsible defaultOpen={false} className="group/collapsible">
+              <SidebarGroup>
+                <CollapsibleTrigger asChild>
+                  <SidebarGroupLabel className="cursor-pointer select-none">
+                    <span>Utilities</span>
+                    <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                  </SidebarGroupLabel>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {utilities.map((t) => (
+                        <SidebarMenuItem key={t.to}>
+                          <SidebarMenuButton asChild isActive={isActive(t.to)} tooltip={t.label}>
+                            <Link to={t.to} className="flex items-center gap-2">
+                              <t.icon className="h-4 w-4 opacity-80" />
+                              <span>{t.label}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
           </SidebarContent>
 
           <SidebarFooter>
