@@ -9,6 +9,7 @@ import {
   Image as ImageIcon, PencilLine, Trash2, Plus, RotateCw, Download,
   ChevronLeft, ChevronRight, Undo2, Redo2, FileSignature, BadgeCheck,
   Underline as UnderlineIcon, Strikethrough, Minus, ArrowRight,
+  EyeOff, Droplets, Lock, CalendarDays,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -20,7 +21,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
-import type { Anno, EditorDoc, PageOp, RGB, Tool } from "@/lib/editor/types";
+import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, WatermarkSettings } from "@/lib/editor/types";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
