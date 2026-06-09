@@ -885,10 +885,11 @@ function RedactPage() {
                         Find &amp; redact all
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Type a word or phrase — every match across all pages is redacted in one
-                        click.
+                        Type a word or phrase to find every match across all pages. You'll see
+                        the count before anything is redacted.
                       </p>
                     </div>
+                    <LabelHint defaultLabel={defaultLabel} onEdit={() => setActiveTab("label")} />
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
@@ -924,9 +925,61 @@ function RedactPage() {
                         className="w-full"
                         disabled={!kwQuery.trim() || kwSearching}
                       >
-                        {kwSearching ? "Searching…" : "Redact all matches"}
+                        {kwSearching ? "Searching…" : "Find matches"}
                       </Button>
                     </form>
+
+                    {/* Pending matches — confirm before redacting */}
+                    {pendingMatches && (
+                      <div className="rounded-md border border-vault/40 bg-vault/5 p-3 space-y-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <AlertTriangle className="h-3.5 w-3.5 text-vault" />
+                            {pendingMatches.matches.length} match
+                            {pendingMatches.matches.length === 1 ? "" : "es"} across{" "}
+                            {pendingMatchPageBreakdown.length} page
+                            {pendingMatchPageBreakdown.length === 1 ? "" : "s"} for{" "}
+                            <span className="text-vault">"{pendingMatches.query}"</span>
+                          </div>
+                        </div>
+                        <div className="max-h-32 overflow-y-auto rounded border border-border bg-card/40 px-2 py-1.5 text-[11px] font-mono space-y-0.5">
+                          {pendingMatchPageBreakdown.slice(0, 8).map((row) => (
+                            <div key={row.page} className="flex justify-between">
+                              <span className="text-muted-foreground">Page {row.page}</span>
+                              <span className="tabular-nums">{row.count}</span>
+                            </div>
+                          ))}
+                          {pendingMatchPageBreakdown.length > 8 && (
+                            <div className="text-muted-foreground italic">
+                              +{pendingMatchPageBreakdown.length - 8} more page
+                              {pendingMatchPageBreakdown.length - 8 === 1 ? "" : "s"}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Will be labeled as{" "}
+                          <span className="text-foreground font-medium">
+                            {defaultLabel || "No label"}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={confirmKeywordRedact}
+                            className="flex-1 bg-vault text-vault-foreground hover:bg-vault/90"
+                          >
+                            Redact all {pendingMatches.matches.length}
+                          </Button>
+                          <Button
+                            onClick={discardPendingMatches}
+                            variant="ghost"
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     {keywordGroups.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
                         {keywordGroups.map((g) => (
@@ -957,11 +1010,11 @@ function RedactPage() {
                     <div>
                       <div className="flex items-center gap-2 text-foreground font-medium text-sm">
                         <Tag className="h-4 w-4 text-vault" />
-                        Default exemption label
+                        Exemption label
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Stamped in white over every new redaction. Double-click any box to
-                        override.
+                        Pick this first — it's stamped in white over every redaction you add
+                        from Detect, Find, or by hand. Double-click any box to override.
                       </p>
                     </div>
                     <Select
