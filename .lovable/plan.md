@@ -1,62 +1,55 @@
-## Replace sidebar with top nav + mega menu
+## Why these changes
 
-### Layout change
+You're right on both counts:
 
-- Delete the left `Sidebar` entirely from `src/components/app-shell.tsx`.
-- The top header becomes the primary nav, full width, sticky, backdrop-blurred.
-- Main content gets the whole viewport width — no more left rail eating space.
+1. **Find** and **Detect** both redact the moment the action finishes. For a destructive action on a legal doc, that's the wrong default — the user should see *what* and *how many* will be covered before committing.
+2. **Label** is the third tab, but conceptually it's the *first* decision: every Detect / Find redaction picks up `defaultLabel` at creation time. If you set the label after running them, the boxes you just made already have no label. The tab order misleads.
 
-### Top bar structure
+## Plan
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│ 🔒 VaultPDF │ All tools ▾ │ Organize ▾  Convert ▾  Edit ▾  …  │  Lifetime deal │
-└──────────────────────────────────────────────────────────────────┘
-```
+### 1. Reorder right-panel tabs → `Label · Detect · Find`
 
-- **Left:** VaultPDF wordmark (links home).
-- **Center:** 5 group triggers (Organize, Convert, Edit, Secure, AI). Each opens a mega-menu panel on hover/click. "Optimize" merges into Edit (just Compress) to keep the bar at 5.
-- **Right:** "Lifetime deal" pill (kept) + "100% in your browser" trust line on wide screens.
+- In `src/routes/redact.tsx`, swap the order of the tab buttons (line 622–642) so Label is first, then Detect, then Find.
+- Default `activeTab` becomes `"label"`.
+- Rewrite the Label tab copy so it reads as a setup step ("Pick an exemption code first — it'll be stamped on every redaction you add below").
+- Add a small inline hint at the top of Detect and Find tabs showing the current default label (e.g. `Labeling as: (b)(6)` with a quick-edit link back to Label), so the user always knows what's about to be stamped.
 
-### Mega menu panel
+### 2. Two-step Find: preview matches → confirm redact
 
-Built with shadcn `NavigationMenu` (already in the stack) — no new deps.
+- Replace the single `Redact all matches` submit with **`Find matches`** (non-destructive).
+- On submit, call `findKeywordInPdf` and store results in a new `pendingMatches` state (don't push to `keywordBoxes` yet).
+- Render a confirmation card below the form:
+  - `12 matches across 4 pages for "Acme Corp"`
+  - Per-page breakdown (`Page 2 · 3`, `Page 7 · 5`, …) so the user can sanity-check.
+  - `Will be labeled as: <defaultLabel or "No label">`.
+  - Buttons: **`Redact all 12`** (primary, vault color) and **`Cancel`** (ghost).
+- Only on confirm do we promote `pendingMatches` into `keywordBoxes` / `keywordGroups` and toast success.
+- Zero matches → keep existing `toast.info("No matches…")`, skip confirm card.
+- Edge case: changing query / match-case / whole-word with a pending preview clears `pendingMatches` so stale boxes can't be committed.
 
-- Panel is full-width-of-container, drops below the header with a soft shadow and the same backdrop-blur as the header.
-- Inside each panel: a 2-column grid of tool cards.
-  - Each card = icon tile (40×40, vault-tinted) + tool name + one-line description (the `desc` strings we already had on the old `heroTools` / `converters` / `utilities` arrays — restoring them).
-  - Hover lifts the card and brightens the icon tile.
-- Right edge of each panel: a small "featured" block — for now a static illustration/icon + the tagline for that category (e.g. Organize → "Move pages around without uploading them"). Keeps the mega-menu visually rich rather than a bare grid.
+### 3. Two-step Detect: preview detections → confirm redact
 
-### Mobile (`< md`)
+Apply the same review-before-commit pattern to auto-detect. Today the scan finishes and immediately drops boxes onto pages.
 
-- Replace the mega menu with a single hamburger that opens a shadcn `Sheet` from the right.
-- Sheet contains the same grouped tool list, scrollable, with normal scrollbars.
+- Keep the existing first-click amber estimate card (that's a *time* warning, not a redaction confirm — different purpose).
+- After the scan completes, do **not** add detections to `detections` state yet. Stage them in a new `pendingDetections` state.
+- Replace the per-category enable/disable list with a **preview summary**:
+  - `Found 37 items — review before redacting`
+  - Same category toggle rows (SSN ×4, Email ×12, …) but they now act as *include / exclude* filters on the pending set, not as live redaction toggles.
+  - `Will be labeled as: <defaultLabel>` line.
+  - Buttons: **`Redact selected (N)`** (primary, counts only enabled categories) and **`Discard`** (ghost, throws away the pending scan).
+- On confirm, commit the filtered detections into the existing `detections` / `detectionLabels` state so the rest of the pipeline (canvas overlays, export, certificate) is unchanged.
+- After commit, the panel returns to its current "live" mode where category toggles add/remove already-committed boxes — preserving the ability to refine after the fact.
+- Re-scan: if a pending set exists, second click on Scan replaces it; if a committed set exists, behavior matches today (re-scan replaces committed detections).
 
-### Tool data
+### What I'm *not* changing
 
-One source of truth at the top of `app-shell.tsx`:
-
-```ts
-const groups = [
-  { id: "organize", label: "Organize", tagline: "...", items: [{ to, label, desc, icon }, ...] },
-  ...
-];
-```
-
-Same `to` / `icon` set as today; `desc` strings come back from the pre-redesign version.
-
-### Scrollbars
-
-No change to global scrollbar behavior — global scrollbars stay visible (already restored last turn). The `.no-scrollbar` utility stays in `styles.css` but is no longer used; can remove later if unused.
+- Manual draw-on-canvas redactions stay one-click — the user is literally drawing the box, intent is explicit.
+- Box geometry, export pipeline, and certificate generation are untouched.
+- OCR fallback, progress reporting, and worker pool are untouched.
 
 ### Files touched
 
-- `src/components/app-shell.tsx` — rewrite: drop `Sidebar*` imports, add `NavigationMenu` + `Sheet` based top nav. Keep header CTA + footer + the existing custom icon components.
-- No other files.
+- `src/routes/redact.tsx` — tab order, default tab, Label copy, label hints on Detect/Find, pending-matches state + confirm card in Find, pending-detections state + review-before-commit in Detect.
 
-### Out of scope
-
-- No images yet — using existing lucide-style custom icons + tinted tiles. If you want real illustrations per category later, that's a follow-up (one image per group, 5 total).
-- No route changes.
-- No changes to any individual tool page.
+No other files, no schema, no new deps.
