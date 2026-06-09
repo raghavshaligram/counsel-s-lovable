@@ -630,17 +630,24 @@ function RedactPage() {
                         on-device OCR for scanned pages.
                       </p>
                     </div>
-                    {detectConfirm && !detecting && (
-                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                          {totalPages} pages — this may take a while
+                    {detectConfirm && !detecting && (() => {
+                      const [best, worst] = estimateDetectMinutes(totalPages);
+                      return (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                            {totalPages} pages — roughly {best === worst ? `${best} min` : `${best}–${worst} min`}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Best case (all text-based) is fast; worst case (every page scanned, OCR fallback) is the upper end. Estimate is based on your device's CPU cores
+                            {(navigator as Navigator & { deviceMemory?: number }).deviceMemory
+                              ? ` (~${navigator.hardwareConcurrency} cores, ~${(navigator as Navigator & { deviceMemory?: number }).deviceMemory} GB RAM)`
+                              : ` (~${navigator.hardwareConcurrency} cores)`}
+                            . Click again to start.
+                          </p>
                         </div>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          Reading the text layer of every page and OCRing any scanned ones runs in your browser. Click again to start.
-                        </p>
-                      </div>
-                    )}
+                      );
+                    })()}
                     <Button
                       onClick={runAutoDetect}
                       disabled={detecting || loading}
