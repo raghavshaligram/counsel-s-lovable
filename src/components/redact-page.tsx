@@ -1170,6 +1170,7 @@ export function RedactPage() {
             </div>
           </aside>
         </div>
+        </TooltipProvider>
       )}
     </AppShell>
   );
