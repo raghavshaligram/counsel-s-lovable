@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
-  ListTree,
   Download,
+
   Plus,
   Trash2,
   ChevronRight,
@@ -28,6 +28,8 @@ import { linkifyPage } from "@/lib/outline/linkify";
 import type { Dest, LinkAnnot, OutlineNode, ParsedDoc } from "@/lib/outline/types";
 import { newId } from "@/lib/outline/types";
 import { cn } from "@/lib/utils";
+import { ToolHeader } from "@/routes/split";
+
 
 export const Route = createFileRoute("/outline")({
   head: () => ({
@@ -358,54 +360,43 @@ function OutlinePage() {
   // Render ------------------------------------------------------------------
   return (
     <AppShell>
+      <ToolHeader
+        tag="Outline & Links"
+        title={sourceBytes ? (sourceName || "Outline & Links") : "Edit bookmarks and links — keyboard first."}
+        sub={
+          <>
+            Tree on the left, page in the middle, inspector on the right.{" "}
+            <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Tab</kbd>{" "}
+            nests, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Alt+↑↓</kbd>{" "}
+            reorders, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Ctrl+L</kbd>{" "}
+            linkifies URLs.
+          </>
+        }
+        collapsed={!!sourceBytes}
+      />
       <div className="mx-auto max-w-[1600px] px-5 md:px-8 py-8 space-y-6">
-        <header className="flex items-end justify-between gap-6 flex-wrap">
-          <div className="space-y-2 min-w-0">
-            <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-vault/80 font-mono">
-              <ListTree className="h-3 w-3" /> Outline & Links
-            </div>
-            {!sourceBytes ? (
-              <>
-                <h1 className="font-display text-3xl md:text-4xl text-foreground leading-tight max-w-2xl">
-                  Edit bookmarks and links — keyboard first.
-                </h1>
-                <p className="text-muted-foreground max-w-xl text-sm">
-                  Tree on the left, page in the middle, inspector on the right.{" "}
-                  <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Tab</kbd>{" "}
-                  nests, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Alt+↑↓</kbd>{" "}
-                  reorders, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Ctrl+L</kbd>{" "}
-                  linkifies URLs.
-                </p>
-              </>
-            ) : (
-              <h1 className="font-display text-lg md:text-xl text-foreground leading-tight truncate max-w-[60ch]">
-                {sourceName || "Outline & Links"}
-              </h1>
-            )}
-          </div>
+        <div className="flex items-center justify-end gap-2">
+          <label className="inline-flex items-center gap-1.5 rounded-md border border-whisper px-3 py-1.5 text-xs hover:bg-accent/60 cursor-pointer">
+            <Upload className="h-3.5 w-3.5" />
+            <span>Open PDF</span>
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={(e) => onFile(e.target.files?.[0])}
+            />
+          </label>
+          <Button
+            onClick={buildAndDownload}
+            disabled={!sourceBytes || busy}
+            className="bg-vault text-vault-foreground hover:opacity-90"
+            size="sm"
+          >
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Export PDF
+          </Button>
+        </div>
 
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-1.5 rounded-md border border-whisper px-3 py-1.5 text-xs hover:bg-accent/60 cursor-pointer">
-              <Upload className="h-3.5 w-3.5" />
-              <span>Open PDF</span>
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                className="hidden"
-                onChange={(e) => onFile(e.target.files?.[0])}
-              />
-            </label>
-            <Button
-              onClick={buildAndDownload}
-              disabled={!sourceBytes || busy}
-              className="bg-vault text-vault-foreground hover:opacity-90"
-              size="sm"
-            >
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Export PDF
-            </Button>
-          </div>
-        </header>
 
         {/* Tray pick row */}
         {entries.length > 0 && (

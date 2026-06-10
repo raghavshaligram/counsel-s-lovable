@@ -4,12 +4,14 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { PDFDocument } from "pdf-lib";
-import { Layers, Download, Trash2, RotateCw, GripVertical, FilePlus2 } from "lucide-react";
+import { Download, Trash2, RotateCw, GripVertical, FilePlus2 } from "lucide-react";
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { downloadBytes } from "@/lib/batch/runner";
 import { cn } from "@/lib/utils";
+import { ToolHeader } from "@/routes/split";
+
 
 export const Route = createFileRoute("/organize")({
   head: () => ({
@@ -217,37 +219,22 @@ function OrganizePage() {
 
   return (
     <AppShell>
+      <ToolHeader
+        tag="Organize"
+        title="One canvas for every page in your tray."
+        sub="Drag pages to reorder, multi-select to delete or rotate in bulk, then build the result into a single PDF. Nothing leaves your browser."
+        collapsed={entries.length > 0}
+      />
       <div className="mx-auto max-w-[1400px] px-5 md:px-8 py-10 space-y-6">
-        <header className="flex items-end justify-between gap-6 flex-wrap">
-          <div className="space-y-2 min-w-0">
-            <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-vault/80 font-mono">
-              <Layers className="h-3 w-3" /> Organize
-            </div>
-            {entries.length === 0 ? (
-              <>
-                <h1 className="font-display text-3xl md:text-4xl text-foreground leading-tight max-w-2xl">
-                  One canvas for every page in your tray.
-                </h1>
-                <p className="text-muted-foreground max-w-xl text-sm">
-                  Drag pages to reorder, multi-select to delete or rotate in bulk, then build the result into a single PDF. Nothing leaves your browser.
-                </p>
-              </>
-            ) : (
-              <h1 className="font-display text-lg md:text-xl text-foreground leading-tight">
-                Organize pages
-              </h1>
-            )}
-          </div>
+        <div className="flex items-center justify-end gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+          <span>{entries.length} doc{entries.length === 1 ? "" : "s"}</span>
+          <span className="text-whisper">·</span>
+          <span>{cells.length} page{cells.length === 1 ? "" : "s"}</span>
+          <span className="text-whisper">·</span>
+          <span className={selected.size > 0 ? "text-vault" : ""}>{selected.size} selected</span>
+          {thumbing && <span className="text-vault/70 ml-2">rendering…</span>}
+        </div>
 
-          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-            <span>{entries.length} doc{entries.length === 1 ? "" : "s"}</span>
-            <span className="text-whisper">·</span>
-            <span>{cells.length} page{cells.length === 1 ? "" : "s"}</span>
-            <span className="text-whisper">·</span>
-            <span className={selected.size > 0 ? "text-vault" : ""}>{selected.size} selected</span>
-            {thumbing && <span className="text-vault/70 ml-2">rendering…</span>}
-          </div>
-        </header>
 
         {/* Toolbar */}
         <div className="sticky top-16 z-20 -mx-2 px-2 py-2 backdrop-blur bg-background/80 border-y border-whisper flex flex-wrap items-center gap-2">
