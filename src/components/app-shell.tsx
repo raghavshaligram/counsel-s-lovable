@@ -68,6 +68,17 @@ const groups: Group[] = [
     ],
   },
   {
+    id: "structure",
+    label: "Structure",
+    tagline: "Re-shape, number, and lock down documents.",
+    items: [
+      { to: "/page-numbers", label: "Page Numbers", icon: HashIcon, desc: "Stamp numbers — position, format, skip first N" },
+      { to: "/header-footer", label: "Header & Footer", icon: HashIcon, desc: "Custom text with tokens — {page}, {date}, {filename}" },
+      { to: "/flatten", label: "Flatten", icon: Lock, desc: "Bake forms and annotations into static content" },
+      { to: "/to-excel", label: "PDF → Excel", icon: Table2Icon, desc: "Lift tables into editable .xlsx" },
+    ],
+  },
+  {
     id: "legal",
     label: "Legal",
     tagline: "Courtroom-grade tooling for paralegals and counsel.",

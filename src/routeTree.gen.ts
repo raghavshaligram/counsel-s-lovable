@@ -17,6 +17,7 @@ import { Route as VaultRouteImport } from './routes/vault'
 import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as ToWordRouteImport } from './routes/to-word'
 import { Route as ToImagesRouteImport } from './routes/to-images'
+import { Route as ToExcelRouteImport } from './routes/to-excel'
 import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
 import { Route as RotateRouteImport } from './routes/rotate'
@@ -24,9 +25,12 @@ import { Route as RedactRouteImport } from './routes/redact'
 import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PrivilegeScanRouteImport } from './routes/privilege-scan'
 import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as PageNumbersRouteImport } from './routes/page-numbers'
 import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
 import { Route as ImagesToPdfRouteImport } from './routes/images-to-pdf'
+import { Route as HeaderFooterRouteImport } from './routes/header-footer'
+import { Route as FlattenRouteImport } from './routes/flatten'
 import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as CompressRouteImport } from './routes/compress'
@@ -75,6 +79,11 @@ const ToImagesRoute = ToImagesRouteImport.update({
   path: '/to-images',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ToExcelRoute = ToExcelRouteImport.update({
+  id: '/to-excel',
+  path: '/to-excel',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SplitRoute = SplitRouteImport.update({
   id: '/split',
   path: '/split',
@@ -110,6 +119,11 @@ const PricingRoute = PricingRouteImport.update({
   path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PageNumbersRoute = PageNumbersRouteImport.update({
+  id: '/page-numbers',
+  path: '/page-numbers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OcrRoute = OcrRouteImport.update({
   id: '/ocr',
   path: '/ocr',
@@ -123,6 +137,16 @@ const MergeRoute = MergeRouteImport.update({
 const ImagesToPdfRoute = ImagesToPdfRouteImport.update({
   id: '/images-to-pdf',
   path: '/images-to-pdf',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HeaderFooterRoute = HeaderFooterRouteImport.update({
+  id: '/header-footer',
+  path: '/header-footer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FlattenRoute = FlattenRouteImport.update({
+  id: '/flatten',
+  path: '/flatten',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExtractRoute = ExtractRouteImport.update({
@@ -169,9 +193,12 @@ export interface FileRoutesByFullPath {
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
+  '/flatten': typeof FlattenRoute
+  '/header-footer': typeof HeaderFooterRoute
   '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
+  '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
@@ -179,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
+  '/to-excel': typeof ToExcelRoute
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
@@ -196,9 +224,12 @@ export interface FileRoutesByTo {
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
+  '/flatten': typeof FlattenRoute
+  '/header-footer': typeof HeaderFooterRoute
   '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
+  '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
@@ -206,6 +237,7 @@ export interface FileRoutesByTo {
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
+  '/to-excel': typeof ToExcelRoute
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
@@ -224,9 +256,12 @@ export interface FileRoutesById {
   '/compress': typeof CompressRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
+  '/flatten': typeof FlattenRoute
+  '/header-footer': typeof HeaderFooterRoute
   '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
+  '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
@@ -234,6 +269,7 @@ export interface FileRoutesById {
   '/rotate': typeof RotateRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
+  '/to-excel': typeof ToExcelRoute
   '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
@@ -253,9 +289,12 @@ export interface FileRouteTypes {
     | '/compress'
     | '/editor'
     | '/extract'
+    | '/flatten'
+    | '/header-footer'
     | '/images-to-pdf'
     | '/merge'
     | '/ocr'
+    | '/page-numbers'
     | '/pricing'
     | '/privilege-scan'
     | '/protect'
@@ -263,6 +302,7 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/sign'
     | '/split'
+    | '/to-excel'
     | '/to-images'
     | '/to-word'
     | '/unlock'
@@ -280,9 +320,12 @@ export interface FileRouteTypes {
     | '/compress'
     | '/editor'
     | '/extract'
+    | '/flatten'
+    | '/header-footer'
     | '/images-to-pdf'
     | '/merge'
     | '/ocr'
+    | '/page-numbers'
     | '/pricing'
     | '/privilege-scan'
     | '/protect'
@@ -290,6 +333,7 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/sign'
     | '/split'
+    | '/to-excel'
     | '/to-images'
     | '/to-word'
     | '/unlock'
@@ -307,9 +351,12 @@ export interface FileRouteTypes {
     | '/compress'
     | '/editor'
     | '/extract'
+    | '/flatten'
+    | '/header-footer'
     | '/images-to-pdf'
     | '/merge'
     | '/ocr'
+    | '/page-numbers'
     | '/pricing'
     | '/privilege-scan'
     | '/protect'
@@ -317,6 +364,7 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/sign'
     | '/split'
+    | '/to-excel'
     | '/to-images'
     | '/to-word'
     | '/unlock'
@@ -335,9 +383,12 @@ export interface RootRouteChildren {
   CompressRoute: typeof CompressRoute
   EditorRoute: typeof EditorRoute
   ExtractRoute: typeof ExtractRoute
+  FlattenRoute: typeof FlattenRoute
+  HeaderFooterRoute: typeof HeaderFooterRoute
   ImagesToPdfRoute: typeof ImagesToPdfRoute
   MergeRoute: typeof MergeRoute
   OcrRoute: typeof OcrRoute
+  PageNumbersRoute: typeof PageNumbersRoute
   PricingRoute: typeof PricingRoute
   PrivilegeScanRoute: typeof PrivilegeScanRoute
   ProtectRoute: typeof ProtectRoute
@@ -345,6 +396,7 @@ export interface RootRouteChildren {
   RotateRoute: typeof RotateRoute
   SignRoute: typeof SignRoute
   SplitRoute: typeof SplitRoute
+  ToExcelRoute: typeof ToExcelRoute
   ToImagesRoute: typeof ToImagesRoute
   ToWordRoute: typeof ToWordRoute
   UnlockRoute: typeof UnlockRoute
@@ -413,6 +465,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ToImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/to-excel': {
+      id: '/to-excel'
+      path: '/to-excel'
+      fullPath: '/to-excel'
+      preLoaderRoute: typeof ToExcelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/split': {
       id: '/split'
       path: '/split'
@@ -462,6 +521,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/page-numbers': {
+      id: '/page-numbers'
+      path: '/page-numbers'
+      fullPath: '/page-numbers'
+      preLoaderRoute: typeof PageNumbersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ocr': {
       id: '/ocr'
       path: '/ocr'
@@ -481,6 +547,20 @@ declare module '@tanstack/react-router' {
       path: '/images-to-pdf'
       fullPath: '/images-to-pdf'
       preLoaderRoute: typeof ImagesToPdfRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/header-footer': {
+      id: '/header-footer'
+      path: '/header-footer'
+      fullPath: '/header-footer'
+      preLoaderRoute: typeof HeaderFooterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/flatten': {
+      id: '/flatten'
+      path: '/flatten'
+      fullPath: '/flatten'
+      preLoaderRoute: typeof FlattenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/extract': {
@@ -543,9 +623,12 @@ const rootRouteChildren: RootRouteChildren = {
   CompressRoute: CompressRoute,
   EditorRoute: EditorRoute,
   ExtractRoute: ExtractRoute,
+  FlattenRoute: FlattenRoute,
+  HeaderFooterRoute: HeaderFooterRoute,
   ImagesToPdfRoute: ImagesToPdfRoute,
   MergeRoute: MergeRoute,
   OcrRoute: OcrRoute,
+  PageNumbersRoute: PageNumbersRoute,
   PricingRoute: PricingRoute,
   PrivilegeScanRoute: PrivilegeScanRoute,
   ProtectRoute: ProtectRoute,
@@ -553,6 +636,7 @@ const rootRouteChildren: RootRouteChildren = {
   RotateRoute: RotateRoute,
   SignRoute: SignRoute,
   SplitRoute: SplitRoute,
+  ToExcelRoute: ToExcelRoute,
   ToImagesRoute: ToImagesRoute,
   ToWordRoute: ToWordRoute,
   UnlockRoute: UnlockRoute,
@@ -565,13 +649,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

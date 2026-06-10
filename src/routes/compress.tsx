@@ -4,11 +4,14 @@ import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { CheckCircle2, Download, Loader2, Lock, Minimize2 } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Lock, Minimize2, Layers } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import { BatchDialog } from "@/components/tray/batch-dialog";
+import { useTray } from "@/lib/tray/store";
+import { compress as compressOp } from "@/lib/batch/ops/compress";
 
 export const Route = createFileRoute("/compress")({
   head: () => ({
@@ -92,6 +95,8 @@ function CompressPage() {
     null,
   );
   const [result, setResult] = useState<Result | null>(null);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const trayCount = useTray((s) => s.entries.length);
 
   const onFile = useCallback(async (f: File) => {
     setFile(f);
@@ -228,6 +233,22 @@ function CompressPage() {
         collapsed={!!file}
       />
       <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
+        {trayCount > 0 && (
+          <div className="mb-6 rounded-md border border-vault/30 bg-vault/5 px-4 py-3 flex items-center justify-between">
+            <div className="text-xs text-muted-foreground">
+              <span className="font-mono uppercase tracking-[0.2em] text-vault/80">Tray · {trayCount}</span> ready for batch compression at the current preset.
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchOpen(true)}
+              className="border-vault/40 text-vault hover:bg-vault/10"
+            >
+              <Layers className="h-3.5 w-3.5 mr-1.5" />
+              Compress all
+            </Button>
+          </div>
+        )}
         {!file ? (
           <FileDropzone
             onFile={onFile}
@@ -432,6 +453,16 @@ function CompressPage() {
           </div>
         )}
       </div>
+      <BatchDialog
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        title="Compress every tray PDF"
+        description="Uses the current preset and grayscale setting."
+        op={compressOp}
+        opts={{ preset, grayscale }}
+        suffix="compressed"
+        zipName="vaultpdf-compressed.zip"
+      />
     </AppShell>
   );
 }
