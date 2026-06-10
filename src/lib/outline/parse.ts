@@ -174,10 +174,10 @@ function readOutline(doc: PDFDocument, pageIndex: Map<string, number>): OutlineN
   while (cur && safety++ < 5000) {
     const node = readOutlineItem(cur, doc, pageIndex, seen);
     if (node) out.push(node);
-    const d = doc.context.lookup(cur);
+    const d: PDFObject | undefined = doc.context.lookup(cur);
     cur = null;
     if (d instanceof PDFDict) {
-      const next = d.get(PDFName.of("Next"));
+      const next: PDFObject | undefined = d.get(PDFName.of("Next"));
       if (next instanceof PDFRef) cur = next;
     }
   }
@@ -192,8 +192,8 @@ function readLinks(doc: PDFDocument, pageIndex: Map<string, number>): LinkAnnot[
     const annots = page.node.get(PDFName.of("Annots"));
     if (!(annots instanceof PDFArray)) continue;
     for (let j = 0; j < annots.size(); j++) {
-      let entry = annots.get(j);
-      if (entry instanceof PDFRef) entry = doc.context.lookup(entry);
+      const raw: PDFObject | undefined = annots.get(j);
+      const entry: PDFObject | undefined = raw instanceof PDFRef ? doc.context.lookup(raw) : raw;
       if (!(entry instanceof PDFDict)) continue;
       const subtype = entry.get(PDFName.of("Subtype"));
       if (!(subtype instanceof PDFName) || subtype.asString() !== "/Link") continue;

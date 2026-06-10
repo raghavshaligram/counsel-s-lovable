@@ -74,7 +74,7 @@ export async function linkifyPage(
     return found;
   } finally {
     try {
-      await doc.destroy();
+      (doc as unknown as { destroy?: () => Promise<void> }).destroy?.();
     } catch {
       /* ignore */
     }
