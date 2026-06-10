@@ -15,7 +15,7 @@ export const ollama: ProviderAdapter = {
   ],
   async *stream(args: StreamArgs): AsyncGenerator<ChatChunk> {
     const url = (args.baseUrl ?? "http://localhost:11434") + "/api/chat";
-    const res = await fetch(url, {
+    const res = await loggedFetch("ollama", url, {
       method: "POST",
       signal: args.signal,
       headers: {
@@ -27,6 +27,7 @@ export const ollama: ProviderAdapter = {
         stream: true,
         messages: args.messages.map((m) => ({ role: m.role, content: m.content })),
       }),
+      model: args.model,
     });
     if (!res.ok || !res.body) {
       yield { kind: "error", message: `Ollama ${res.status}: ${await res.text().catch(() => "no body")}` };
