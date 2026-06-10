@@ -1563,6 +1563,21 @@ function PageCanvas({
             onLabelChange={(label) => onLabelChange(b.id, label)}
           />
         ))}
+        {pendingBoxes.map((b) => (
+          <div
+            key={b.id}
+            className="absolute pointer-events-none rounded-[1px] animate-pulse"
+            style={{
+              left: `${(b.x / page.width) * 100}%`,
+              top: `${(b.y / page.height) * 100}%`,
+              width: `${(b.w / page.width) * 100}%`,
+              height: `${(b.h / page.height) * 100}%`,
+              background: "color-mix(in srgb, var(--evidence) 35%, transparent)",
+              border: "2px solid var(--evidence)",
+              boxShadow: "0 0 0 1px color-mix(in srgb, var(--evidence) 50%, transparent), 0 0 12px color-mix(in srgb, var(--evidence) 40%, transparent)",
+            }}
+          />
+        ))}
         {drawing && (
           <div
             className="absolute bg-vault/30 border-2 border-vault pointer-events-none"
