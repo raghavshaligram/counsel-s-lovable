@@ -566,6 +566,41 @@ export function RedactPage() {
       .sort((a, b) => a.page - b.page);
   }, [pendingMatches]);
 
+  // Pending preview boxes rendered on canvas pages — amber pulsing overlays
+  // showing exactly what will be redacted on confirm.
+  type PendingPreview = { id: string; page: number; x: number; y: number; w: number; h: number; kind: "match" | "detect" };
+  const pendingPreviewBoxes = useMemo<PendingPreview[]>(() => {
+    const out: PendingPreview[] = [];
+    if (pendingMatches) {
+      for (const m of pendingMatches.matches) {
+        out.push({ id: m.id, page: m.page, x: m.x, y: m.y, w: m.w, h: m.h, kind: "match" });
+      }
+    }
+    if (pendingDetections) {
+      for (const d of pendingDetections) {
+        if (!enabledCats.has(d.category)) continue;
+        out.push({ id: d.id, page: d.page, x: d.x, y: d.y, w: d.w, h: d.h, kind: "detect" });
+      }
+    }
+    return out;
+  }, [pendingMatches, pendingDetections, enabledCats]);
+
+  // Auto-scroll to the first page with a pending match when results land.
+  useEffect(() => {
+    if (!pendingMatches || pendingMatches.matches.length === 0) return;
+    const firstPage = Math.min(...pendingMatches.matches.map((m) => m.page));
+    const el = document.getElementById(`redact-page-${firstPage}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setCurrentPage(firstPage);
+  }, [pendingMatches]);
+  useEffect(() => {
+    if (!pendingDetections || pendingDetections.length === 0) return;
+    const firstPage = Math.min(...pendingDetections.map((d) => d.page));
+    const el = document.getElementById(`redact-page-${firstPage}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setCurrentPage(firstPage);
+  }, [pendingDetections]);
+
   const setBoxLabel = useCallback((id: string, label: string) => {
     // auto-detect ids start with "det-", keyword ids with "kw-"
     if (id.startsWith("det-")) {
