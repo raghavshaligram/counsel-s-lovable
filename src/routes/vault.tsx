@@ -50,7 +50,7 @@ function VaultPage() {
             action={status?.unlocked ? "Locked" : "Unlock"}
             onAction={() => setUnlockOpen(true)}
           />
-          <Card icon={<KeyRound className="h-4 w-4" />} title="AI Providers" body="BYOK: OpenAI · Anthropic · Google · Ollama · OpenAI-compatible. Keys stored encrypted." action="Add provider" />
+          <Card icon={<KeyRound className="h-4 w-4" />} title="AI Providers" body="BYOK: OpenAI · Anthropic · Google · Ollama · OpenAI-compatible. Keys stored on this device." action="Manage" onAction={() => setProvidersOpen(true)} />
           <Card icon={<ShieldCheck className="h-4 w-4" />} title="Signing Key" body={status?.hasSigningKey ? "Ed25519 key active. Embedded in every certificate." : "Auto-generated on first unlock."} action="View public key" />
           <Card icon={<Cpu className="h-4 w-4" />} title="Document Cache" body={`Encrypted IndexedDB. Mode: ${resources?.tier ?? "—"} (${resources?.memory ?? "?"} GB / ${resources?.cores ?? "?"} cores).`} action="Clear cache" />
           <Card icon={<Network className="h-4 w-4" />} title="Network Log" body="Every outbound request to an AI provider, with hash + timestamp. Transparent by default." action="Open log" />
