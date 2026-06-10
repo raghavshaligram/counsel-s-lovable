@@ -259,8 +259,10 @@ export async function findKeywordInPdf(
 
   const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = opts.wholeWord ? `\\b${escaped}\\b` : escaped;
-  const re = new RegExp(pattern, opts.matchCase ? "" : "i");
-  // Substring re-test on OCR words (we need case-insensitive contains, not just \b).
+  // Global regex so we capture every occurrence inside a text item (Acrobat
+  // boxes each hit, not the whole line).
+  const reGlobal = new RegExp(pattern, opts.matchCase ? "g" : "gi");
+  // Substring re-test on OCR words (per-word match, not contains).
   const wordRe = new RegExp(
     opts.wholeWord ? `^${escaped}$` : escaped,
     opts.matchCase ? "" : "i",
@@ -286,24 +288,41 @@ export async function findKeywordInPdf(
       continue;
     }
     for (const raw of items) {
-      if (!raw.str || !re.test(raw.str)) continue;
+      if (!raw.str) continue;
+      const str = raw.str;
+      reGlobal.lastIndex = 0;
+      let mt: RegExpExecArray | null;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
-      const x = m[4];
-      const y = m[5] - fontHeight;
+      const baseX = m[4];
+      const baseY = m[5] - fontHeight;
+      const perChar = str.length > 0 ? itemWidth / str.length : 0;
       const pad = Math.max(2, fontHeight * 0.15);
-      matches.push({
-        id: `kw-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
-        page: i,
-        x: x - pad,
-        y: y - pad,
-        w: itemWidth + pad * 2,
-        h: fontHeight + pad * 2,
-        snippet: snippet(raw.str),
-      });
+      while ((mt = reGlobal.exec(str)) !== null) {
+        const matchText = mt[0];
+        if (matchText.length === 0) {
+          reGlobal.lastIndex++;
+          continue;
+        }
+        // Cover just the matched substring, not the whole text item (which
+        // can be an entire sentence). Approximates per-char width — fine for
+        // redaction since over-cover is acceptable.
+        const xStart = baseX + perChar * mt.index;
+        const wMatch = perChar * matchText.length;
+        matches.push({
+          id: `kw-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
+          page: i,
+          x: xStart - pad,
+          y: baseY - pad,
+          w: wMatch + pad * 2,
+          h: fontHeight + pad * 2,
+          snippet: snippet(matchText),
+        });
+      }
     }
   }
+
 
   if (opts.ocr && scannedPages.length > 0) {
     const { createWorker } = await import("tesseract.js");
