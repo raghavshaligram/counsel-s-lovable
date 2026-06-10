@@ -39,6 +39,7 @@ export type WorkspaceDocState = {
   setCurrentPage(i: number): void;
   markInView(i: number): void;
   addBox(box: Omit<PageBox, "id">): void;
+  addBoxes(boxes: Omit<PageBox, "id">[]): number;
   removeBox(id: string): void;
   commitPending(): void;
   setStatus(msg: string | null): void;
