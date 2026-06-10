@@ -5,7 +5,10 @@ import { WorkspaceShell, ToolRail, ThumbStrip, Inspector, SectionHeader, Pill, E
 import { DocumentCanvas, type PageBox } from "@/components/workspace/document-canvas";
 import { CommandPalette } from "@/components/workspace/command-palette";
 import { TokenMeter } from "@/components/workspace/token-meter";
+import { ApprovalCard } from "@/components/workspace/approval-card";
 import { useWorkspace } from "@/lib/workspace/doc";
+import { useAgent } from "@/lib/ai/agent";
+import type { ChatTurn } from "@/lib/ai/agent";
 
 export const Route = createFileRoute("/workspace")({
   ssr: false,
