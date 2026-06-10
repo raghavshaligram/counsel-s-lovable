@@ -7,6 +7,7 @@ import { vaultStatus } from "@/lib/vault/store";
 import { UnlockDialog } from "@/components/vault/unlock-dialog";
 import { ProvidersDialog } from "@/components/vault/providers-dialog";
 import { toast } from "sonner";
+import { NetworkLogDialog } from "@/components/vault/network-log-dialog";
 
 export const Route = createFileRoute("/vault")({
   ssr: false,
