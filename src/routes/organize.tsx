@@ -10,6 +10,8 @@ import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { downloadBytes } from "@/lib/batch/runner";
 import { cn } from "@/lib/utils";
+import { ToolHeader } from "@/routes/split";
+
 
 export const Route = createFileRoute("/organize")({
   head: () => ({
