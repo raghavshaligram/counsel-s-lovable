@@ -48,6 +48,7 @@ function RotatePage() {
   const [scope, setScope] = useState<Scope>("all");
   const [custom, setCustom] = useState("");
   const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<Result | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,13 +76,16 @@ function RotatePage() {
 
   const onFile = useCallback((f: File) => {
     setFile(f);
+    setResult(null);
   }, []);
 
   const run = async () => {
     if (!file) return;
     setBusy(true);
+    const t0 = performance.now();
     try {
-      const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+      const srcBytes = new Uint8Array(await file.arrayBuffer());
+      const doc = await PDFDocument.load(srcBytes.slice(), { ignoreEncryption: true });
       const targets = resolveScope(scope, custom, doc.getPageCount());
       if (targets.error) {
         toast.error(targets.error);
@@ -96,7 +100,13 @@ function RotatePage() {
       });
       const bytes = await doc.save();
       const base = file.name.replace(/\.pdf$/i, "");
-      downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${base}-rotated.pdf`);
+      setResult({
+        bytes,
+        originalBytes: srcBytes,
+        name: `${base}-rotated.pdf`,
+        rotatedCount: set.size,
+        durationMs: Math.round(performance.now() - t0),
+      });
       toast.success(`Rotated ${set.size} page${set.size === 1 ? "" : "s"}`);
     } catch (err) {
       console.error(err);
