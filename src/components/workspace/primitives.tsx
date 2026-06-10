@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -78,15 +78,43 @@ export function ThumbStrip({
   current: number;
   onSelect: (i: number) => void;
 }) {
+  const listRef = useRef<HTMLOListElement>(null);
+
+  // Keep the active thumbnail visible.
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLButtonElement>(`[data-thumb="${current}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [current]);
+
+  const handleKey = (e: ReactKeyboardEvent, i: number) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const next = Math.min(pages - 1, i + 1);
+      onSelect(next);
+      listRef.current?.querySelector<HTMLButtonElement>(`[data-thumb="${next}"]`)?.focus();
+    } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const prev = Math.max(0, i - 1);
+      onSelect(prev);
+      listRef.current?.querySelector<HTMLButtonElement>(`[data-thumb="${prev}"]`)?.focus();
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelect(i);
+    }
+  };
+
   return (
-    <ol className="flex flex-col gap-2 p-2">
+    <ol ref={listRef} className="flex flex-col gap-2 p-2">
       {Array.from({ length: pages }, (_, i) => (
         <li key={i}>
           <button
+            data-thumb={i}
+            tabIndex={current === i ? 0 : -1}
             onClick={() => onSelect(i)}
+            onKeyDown={(e) => handleKey(e, i)}
             className={cn(
               "block aspect-[3/4] w-full rounded border bg-paper/5 text-[10px] font-mono",
-              "border-whisper text-ink/40 hover:border-ink/30",
+              "border-whisper text-ink/40 hover:border-ink/30 focus:outline-none focus:ring-2 focus:ring-vault/60",
               current === i && "border-vault text-vault"
             )}
           >

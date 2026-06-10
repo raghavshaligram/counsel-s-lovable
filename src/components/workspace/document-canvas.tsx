@@ -27,6 +27,7 @@ export function DocumentCanvas({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrolling, setScrolling] = useState(false);
+  const programmaticScroll = useRef(false);
 
   // D3: low-res while scrolling; re-render at high after 150ms idle.
   useEffect(() => {
@@ -44,6 +45,17 @@ export function DocumentCanvas({
       clearTimeout(t);
     };
   }, []);
+
+  // Scroll target page into view when `current` changes externally (e.g. thumb click).
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const target = root.querySelector(`[data-page="${current + 1}"]`) as HTMLElement | null;
+    if (!target) return;
+    programmaticScroll.current = true;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => { programmaticScroll.current = false; }, 600);
+  }, [current]);
 
   return (
     <div ref={scrollRef} className="h-full w-full overflow-auto bg-canvas">

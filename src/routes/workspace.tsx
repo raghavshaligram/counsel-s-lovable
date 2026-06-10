@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, PenLine, GitCompare, Table2, ScanText, Hash, MessageSquare, Upload } from "lucide-react";
+import { ShieldCheck, PenLine, GitCompare, Table2, ScanText, Hash, MessageSquare, Upload, ArrowLeft, Lock } from "lucide-react";
 import { WorkspaceShell, ToolRail, ThumbStrip, Inspector, SectionHeader, Pill, EmptyState } from "@/components/workspace/primitives";
 import { DocumentCanvas, type PageBox } from "@/components/workspace/document-canvas";
 import { CommandPalette } from "@/components/workspace/command-palette";
@@ -76,16 +76,28 @@ function WorkspacePage() {
       <CommandPalette />
       <WorkspaceShell
         fileLabel={
-          doc.fileName ? (
-            <>
-              <span className="text-ink/90">{doc.fileName}</span>
-              <span className="text-ink/40">·</span>
-              <span>{doc.pageCount} pgs</span>
-              {doc.workStatus && <span className="text-ink/30">({doc.workStatus})</span>}
-            </>
-          ) : (
-            <span className="text-ink/40">no document</span>
-          )
+          <>
+            <Link
+              to="/"
+              className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-ink/70 hover:bg-whisper hover:text-ink"
+              title="Back to home"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <Lock className="h-3 w-3 text-vault" />
+              <span className="font-display text-[13px]">VaultPDF</span>
+            </Link>
+            <span className="text-ink/30">/</span>
+            {doc.fileName ? (
+              <>
+                <span className="text-ink/90">{doc.fileName}</span>
+                <span className="text-ink/40">·</span>
+                <span>{doc.pageCount} pgs</span>
+                {doc.workStatus && <span className="text-ink/30">({doc.workStatus})</span>}
+              </>
+            ) : (
+              <span className="text-ink/40">no document</span>
+            )}
+          </>
         }
         status={<span>Vault: locked · BYOK</span>}
         rail={
