@@ -369,7 +369,7 @@ function Editor() {
 
 // ---------- toolbar ----------
 
-function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void; commentsOpen: boolean; onToggleComments: () => void }) {
+function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments, onReloadDoc }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void; commentsOpen: boolean; onToggleComments: () => void; onReloadDoc: (doc: EditorDoc) => void }) {
   const [signOpen, setSignOpen] = useState(false);
   const [stampOpen, setStampOpen] = useState(false);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
