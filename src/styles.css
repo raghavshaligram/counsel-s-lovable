@@ -92,6 +92,17 @@
   /* Deep neutral for the editor backdrop, distinct from page bg */
   --surface-canvas: oklch(0.12 0.015 260);
 
+  /* Locked semantic tokens — single source of truth for v2 surfaces.
+     --ink: primary text / committed actions
+     --paper: page surface (PDF render bg)
+     --canvas: editor backdrop behind paper
+     --whisper: 1px dividers, placeholder borders, hairlines */
+  --ink: oklch(0.97 0.01 95);
+  --paper: oklch(0.985 0.005 95);
+  --canvas: oklch(0.12 0.015 260);
+  --whisper: oklch(1 0 0 / 0.08);
+
+
   --chart-1: oklch(0.84 0.16 78);
   --chart-2: oklch(0.70 0.13 200);
   --chart-3: oklch(0.62 0.22 25);
