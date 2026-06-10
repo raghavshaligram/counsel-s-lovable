@@ -23,7 +23,9 @@ import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { CommentsPanel } from "@/components/editor/CommentsPanel";
+import { DocOpsMenu } from "@/components/editor/doc-ops-menu";
 import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, TextSource, WatermarkSettings } from "@/lib/editor/types";
+
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
