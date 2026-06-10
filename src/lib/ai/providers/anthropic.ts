@@ -1,4 +1,5 @@
 import type { ProviderAdapter, ChatChunk, StreamArgs } from "../types";
+import { loggedFetch } from "@/lib/trust/network-log";
 
 async function* sseLines(res: Response, signal?: AbortSignal) {
   if (!res.body) return;
@@ -56,7 +57,7 @@ export const anthropic: ProviderAdapter = {
         ? { tools: args.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })) }
         : {}),
     };
-    const res = await fetch((args.baseUrl ?? "https://api.anthropic.com") + "/v1/messages", {
+    const res = await loggedFetch("anthropic", (args.baseUrl ?? "https://api.anthropic.com") + "/v1/messages", {
       method: "POST",
       signal: args.signal,
       headers: {
@@ -66,6 +67,7 @@ export const anthropic: ProviderAdapter = {
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify(body),
+      model: args.model,
     });
     if (!res.ok) {
       yield { kind: "error", message: `Anthropic ${res.status}: ${await res.text()}` };

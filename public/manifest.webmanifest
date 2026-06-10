@@ -1,0 +1,16 @@
+{
+  "name": "VaultPDF",
+  "short_name": "VaultPDF",
+  "description": "Privacy-architected PDF toolkit that runs entirely in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0f1a",
+  "theme_color": "#1c1f33",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

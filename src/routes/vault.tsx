@@ -7,6 +7,7 @@ import { vaultStatus } from "@/lib/vault/store";
 import { UnlockDialog } from "@/components/vault/unlock-dialog";
 import { ProvidersDialog } from "@/components/vault/providers-dialog";
 import { toast } from "sonner";
+import { NetworkLogDialog } from "@/components/vault/network-log-dialog";
 
 export const Route = createFileRoute("/vault")({
   ssr: false,
@@ -24,6 +25,7 @@ function VaultPage() {
   const [resources, setResources] = useState<ReturnType<typeof detectResources> | null>(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
+  const [netLogOpen, setNetLogOpen] = useState(false);
 
   const refresh = () => { void vaultStatus().then(setStatus); };
 
@@ -82,7 +84,7 @@ function VaultPage() {
             title="Network Log"
             body="Every outbound request to an AI provider, with hash + timestamp. Transparent by default."
             action="Open log"
-            onAction={() => toast.info("Network log viewer ships in Phase 4.")}
+            onAction={() => setNetLogOpen(true)}
           />
           <Card
             icon={<Terminal className="h-4 w-4" />}
@@ -103,6 +105,7 @@ function VaultPage() {
       </main>
       <UnlockDialog open={unlockOpen} onOpenChange={setUnlockOpen} onUnlocked={refresh} />
       <ProvidersDialog open={providersOpen} onOpenChange={setProvidersOpen} />
+      <NetworkLogDialog open={netLogOpen} onOpenChange={setNetLogOpen} />
     </AppShell>
   );
 }
