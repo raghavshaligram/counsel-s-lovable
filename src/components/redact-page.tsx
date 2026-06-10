@@ -182,6 +182,7 @@ export function RedactPage() {
   // Cache the parsed pdf.js document so auto-detect / keyword search don't
   // re-parse the file. Held in a ref since we never render from it directly.
   const docRef = useRef<{ numPages: number; getPage: (n: number) => Promise<unknown> } | null>(null);
+  const thumbRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const [totalPages, setTotalPages] = useState(0);
   const [detectConfirm, setDetectConfirm] = useState(false);
 
@@ -211,6 +212,10 @@ export function RedactPage() {
   const [defaultLabel, setDefaultLabel] = useState<string>("");
   const [tool, setTool] = useState<"select" | "box">("box");
   const [currentPage, setCurrentPage] = useState<number>(1);
+  useEffect(() => {
+    const el = thumbRefs.current.get(currentPage);
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentPage]);
   useEffect(() => {
     if (!file) return;
     const onKey = (e: KeyboardEvent) => {
@@ -889,6 +894,10 @@ export function RedactPage() {
                 return (
                   <button
                     key={p.pageNumber}
+                    ref={(el) => {
+                      if (el) thumbRefs.current.set(p.pageNumber, el);
+                      else thumbRefs.current.delete(p.pageNumber);
+                    }}
                     onClick={() => scrollToPage(p.pageNumber)}
                     className={cn(
                       "relative w-full rounded-md overflow-hidden border-2 transition group",
