@@ -1,83 +1,62 @@
-# VaultPDF — Design Overhaul Plan
+# Phase 5 — Redact as a real editor
 
-Goal: stop looking like a generic SaaS dashboard. Make the redaction flow the most opinionated, tactile, editorial document tool on the web. Ship in 4 phases so each one is shippable on its own.
+Restructure `src/components/redact-page.tsx` so the canvas is the hero, not the chrome. Three structural moves, then polish.
 
----
+## Layout
 
-## Phase 1 — Foundation (tokens, type, nav)
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ ToolHeader (slim, sticky)                                    │
+├──┬────┬──────────────────────────────────────────┬───────────┤
+│TR│ TH │                                          │ INSPECTOR │
+│  │ U  │           CANVAS (dark, full-bleed)      │           │
+│  │ M  │                                          │ • Pending │
+│  │ B  │           pages render here              │   review  │
+│  │ S  │                                          │ • PII cats│
+│  │    │                                          │ • Find    │
+│  │    │                                          │ • Export  │
+└──┴────┴──────────────────────────────────────────┴───────────┘
+ 48px  72px                                          320px
+ tool  page                                          right rail
+ rail  thumbs
+```
 
-Touches every screen. No feature work; pure visual reset.
+## Structural moves
 
-1. **Type system** in `src/styles.css`
-   - Add Instrument Serif (display) and JetBrains Mono (numerics) alongside existing sans.
-   - New tokens: `--font-display`, `--font-mono`, fluid type scale (`--text-display`, `--text-h1` … `--text-micro`) using `clamp()`.
-   - Kill all-caps tracking labels; replace with sentence-case + size hierarchy.
+1. **Tool rail (left, 48px)** — vertical icon buttons replacing the Label/Detect/Find tabs: Select, Box, Auto-detect, Find, Label-picker. Active tool gets amber bar + filled bg. Tooltips on hover. Keyboard: V / B / D / F / L.
 
-2. **Color + surface tokens**
-   - Add `--vault-amber` (premium accent), `--evidence-red` (destructive/critical), `--surface-canvas` (deep neutral for the editor backdrop, distinct from page bg).
-   - Add `--shadow-stamp` (used by redaction boxes) and `--shadow-float` (used by floating toolbars).
+2. **Thumbnail strip (72px)** — `pages.map` rendered at ~60px wide, current page highlighted amber, pages containing redactions get a small `--evidence` tick. Click to scroll page into view.
 
-3. **Nav simplification** in `src/components/app-shell.tsx`
-   - Top-level: Redact, Sign & Fill, Protect, Compress, Editor + "All tools" disclosure.
-   - Move everything else into the disclosure mega-menu (already exists, just trim the visible bar).
-   - Keep current active-route highlight behaviour.
+3. **Inspector (right, 320px)** — single scrollable panel replacing the tab block. Sections (serif small-caps headers):
+   - **Pending review** (only when `pendingDetections` / `pendingMatches` set) — count, category breakdown, Cancel / Redact buttons in `--evidence`.
+   - **PII categories** — count-first pills (`● SSN 12`, `○ Phone 0`), click to toggle.
+   - **Find & redact** — query input, case/whole-word toggles, Search button.
+   - **Label** — default exemption picker (Select from `EXEMPTION_PRESETS`).
+   - **Export** — Strip metadata switch, premium-only Certificate / Privilege log switches, primary Export button.
 
----
+4. **Canvas** — `bg-surface-canvas`, pages stacked with generous gap, current page outlined. Pending boxes pulse in `--evidence`; committed boxes solid. Dim canvas to 40% when pending review is active.
 
-## Phase 2 — Redact canvas as the hero
+## Polish
 
-Where most of the visual payoff lives. All in `src/components/redact-page.tsx`.
+- Mono numerals (`font-mono`) for all counts, page numbers, hash prefixes, file sizes.
+- Serif small-caps section headers (`font-display`, `text-[11px]`, `tracking-[0.08em]`, `uppercase`).
+- Premium surface (`/verifiable-redaction`): amber left rule on canvas, `VERIFIABLE` badge top-right of ToolHeader with SHA-256 prefix in mono, export button label becomes `Sign & Export`.
+- Empty state: render the full chrome greyed out with `FileDropzone` centered in the canvas area — show users what they're getting before they upload.
+- Export becomes a dialog (filename preview, options, single amber `Burn & Export` button) — proportional friction for irreversible action.
 
-1. **Layout flip**: canvas grows to ~78% of viewport; tools collapse into a **bottom command bar** (Photoshop options-bar pattern) instead of the right side tabs. Tabs become bar segments: Label · Detect · Find · Export.
-2. **Floating export cluster** top-right of canvas (Export / Certificate / Privilege log on premium).
-3. **Redaction box restyle** — render boxes as "evidence stamps":
-   - 2px outer ring in `--evidence-red` on hover/selected, solid black fill at rest.
-   - SVG hash pattern fill (45° lines) instead of flat black.
-   - 4px bleed past selection bbox.
-   - Drop `--shadow-stamp` underneath; subtle.
-4. **Stamp-on animation** — when a box is committed, scale from 1.08 → 1.0 with a 120ms ease-out + opacity 0 → 1. Use framer-motion (already a dep? confirm before adding).
+## Out of scope (defer)
 
----
+- Full Procreate-style stamp picker on the tool rail (use Select for now).
+- Animated review ceremony (use static pulse + dim, skip the bottom-center card animation).
+- Saving exemption presets to localStorage beyond the existing `defaultLabel`.
 
-## Phase 3 — Detect moment + premium differentiation
+## Files
 
-1. **UV-sweep detect animation** in `src/lib/pdf/detect-pii.ts` consumer:
-   - During the `detect()` call, overlay a vertical gradient bar that sweeps top→bottom of the visible page at ~600ms.
-   - As detections land, color-code per `CATEGORY_META`: SSN/card → red, email → blue, phone → amber, date → muted, IP/IBAN → violet.
-   - Minimap on canvas right edge: thin column with one dot per page, colored by densest category — click to jump.
+- `src/components/redact-page.tsx` — main restructure (keep all state/logic; only the JSX layout + small subcomponents change).
+- No new dependencies. No backend changes.
 
-2. **Premium-tier visual identity** (`/verifiable-redaction` only — gate via `useRouterState` already in `redact-page.tsx`):
-   - Header swap: serif wordmark + amber underline + live SHA-256 prefix chip (`sha256: 4f2a…`) in mono.
-   - Replace the standard red destructive accent with `--vault-amber` for primary actions; `--evidence-red` reserved strictly for "destroy text layer / export".
-   - Add a small wax-seal SVG mark next to "Verifiable" in the tool header.
+## Verification
 
----
-
-## Phase 4 — Landing page rewrite
-
-`src/routes/index.tsx`.
-
-1. Replace tool grid hero with a **live embedded redact canvas** — a 2-page sample PDF, user can drag a box, see real stamp animation, watch certificate preview update on the right. No upload, no signup.
-2. **"100% in your browser"** as a massive serif statement below the demo with a small green pulse dot + "no bytes leave this tab" mono caption.
-3. Move the full tool grid to `/tools` (new thin route) linked as "All 18 tools →".
-4. Footer: trim to legal + GitHub + status; remove the marketing column noise.
-
----
-
-## Technical notes
-
-- **No new heavy deps.** framer-motion only if not already installed (check `package.json` before adding).
-- **SSR-safe:** canvas demo on landing must be `client:only` — wrap in a dynamic import + `useEffect` mount guard so SSR renders a static poster image, not the live editor.
-- **Token-only colours:** every new color/shadow goes through `src/styles.css`; no hex literals in components (existing rule).
-- **Premium gating** stays route-based (`/verifiable-redaction`) — no flag plumbing needed, `RedactPage` already reads `useRouterState`.
-
----
-
-## Suggested shipping order
-
-1. Phase 1 (1 turn) — safe, visible everywhere, zero feature risk.
-2. Phase 2 (1–2 turns) — biggest perceived quality jump.
-3. Phase 3 (1–2 turns) — the "wow" moment + premium justification.
-4. Phase 4 (1 turn) — only after the tool itself looks iconic, because the landing demos *it*.
-
-Tell me which phase to start with (or "all of phase 1") and I'll build.
+- `tsc --noEmit` clean.
+- Upload a 2-page PDF, run auto-detect, confirm pending review surfaces in inspector, redact, export.
+- Switch between `/redact` and `/verifiable-redaction` — premium chrome differences visible.
