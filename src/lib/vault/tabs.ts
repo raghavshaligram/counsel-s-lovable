@@ -11,7 +11,7 @@
  * inside the crypto-worker; this module is the main-thread coordinator.
  */
 
-import { x25519 } from "@noble/curves/ed25519";
+import { x25519 } from "@noble/curves/ed25519.js";
 
 type SessionRequest = { kind: "request"; tabId: string; pub: Uint8Array };
 type SessionOffer = { kind: "offer"; toTabId: string; sealedKey: Uint8Array; ephPub: Uint8Array };
