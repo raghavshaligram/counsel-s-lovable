@@ -8,6 +8,7 @@ import { TokenMeter } from "@/components/workspace/token-meter";
 import { useWorkspace } from "@/lib/workspace/doc";
 
 export const Route = createFileRoute("/workspace")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Workspace — VaultPDF" },

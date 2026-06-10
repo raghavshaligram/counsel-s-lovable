@@ -7,6 +7,7 @@ import { vaultStatus } from "@/lib/vault/store";
 import { UnlockDialog } from "@/components/vault/unlock-dialog";
 
 export const Route = createFileRoute("/vault")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Vault — VaultPDF" },
