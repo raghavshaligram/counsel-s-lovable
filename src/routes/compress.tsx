@@ -4,11 +4,14 @@ import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { CheckCircle2, Download, Loader2, Lock, Minimize2 } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Lock, Minimize2, Layers } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import { BatchDialog } from "@/components/tray/batch-dialog";
+import { useTray } from "@/lib/tray/store";
+import { compress as compressOp } from "@/lib/batch/ops/compress";
 
 export const Route = createFileRoute("/compress")({
   head: () => ({
