@@ -118,6 +118,34 @@ function RotatePage() {
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
 
+  if (result) {
+    return (
+      <AppShell>
+        <PdfResultPreview
+          bytes={result.bytes}
+          compareBytes={result.originalBytes}
+          filename={result.name}
+          eyebrow="Task complete · Rotate"
+          title="Rotation applied"
+          subtitle={`${result.rotatedCount} page${result.rotatedCount === 1 ? "" : "s"} rotated by ${angle}°.`}
+          stats={[
+            { label: "Pages", value: String(pageCount) },
+            { label: "Rotated", value: String(result.rotatedCount), accent: true },
+            { label: "Angle", value: `${angle}°` },
+          ]}
+          durationMs={result.durationMs}
+          recap={
+            <div className="space-y-1">
+              <div>Scope · <span className="text-zinc-200">{scope === "custom" ? custom || "—" : scope}</span></div>
+              <div>Angle · <span className="text-zinc-200">{angle}°</span></div>
+            </div>
+          }
+          onReset={() => setResult(null)}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <ToolHeader
