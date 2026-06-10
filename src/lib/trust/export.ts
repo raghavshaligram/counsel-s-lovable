@@ -76,7 +76,7 @@ export async function verifyExport(bytes: Uint8Array, cert: Certificate): Promis
  * Trigger a browser download for both the file and its sidecar certificate.
  */
 export function downloadWithCertificate(fileName: string, bytes: Uint8Array, cert: Certificate) {
-  const pdfBlob = new Blob([bytes], { type: "application/pdf" });
+  const pdfBlob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
   const certBlob = new Blob([JSON.stringify(cert, null, 2)], { type: "application/json" });
   triggerDownload(pdfBlob, fileName);
   triggerDownload(certBlob, fileName.replace(/\.pdf$/i, "") + ".certificate.json");
