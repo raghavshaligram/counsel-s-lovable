@@ -1465,6 +1465,7 @@ function drawLabelOnCanvas(
 function PageCanvas({
   page,
   boxes,
+  pendingBoxes = [],
   onAddBox,
   onRemoveBox,
   onLabelChange,
@@ -1473,6 +1474,7 @@ function PageCanvas({
 }: {
   page: RenderedPage;
   boxes: Box[];
+  pendingBoxes?: Array<{ id: string; x: number; y: number; w: number; h: number; kind: "match" | "detect" }>;
   onAddBox: (b: Box) => void;
   onRemoveBox: (id: string) => void;
   onLabelChange: (id: string, label: string) => void;
