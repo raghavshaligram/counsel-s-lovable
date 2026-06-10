@@ -909,8 +909,8 @@ export function RedactPage() {
                     />
                     {hasRedaction && (
                       <span
-                        className="absolute top-1 right-1 inline-block h-2 w-2 rounded-full"
-                        style={{ background: "var(--evidence)", boxShadow: "0 0 0 2px var(--evidence)/30" }}
+                        className="absolute top-1 right-1 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-background"
+                        style={{ background: "var(--evidence)" }}
                       />
                     )}
                     <span
