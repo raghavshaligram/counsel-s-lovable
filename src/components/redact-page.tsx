@@ -192,7 +192,7 @@ export function RedactPage() {
   const [kwMatchCase, setKwMatchCase] = useState(false);
   const [kwWholeWord, setKwWholeWord] = useState(false);
   const [kwSearching, setKwSearching] = useState(false);
-  const [kwOcr, setKwOcr] = useState(false);
+  
   const [kwStatus, setKwStatus] = useState<string | null>(null);
   // Two-step: hold matches until the user confirms.
   const [pendingMatches, setPendingMatches] = useState<{
