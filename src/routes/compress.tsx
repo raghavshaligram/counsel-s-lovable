@@ -214,6 +214,37 @@ function CompressPage() {
   void downloadBlob;
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
+
+  if (result) {
+    return (
+      <AppShell>
+        <PdfResultPreview
+          bytes={result.bytes}
+          originalBytes={result.originalBytes}
+          compareBytes={result.originalBytes}
+          filename={result.name}
+          eyebrow="Task complete · Compress"
+          title="Compression success"
+          subtitle="Your file is ready. Re-render quality below if you need to tune the trade-off."
+          stats={[
+            { label: "Original", value: fmtBytes(result.originalSize) },
+            { label: "Optimized", value: fmtBytes(result.newSize), accent: true },
+            { label: "Reduced", value: pct > 0 ? `−${pct}%` : "—", accent: pct > 0 },
+          ]}
+          durationMs={result.durationMs}
+          recap={
+            <div className="space-y-1">
+              <div>Preset · <span className="text-zinc-200">{PRESETS[preset].label}</span></div>
+              <div>Quality · <span className="text-zinc-200">{PRESETS[preset].dpi} DPI · q{Math.round(PRESETS[preset].quality * 100)}</span></div>
+              <div>Color · <span className="text-zinc-200">{grayscale ? "Grayscale" : "Original"}</span></div>
+            </div>
+          }
+          onReset={() => setResult(null)}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <ToolHeader
