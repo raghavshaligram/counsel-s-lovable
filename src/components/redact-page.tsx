@@ -938,6 +938,26 @@ export function RedactPage() {
           {/* ─────── Inspector ─────── */}
           <aside className="border-l border-border bg-card/60 overflow-y-auto">
             <div className="p-4 space-y-5">
+              {/* Get started — visible until the first detection / keyword / pending review */}
+              {!pendingDetections && !pendingMatches && detections.length === 0 && keywordGroups.length === 0 && (
+                <Section header="Get started">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Scan this PDF for SSNs, emails, phones, cards, dates &amp; more. Scanned pages fall back to OCR automatically.
+                  </p>
+                  <Button
+                    onClick={runAutoDetect}
+                    disabled={detecting || loading}
+                    className="w-full gap-2"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                    {detecting ? (detectStatus ?? "Scanning…") : "Auto-detect PII (OCR)"}
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground">
+                    Or use the <span className="text-foreground">Draw</span> tool <kbd className="rounded bg-muted px-1 font-mono">B</kbd> to mark regions manually.
+                  </p>
+                </Section>
+              )}
+
               {/* Pending review — only when there's something to commit */}
               {pendingDetections && (
                 <Section header="Pending review" tone="evidence">
