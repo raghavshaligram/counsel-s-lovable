@@ -61,7 +61,7 @@ export const openai: ProviderAdapter = {
         : {}),
       stream_options: { include_usage: true },
     };
-    const res = await fetch(url, {
+    const res = await loggedFetch("openai", url, {
       method: "POST",
       signal: args.signal,
       headers: {
@@ -69,6 +69,7 @@ export const openai: ProviderAdapter = {
         authorization: `Bearer ${args.apiKey}`,
       },
       body: JSON.stringify(body),
+      model: args.model,
     });
     if (!res.ok) {
       yield { kind: "error", message: `OpenAI ${res.status}: ${await res.text()}` };
