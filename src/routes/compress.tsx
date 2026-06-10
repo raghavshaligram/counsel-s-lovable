@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { CheckCircle2, Download, Loader2, Lock, Minimize2, Layers } from "lucide-react";
+import { Loader2, Lock, Minimize2, Layers } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
@@ -12,6 +12,7 @@ import { useHotkey } from "@/lib/use-hotkey";
 import { BatchDialog } from "@/components/tray/batch-dialog";
 import { useTray } from "@/lib/tray/store";
 import { compress as compressOp } from "@/lib/batch/ops/compress";
+import { PdfResultPreview } from "@/components/pdf-result-preview";
 
 export const Route = createFileRoute("/compress")({
   head: () => ({
@@ -79,10 +80,12 @@ const PRESETS: Record<
 };
 
 type Result = {
-  url: string;
+  bytes: Uint8Array;
+  originalBytes: Uint8Array;
   name: string;
   originalSize: number;
   newSize: number;
+  durationMs: number;
 };
 
 function CompressPage() {
@@ -113,7 +116,6 @@ function CompressPage() {
   }, []);
 
   const reset = () => {
-    if (result) URL.revokeObjectURL(result.url);
     setFile(null);
     setPageCount(0);
     setResult(null);
@@ -125,18 +127,15 @@ function CompressPage() {
     setBusy(true);
     setResult(null);
     setProgress({ done: 0, total: pageCount });
+    const t0 = performance.now();
     try {
       const { dpi, quality } = PRESETS[preset];
-      // pdf.js renders at scale = dpi / 72
       const scale = dpi / 72;
 
       const pdfjs = await loadPdfjs();
       const srcBytes = new Uint8Array(await file.arrayBuffer());
-      // pdf.js transfers the underlying buffer to its worker (detaching it),
-      // so hand each consumer its own copy.
       const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
 
-      // Get original page dimensions (in pt) from pdf-lib so output PDF matches
       const sizingDoc = await PDFDocument.load(srcBytes.slice(), {
         ignoreEncryption: true,
       });
@@ -177,11 +176,9 @@ function CompressPage() {
         p.drawImage(jpg, { x: 0, y: 0, width: sz.w, height: sz.h });
 
         setProgress({ done: i + 1, total: srcDoc.numPages });
-        // Yield so UI updates
         if (i % 2 === 1) await new Promise((r) => setTimeout(r, 0));
       }
 
-      // Strip metadata
       out.setTitle("");
       out.setAuthor("");
       out.setSubject("");
@@ -190,14 +187,14 @@ function CompressPage() {
       out.setCreator("VaultPDF");
 
       const bytes = await out.save();
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
       const name = file.name.replace(/\.pdf$/i, "") + `-compressed.pdf`;
       setResult({
-        url,
+        bytes,
+        originalBytes: srcBytes,
         name,
         originalSize: file.size,
-        newSize: blob.size,
+        newSize: bytes.byteLength,
+        durationMs: Math.round(performance.now() - t0),
       });
       toast.success("Compressed PDF ready");
     } catch (err) {
@@ -214,16 +211,39 @@ function CompressPage() {
     return Math.max(0, Math.round((1 - result.newSize / result.originalSize) * 100));
   }, [result]);
 
-  const download = () => {
-    if (!result) return;
-    downloadBlob(
-      new Blob([], { type: "application/pdf" }), // placeholder, not used; we use anchor below
-      result.name,
-    );
-  };
-  void download;
+  void downloadBlob;
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
+
+  if (result) {
+    return (
+      <AppShell>
+        <PdfResultPreview
+          bytes={result.bytes}
+          compareBytes={result.originalBytes}
+          filename={result.name}
+          eyebrow="Task complete · Compress"
+          title="Compression success"
+          subtitle="Your file is ready. Re-render quality below if you need to tune the trade-off."
+          stats={[
+            { label: "Original", value: fmtBytes(result.originalSize) },
+            { label: "Optimized", value: fmtBytes(result.newSize), accent: true },
+            { label: "Reduced", value: pct > 0 ? `−${pct}%` : "—", accent: pct > 0 },
+          ]}
+          durationMs={result.durationMs}
+          recap={
+            <div className="space-y-1">
+              <div>Preset · <span className="text-zinc-200">{PRESETS[preset].label}</span></div>
+              <div>Quality · <span className="text-zinc-200">{PRESETS[preset].dpi} DPI · q{Math.round(PRESETS[preset].quality * 100)}</span></div>
+              <div>Color · <span className="text-zinc-200">{grayscale ? "Grayscale" : "Original"}</span></div>
+            </div>
+          }
+          onReset={() => setResult(null)}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <ToolHeader
@@ -374,70 +394,6 @@ function CompressPage() {
               )}
             </div>
 
-            {result && (
-              <div className="rounded-lg border border-vault/40 bg-vault/10 p-6 space-y-5 animate-fade-in">
-                <div className="flex items-start gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-full bg-vault/20 text-vault shrink-0">
-                    <CheckCircle2 className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <div className="font-display text-xl text-foreground">
-                      Success!
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-0.5">
-                      Reduced from{" "}
-                      <span className="text-foreground tabular-nums">
-                        {fmtBytes(result.originalSize)}
-                      </span>{" "}
-                      to{" "}
-                      <span className="text-vault font-semibold tabular-nums">
-                        {fmtBytes(result.newSize)}
-                      </span>
-                      {pct > 0 && (
-                        <span className="text-vault"> · {pct}% smaller</span>
-                      )}
-                      .
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 pt-1">
-                  <Stat label="Original" value={fmtBytes(result.originalSize)} />
-                  <Stat label="Compressed" value={fmtBytes(result.newSize)} />
-                  <Stat
-                    label="Saved"
-                    value={pct > 0 ? `${pct}%` : "—"}
-                    accent={pct > 0}
-                  />
-                </div>
-
-                {pct <= 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    This PDF was already heavily compressed — try the "Strong" or
-                    "Maximum" preset, or enable grayscale.
-                  </div>
-                )}
-
-                <a
-                  href={result.url}
-                  download={result.name}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-vault text-vault-foreground px-4 py-3 text-sm font-semibold hover:opacity-90"
-                >
-                  <Download className="h-4 w-4" />
-                  Download compressed PDF
-                </a>
-
-                <button
-                  onClick={() => {
-                    if (result) URL.revokeObjectURL(result.url);
-                    setResult(null);
-                  }}
-                  className="w-full text-xs text-muted-foreground hover:text-foreground transition"
-                >
-                  Try a different preset
-                </button>
-              </div>
-            )}
           </div>
         )}
 

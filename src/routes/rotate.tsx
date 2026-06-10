@@ -6,8 +6,17 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { RotateCw, RotateCcw } from "lucide-react";
 import { PDFDocument, degrees } from "pdf-lib";
-import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
+import { FileBar, ModeBtn, ToolHeader } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import { PdfResultPreview } from "@/components/pdf-result-preview";
+
+type Result = {
+  bytes: Uint8Array;
+  originalBytes: Uint8Array;
+  name: string;
+  rotatedCount: number;
+  durationMs: number;
+};
 
 export const Route = createFileRoute("/rotate")({
   head: () => ({
@@ -39,6 +48,7 @@ function RotatePage() {
   const [scope, setScope] = useState<Scope>("all");
   const [custom, setCustom] = useState("");
   const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<Result | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,13 +76,16 @@ function RotatePage() {
 
   const onFile = useCallback((f: File) => {
     setFile(f);
+    setResult(null);
   }, []);
 
   const run = async () => {
     if (!file) return;
     setBusy(true);
+    const t0 = performance.now();
     try {
-      const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+      const srcBytes = new Uint8Array(await file.arrayBuffer());
+      const doc = await PDFDocument.load(srcBytes.slice(), { ignoreEncryption: true });
       const targets = resolveScope(scope, custom, doc.getPageCount());
       if (targets.error) {
         toast.error(targets.error);
@@ -87,7 +100,13 @@ function RotatePage() {
       });
       const bytes = await doc.save();
       const base = file.name.replace(/\.pdf$/i, "");
-      downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${base}-rotated.pdf`);
+      setResult({
+        bytes,
+        originalBytes: srcBytes,
+        name: `${base}-rotated.pdf`,
+        rotatedCount: set.size,
+        durationMs: Math.round(performance.now() - t0),
+      });
       toast.success(`Rotated ${set.size} page${set.size === 1 ? "" : "s"}`);
     } catch (err) {
       console.error(err);
@@ -98,6 +117,34 @@ function RotatePage() {
   };
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
+
+  if (result) {
+    return (
+      <AppShell>
+        <PdfResultPreview
+          bytes={result.bytes}
+          compareBytes={result.originalBytes}
+          filename={result.name}
+          eyebrow="Task complete · Rotate"
+          title="Rotation applied"
+          subtitle={`${result.rotatedCount} page${result.rotatedCount === 1 ? "" : "s"} rotated by ${angle}°.`}
+          stats={[
+            { label: "Pages", value: String(pageCount) },
+            { label: "Rotated", value: String(result.rotatedCount), accent: true },
+            { label: "Angle", value: `${angle}°` },
+          ]}
+          durationMs={result.durationMs}
+          recap={
+            <div className="space-y-1">
+              <div>Scope · <span className="text-zinc-200">{scope === "custom" ? custom || "—" : scope}</span></div>
+              <div>Angle · <span className="text-zinc-200">{angle}°</span></div>
+            </div>
+          }
+          onReset={() => setResult(null)}
+        />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
