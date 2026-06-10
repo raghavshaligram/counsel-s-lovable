@@ -220,7 +220,6 @@ function CompressPage() {
       <AppShell>
         <PdfResultPreview
           bytes={result.bytes}
-          originalBytes={result.originalBytes}
           compareBytes={result.originalBytes}
           filename={result.name}
           eyebrow="Task complete · Compress"
