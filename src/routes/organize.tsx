@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { PDFDocument } from "pdf-lib";
-import { Layers, Download, Trash2, RotateCw, GripVertical, FilePlus2 } from "lucide-react";
+import { Download, Trash2, RotateCw, GripVertical, FilePlus2 } from "lucide-react";
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
