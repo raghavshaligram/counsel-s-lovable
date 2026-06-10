@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   Download,
@@ -782,6 +783,7 @@ export function RedactPage() {
           </div>
         </div>
       ) : (
+        <TooltipProvider delayDuration={250}>
         <div
           className={cn(
             "grid w-full overflow-hidden",
@@ -824,13 +826,18 @@ export function RedactPage() {
               label="Exemption label"
             />
             <div className="mt-auto">
-              <button
-                onClick={reset}
-                className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                title="Close file"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={reset}
+                    aria-label="Close file"
+                    className="grid h-9 w-9 place-items-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>Close file</TooltipContent>
+              </Tooltip>
             </div>
           </div>
 
@@ -931,6 +938,26 @@ export function RedactPage() {
           {/* ─────── Inspector ─────── */}
           <aside className="border-l border-border bg-card/60 overflow-y-auto">
             <div className="p-4 space-y-5">
+              {/* Get started — visible until the first detection / keyword / pending review */}
+              {!pendingDetections && !pendingMatches && detections.length === 0 && keywordGroups.length === 0 && (
+                <Section header="Get started">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Scan this PDF for SSNs, emails, phones, cards, dates &amp; more. Scanned pages fall back to OCR automatically.
+                  </p>
+                  <Button
+                    onClick={runAutoDetect}
+                    disabled={detecting || loading}
+                    className="w-full gap-2"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                    {detecting ? (detectStatus ?? "Scanning…") : "Auto-detect PII (OCR)"}
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground">
+                    Or use the <span className="text-foreground">Draw</span> tool <kbd className="rounded bg-muted px-1 font-mono">B</kbd> to mark regions manually.
+                  </p>
+                </Section>
+              )}
+
               {/* Pending review — only when there's something to commit */}
               {pendingDetections && (
                 <Section header="Pending review" tone="evidence">
@@ -1168,6 +1195,7 @@ export function RedactPage() {
             </div>
           </aside>
         </div>
+        </TooltipProvider>
       )}
     </AppShell>
   );
@@ -1254,21 +1282,31 @@ function ToolRailBtn({
   disabled?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={kbd ? `${label} (${kbd})` : label}
-      className={cn(
-        "relative grid h-9 w-9 place-items-center rounded-md transition",
-        active
-          ? "bg-vault/15 text-vault"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
-        disabled && "opacity-40 cursor-not-allowed",
-      )}
-    >
-      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-vault" />}
-      <Icon className="h-4 w-4" />
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+          className={cn(
+            "relative grid h-9 w-9 place-items-center rounded-md transition",
+            active
+              ? "bg-vault/15 text-vault"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+            disabled && "opacity-40 cursor-not-allowed",
+          )}
+        >
+          {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-vault" />}
+          <Icon className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8} className="flex items-center gap-2">
+        <span>{label}</span>
+        {kbd && (
+          <kbd className="rounded bg-background/20 px-1 py-0.5 text-[10px] font-mono">{kbd}</kbd>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
