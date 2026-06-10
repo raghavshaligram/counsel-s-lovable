@@ -889,6 +889,10 @@ export function RedactPage() {
                 return (
                   <button
                     key={p.pageNumber}
+                    ref={(el) => {
+                      if (el) thumbRefs.current.set(p.pageNumber, el);
+                      else thumbRefs.current.delete(p.pageNumber);
+                    }}
                     onClick={() => scrollToPage(p.pageNumber)}
                     className={cn(
                       "relative w-full rounded-md overflow-hidden border-2 transition group",
