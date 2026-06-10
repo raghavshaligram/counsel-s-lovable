@@ -47,15 +47,15 @@ function getDb(): Promise<IDBDatabase> {
 }
 
 async function sha256Hex(data: string | ArrayBuffer | Uint8Array): Promise<string> {
-  let buf: ArrayBuffer;
+  let view: Uint8Array;
   if (typeof data === "string") {
-    buf = new TextEncoder().encode(data).buffer;
+    view = new TextEncoder().encode(data);
   } else if (data instanceof Uint8Array) {
-    buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+    view = new Uint8Array(data);
   } else {
-    buf = data;
+    view = new Uint8Array(data);
   }
-  const out = await crypto.subtle.digest("SHA-256", buf);
+  const out = await crypto.subtle.digest("SHA-256", view);
   return Array.from(new Uint8Array(out))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
