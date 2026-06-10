@@ -826,13 +826,18 @@ export function RedactPage() {
               label="Exemption label"
             />
             <div className="mt-auto">
-              <button
-                onClick={reset}
-                className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                title="Close file"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={reset}
+                    aria-label="Close file"
+                    className="grid h-9 w-9 place-items-center rounded-md border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>Close file</TooltipContent>
+              </Tooltip>
             </div>
           </div>
 
