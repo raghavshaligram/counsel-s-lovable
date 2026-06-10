@@ -855,25 +855,37 @@ export function RedactPage() {
                     key={p.pageNumber}
                     onClick={() => scrollToPage(p.pageNumber)}
                     className={cn(
-                      "relative w-full rounded-md overflow-hidden border transition group",
+                      "relative w-full rounded-md overflow-hidden border-2 transition group",
                       active
                         ? "border-vault ring-1 ring-vault/40"
-                        : "border-border/60 hover:border-border",
+                        : hasRedaction
+                          ? "border-[var(--evidence)] ring-1 ring-[var(--evidence)]/30 hover:opacity-90"
+                          : "border-border/60 hover:border-border",
                     )}
                   >
                     <img
                       src={p.dataUrl}
                       alt=""
-                      className="block w-full h-auto"
+                      className={cn(
+                        "block w-full h-auto",
+                        hasRedaction && !active && "opacity-80",
+                      )}
                       style={{ aspectRatio: `${p.width} / ${p.height}` }}
                     />
                     {hasRedaction && (
                       <span
-                        className="absolute top-1 right-1 inline-block h-1.5 w-1.5 rounded-full"
-                        style={{ background: "var(--evidence)" }}
+                        className="absolute top-1 right-1 inline-block h-2 w-2 rounded-full"
+                        style={{ background: "var(--evidence)", boxShadow: "0 0 0 2px var(--evidence)/30" }}
                       />
                     )}
-                    <span className="absolute bottom-0.5 left-0.5 right-0.5 text-center text-[9px] font-mono tabular-nums text-foreground/80 bg-background/70 rounded-sm py-px">
+                    <span
+                      className={cn(
+                        "absolute bottom-0.5 left-0.5 right-0.5 text-center text-[9px] font-mono tabular-nums rounded-sm py-px",
+                        hasRedaction && !active
+                          ? "text-[var(--evidence)] bg-[var(--evidence)]/10 font-bold"
+                          : "text-foreground/80 bg-background/70",
+                      )}
+                    >
                       {p.pageNumber}
                     </span>
                   </button>
