@@ -566,6 +566,41 @@ export function RedactPage() {
       .sort((a, b) => a.page - b.page);
   }, [pendingMatches]);
 
+  // Pending preview boxes rendered on canvas pages — amber pulsing overlays
+  // showing exactly what will be redacted on confirm.
+  type PendingPreview = { id: string; page: number; x: number; y: number; w: number; h: number; kind: "match" | "detect" };
+  const pendingPreviewBoxes = useMemo<PendingPreview[]>(() => {
+    const out: PendingPreview[] = [];
+    if (pendingMatches) {
+      for (const m of pendingMatches.matches) {
+        out.push({ id: m.id, page: m.page, x: m.x, y: m.y, w: m.w, h: m.h, kind: "match" });
+      }
+    }
+    if (pendingDetections) {
+      for (const d of pendingDetections) {
+        if (!enabledCats.has(d.category)) continue;
+        out.push({ id: d.id, page: d.page, x: d.x, y: d.y, w: d.w, h: d.h, kind: "detect" });
+      }
+    }
+    return out;
+  }, [pendingMatches, pendingDetections, enabledCats]);
+
+  // Auto-scroll to the first page with a pending match when results land.
+  useEffect(() => {
+    if (!pendingMatches || pendingMatches.matches.length === 0) return;
+    const firstPage = Math.min(...pendingMatches.matches.map((m) => m.page));
+    const el = document.getElementById(`redact-page-${firstPage}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setCurrentPage(firstPage);
+  }, [pendingMatches]);
+  useEffect(() => {
+    if (!pendingDetections || pendingDetections.length === 0) return;
+    const firstPage = Math.min(...pendingDetections.map((d) => d.page));
+    const el = document.getElementById(`redact-page-${firstPage}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setCurrentPage(firstPage);
+  }, [pendingDetections]);
+
   const setBoxLabel = useCallback((id: string, label: string) => {
     // auto-detect ids start with "det-", keyword ids with "kw-"
     if (id.startsWith("det-")) {
@@ -975,12 +1010,13 @@ export function RedactPage() {
               </div>
             )}
 
-            <div className={cn("p-8 space-y-8 max-w-5xl mx-auto", hasPending && "opacity-50")}>
+            <div className="p-8 space-y-8 max-w-5xl mx-auto">
               {pages.map((p) => (
                 <div key={p.pageNumber} id={`redact-page-${p.pageNumber}`}>
                   <PageCanvas
                     page={p}
                     boxes={allBoxes.filter((b) => b.page === p.pageNumber)}
+                    pendingBoxes={pendingPreviewBoxes.filter((b) => b.page === p.pageNumber)}
                     onAddBox={addBox}
                     onRemoveBox={removeBox}
                     onLabelChange={setBoxLabel}
@@ -1429,6 +1465,7 @@ function drawLabelOnCanvas(
 function PageCanvas({
   page,
   boxes,
+  pendingBoxes = [],
   onAddBox,
   onRemoveBox,
   onLabelChange,
@@ -1437,6 +1474,7 @@ function PageCanvas({
 }: {
   page: RenderedPage;
   boxes: Box[];
+  pendingBoxes?: Array<{ id: string; x: number; y: number; w: number; h: number; kind: "match" | "detect" }>;
   onAddBox: (b: Box) => void;
   onRemoveBox: (id: string) => void;
   onLabelChange: (id: string, label: string) => void;
@@ -1523,6 +1561,21 @@ function PageCanvas({
             pageHeight={page.height}
             onRemove={() => onRemoveBox(b.id)}
             onLabelChange={(label) => onLabelChange(b.id, label)}
+          />
+        ))}
+        {pendingBoxes.map((b) => (
+          <div
+            key={b.id}
+            className="absolute pointer-events-none rounded-[1px] animate-pulse"
+            style={{
+              left: `${(b.x / page.width) * 100}%`,
+              top: `${(b.y / page.height) * 100}%`,
+              width: `${(b.w / page.width) * 100}%`,
+              height: `${(b.h / page.height) * 100}%`,
+              background: "color-mix(in srgb, var(--evidence) 35%, transparent)",
+              border: "2px solid var(--evidence)",
+              boxShadow: "0 0 0 1px color-mix(in srgb, var(--evidence) 50%, transparent), 0 0 12px color-mix(in srgb, var(--evidence) 40%, transparent)",
+            }}
           />
         ))}
         {drawing && (
