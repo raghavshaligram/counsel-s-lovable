@@ -1184,13 +1184,50 @@ export function RedactPage() {
                       Whole word
                     </label>
                   </div>
-                  <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2">
-                    <Sparkles className="h-3.5 w-3.5 mt-0.5 text-[var(--vault-amber)] shrink-0" />
-                    <span className="leading-snug">
-                      <span className="text-foreground font-medium">Scanned pages auto-OCR</span>
-                      <br />
-                      Image-only pages are detected and OCR'd automatically — no setup needed.
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Redact scope</label>
+                    <Select value={kwScope} onValueChange={(v) => setKwScope(v as typeof kwScope)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="word">Word — just the match</SelectItem>
+                        <SelectItem value="line">Line — whole line containing match</SelectItem>
+                        <SelectItem value="sentence">Sentence — surrounding sentence</SelectItem>
+                        <SelectItem value="page">Page — entire page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div
+                    className="relative flex items-start gap-2.5 rounded-lg p-2.5 overflow-hidden"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, color-mix(in oklab, var(--vault-amber) 14%, transparent), color-mix(in oklab, var(--vault-amber) 4%, transparent))",
+                      border: "1px solid color-mix(in oklab, var(--vault-amber) 32%, transparent)",
+                      boxShadow:
+                        "0 1px 0 color-mix(in oklab, var(--vault-amber) 18%, transparent) inset, 0 6px 18px -10px color-mix(in oklab, var(--vault-amber) 40%, transparent)",
+                    }}
+                  >
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+                      style={{
+                        background: "color-mix(in oklab, var(--vault-amber) 18%, transparent)",
+                        color: "var(--vault-amber)",
+                      }}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
                     </span>
+                    <div className="leading-snug text-[11.5px]">
+                      <div
+                        className="font-semibold tracking-tight"
+                        style={{ color: "var(--vault-amber)" }}
+                      >
+                        Scanned pages auto-OCR
+                      </div>
+                      <div className="text-muted-foreground mt-0.5">
+                        Image-only pages are detected and recognized automatically — no setup needed.
+                      </div>
+                    </div>
                   </div>
                   <Button
                     type="submit"
