@@ -80,10 +80,12 @@ const PRESETS: Record<
 };
 
 type Result = {
-  url: string;
+  bytes: Uint8Array;
+  originalBytes: Uint8Array;
   name: string;
   originalSize: number;
   newSize: number;
+  durationMs: number;
 };
 
 function CompressPage() {
