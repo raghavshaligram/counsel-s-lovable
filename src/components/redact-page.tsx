@@ -191,9 +191,10 @@ export function RedactPage() {
   const [keywordBoxes, setKeywordBoxes] = useState<Box[]>([]);
   const [kwQuery, setKwQuery] = useState("");
   const [kwMatchCase, setKwMatchCase] = useState(false);
-  // Match Acrobat's "Find Text" default — whole-word matching so typing a name
-  // doesn't redact the entire surrounding sentence.
+  // Acrobat-style default: whole-word so typing a name doesn't grab the
+  // surrounding sentence.
   const [kwWholeWord, setKwWholeWord] = useState(true);
+  const [kwScope, setKwScope] = useState<"word" | "line" | "sentence" | "page">("word");
   const [kwSearching, setKwSearching] = useState(false);
   
   const [kwStatus, setKwStatus] = useState<string | null>(null);
@@ -440,6 +441,7 @@ export function RedactPage() {
         {
           matchCase: kwMatchCase,
           wholeWord: kwWholeWord,
+          scope: kwScope,
           // Always OCR scanned pages — the library only runs OCR on pages
           // with no text layer, so text-PDFs pay no cost.
           ocr: true,
@@ -468,7 +470,7 @@ export function RedactPage() {
       setKwSearching(false);
       setKwStatus(null);
     }
-  }, [file, kwQuery, kwMatchCase, kwWholeWord]);
+  }, [file, kwQuery, kwMatchCase, kwWholeWord, kwScope]);
 
   const confirmKeywordRedact = useCallback(() => {
     if (!pendingMatches) return;
@@ -500,7 +502,7 @@ export function RedactPage() {
   // otherwise they could click Redact on stale results.
   useEffect(() => {
     setPendingMatches(null);
-  }, [kwQuery, kwMatchCase, kwWholeWord]);
+  }, [kwQuery, kwMatchCase, kwWholeWord, kwScope]);
 
   const removeKeywordGroup = (id: string) => {
     setKeywordGroups((prev) => prev.filter((g) => g.id !== id));
@@ -1182,13 +1184,50 @@ export function RedactPage() {
                       Whole word
                     </label>
                   </div>
-                  <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2">
-                    <Sparkles className="h-3.5 w-3.5 mt-0.5 text-[var(--vault-amber)] shrink-0" />
-                    <span className="leading-snug">
-                      <span className="text-foreground font-medium">Scanned pages auto-OCR</span>
-                      <br />
-                      Image-only pages are detected and OCR'd automatically — no setup needed.
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Redact scope</label>
+                    <Select value={kwScope} onValueChange={(v) => setKwScope(v as typeof kwScope)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="word">Word — just the match</SelectItem>
+                        <SelectItem value="line">Line — whole line containing match</SelectItem>
+                        <SelectItem value="sentence">Sentence — surrounding sentence</SelectItem>
+                        <SelectItem value="page">Page — entire page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div
+                    className="relative flex items-start gap-2.5 rounded-lg p-2.5 overflow-hidden"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, color-mix(in oklab, var(--vault) 14%, transparent), color-mix(in oklab, var(--vault) 4%, transparent))",
+                      border: "1px solid color-mix(in oklab, var(--vault) 32%, transparent)",
+                      boxShadow:
+                        "0 1px 0 color-mix(in oklab, var(--vault) 18%, transparent) inset, 0 6px 18px -10px color-mix(in oklab, var(--vault) 40%, transparent)",
+                    }}
+                  >
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+                      style={{
+                        background: "color-mix(in oklab, var(--vault) 18%, transparent)",
+                        color: "var(--vault)",
+                      }}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
                     </span>
+                    <div className="leading-snug text-[11.5px]">
+                      <div
+                        className="font-semibold tracking-tight"
+                        style={{ color: "var(--vault)" }}
+                      >
+                        Scanned pages auto-OCR
+                      </div>
+                      <div className="text-muted-foreground mt-0.5">
+                        Image-only pages are detected and recognized automatically — no setup needed.
+                      </div>
+                    </div>
                   </div>
                   <Button
                     type="submit"
