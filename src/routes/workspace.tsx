@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, PenLine, GitCompare, Table2, ScanText, Hash, MessageSquare, Upload } from "lucide-react";
+import { ShieldCheck, PenLine, GitCompare, Table2, ScanText, Hash, MessageSquare, Upload, ArrowLeft, Lock } from "lucide-react";
 import { WorkspaceShell, ToolRail, ThumbStrip, Inspector, SectionHeader, Pill, EmptyState } from "@/components/workspace/primitives";
 import { DocumentCanvas, type PageBox } from "@/components/workspace/document-canvas";
 import { CommandPalette } from "@/components/workspace/command-palette";
