@@ -116,7 +116,6 @@ function CompressPage() {
   }, []);
 
   const reset = () => {
-    if (result) URL.revokeObjectURL(result.url);
     setFile(null);
     setPageCount(0);
     setResult(null);
