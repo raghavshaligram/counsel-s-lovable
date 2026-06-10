@@ -1,4 +1,5 @@
 import type { ProviderAdapter, ChatChunk, StreamArgs } from "../types";
+import { loggedFetch } from "@/lib/trust/network-log";
 
 async function* sseLines(res: Response, signal?: AbortSignal) {
   if (!res.body) return;
