@@ -433,7 +433,7 @@ export function RedactPage() {
     } finally {
       setKwSearching(false);
     }
-  }, [file, kwQuery, kwMatchCase, kwWholeWord]);
+  }, [file, kwQuery, kwMatchCase, kwWholeWord, runAutoDetect]);
 
   const confirmKeywordRedact = useCallback(() => {
     if (!pendingMatches) return;
