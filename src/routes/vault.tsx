@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { Lock, KeyRound, ShieldCheck, Cpu, Network, Terminal } from "lucide-react";
 import { detectResources } from "@/lib/workers/resources";
 import { vaultStatus } from "@/lib/vault/store";
+import { UnlockDialog } from "@/components/vault/unlock-dialog";
 
 export const Route = createFileRoute("/vault")({
   head: () => ({
