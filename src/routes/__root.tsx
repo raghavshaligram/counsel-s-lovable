@@ -139,6 +139,12 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    if (import.meta.env.DEV) return; // skip SW in dev to avoid stale chunks
+    void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
