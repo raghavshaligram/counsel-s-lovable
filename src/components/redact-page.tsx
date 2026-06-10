@@ -182,6 +182,7 @@ export function RedactPage() {
   // Cache the parsed pdf.js document so auto-detect / keyword search don't
   // re-parse the file. Held in a ref since we never render from it directly.
   const docRef = useRef<{ numPages: number; getPage: (n: number) => Promise<unknown> } | null>(null);
+  const thumbRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const [totalPages, setTotalPages] = useState(0);
   const [detectConfirm, setDetectConfirm] = useState(false);
 
