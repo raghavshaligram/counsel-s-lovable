@@ -215,12 +215,31 @@ export function RedactPage() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "v" || e.key === "V") setTool("select");
       if (e.key === "b" || e.key === "B") setTool("box");
+      if (e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown" || e.key === "j") {
+        e.preventDefault();
+        setCurrentPage((cur) => {
+          const next = Math.min(totalPages || cur, cur + 1);
+          const el = document.getElementById(`redact-page-${next}`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return next;
+        });
+      }
+      if (e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "k") {
+        e.preventDefault();
+        setCurrentPage((cur) => {
+          const next = Math.max(1, cur - 1);
+          const el = document.getElementById(`redact-page-${next}`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return next;
+        });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [file]);
+  }, [file, totalPages]);
   useEffect(() => {
     try {
       const s = localStorage.getItem("vault.redact.stripMetadata");
