@@ -95,6 +95,8 @@ function CompressPage() {
     null,
   );
   const [result, setResult] = useState<Result | null>(null);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const trayCount = useTray((s) => s.entries.length);
 
   const onFile = useCallback(async (f: File) => {
     setFile(f);
