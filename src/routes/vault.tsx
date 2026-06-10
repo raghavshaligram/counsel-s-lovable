@@ -22,6 +22,7 @@ function VaultPage() {
   const [status, setStatus] = useState<{ unlocked: boolean; hasSigningKey: boolean } | null>(null);
   const [resources, setResources] = useState<ReturnType<typeof detectResources> | null>(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [providersOpen, setProvidersOpen] = useState(false);
 
   const refresh = () => { void vaultStatus().then(setStatus); };
 
