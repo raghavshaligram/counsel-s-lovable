@@ -74,6 +74,8 @@ const groups: Group[] = [
     tagline: "Re-shape, number, and lock down documents.",
     items: [
       { to: "/outline", label: "Outline & Links", icon: ListTree, desc: "Edit bookmarks tree and link annotations" },
+      { to: "/crop", label: "Crop", icon: Crop, desc: "Trim pages with rulers, presets, auto-detect" },
+
       { to: "/page-numbers", label: "Page Numbers", icon: HashIcon, desc: "Stamp numbers — position, format, skip first N" },
       { to: "/header-footer", label: "Header & Footer", icon: HashIcon, desc: "Custom text with tokens — {page}, {date}, {filename}" },
       { to: "/flatten", label: "Flatten", icon: Lock, desc: "Bake forms and annotations into static content" },
