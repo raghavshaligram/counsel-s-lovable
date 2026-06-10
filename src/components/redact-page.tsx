@@ -441,6 +441,7 @@ export function RedactPage() {
         {
           matchCase: kwMatchCase,
           wholeWord: kwWholeWord,
+          scope: kwScope,
           // Always OCR scanned pages — the library only runs OCR on pages
           // with no text layer, so text-PDFs pay no cost.
           ocr: true,
