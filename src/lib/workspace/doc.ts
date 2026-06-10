@@ -126,8 +126,6 @@ export const useWorkspace = create<WorkspaceDocState>((set, get) => {
       let pageCount = 0;
       try {
         const pdfjs = await import("pdfjs-dist");
-        // Use bundled worker URL
-        // @ts-expect-error - vite worker import
         const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default as string;
         pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
         const loadingTask = pdfjs.getDocument({ data: bytes.slice(0) });
