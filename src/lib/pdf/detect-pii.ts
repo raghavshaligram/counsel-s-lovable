@@ -236,25 +236,41 @@ export type KeywordMatch = {
 
 // Find every text-layer item that contains `query` and return redaction-sized
 // boxes in the same coordinate space the redact route uses (scale 1.5).
-// Skips scanned pages (no text layer) silently — keyword search is text-only.
+// When `ocr` is true, scanned pages (no text layer) are OCR'd and word boxes
+// matched too — necessary for scanned PDFs where there's nothing to text-search.
 export async function findKeywordInPdf(
   file: File,
   query: string,
-  opts: { matchCase?: boolean; wholeWord?: boolean } = {},
+  opts: {
+    matchCase?: boolean;
+    wholeWord?: boolean;
+    ocr?: boolean;
+    onProgress?: (p: { stage: "text" | "ocr"; page: number; totalPages: number }) => void;
+    preloadedDoc?: { numPages: number; getPage: (n: number) => Promise<unknown> };
+  } = {},
   scale = 1.5,
 ): Promise<KeywordMatch[]> {
   const q = query.trim();
   if (!q) return [];
   const pdfjs = await getPdfjs();
-  const buf = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const doc =
+    (opts.preloadedDoc as unknown as Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>) ??
+    (await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise);
 
   const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = opts.wholeWord ? `\\b${escaped}\\b` : escaped;
   const re = new RegExp(pattern, opts.matchCase ? "" : "i");
+  // Substring re-test on OCR words (we need case-insensitive contains, not just \b).
+  const wordRe = new RegExp(
+    opts.wholeWord ? `^${escaped}$` : escaped,
+    opts.matchCase ? "" : "i",
+  );
 
   const matches: KeywordMatch[] = [];
+  const scannedPages: number[] = [];
+
   for (let i = 1; i <= doc.numPages; i++) {
+    opts.onProgress?.({ stage: "text", page: i, totalPages: doc.numPages });
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale });
     const content = await page.getTextContent();
@@ -264,6 +280,11 @@ export async function findKeywordInPdf(
       width: number;
       height: number;
     }>;
+    const totalChars = items.reduce((n, it) => n + (it.str?.length ?? 0), 0);
+    if (totalChars < 20) {
+      scannedPages.push(i);
+      continue;
+    }
     for (const raw of items) {
       if (!raw.str || !re.test(raw.str)) continue;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
@@ -283,8 +304,80 @@ export async function findKeywordInPdf(
       });
     }
   }
+
+  if (opts.ocr && scannedPages.length > 0) {
+    const { createWorker } = await import("tesseract.js");
+    const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
+    const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2), scannedPages.length));
+    const workers = await Promise.all(
+      Array.from({ length: poolSize }, () => createWorker("eng")),
+    );
+    const idle = [...workers];
+    const waiters: Array<(w: (typeof workers)[number]) => void> = [];
+    const acquire = (): Promise<(typeof workers)[number]> =>
+      new Promise((res) => {
+        const w = idle.pop();
+        if (w) return res(w);
+        waiters.push(res);
+      });
+    const release = (w: (typeof workers)[number]) => {
+      const next = waiters.shift();
+      if (next) next(w);
+      else idle.push(w);
+    };
+
+    let done = 0;
+    try {
+      await Promise.all(
+        scannedPages.map(async (i) => {
+          const page = await doc.getPage(i);
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          await page.render({
+            canvasContext: ctx,
+            viewport,
+            canvas,
+          } as Parameters<typeof page.render>[0]).promise;
+
+          const worker = await acquire();
+          let words: OcrWord[];
+          try {
+            const { data } = await worker.recognize(canvas, {}, { blocks: true });
+            words = collectWords(data);
+          } finally {
+            release(worker);
+          }
+          done++;
+          opts.onProgress?.({ stage: "ocr", page: done, totalPages: scannedPages.length });
+
+          for (const w of words) {
+            if (!w.text || !wordRe.test(w.text)) continue;
+            const { x0, y0, x1, y1 } = w.bbox;
+            const pad = Math.max(2, (y1 - y0) * 0.15);
+            matches.push({
+              id: `kw-ocr-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
+              page: i,
+              x: x0 - pad,
+              y: y0 - pad,
+              w: x1 - x0 + pad * 2,
+              h: y1 - y0 + pad * 2,
+              snippet: snippet(w.text),
+            });
+          }
+        }),
+      );
+    } finally {
+      await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
+    }
+  }
+
   return matches;
 }
+
 
 
 
