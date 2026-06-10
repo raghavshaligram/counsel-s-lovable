@@ -34,6 +34,7 @@ import {
   AlertTriangle,
   MousePointer2,
   Square,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -191,7 +192,7 @@ export function RedactPage() {
   const [kwMatchCase, setKwMatchCase] = useState(false);
   const [kwWholeWord, setKwWholeWord] = useState(false);
   const [kwSearching, setKwSearching] = useState(false);
-  const [kwOcr, setKwOcr] = useState(false);
+  
   const [kwStatus, setKwStatus] = useState<string | null>(null);
   // Two-step: hold matches until the user confirms.
   const [pendingMatches, setPendingMatches] = useState<{
@@ -423,7 +424,7 @@ export function RedactPage() {
     const q = kwQuery.trim();
     if (!q) return;
     setKwSearching(true);
-    setKwStatus(kwOcr ? "Reading text layer…" : null);
+    setKwStatus("Reading text layer…");
     setPendingMatches(null);
     try {
       const matches = await findKeywordInPdf(
@@ -432,12 +433,14 @@ export function RedactPage() {
         {
           matchCase: kwMatchCase,
           wholeWord: kwWholeWord,
-          ocr: kwOcr,
+          // Always OCR scanned pages — the library only runs OCR on pages
+          // with no text layer, so text-PDFs pay no cost.
+          ocr: true,
           preloadedDoc: docRef.current ?? undefined,
           onProgress: (p) => {
             if (p.stage === "ocr") {
-              setKwStatus(`OCR scanning ${p.page}/${p.totalPages}…`);
-            } else if (kwOcr) {
+              setKwStatus(`Scanned page OCR ${p.page}/${p.totalPages}…`);
+            } else {
               setKwStatus(`Reading page ${p.page}/${p.totalPages}…`);
             }
           },
@@ -446,9 +449,7 @@ export function RedactPage() {
       );
       if (matches.length === 0) {
         toast.info(`No matches for "${q}"`, {
-          description: kwOcr
-            ? "Nothing matched, even after OCR. Try a shorter or partial term."
-            : "Scanned pages were skipped — turn on Search scanned pages (OCR) and try again.",
+          description: "Nothing matched, even after OCR on scanned pages. Try a shorter or partial term.",
         });
         return;
       }
@@ -460,7 +461,7 @@ export function RedactPage() {
       setKwSearching(false);
       setKwStatus(null);
     }
-  }, [file, kwQuery, kwMatchCase, kwWholeWord, kwOcr]);
+  }, [file, kwQuery, kwMatchCase, kwWholeWord]);
 
   const confirmKeywordRedact = useCallback(() => {
     if (!pendingMatches) return;
@@ -1134,18 +1135,14 @@ export function RedactPage() {
                       Whole word
                     </label>
                   </div>
-                  <label className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2 cursor-pointer">
-                    <Checkbox
-                      checked={kwOcr}
-                      onCheckedChange={(v) => setKwOcr(v === true)}
-                      className="mt-0.5"
-                    />
+                  <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2">
+                    <Sparkles className="h-3.5 w-3.5 mt-0.5 text-[var(--vault-amber)] shrink-0" />
                     <span className="leading-snug">
-                      <span className="text-foreground font-medium">Search scanned pages (OCR)</span>
+                      <span className="text-foreground font-medium">Scanned pages auto-OCR</span>
                       <br />
-                      Required for image-only PDFs. Slower — runs OCR in your browser.
+                      Image-only pages are detected and OCR'd automatically — no setup needed.
                     </span>
-                  </label>
+                  </div>
                   <Button
                     type="submit"
                     variant="outline"
