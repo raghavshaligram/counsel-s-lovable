@@ -1134,6 +1134,18 @@ export function RedactPage() {
                       Whole word
                     </label>
                   </div>
+                  <label className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2 cursor-pointer">
+                    <Checkbox
+                      checked={kwOcr}
+                      onCheckedChange={(v) => setKwOcr(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="leading-snug">
+                      <span className="text-foreground font-medium">Search scanned pages (OCR)</span>
+                      <br />
+                      Required for image-only PDFs. Slower — runs OCR in your browser.
+                    </span>
+                  </label>
                   <Button
                     type="submit"
                     variant="outline"
@@ -1141,8 +1153,11 @@ export function RedactPage() {
                     className="w-full"
                     disabled={!kwQuery.trim() || kwSearching}
                   >
-                    {kwSearching ? "Searching…" : "Find matches"}
+                    {kwSearching ? (kwStatus ?? "Searching…") : "Find matches"}
                   </Button>
+                  {kwStatus && kwSearching && (
+                    <div className="text-[11px] font-mono text-muted-foreground text-center">{kwStatus}</div>
+                  )}
                 </form>
                 {keywordGroups.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
