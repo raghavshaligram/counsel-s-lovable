@@ -25,6 +25,7 @@ function VaultPage() {
   const [resources, setResources] = useState<ReturnType<typeof detectResources> | null>(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
+  const [netLogOpen, setNetLogOpen] = useState(false);
 
   const refresh = () => { void vaultStatus().then(setStatus); };
 
