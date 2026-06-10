@@ -1341,12 +1341,16 @@ function PageCanvas({
   onAddBox,
   onRemoveBox,
   onLabelChange,
+  tool = "box",
+  onFocus,
 }: {
   page: RenderedPage;
   boxes: Box[];
   onAddBox: (b: Box) => void;
   onRemoveBox: (id: string) => void;
   onLabelChange: (id: string, label: string) => void;
+  tool?: "select" | "box";
+  onFocus?: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(
@@ -1365,18 +1369,22 @@ function PageCanvas({
     };
   };
 
+  const drawMode = tool === "box";
+
   return (
-    <div className="rounded-lg border border-border bg-card/30 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/60 text-xs text-muted-foreground">
-        <span>Page {page.pageNumber}</span>
-        <span>Drag to mark · double-click a box to label it</span>
-      </div>
+    <div
+      className="rounded-sm overflow-hidden shadow-stamp bg-white"
+      onMouseEnter={onFocus}
+    >
       <div
         ref={wrapRef}
-        className="relative select-none cursor-crosshair"
+        className={cn(
+          "relative select-none",
+          drawMode ? "cursor-crosshair" : "cursor-default",
+        )}
         style={{ aspectRatio: `${page.width} / ${page.height}` }}
         onPointerDown={(e) => {
-          // Don't start a new drag when interacting with an existing box / popover
+          if (!drawMode) return;
           if ((e.target as HTMLElement).closest("[data-box]")) return;
           (e.target as Element).setPointerCapture(e.pointerId);
           const p = toLocal(e.clientX, e.clientY);
@@ -1406,6 +1414,10 @@ function PageCanvas({
           setDrawing(null);
         }}
       >
+        <span className="absolute top-1.5 left-1.5 z-10 rounded bg-background/80 px-1.5 py-px text-[10px] font-mono tabular-nums text-muted-foreground">
+          p.{page.pageNumber}
+        </span>
+
         <img
           src={page.dataUrl}
           alt={`Page ${page.pageNumber}`}
