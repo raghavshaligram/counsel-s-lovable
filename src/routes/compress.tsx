@@ -211,14 +211,7 @@ function CompressPage() {
     return Math.max(0, Math.round((1 - result.newSize / result.originalSize) * 100));
   }, [result]);
 
-  const download = () => {
-    if (!result) return;
-    downloadBlob(
-      new Blob([], { type: "application/pdf" }), // placeholder, not used; we use anchor below
-      result.name,
-    );
-  };
-  void download;
+  void downloadBlob;
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
