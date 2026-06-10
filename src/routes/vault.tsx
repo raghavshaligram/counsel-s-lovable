@@ -84,7 +84,7 @@ function VaultPage() {
             title="Network Log"
             body="Every outbound request to an AI provider, with hash + timestamp. Transparent by default."
             action="Open log"
-            onAction={() => toast.info("Network log viewer ships in Phase 4.")}
+            onAction={() => setNetLogOpen(true)}
           />
           <Card
             icon={<Terminal className="h-4 w-4" />}
