@@ -27,6 +27,7 @@ const groups: Group[] = [
     label: "Organize",
     tagline: "Reshape pages without uploading them.",
     items: [
+      { to: "/organize", label: "Organize Pages", icon: Layers, desc: "Cross-document page grid — drag, rotate, build" },
       { to: "/merge", label: "Mail Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
       { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
       { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
