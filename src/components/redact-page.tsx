@@ -34,6 +34,7 @@ import {
   AlertTriangle,
   MousePointer2,
   Square,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
