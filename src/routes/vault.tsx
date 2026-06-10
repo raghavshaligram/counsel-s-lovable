@@ -6,6 +6,7 @@ import { detectResources } from "@/lib/workers/resources";
 import { vaultStatus } from "@/lib/vault/store";
 import { UnlockDialog } from "@/components/vault/unlock-dialog";
 import { ProvidersDialog } from "@/components/vault/providers-dialog";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/vault")({
   ssr: false,
