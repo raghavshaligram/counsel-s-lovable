@@ -105,6 +105,7 @@ function VaultPage() {
       </main>
       <UnlockDialog open={unlockOpen} onOpenChange={setUnlockOpen} onUnlocked={refresh} />
       <ProvidersDialog open={providersOpen} onOpenChange={setProvidersOpen} />
+      <NetworkLogDialog open={netLogOpen} onOpenChange={setNetLogOpen} />
     </AppShell>
   );
 }
