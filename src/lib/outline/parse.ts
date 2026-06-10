@@ -140,10 +140,10 @@ function readOutlineItem(
     while (cur && safety++ < 5000) {
       const node = readOutlineItem(cur, doc, pageIndex, seen);
       if (node) children.push(node);
-      const childDict = doc.context.lookup(cur);
+      const childDict: PDFObject | undefined = doc.context.lookup(cur);
       cur = null;
       if (childDict instanceof PDFDict) {
-        const next = childDict.get(PDFName.of("Next"));
+        const next: PDFObject | undefined = childDict.get(PDFName.of("Next"));
         if (next instanceof PDFRef) cur = next;
       }
     }
