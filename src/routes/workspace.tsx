@@ -10,7 +10,9 @@ import { ApprovalCard } from "@/components/workspace/approval-card";
 import { useWorkspace } from "@/lib/workspace/doc";
 import { useAgent } from "@/lib/ai/agent";
 import type { ChatTurn } from "@/lib/ai/agent";
-import type { Insight } from "@/lib/intelligence/insights";
+import type { Insight, InsightKind } from "@/lib/intelligence/insights";
+import { locatePII } from "@/lib/intelligence/locate";
+import { rankInsights, recordInsightAction } from "@/lib/intelligence/preferences";
 
 export const Route = createFileRoute("/workspace")({
   ssr: false,
@@ -94,10 +96,45 @@ function WorkspacePage() {
     return () => window.removeEventListener("keydown", handler);
   }, [doc.bytes, doc.pageCount, doc.currentPage, doc.setCurrentPage]);
 
-  const visibleInsights = doc.insightsDismissed ? [] : doc.insights;
-  function actOnInsight(i: Insight) {
+  const visibleInsights = doc.insightsDismissed ? [] : rankInsights(doc.insights);
+  const pdfPiiKinds: InsightKind[] = ["ssn", "card", "email", "phone"];
+
+  async function actOnInsight(i: Insight) {
+    recordInsightAction(i.kind, "accept");
     doc.setCurrentPage(i.firstPage);
     navigate({ search: { tool: i.suggestedTool } });
+    // For PII redact insights, pre-stage real pending boxes the user can review.
+    if (i.suggestedTool === "redact" && pdfPiiKinds.includes(i.kind) && pdfDocRef.current) {
+      try {
+        doc.setStatus("staging redactions…");
+        const seeds = await locatePII(
+          pdfDocRef.current as Parameters<typeof locatePII>[0],
+          [i.kind],
+        );
+        // Drop seeds that overlap an existing box (same page, ~10px tolerance).
+        const existing = doc.boxes;
+        const fresh = seeds.filter(
+          (s) =>
+            !existing.some(
+              (b) =>
+                b.page === s.page &&
+                Math.abs(b.x - s.x) < 10 &&
+                Math.abs(b.y - s.y) < 10,
+            ),
+        );
+        const n = doc.addBoxes(fresh);
+        doc.setStatus(n > 0 ? `staged ${n} ${i.kind} redaction${n === 1 ? "" : "s"}` : null);
+        if (n > 0) window.setTimeout(() => doc.setStatus(null), 2400);
+      } catch (e) {
+        console.warn("locatePII failed", e);
+        doc.setStatus(null);
+      }
+    }
+  }
+
+  function dismissInsights() {
+    for (const i of visibleInsights) recordInsightAction(i.kind, "dismiss");
+    doc.dismissInsights();
   }
 
   return (
@@ -156,7 +193,7 @@ function WorkspacePage() {
                   loading={doc.insightsLoading}
                   insights={visibleInsights}
                   onAct={actOnInsight}
-                  onDismiss={doc.dismissInsights}
+                  onDismiss={dismissInsights}
                 />
               )}
               <div className="relative min-h-0 flex-1">
