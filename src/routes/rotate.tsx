@@ -6,8 +6,17 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { RotateCw, RotateCcw } from "lucide-react";
 import { PDFDocument, degrees } from "pdf-lib";
-import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
+import { FileBar, ModeBtn, ToolHeader } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import { PdfResultPreview } from "@/components/pdf-result-preview";
+
+type Result = {
+  bytes: Uint8Array;
+  originalBytes: Uint8Array;
+  name: string;
+  rotatedCount: number;
+  durationMs: number;
+};
 
 export const Route = createFileRoute("/rotate")({
   head: () => ({
