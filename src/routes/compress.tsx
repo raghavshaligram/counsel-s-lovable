@@ -127,18 +127,15 @@ function CompressPage() {
     setBusy(true);
     setResult(null);
     setProgress({ done: 0, total: pageCount });
+    const t0 = performance.now();
     try {
       const { dpi, quality } = PRESETS[preset];
-      // pdf.js renders at scale = dpi / 72
       const scale = dpi / 72;
 
       const pdfjs = await loadPdfjs();
       const srcBytes = new Uint8Array(await file.arrayBuffer());
-      // pdf.js transfers the underlying buffer to its worker (detaching it),
-      // so hand each consumer its own copy.
       const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
 
-      // Get original page dimensions (in pt) from pdf-lib so output PDF matches
       const sizingDoc = await PDFDocument.load(srcBytes.slice(), {
         ignoreEncryption: true,
       });
@@ -179,11 +176,9 @@ function CompressPage() {
         p.drawImage(jpg, { x: 0, y: 0, width: sz.w, height: sz.h });
 
         setProgress({ done: i + 1, total: srcDoc.numPages });
-        // Yield so UI updates
         if (i % 2 === 1) await new Promise((r) => setTimeout(r, 0));
       }
 
-      // Strip metadata
       out.setTitle("");
       out.setAuthor("");
       out.setSubject("");
@@ -192,14 +187,14 @@ function CompressPage() {
       out.setCreator("VaultPDF");
 
       const bytes = await out.save();
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
       const name = file.name.replace(/\.pdf$/i, "") + `-compressed.pdf`;
       setResult({
-        url,
+        bytes,
+        originalBytes: srcBytes,
         name,
         originalSize: file.size,
-        newSize: blob.size,
+        newSize: bytes.byteLength,
+        durationMs: Math.round(performance.now() - t0),
       });
       toast.success("Compressed PDF ready");
     } catch (err) {
