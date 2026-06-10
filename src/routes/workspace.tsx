@@ -94,9 +94,22 @@ function WorkspacePage() {
     return () => window.removeEventListener("keydown", handler);
   }, [doc.bytes, doc.pageCount, doc.currentPage, doc.setCurrentPage]);
 
+  const visibleInsights = doc.insightsDismissed ? [] : doc.insights;
+  function actOnInsight(i: Insight) {
+    doc.setCurrentPage(i.firstPage);
+    navigate({ search: { tool: i.suggestedTool } });
+  }
+
   return (
     <>
-      <CommandPalette />
+      <CommandPalette
+        suggestions={visibleInsights.map((i) => ({
+          id: `insight:${i.id}`,
+          label: `${i.label} — open ${i.suggestedTool}`,
+          hint: i.hint,
+          run: () => actOnInsight(i),
+        }))}
+      />
       <WorkspaceShell
         fileLabel={
           <>
@@ -137,13 +150,25 @@ function WorkspacePage() {
         }
         canvas={
           doc.bytes ? (
-            <DocumentCanvas
-              pages={doc.pageCount}
-              current={doc.currentPage}
-              onPageInView={doc.setCurrentPage}
-              renderPage={renderPage}
-              boxesForPage={(i) => doc.boxes.filter(b => b.page === i) as unknown as PageBox[]}
-            />
+            <div className="flex h-full flex-col">
+              {(doc.insightsLoading || visibleInsights.length > 0) && (
+                <SuggestionsStrip
+                  loading={doc.insightsLoading}
+                  insights={visibleInsights}
+                  onAct={actOnInsight}
+                  onDismiss={doc.dismissInsights}
+                />
+              )}
+              <div className="relative min-h-0 flex-1">
+                <DocumentCanvas
+                  pages={doc.pageCount}
+                  current={doc.currentPage}
+                  onPageInView={doc.setCurrentPage}
+                  renderPage={renderPage}
+                  boxesForPage={(i) => doc.boxes.filter(b => b.page === i) as unknown as PageBox[]}
+                />
+              </div>
+            </div>
           ) : (
             <Dropzone />
           )
