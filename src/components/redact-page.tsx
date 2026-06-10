@@ -191,7 +191,9 @@ export function RedactPage() {
   const [keywordBoxes, setKeywordBoxes] = useState<Box[]>([]);
   const [kwQuery, setKwQuery] = useState("");
   const [kwMatchCase, setKwMatchCase] = useState(false);
-  const [kwWholeWord, setKwWholeWord] = useState(false);
+  // Match Acrobat's "Find Text" default — whole-word matching so typing a name
+  // doesn't redact the entire surrounding sentence.
+  const [kwWholeWord, setKwWholeWord] = useState(true);
   const [kwSearching, setKwSearching] = useState(false);
   
   const [kwStatus, setKwStatus] = useState<string | null>(null);
