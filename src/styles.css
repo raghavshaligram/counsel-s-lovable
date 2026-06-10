@@ -35,6 +35,11 @@
   --color-vault-foreground: var(--vault-foreground);
   --color-evidence: var(--evidence);
   --color-surface-canvas: var(--surface-canvas);
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-canvas: var(--canvas);
+  --color-whisper: var(--whisper);
+
 
   /* Fluid type scale */
   --text-display: clamp(2.75rem, 6vw, 5rem);
