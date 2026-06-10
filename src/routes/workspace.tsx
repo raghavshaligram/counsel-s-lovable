@@ -5,7 +5,10 @@ import { WorkspaceShell, ToolRail, ThumbStrip, Inspector, SectionHeader, Pill, E
 import { DocumentCanvas, type PageBox } from "@/components/workspace/document-canvas";
 import { CommandPalette } from "@/components/workspace/command-palette";
 import { TokenMeter } from "@/components/workspace/token-meter";
+import { ApprovalCard } from "@/components/workspace/approval-card";
 import { useWorkspace } from "@/lib/workspace/doc";
+import { useAgent } from "@/lib/ai/agent";
+import type { ChatTurn } from "@/lib/ai/agent";
 
 export const Route = createFileRoute("/workspace")({
   ssr: false,
@@ -199,23 +202,81 @@ function ToolPanel({ tool, pending, committed }: { tool: string; pending: number
 }
 
 function ChatPanel({ onClose }: { onClose: () => void }) {
+  const { turns, phase, liveCost, liveTokens, liveState, send, approve, reject, cancel } = useAgent();
+  const [text, setText] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [turns]);
+
+  async function submit() {
+    const t = text.trim();
+    if (!t || phase === "thinking" || phase === "streaming") return;
+    setText("");
+    await send(t);
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-whisper px-3 py-2 text-[11px]">
         <span className="uppercase tracking-[0.18em] text-ink/50">Chat</span>
         <div className="flex items-center gap-2">
-          <TokenMeter cost={0} tokens={0} state="queued" />
+          <TokenMeter cost={liveCost} tokens={liveTokens} state={liveState} />
           <button onClick={onClose} className="text-ink/40 hover:text-ink">×</button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-3 text-sm text-ink/70">
-        <p className="opacity-60">Add a provider in /vault to begin a conversation.</p>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
+        {turns.length === 0 && (
+          <p className="opacity-60">Add a provider in /vault to begin. Try: "Redact every mention of 'Acme'".</p>
+        )}
+        {turns.map((t: ChatTurn) => {
+          if (t.pendingApproval) {
+            return (
+              <ApprovalCard
+                key={t.id}
+                title={`Run ${t.pendingApproval.toolName}`}
+                summary={`Arguments: ${JSON.stringify(t.pendingApproval.args)}`}
+                tone={t.pendingApproval.permission === "destructive" ? "evidence" : "vault"}
+                onApprove={() => approve(t.id)}
+                onReject={() => reject(t.id)}
+              />
+            );
+          }
+          return (
+            <div key={t.id} className={t.role === "user" ? "text-ink" : "text-ink/80"}>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-ink/40 mb-0.5">{t.role}</div>
+              <div className="whitespace-pre-wrap leading-snug">{t.text}</div>
+            </div>
+          );
+        })}
+        {phase === "thinking" && <div className="text-[12px] text-ink/40">thinking…</div>}
       </div>
-      <div className="border-t border-whisper p-2">
-        <input
+      <div className="border-t border-whisper p-2 flex items-end gap-2">
+        <textarea
+          ref={inputRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+          rows={1}
           placeholder="Ask the document…"
-          className="w-full rounded-md border border-whisper bg-background/60 px-3 py-2 text-sm"
+          className="flex-1 resize-none rounded-md border border-whisper bg-background/60 px-3 py-2 text-sm"
         />
+        {phase === "streaming" || phase === "thinking" ? (
+          <button onClick={cancel} className="rounded-md border border-whisper px-3 py-2 text-[12px] text-ink/70 hover:bg-whisper">
+            Stop
+          </button>
+        ) : (
+          <button onClick={submit} disabled={!text.trim()} className="rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground disabled:opacity-40">
+            Send
+          </button>
+        )}
       </div>
     </div>
   );

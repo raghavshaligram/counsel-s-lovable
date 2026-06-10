@@ -5,6 +5,7 @@ import { Lock, KeyRound, ShieldCheck, Cpu, Network, Terminal } from "lucide-reac
 import { detectResources } from "@/lib/workers/resources";
 import { vaultStatus } from "@/lib/vault/store";
 import { UnlockDialog } from "@/components/vault/unlock-dialog";
+import { ProvidersDialog } from "@/components/vault/providers-dialog";
 
 export const Route = createFileRoute("/vault")({
   ssr: false,
@@ -21,6 +22,7 @@ function VaultPage() {
   const [status, setStatus] = useState<{ unlocked: boolean; hasSigningKey: boolean } | null>(null);
   const [resources, setResources] = useState<ReturnType<typeof detectResources> | null>(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [providersOpen, setProvidersOpen] = useState(false);
 
   const refresh = () => { void vaultStatus().then(setStatus); };
 
@@ -48,7 +50,7 @@ function VaultPage() {
             action={status?.unlocked ? "Locked" : "Unlock"}
             onAction={() => setUnlockOpen(true)}
           />
-          <Card icon={<KeyRound className="h-4 w-4" />} title="AI Providers" body="BYOK: OpenAI · Anthropic · Google · Ollama · OpenAI-compatible. Keys stored encrypted." action="Add provider" />
+          <Card icon={<KeyRound className="h-4 w-4" />} title="AI Providers" body="BYOK: OpenAI · Anthropic · Google · Ollama · OpenAI-compatible. Keys stored on this device." action="Manage" onAction={() => setProvidersOpen(true)} />
           <Card icon={<ShieldCheck className="h-4 w-4" />} title="Signing Key" body={status?.hasSigningKey ? "Ed25519 key active. Embedded in every certificate." : "Auto-generated on first unlock."} action="View public key" />
           <Card icon={<Cpu className="h-4 w-4" />} title="Document Cache" body={`Encrypted IndexedDB. Mode: ${resources?.tier ?? "—"} (${resources?.memory ?? "?"} GB / ${resources?.cores ?? "?"} cores).`} action="Clear cache" />
           <Card icon={<Network className="h-4 w-4" />} title="Network Log" body="Every outbound request to an AI provider, with hash + timestamp. Transparent by default." action="Open log" />
@@ -56,6 +58,7 @@ function VaultPage() {
         </div>
       </main>
       <UnlockDialog open={unlockOpen} onOpenChange={setUnlockOpen} onUnlocked={refresh} />
+      <ProvidersDialog open={providersOpen} onOpenChange={setProvidersOpen} />
     </AppShell>
   );
 }
