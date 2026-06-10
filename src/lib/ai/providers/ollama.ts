@@ -1,4 +1,5 @@
 import type { ProviderAdapter, ChatChunk, StreamArgs } from "../types";
+import { loggedFetch } from "@/lib/trust/network-log";
 
 /**
  * Ollama — local-first. No API key needed; we still accept one for
