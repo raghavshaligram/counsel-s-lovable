@@ -86,7 +86,7 @@ export function ThumbStrip({
     el?.scrollIntoView({ block: "nearest" });
   }, [current]);
 
-  const handleKey = (e: React.KeyboardEvent, i: number) => {
+  const handleKey = (e: ReactKeyboardEvent, i: number) => {
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
       e.preventDefault();
       const next = Math.min(pages - 1, i + 1);
