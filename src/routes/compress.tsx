@@ -233,6 +233,22 @@ function CompressPage() {
         collapsed={!!file}
       />
       <div className={`mx-auto px-5 md:px-8 py-10 ${file ? "max-w-5xl" : "max-w-3xl"}`}>
+        {trayCount > 0 && (
+          <div className="mb-6 rounded-md border border-vault/30 bg-vault/5 px-4 py-3 flex items-center justify-between">
+            <div className="text-xs text-muted-foreground">
+              <span className="font-mono uppercase tracking-[0.2em] text-vault/80">Tray · {trayCount}</span> ready for batch compression at the current preset.
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchOpen(true)}
+              className="border-vault/40 text-vault hover:bg-vault/10"
+            >
+              <Layers className="h-3.5 w-3.5 mr-1.5" />
+              Compress all
+            </Button>
+          </div>
+        )}
         {!file ? (
           <FileDropzone
             onFile={onFile}
