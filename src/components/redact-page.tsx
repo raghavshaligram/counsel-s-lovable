@@ -1261,32 +1261,6 @@ function ToolRailBtn({
   );
 }
 
-function LabelHint({
-  defaultLabel,
-  onEdit,
-}: {
-  defaultLabel: string;
-  onEdit: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-card/40 px-2.5 py-1.5 text-[11px]">
-      <span className="flex items-center gap-1.5 text-muted-foreground min-w-0">
-        <Tag className="h-3 w-3 text-vault shrink-0" />
-        Labeling as{" "}
-        <span className="text-foreground font-medium truncate">
-          {defaultLabel || "No label"}
-        </span>
-      </span>
-      <button
-        onClick={onEdit}
-        className="text-vault hover:underline shrink-0"
-        type="button"
-      >
-        Change
-      </button>
-    </div>
-  );
-}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
