@@ -28,6 +28,8 @@ import { linkifyPage } from "@/lib/outline/linkify";
 import type { Dest, LinkAnnot, OutlineNode, ParsedDoc } from "@/lib/outline/types";
 import { newId } from "@/lib/outline/types";
 import { cn } from "@/lib/utils";
+import { ToolHeader } from "@/routes/split";
+
 
 export const Route = createFileRoute("/outline")({
   head: () => ({
