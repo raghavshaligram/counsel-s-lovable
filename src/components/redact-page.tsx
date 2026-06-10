@@ -783,6 +783,7 @@ export function RedactPage() {
           </div>
         </div>
       ) : (
+        <TooltipProvider delayDuration={250}>
         <div
           className={cn(
             "grid w-full overflow-hidden",
