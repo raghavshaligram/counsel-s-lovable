@@ -4,11 +4,13 @@ import { ShieldCheck, PenLine, GitCompare, Table2, ScanText, Hash, MessageSquare
 import { WorkspaceShell, ToolRail, ThumbStrip, Inspector, SectionHeader, Pill, EmptyState } from "@/components/workspace/primitives";
 import { DocumentCanvas, type PageBox } from "@/components/workspace/document-canvas";
 import { CommandPalette } from "@/components/workspace/command-palette";
+import { SuggestionsStrip } from "@/components/workspace/suggestions-strip";
 import { TokenMeter } from "@/components/workspace/token-meter";
 import { ApprovalCard } from "@/components/workspace/approval-card";
 import { useWorkspace } from "@/lib/workspace/doc";
 import { useAgent } from "@/lib/ai/agent";
 import type { ChatTurn } from "@/lib/ai/agent";
+import type { Insight } from "@/lib/intelligence/insights";
 
 export const Route = createFileRoute("/workspace")({
   ssr: false,
@@ -92,9 +94,22 @@ function WorkspacePage() {
     return () => window.removeEventListener("keydown", handler);
   }, [doc.bytes, doc.pageCount, doc.currentPage, doc.setCurrentPage]);
 
+  const visibleInsights = doc.insightsDismissed ? [] : doc.insights;
+  function actOnInsight(i: Insight) {
+    doc.setCurrentPage(i.firstPage);
+    navigate({ search: { tool: i.suggestedTool } });
+  }
+
   return (
     <>
-      <CommandPalette />
+      <CommandPalette
+        suggestions={visibleInsights.map((i) => ({
+          id: `insight:${i.id}`,
+          label: `${i.label} — open ${i.suggestedTool}`,
+          hint: i.hint,
+          run: () => actOnInsight(i),
+        }))}
+      />
       <WorkspaceShell
         fileLabel={
           <>
@@ -135,13 +150,25 @@ function WorkspacePage() {
         }
         canvas={
           doc.bytes ? (
-            <DocumentCanvas
-              pages={doc.pageCount}
-              current={doc.currentPage}
-              onPageInView={doc.setCurrentPage}
-              renderPage={renderPage}
-              boxesForPage={(i) => doc.boxes.filter(b => b.page === i) as unknown as PageBox[]}
-            />
+            <div className="flex h-full flex-col">
+              {(doc.insightsLoading || visibleInsights.length > 0) && (
+                <SuggestionsStrip
+                  loading={doc.insightsLoading}
+                  insights={visibleInsights}
+                  onAct={actOnInsight}
+                  onDismiss={doc.dismissInsights}
+                />
+              )}
+              <div className="relative min-h-0 flex-1">
+                <DocumentCanvas
+                  pages={doc.pageCount}
+                  current={doc.currentPage}
+                  onPageInView={doc.setCurrentPage}
+                  renderPage={renderPage}
+                  boxesForPage={(i) => doc.boxes.filter(b => b.page === i) as unknown as PageBox[]}
+                />
+              </div>
+            </div>
           ) : (
             <Dropzone />
           )
