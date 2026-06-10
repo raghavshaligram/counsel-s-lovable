@@ -6,6 +6,7 @@ import { detectResources } from "@/lib/workers/resources";
 import { vaultStatus } from "@/lib/vault/store";
 import { UnlockDialog } from "@/components/vault/unlock-dialog";
 import { ProvidersDialog } from "@/components/vault/providers-dialog";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/vault")({
   ssr: false,
@@ -51,10 +52,53 @@ function VaultPage() {
             onAction={() => setUnlockOpen(true)}
           />
           <Card icon={<KeyRound className="h-4 w-4" />} title="AI Providers" body="BYOK: OpenAI · Anthropic · Google · Ollama · OpenAI-compatible. Keys stored on this device." action="Manage" onAction={() => setProvidersOpen(true)} />
-          <Card icon={<ShieldCheck className="h-4 w-4" />} title="Signing Key" body={status?.hasSigningKey ? "Ed25519 key active. Embedded in every certificate." : "Auto-generated on first unlock."} action="View public key" />
-          <Card icon={<Cpu className="h-4 w-4" />} title="Document Cache" body={`Encrypted IndexedDB. Mode: ${resources?.tier ?? "—"} (${resources?.memory ?? "?"} GB / ${resources?.cores ?? "?"} cores).`} action="Clear cache" />
-          <Card icon={<Network className="h-4 w-4" />} title="Network Log" body="Every outbound request to an AI provider, with hash + timestamp. Transparent by default." action="Open log" />
-          <Card icon={<Terminal className="h-4 w-4" />} title="CSP Templates" body="Copy-paste CSP + reverse-proxy snippets for self-hosted Ollama or custom endpoints." action="Show snippets" />
+          <Card
+            icon={<ShieldCheck className="h-4 w-4" />}
+            title="Signing Key"
+            body={status?.hasSigningKey ? "Ed25519 key active. Embedded in every certificate." : "Auto-generated on first unlock."}
+            action="View public key"
+            onAction={() => {
+              if (!status?.unlocked) return toast.error("Unlock the vault first to view your signing key.");
+              toast.info("Signing key viewer ships in Phase 4.");
+            }}
+          />
+          <Card
+            icon={<Cpu className="h-4 w-4" />}
+            title="Document Cache"
+            body={`Encrypted IndexedDB. Mode: ${resources?.tier ?? "—"} (${resources?.memory ?? "?"} GB / ${resources?.cores ?? "?"} cores).`}
+            action="Clear cache"
+            onAction={async () => {
+              if (typeof indexedDB === "undefined") return;
+              const dbs = await indexedDB.databases?.();
+              await Promise.all((dbs ?? []).map(d => d.name ? new Promise<void>((res) => {
+                const req = indexedDB.deleteDatabase(d.name!);
+                req.onsuccess = req.onerror = req.onblocked = () => res();
+              }) : Promise.resolve()));
+              toast.success("Document cache cleared.");
+            }}
+          />
+          <Card
+            icon={<Network className="h-4 w-4" />}
+            title="Network Log"
+            body="Every outbound request to an AI provider, with hash + timestamp. Transparent by default."
+            action="Open log"
+            onAction={() => toast.info("Network log viewer ships in Phase 4.")}
+          />
+          <Card
+            icon={<Terminal className="h-4 w-4" />}
+            title="CSP Templates"
+            body="Copy-paste CSP + reverse-proxy snippets for self-hosted Ollama or custom endpoints."
+            action="Copy CSP"
+            onAction={async () => {
+              const csp = `default-src 'self'; connect-src 'self' https://api.openai.com https://api.anthropic.com http://localhost:11434; worker-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;`;
+              try {
+                await navigator.clipboard.writeText(csp);
+                toast.success("CSP snippet copied to clipboard.");
+              } catch {
+                toast.error("Couldn't access clipboard.");
+              }
+            }}
+          />
         </div>
       </main>
       <UnlockDialog open={unlockOpen} onOpenChange={setUnlockOpen} onUnlocked={refresh} />

@@ -71,6 +71,27 @@ function WorkspacePage() {
   const pendingCount = doc.boxes.filter(b => b.kind === "pending").length;
   const committedCount = doc.boxes.filter(b => b.kind === "committed").length;
 
+  // Global keyboard nav: arrows / PageUp/Down / Home / End move pages.
+  useEffect(() => {
+    if (!doc.bytes || doc.pageCount === 0) return;
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      let next: number | null = null;
+      if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === "j") next = Math.min(doc.pageCount - 1, doc.currentPage + 1);
+      else if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "k") next = Math.max(0, doc.currentPage - 1);
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = doc.pageCount - 1;
+      if (next !== null && next !== doc.currentPage) {
+        e.preventDefault();
+        doc.setCurrentPage(next);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [doc.bytes, doc.pageCount, doc.currentPage, doc.setCurrentPage]);
+
   return (
     <>
       <CommandPalette />

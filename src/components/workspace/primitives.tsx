@@ -114,7 +114,7 @@ export function ThumbStrip({
             onKeyDown={(e) => handleKey(e, i)}
             className={cn(
               "block aspect-[3/4] w-full rounded border bg-paper/5 text-[10px] font-mono",
-              "border-whisper text-ink/40 hover:border-ink/30 focus:outline-none focus:ring-2 focus:ring-vault/60",
+              "border-whisper text-ink/40 hover:border-ink/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-vault/60",
               current === i && "border-vault text-vault"
             )}
           >
