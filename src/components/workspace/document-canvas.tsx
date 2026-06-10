@@ -117,11 +117,19 @@ function PageSlot({
   // Render page when near current and not scrolling
   useEffect(() => {
     if (!isNear || scrolling || !renderPage || !baseRef.current) return;
-    void renderPage(index, baseRef.current);
+    const base = baseRef.current;
+    void Promise.resolve(renderPage(index, base)).then(() => {
+      // Match overlay backing store to the base so box coords (in viewport px) align.
+      const overlay = overlayRef.current;
+      if (overlay && (overlay.width !== base.width || overlay.height !== base.height)) {
+        overlay.width = base.width;
+        overlay.height = base.height;
+      }
+      drawOverlay();
+    });
   }, [isNear, scrolling, index, renderPage]);
 
-  // Draw overlay boxes on a single transparent canvas
-  useEffect(() => {
+  function drawOverlay() {
     const c = overlayRef.current;
     if (!c) return;
     const ctx = c.getContext("2d");
@@ -132,15 +140,20 @@ function PageSlot({
         ctx.fillStyle = "rgba(20,20,28,1)";
         ctx.fillRect(b.x, b.y, b.w, b.h);
       } else {
-        // pending: pulsing amber outline (static here; pulse via CSS class on wrapper)
         ctx.strokeStyle = "rgba(245,180,40,0.9)";
         ctx.lineWidth = 1.5;
         ctx.setLineDash([4, 3]);
         ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
-        ctx.fillStyle = "rgba(245,180,40,0.12)";
+        ctx.fillStyle = "rgba(245,180,40,0.18)";
         ctx.fillRect(b.x, b.y, b.w, b.h);
       }
     }
+  }
+
+  // Redraw overlay when boxes change
+  useEffect(() => {
+    drawOverlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boxes]);
 
   return (
