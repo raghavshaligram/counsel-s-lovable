@@ -26,9 +26,10 @@ function fromHex(hex: string): Uint8Array {
 }
 
 export async function sha256(bytes: Uint8Array | ArrayBuffer): Promise<string> {
-  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  const copy = new Uint8Array(view); // ensure plain ArrayBuffer backing
-  const hash = await crypto.subtle.digest("SHA-256", copy);
+  const src = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const buf = new ArrayBuffer(src.byteLength);
+  new Uint8Array(buf).set(src);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
   return toHex(new Uint8Array(hash));
 }
 
