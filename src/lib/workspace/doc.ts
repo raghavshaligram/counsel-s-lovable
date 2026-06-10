@@ -121,15 +121,19 @@ export const useWorkspace = create<WorkspaceDocState>((set, get) => {
     currentPage: 0,
     pagesInView: new Set(),
     workStatus: null,
+    insights: [],
+    insightsLoading: false,
+    insightsDismissed: false,
 
     async open(file) {
-      set({ workStatus: "loading…" });
+      set({ workStatus: "loading…", insights: [], insightsDismissed: false, insightsLoading: false });
       const bytes = await file.arrayBuffer();
       const hash = await sha256Hex(bytes);
       const docId = hash.slice(0, 32);
 
       // Count pages via pdfjs — done in main thread for skeleton; moves to worker in Phase 3.
       let pageCount = 0;
+      let loadedPdf: unknown = null;
       try {
         const pdfjs = await import("pdfjs-dist");
         const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default as string;
@@ -137,6 +141,7 @@ export const useWorkspace = create<WorkspaceDocState>((set, get) => {
         const loadingTask = pdfjs.getDocument({ data: bytes.slice(0) });
         const doc = await loadingTask.promise;
         pageCount = doc.numPages;
+        loadedPdf = doc;
       } catch (e) {
         console.warn("pdfjs load failed", e);
       }
@@ -150,11 +155,26 @@ export const useWorkspace = create<WorkspaceDocState>((set, get) => {
         boxes: [],
         currentPage: 0,
         pagesInView: new Set([0]),
-        workStatus: "indexing…",
+        workStatus: "analyzing…",
+        insightsLoading: true,
       });
       scheduleFlush(get);
-      // Phase 3: trigger lazy extract pipeline. For now, drop status after a beat.
-      setTimeout(() => set({ workStatus: null }), 600);
+
+      // Intelligence pass — non-blocking, results stream into the UI.
+      if (loadedPdf) {
+        const targetDocId = docId;
+        analyzeDocument(loadedPdf as Parameters<typeof analyzeDocument>[0])
+          .then((insights) => {
+            if (get().docId !== targetDocId) return; // user switched docs
+            set({ insights, insightsLoading: false, workStatus: null });
+          })
+          .catch((e) => {
+            console.warn("analyze failed", e);
+            set({ insightsLoading: false, workStatus: null });
+          });
+      } else {
+        set({ insightsLoading: false, workStatus: null });
+      }
     },
 
     setCurrentPage(i) {
@@ -183,8 +203,11 @@ export const useWorkspace = create<WorkspaceDocState>((set, get) => {
     setStatus(msg) {
       set({ workStatus: msg });
     },
+    dismissInsights() {
+      set({ insightsDismissed: true });
+    },
     reset() {
-      set({ docId: null, docHash: null, fileName: null, pageCount: 0, bytes: null, boxes: [], currentPage: 0, pagesInView: new Set(), workStatus: null });
+      set({ docId: null, docHash: null, fileName: null, pageCount: 0, bytes: null, boxes: [], currentPage: 0, pagesInView: new Set(), workStatus: null, insights: [], insightsLoading: false, insightsDismissed: false });
     },
   };
 });
