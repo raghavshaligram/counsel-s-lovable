@@ -29,6 +29,10 @@ export type WorkspaceDocState = {
   pagesInView: Set<number>;
   // status line — feeds AppShell file label
   workStatus: string | null;
+  // intelligence layer
+  insights: Insight[];
+  insightsLoading: boolean;
+  insightsDismissed: boolean;
 
   // mutations
   open(file: File): Promise<void>;
@@ -38,6 +42,7 @@ export type WorkspaceDocState = {
   removeBox(id: string): void;
   commitPending(): void;
   setStatus(msg: string | null): void;
+  dismissInsights(): void;
   reset(): void;
 };
 
