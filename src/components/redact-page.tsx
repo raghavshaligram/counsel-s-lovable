@@ -1254,21 +1254,31 @@ function ToolRailBtn({
   disabled?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={kbd ? `${label} (${kbd})` : label}
-      className={cn(
-        "relative grid h-9 w-9 place-items-center rounded-md transition",
-        active
-          ? "bg-vault/15 text-vault"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
-        disabled && "opacity-40 cursor-not-allowed",
-      )}
-    >
-      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-vault" />}
-      <Icon className="h-4 w-4" />
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+          className={cn(
+            "relative grid h-9 w-9 place-items-center rounded-md transition",
+            active
+              ? "bg-vault/15 text-vault"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+            disabled && "opacity-40 cursor-not-allowed",
+          )}
+        >
+          {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-vault" />}
+          <Icon className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8} className="flex items-center gap-2">
+        <span>{label}</span>
+        {kbd && (
+          <kbd className="rounded bg-background/20 px-1 py-0.5 text-[10px] font-mono">{kbd}</kbd>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
