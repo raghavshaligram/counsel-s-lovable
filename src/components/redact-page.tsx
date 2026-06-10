@@ -1202,17 +1202,17 @@ export function RedactPage() {
                     className="relative flex items-start gap-2.5 rounded-lg p-2.5 overflow-hidden"
                     style={{
                       background:
-                        "linear-gradient(135deg, color-mix(in oklab, var(--vault-amber) 14%, transparent), color-mix(in oklab, var(--vault-amber) 4%, transparent))",
-                      border: "1px solid color-mix(in oklab, var(--vault-amber) 32%, transparent)",
+                        "linear-gradient(135deg, color-mix(in oklab, var(--vault) 14%, transparent), color-mix(in oklab, var(--vault) 4%, transparent))",
+                      border: "1px solid color-mix(in oklab, var(--vault) 32%, transparent)",
                       boxShadow:
-                        "0 1px 0 color-mix(in oklab, var(--vault-amber) 18%, transparent) inset, 0 6px 18px -10px color-mix(in oklab, var(--vault-amber) 40%, transparent)",
+                        "0 1px 0 color-mix(in oklab, var(--vault) 18%, transparent) inset, 0 6px 18px -10px color-mix(in oklab, var(--vault) 40%, transparent)",
                     }}
                   >
                     <span
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
                       style={{
-                        background: "color-mix(in oklab, var(--vault-amber) 18%, transparent)",
-                        color: "var(--vault-amber)",
+                        background: "color-mix(in oklab, var(--vault) 18%, transparent)",
+                        color: "var(--vault)",
                       }}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
@@ -1220,7 +1220,7 @@ export function RedactPage() {
                     <div className="leading-snug text-[11.5px]">
                       <div
                         className="font-semibold tracking-tight"
-                        style={{ color: "var(--vault-amber)" }}
+                        style={{ color: "var(--vault)" }}
                       >
                         Scanned pages auto-OCR
                       </div>
