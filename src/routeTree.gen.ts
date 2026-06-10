@@ -26,6 +26,7 @@ import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PrivilegeScanRouteImport } from './routes/privilege-scan'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PageNumbersRouteImport } from './routes/page-numbers'
+import { Route as OutlineRouteImport } from './routes/outline'
 import { Route as OrganizeRouteImport } from './routes/organize'
 import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
@@ -125,6 +126,11 @@ const PageNumbersRoute = PageNumbersRouteImport.update({
   path: '/page-numbers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OutlineRoute = OutlineRouteImport.update({
+  id: '/outline',
+  path: '/outline',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrganizeRoute = OrganizeRouteImport.update({
   id: '/organize',
   path: '/organize',
@@ -205,6 +211,7 @@ export interface FileRoutesByFullPath {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
+  '/outline': typeof OutlineRoute
   '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
@@ -237,6 +244,7 @@ export interface FileRoutesByTo {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
+  '/outline': typeof OutlineRoute
   '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
@@ -270,6 +278,7 @@ export interface FileRoutesById {
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
+  '/outline': typeof OutlineRoute
   '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
   '/privilege-scan': typeof PrivilegeScanRoute
@@ -304,6 +313,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/organize'
+    | '/outline'
     | '/page-numbers'
     | '/pricing'
     | '/privilege-scan'
@@ -336,6 +346,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/organize'
+    | '/outline'
     | '/page-numbers'
     | '/pricing'
     | '/privilege-scan'
@@ -368,6 +379,7 @@ export interface FileRouteTypes {
     | '/merge'
     | '/ocr'
     | '/organize'
+    | '/outline'
     | '/page-numbers'
     | '/pricing'
     | '/privilege-scan'
@@ -401,6 +413,7 @@ export interface RootRouteChildren {
   MergeRoute: typeof MergeRoute
   OcrRoute: typeof OcrRoute
   OrganizeRoute: typeof OrganizeRoute
+  OutlineRoute: typeof OutlineRoute
   PageNumbersRoute: typeof PageNumbersRoute
   PricingRoute: typeof PricingRoute
   PrivilegeScanRoute: typeof PrivilegeScanRoute
@@ -541,6 +554,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PageNumbersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/outline': {
+      id: '/outline'
+      path: '/outline'
+      fullPath: '/outline'
+      preLoaderRoute: typeof OutlineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/organize': {
       id: '/organize'
       path: '/organize'
@@ -649,6 +669,7 @@ const rootRouteChildren: RootRouteChildren = {
   MergeRoute: MergeRoute,
   OcrRoute: OcrRoute,
   OrganizeRoute: OrganizeRoute,
+  OutlineRoute: OutlineRoute,
   PageNumbersRoute: PageNumbersRoute,
   PricingRoute: PricingRoute,
   PrivilegeScanRoute: PrivilegeScanRoute,
@@ -670,13 +691,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

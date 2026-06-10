@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { Lock, Menu, Layers } from "lucide-react";
+import { Lock, Menu, Layers, ListTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   NavigationMenu,
@@ -73,6 +73,7 @@ const groups: Group[] = [
     label: "Structure",
     tagline: "Re-shape, number, and lock down documents.",
     items: [
+      { to: "/outline", label: "Outline & Links", icon: ListTree, desc: "Edit bookmarks tree and link annotations" },
       { to: "/page-numbers", label: "Page Numbers", icon: HashIcon, desc: "Stamp numbers — position, format, skip first N" },
       { to: "/header-footer", label: "Header & Footer", icon: HashIcon, desc: "Custom text with tokens — {page}, {date}, {filename}" },
       { to: "/flatten", label: "Flatten", icon: Lock, desc: "Bake forms and annotations into static content" },
