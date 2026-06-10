@@ -559,7 +559,9 @@ function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments, on
       </Button>
 
       <div className="ml-auto flex items-center gap-2">
+        <DocOpsMenu doc={state.doc} onReload={onReloadDoc} />
         <Button
+
           size="sm"
           variant={commentsOpen ? "default" : "outline"}
           onClick={onToggleComments}
