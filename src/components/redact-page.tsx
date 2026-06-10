@@ -502,7 +502,7 @@ export function RedactPage() {
   // otherwise they could click Redact on stale results.
   useEffect(() => {
     setPendingMatches(null);
-  }, [kwQuery, kwMatchCase, kwWholeWord]);
+  }, [kwQuery, kwMatchCase, kwWholeWord, kwScope]);
 
   const removeKeywordGroup = (id: string) => {
     setKeywordGroups((prev) => prev.filter((g) => g.id !== id));
