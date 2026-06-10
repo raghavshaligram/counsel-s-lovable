@@ -58,6 +58,7 @@ function VaultPage() {
         </div>
       </main>
       <UnlockDialog open={unlockOpen} onOpenChange={setUnlockOpen} onUnlocked={refresh} />
+      <ProvidersDialog open={providersOpen} onOpenChange={setProvidersOpen} />
     </AppShell>
   );
 }
