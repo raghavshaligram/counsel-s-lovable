@@ -1,136 +1,94 @@
+# PDF Toolkit — Revised Roadmap (v2)
 
-# VaultPDF v2 — Final Plan (locked)
-
-Locked answers to the three open questions:
-- **Conservative perf mode** triggers at `navigator.deviceMemory ≤ 4`.
-- **Ollama**: ship CSP snippet on `/vault` **and** auto-probe `http://localhost:11434/api/tags` once on first launch; if reachable, one-time prompt to add it as a provider.
-- **Token meter** shows a *queued estimate* (greyed) before the call, then live actual cost during stream, then final settled cost on completion.
+100% client-side. No AI, no Workspace, no server-dependent tools. **Every new route ships with a hand-crafted designed surface** — not a dropzone-and-sidebar template. Before each designed route I'll generate 3 visual directions via `create_directions` and you pick.
 
 ---
 
-## Part A — BYOK Infrastructure
+## Locked technical adjustments (from your feedback)
 
-### A0. Encrypted vault
-- Passkey-first, passphrase co-equal.
-- **A0.1 PRF probe**: at enroll, request WebAuthn `prf` extension and verify `getClientExtensionResults().prf` returned. If absent → inline notice and fall back to passphrase + PBKDF2 (600k, SHA-256). Persist `unlockMode` per credential.
-- Auto-generated Ed25519 signing key, stored encrypted. Public key + rotate/export in `/vault`.
-- Document cache always encrypted (per-doc AES key wrapped by vault key).
-- **A0.2 Key isolation**: raw `CryptoKey` never enters React state / Zustand / Context. Lives as module-scoped, non-exported variables inside `crypto-worker.ts`. Main thread holds opaque handle IDs only; ops via `postMessage`. Worker terminates on lock.
-- **A0.3 Multi-tab coordination**: `navigator.locks.request("vault-unlock", …)` serializes unlock; `BroadcastChannel("vault-session")` sends the *wrapped* session key (sealed with each tab's ephemeral X25519 pubkey announced on open) so a second tab unlocks without re-prompting. Per-tab fallback if `locks` unavailable.
-
-Files: `src/lib/vault/{crypto-worker.ts, store.ts, passkey.ts, signing.ts, tabs.ts}`, `src/components/vault/{UnlockDialog, KeyManager, SigningKeyPanel}.tsx`.
-
-### A1. Provider adapters
-`src/lib/ai/providers/{openai, anthropic, google, ollama, openai-compatible}.ts` — normalized `stream(messages, tools, signal)`, browser→provider direct.
-- **A1.1 CSP**: defaults whitelist known hosts. `/vault` ships a copy-paste CSP + reverse-proxy snippet for custom endpoints. Ollama auto-probed at first launch.
-
-### A2. Tool registry
-Zod-schema wrappers, `permission: safe | confirm | destructive`. JSON-Schema export for any provider.
-
-### A3. Agent runtime
-State machine, AbortSignal, local cost meter.
-- **A3.1 Chunk & Map**: if `doc.pages > 50`, whole-doc tools run map-reduce in a worker pool sized by `hardwareConcurrency`. 10-page chunks, partial results stream as `tool_progress` parts into chat, then reduce step opens `<ApprovalCard/>`.
-
-### A4. Workspace state
-Single in-memory `WorkspaceDoc`, IndexedDB-backed (encrypted).
-- **A4.1 Debounced persistence**: 2s idle flush + flush on tab hide/lock. Atomic snapshots.
-- **A4.2 Lazy extraction**: text/layout extracted on viewport entry or tool target. Cached `(docHash, page)`.
-
-### A5. MCP (Phase 4, no infra cost)
-Client-side MCP client + optional local `vaultpdf-mcp` Node script.
-
-### A6. Trust
-Strict CSP, network transparency log, tamper-evident export (Ed25519 + SHA-256 sidecar), PWA install.
-
-### A7. Power-user
-- `⌘K` palette.
-- **A7.1 Registered commands**: `Redact PII`, `Lock Vault`, `Clear Cache`, `Switch Model`, `Open Recent`, `Export & Sign`, `Toggle Verifiable Mode`.
-- URL-as-state, `?` cheatsheet, JSON pipelines.
+1. **Tray store holds metadata only.** Zustand state = `{ id, sha256, name, size, pageCount, addedAt, thumb? }`. Bytes live in IndexedDB (`idb-keyval`, keyed by SHA-256, deduped). The Batch Runner streams bytes back in *just before* each op runs and drops them as soon as the op resolves. This keeps the tab under memory pressure even with 10+ large files queued.
+2. **Batch Runner is a bounded worker pool.** Pool size = `min(navigator.hardwareConcurrency - 1, 4)` capped by `resources.workerPoolSize` (re-uses `src/lib/workers/resources.ts` tiering — conservative tier drops to 2). Pure tool fn `op(bytes, opts) → bytes` runs in a Worker. Outputs collected, then zipped via `fflate` once the queue drains. Single failure does not abort the batch; per-file status surfaced in UI.
+3. **PDF/A font subsetting via `@pdf-lib/fontkit`.** Scan text layer → build glyph set per font → embed subset (not full file). Applied to every Standard14 substitution and any custom embedded font. Keeps `/pdf-a` output compliant *and* small.
 
 ---
 
-## Part B — One-pass UI system
+## Design bar (every new route)
 
-### B1. Information architecture
-Collapse 24 routes → **3 surfaces**: `/`, `/workspace`, `/vault`. SEO tool routes stay as static marketing pages that deep-link into `/workspace?tool=…`.
+- Custom working surface chosen for the task (page-grid canvas, split tree+viewer, field-paint mode, ruler-overlaid artboard, before/after diff, etc.).
+- Tokens from `src/styles.css` only — no hardcoded colors.
+- Designed empty state (shows what the tool produces), not "Drop PDF here".
+- Inspector panels float; nothing crowds the document.
+- Framer Motion, 200ms ease-out, no bounce. Real keyboard model per tool.
 
-### B2. Six tokens (locked)
-`--ink --paper --canvas --vault --evidence --whisper`. No others.
-
-### B3. Two type scales
-Display serif (H1 + 11px small-caps section headers), body sans (13/14/16px), mono for numerals / hashes / page counts.
-
-### B4. Grid & icons
-8pt grid; icons 14px in chrome, 18px on canvas/CTAs. No 16/20.
-
-### B5. Primitives (built once)
-`AppShell, ToolHeader, ToolRail, ThumbStrip, DocumentCanvas, Inspector, CommandPalette, ApprovalCard, EmptyState`.
-
-### B6. Workspace layout
-`ToolRail · ThumbStrip · DocumentCanvas · Inspector(320px)`.
-
-- **B6.1 Inspector split**: CSS grid, two independent scroll regions when chat is open. Tool panel (default 60%) + chat (default 40%), 1px `--whisper` drag handle with snap stops at 30/50/70%. Each region `overflow-y:auto`, min-heights enforced.
-- **B6.2 Canvas overlay**: pending boxes, pulses, handles render to a single transparent `<canvas>` over the PDF render canvas. JS quadtree for hit-testing. 200 boxes / 100 pages stays at 60fps.
-
-### B7. Per-tool Inspector contents — locked
-Redact · Sign · Compare · Extract · OCR · Bates. Same serif small-caps headers, count-first pills, primary `--vault` button at bottom.
-
-### B8. Verifiable-redaction
-**Modifier** on Workspace (amber left rule, `VERIFIABLE` badge with mono SHA-256 prefix, `Sign & Export` button, mandatory exemption code, Certificate + Privilege Log toggles on by default). Not a separate route shape.
-
-### B9. Motion
-180ms layout transitions, 1.2s `--evidence` pulse on pending redactions, 160ms approval card slide. No toasts; status line in `AppShell`.
-
-### B10. Empty / loading / error
-Defined once. Empty = chrome at 40% opacity + centered dropzone. Loading = skeleton lines in Inspector, canvas stays interactive. Error = inline under affected section in `--evidence`.
-
-### B11. Landing
-Hero with mini-redaction demo, three trust pillars (Your keys / Your docs / Your machine), pricing (Free / Pro $9 / Legal $49), footer linking every SEO landing.
-
-### B12. `/vault` settings
-Unlock · AI providers · Signing key · Document cache · Network log · Pipelines · **CSP templates** panel (from A1.1).
-
-### B13. Token meter
-Monochrome chip in chat input header tray: `$0.042 · 2.1k tkn`. Queued estimate greyed → live actual during stream → settled on completion. Click expands a drawer reusing the providers section from `/vault`.
-
-### B14. Resource-throttle UI (no new primitives)
-- `AppShell` file label appends state in mono: `doc.pdf · 412 pgs (indexing…)`, `(OCR 38/412)`, `(redacting…)`.
-- Off-viewport pages render as `--whisper` 1px-border placeholders with low-opacity dot grid.
+Existing tools (Bates, Redact, Compress, etc.) are NOT redesigned in this roadmap.
 
 ---
 
-## Part D — Performance (Phase 1, not deferred)
+## Phase 1 — Multi-file foundation
 
-| ID | Rule | Where |
-|---|---|---|
-| D1 | All PDF parse / OCR / AES / diff in workers. | `src/lib/workers/` |
-| D2 | Virtualized canvas: render current ±1 page; rest are placeholders. | `DocumentCanvas` |
-| D3 | Low-res while scrolling/zooming; re-render 2–3x after 150ms idle. | `DocumentCanvas` |
-| D4 | Lazy per-page text extract + 10-page AI streaming with live progress. | `agent.ts` + `WorkspaceDoc` |
-| D5 | Mutations to in-memory ledger; 2s debounced IndexedDB flush. | `WorkspaceDoc` |
-| — | Worker pool sized via `hardwareConcurrency`; chunk + cache budgets scale by `deviceMemory` (≤4 conservative, ≥8 aggressive). | All workers |
+1. **Persistent File Tray** — bottom strip, chips per loaded PDF (name, pages, size, remove).
+   - State: `src/lib/tray/store.ts` (Zustand) — **metadata only**.
+   - Bytes: `src/lib/tray/blobs.ts` (`idb-keyval`, SHA-256 keyed, dedup, LRU eviction at `cacheBudgetMB`).
+   - Lazy-load: `await getBytes(id)` only when a tool or batch op needs them.
+   - *Designed: tray as a typographic ledger, not browser tabs.*
+2. **Batch Runner** — `src/lib/batch/runner.ts`.
+   - Worker pool sized from `detectResources()` (cap 4).
+   - Each tool exports `op(bytes, opts) → bytes` in `src/lib/workers/ops/*.worker.ts`.
+   - Per-file progress, fail isolation, **ZIP output via `fflate`** when queue drains.
+   - *Designed: single composed progress timeline.*
+3. **Wire batch into existing tools**: Compress, Watermark, Protect, Rotate, Bates get "Apply to all in tray". Minimal UI toggle, no new design pass.
+4. **`/organize` — cross-doc page grid** *(designed route)*. Thumbnails from every tray PDF in one drag-grid. Drag between docs, reorder, delete, group into new PDF. `/merge` stays for the simple flow.
+5. **Recent files** — IndexedDB, reopen without re-upload. Surfaced as a designed module on landing.
+
+## Phase 2 — Five designed structural tools
+
+- **`/pdf-a`** — PDF/A-2b/3b export. **Font subsetting via `@pdf-lib/fontkit`** (glyphs-used only), RGB→sRGB ICC, strip JS/embedded files, flatten forms, XMP + OutputIntent. *Design: post-export compliance report card.*
+- **`/forms`** — Minimal v1: drag-to-create Text/Checkbox/Radio/Dropdown/Signature, per-field name/required/default/tab order. Real AcroForms in export. No JS validation. *Design: field-paint mode, numbered tab-order overlay.*
+- **`/crop`** — Visual crop handles. MediaBox/CropBox/TrimBox/BleedBox independently. Presets A4/Letter/Legal/A3/custom. *Design: rulers + dimension callouts, InDesign-style artboard.*
+- **`/optimize`** — Presets (Screen/eBook/Print/Prepress) + granular toggles (thumbnails, unused objects, image DPI, JPEG quality, font subset, drop bookmarks, strip metadata/annotations). **No linearization** (needs qpdf). *Design: before/after diff with per-category savings chart.*
+- **`/outline`** — Editable bookmark tree (add/rename/nest/reorder, jump to Page+XY). Rectangle tool for link annotations (URL or GoTo). "Linkify all URLs" one-click. *Design: tree left, viewer center, link inspector right. Keyboard-driven.*
+
+## Phase 2.5 — Small wins (4 tools)
+
+- **`/to-excel`** — Wire existing `extract-tables.ts` (heuristic + OCR fallback, xlsx export). Per-page preview, edit cells before export.
+- **`/flatten`** — Form fields + annotations baked into static page content. Toggle per category.
+- **`/header-footer`** — Per-doc header & footer with tokens (`{page}`, `{pages}`, `{date}`, `{filename}`), font/size/margin/alignment, even/odd/first-page rules. Separate from Bates.
+- **`/page-numbers`** — Position (6 corners + center), format (`1`, `Page 1`, `1 of N`, roman), start number, skip first N, font choice.
+
+All four batch-enabled via the Phase 1 runner.
+
+## Phase 3 — Polish
+
+- **Tamper-evident signing wired in.** `src/lib/trust/export.ts` already exists. Add "Sign export" toggle to every tool's export panel; produces sidecar `<name>.certificate.json` (Ed25519 + SHA-256).
+- **Strict CSP headers.** Apply via TanStack Start response middleware. Tighten `connect-src` to self only (no AI providers anymore). `script-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`.
+- **Free/paid gates.** Free: 3 files/batch, 25 MB/file, no batch on Compress/Optimize/PDF-A. Paid: unlimited, batch on all, ZIP export, signing, PDF/A.
+- **Drag-anywhere dropzone** on every tool page. Encrypted-PDF auto-suggest → `/unlock`.
 
 ---
+
+## Permanently dropped (need server, not feasible 100% client-side)
+
+PDF→PowerPoint · Repair · HTML→PDF / URL→PDF · Booklet imposition · Linearization / Fast Web View · AcroForm JS validation / calculations · PDF/A-1a / 2a / 3a · **PWA install prompt** (per your call).
+
+---
+
+## Technical notes
+
+- Tray store: metadata in Zustand, bytes in `idb-keyval` keyed by SHA-256, LRU evict at `cacheBudgetMB`.
+- Batch runner: bounded Worker pool, ZIP via `fflate`, per-file status.
+- All tools built on `pdf-lib`. PDF/A font subset via `@pdf-lib/fontkit`. Image downsample via canvas. xlsx via existing `xlsx` dep.
+- New routes (TanStack file-based): `/organize`, `/pdf-a`, `/forms`, `/crop`, `/optimize`, `/outline`, `/to-excel`, `/flatten`, `/header-footer`, `/page-numbers`. Each with full SEO `head()` + JSON-LD.
+- App-shell nav: Organize / Convert / Edit / Secure / **Structure** (PDF/A, Forms, Crop, Optimize, Outline, Flatten) / Legal (Bates, Redact, Header/Footer, Page numbers).
+- CSP: response header in TanStack Start server entry. Signing: shared `<ExportPanel/>` primitive used by every tool.
 
 ## Build order
 
-1. **Phase 1 — Design system + perf primitives (1 wk)**
-   Tokens, primitives, Inspector split, canvas overlay, virtualized renderer, worker scaffolding, low/high-res toggle. Migrate `/redact` as proof.
-
-2. **Phase 2 — Vault + workspace (1–2 wks)**
-   Crypto-worker, PRF probe, multi-tab broadcast, encrypted cache + debounced flush, lazy extract, `/workspace`, `/vault` (with CSP templates + Ollama probe). Migrate sign / extract / compare / ocr / bates as Inspector contents only.
-
-3. **Phase 3 — Agent rails (1 wk)**
-   Provider adapters, tool registry, agent runtime + Chunk & Map, approval cards, token meter, palette commands.
-
-4. **Phase 4 — Trust + power (1 wk)**
-   CSP defaults, network log, tamper-evident export, PWA, MCP client + local server script, JSON pipelines.
-
-5. **Phase 5 — Landing + pricing (3 days)**.
-
-UI is frozen after Phase 1. Phases 2–5 only add Inspector contents and backend logic. No re-skins.
-
----
-
-## Out of scope
-Lovable AI fallback, accounts, server-side sync, native mobile, real-time collab.
+1. Tray store (metadata + lazy bytes) + Batch Runner (worker pool + fflate ZIP) + wire existing tools
+2. `/organize` *(first designed route — pick direction)*
+3. `/outline`
+4. `/crop`
+5. `/optimize`
+6. `/pdf-a` (with fontkit subsetting)
+7. `/forms`
+8. **Phase 2.5 burst:** `/to-excel`, `/flatten`, `/header-footer`, `/page-numbers`
+9. Signing everywhere + strict CSP + paywall gates + recent files

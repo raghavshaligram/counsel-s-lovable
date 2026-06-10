@@ -16,6 +16,7 @@ import {
   SheetTitle,
   SheetHeader,
 } from "@/components/ui/sheet";
+import { TrayDock } from "@/components/tray/tray-dock";
 
 type Tool = { to: string; label: string; desc: string; icon: any; beta?: boolean };
 type Group = { id: string; label: string; tagline: string; items: Tool[] };
@@ -484,9 +485,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 min-h-0">{children}</main>
+      <main className="flex-1 min-h-0 pb-28">{children}</main>
 
-      <footer className="border-t border-border px-5 md:px-8 py-6 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
+      <footer className="border-t border-border px-5 md:px-8 py-6 pb-28 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
         <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
         <div className="flex gap-4">
           <Link to="/" className="hover:text-foreground">Home</Link>
@@ -494,6 +495,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <a href="/#trust" className="hover:text-foreground">How privacy works</a>
         </div>
       </footer>
+
+      <TrayDock />
     </div>
   );
 }
