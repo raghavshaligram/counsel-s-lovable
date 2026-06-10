@@ -59,7 +59,7 @@ function VaultPage() {
   );
 }
 
-function Card({ icon, title, body, action }: { icon: React.ReactNode; title: string; body: string; action: string }) {
+function Card({ icon, title, body, action, onAction }: { icon: React.ReactNode; title: string; body: string; action: string; onAction?: () => void }) {
   return (
     <div className="flex items-start gap-4 rounded-lg border border-whisper bg-card/50 p-4">
       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-vault/15 text-vault">{icon}</span>
@@ -67,7 +67,7 @@ function Card({ icon, title, body, action }: { icon: React.ReactNode; title: str
         <div className="text-sm font-medium text-ink">{title}</div>
         <p className="text-[13px] text-ink/60 mt-0.5 leading-snug">{body}</p>
       </div>
-      <button className="rounded-md border border-whisper px-3 py-1.5 text-[12px] text-ink/80 hover:bg-whisper">
+      <button onClick={onAction} className="rounded-md border border-whisper px-3 py-1.5 text-[12px] text-ink/80 hover:bg-whisper">
         {action}
       </button>
     </div>
