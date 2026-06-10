@@ -43,27 +43,25 @@ export function CommandPalette() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <Command>
-        <CommandInput placeholder="Type a command…" />
-        <CommandList>
-          <CommandEmpty>No matching commands.</CommandEmpty>
-          <CommandGroup heading="Commands">
-            {COMMANDS.map((c) => (
-              <CommandItem
-                key={c.id}
-                value={c.label}
-                onSelect={() => {
-                  setOpen(false);
-                  c.run({ navigate });
-                }}
-              >
-                <span>{c.label}</span>
-                {c.hint && <span className="ml-2 text-xs text-ink/40">{c.hint}</span>}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </CommandList>
-      </Command>
+      <CommandInput placeholder="Type a command…" />
+      <CommandList>
+        <CommandEmpty>No matching commands.</CommandEmpty>
+        <CommandGroup heading="Commands">
+          {COMMANDS.map((c) => (
+            <CommandItem
+              key={c.id}
+              value={c.label}
+              onSelect={() => {
+                setOpen(false);
+                c.run({ navigate });
+              }}
+            >
+              <span>{c.label}</span>
+              {c.hint && <span className="ml-2 text-xs text-ink/40">{c.hint}</span>}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </CommandList>
     </CommandDialog>
   );
 }
