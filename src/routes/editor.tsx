@@ -317,7 +317,9 @@ function Editor() {
         onExport={onExport}
         commentsOpen={commentsOpen}
         onToggleComments={() => setCommentsOpen((v) => !v)}
+        onReloadDoc={(d) => dispatch({ type: "LOAD", doc: d })}
       />
+
       <div className="flex flex-1 min-h-0">
         <PagesSidebar state={state} dispatch={dispatch} />
         <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
