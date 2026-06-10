@@ -1,4 +1,4 @@
-import type { ProviderAdapter, ChatChunk, StreamArgs } from "./types";
+import type { ProviderAdapter, ChatChunk, StreamArgs } from "../types";
 
 async function* sseLines(res: Response, signal?: AbortSignal): AsyncGenerator<string> {
   if (!res.body) return;
