@@ -1134,18 +1134,14 @@ export function RedactPage() {
                       Whole word
                     </label>
                   </div>
-                  <label className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2 cursor-pointer">
-                    <Checkbox
-                      checked={kwOcr}
-                      onCheckedChange={(v) => setKwOcr(v === true)}
-                      className="mt-0.5"
-                    />
+                  <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2">
+                    <Sparkles className="h-3.5 w-3.5 mt-0.5 text-[var(--vault-amber)] shrink-0" />
                     <span className="leading-snug">
-                      <span className="text-foreground font-medium">Search scanned pages (OCR)</span>
+                      <span className="text-foreground font-medium">Scanned pages auto-OCR</span>
                       <br />
-                      Required for image-only PDFs. Slower — runs OCR in your browser.
+                      Image-only pages are detected and OCR'd automatically — no setup needed.
                     </span>
-                  </label>
+                  </div>
                   <Button
                     type="submit"
                     variant="outline"
