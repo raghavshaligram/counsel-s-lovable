@@ -231,7 +231,7 @@ function ChatPanel({ onClose }: { onClose: () => void }) {
         {turns.length === 0 && (
           <p className="opacity-60">Add a provider in /vault to begin. Try: "Redact every mention of 'Acme'".</p>
         )}
-        {turns.map((t) => {
+        {turns.map((t: ChatTurn) => {
           if (t.pendingApproval) {
             return (
               <ApprovalCard
