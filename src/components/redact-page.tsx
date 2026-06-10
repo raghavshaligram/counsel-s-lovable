@@ -1010,7 +1010,7 @@ export function RedactPage() {
               </div>
             )}
 
-            <div className={cn("p-8 space-y-8 max-w-5xl mx-auto", hasPending && "opacity-50")}>
+            <div className="p-8 space-y-8 max-w-5xl mx-auto">
               {pages.map((p) => (
                 <div key={p.pageNumber} id={`redact-page-${p.pageNumber}`}>
                   <PageCanvas
