@@ -191,6 +191,8 @@ export function RedactPage() {
   const [kwMatchCase, setKwMatchCase] = useState(false);
   const [kwWholeWord, setKwWholeWord] = useState(false);
   const [kwSearching, setKwSearching] = useState(false);
+  const [kwOcr, setKwOcr] = useState(false);
+  const [kwStatus, setKwStatus] = useState<string | null>(null);
   // Two-step: hold matches until the user confirms.
   const [pendingMatches, setPendingMatches] = useState<{
     query: string;
@@ -213,12 +215,31 @@ export function RedactPage() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "v" || e.key === "V") setTool("select");
       if (e.key === "b" || e.key === "B") setTool("box");
+      if (e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown" || e.key === "j") {
+        e.preventDefault();
+        setCurrentPage((cur) => {
+          const next = Math.min(totalPages || cur, cur + 1);
+          const el = document.getElementById(`redact-page-${next}`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return next;
+        });
+      }
+      if (e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "k") {
+        e.preventDefault();
+        setCurrentPage((cur) => {
+          const next = Math.max(1, cur - 1);
+          const el = document.getElementById(`redact-page-${next}`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+          return next;
+        });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [file]);
+  }, [file, totalPages]);
   useEffect(() => {
     try {
       const s = localStorage.getItem("vault.redact.stripMetadata");
@@ -402,30 +423,44 @@ export function RedactPage() {
     const q = kwQuery.trim();
     if (!q) return;
     setKwSearching(true);
-    // Clear previous preview before running again.
+    setKwStatus(kwOcr ? "Reading text layer…" : null);
     setPendingMatches(null);
     try {
       const matches = await findKeywordInPdf(
         file,
         q,
-        { matchCase: kwMatchCase, wholeWord: kwWholeWord },
+        {
+          matchCase: kwMatchCase,
+          wholeWord: kwWholeWord,
+          ocr: kwOcr,
+          preloadedDoc: docRef.current ?? undefined,
+          onProgress: (p) => {
+            if (p.stage === "ocr") {
+              setKwStatus(`OCR scanning ${p.page}/${p.totalPages}…`);
+            } else if (kwOcr) {
+              setKwStatus(`Reading page ${p.page}/${p.totalPages}…`);
+            }
+          },
+        },
         1.5,
       );
       if (matches.length === 0) {
         toast.info(`No matches for "${q}"`, {
-          description: "Tip: scanned PDFs have no text layer — run Auto-detect (OCR) first.",
+          description: kwOcr
+            ? "Nothing matched, even after OCR. Try a shorter or partial term."
+            : "Scanned pages were skipped — turn on Search scanned pages (OCR) and try again.",
         });
         return;
       }
-      // Stage matches; the user confirms before they become redaction boxes.
       setPendingMatches({ query: q, matchCase: kwMatchCase, wholeWord: kwWholeWord, matches });
     } catch (err) {
       console.error(err);
       toast.error("Search failed");
     } finally {
       setKwSearching(false);
+      setKwStatus(null);
     }
-  }, [file, kwQuery, kwMatchCase, kwWholeWord]);
+  }, [file, kwQuery, kwMatchCase, kwWholeWord, kwOcr]);
 
   const confirmKeywordRedact = useCallback(() => {
     if (!pendingMatches) return;
@@ -874,8 +909,8 @@ export function RedactPage() {
                     />
                     {hasRedaction && (
                       <span
-                        className="absolute top-1 right-1 inline-block h-2 w-2 rounded-full"
-                        style={{ background: "var(--evidence)", boxShadow: "0 0 0 2px var(--evidence)/30" }}
+                        className="absolute top-1 right-1 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-background"
+                        style={{ background: "var(--evidence)" }}
                       />
                     )}
                     <span
@@ -1099,6 +1134,18 @@ export function RedactPage() {
                       Whole word
                     </label>
                   </div>
+                  <label className="flex items-start gap-2 text-xs text-muted-foreground rounded-md border border-border/60 bg-card/30 p-2 cursor-pointer">
+                    <Checkbox
+                      checked={kwOcr}
+                      onCheckedChange={(v) => setKwOcr(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="leading-snug">
+                      <span className="text-foreground font-medium">Search scanned pages (OCR)</span>
+                      <br />
+                      Required for image-only PDFs. Slower — runs OCR in your browser.
+                    </span>
+                  </label>
                   <Button
                     type="submit"
                     variant="outline"
@@ -1106,8 +1153,11 @@ export function RedactPage() {
                     className="w-full"
                     disabled={!kwQuery.trim() || kwSearching}
                   >
-                    {kwSearching ? "Searching…" : "Find matches"}
+                    {kwSearching ? (kwStatus ?? "Searching…") : "Find matches"}
                   </Button>
+                  {kwStatus && kwSearching && (
+                    <div className="text-[11px] font-mono text-muted-foreground text-center">{kwStatus}</div>
+                  )}
                 </form>
                 {keywordGroups.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
