@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { Lock, Menu, Layers, ListTree } from "lucide-react";
+import { Lock, Menu, Layers, ListTree, Crop } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   NavigationMenu,
