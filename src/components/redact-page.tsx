@@ -31,6 +31,8 @@ import {
   Search,
   Tag,
   AlertTriangle,
+  MousePointer2,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
