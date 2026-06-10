@@ -561,12 +561,14 @@ function CropArtboard({
     startRect: CropRect;
   } | null>(null);
 
-  const onPointerDown = (kind: typeof dragRef.current extends infer T ? (T extends { kind: infer K } ? K : never) : never) =>
+  type HandleKind = "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw" | "new";
+  const onPointerDown = (kind: HandleKind) =>
     (e: React.PointerEvent) => {
       e.stopPropagation();
       (e.target as Element).setPointerCapture(e.pointerId);
       dragRef.current = { kind, startX: e.clientX, startY: e.clientY, startRect: rect };
     };
+
 
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
