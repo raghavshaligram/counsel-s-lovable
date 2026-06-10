@@ -404,30 +404,44 @@ export function RedactPage() {
     const q = kwQuery.trim();
     if (!q) return;
     setKwSearching(true);
-    // Clear previous preview before running again.
+    setKwStatus(kwOcr ? "Reading text layer…" : null);
     setPendingMatches(null);
     try {
       const matches = await findKeywordInPdf(
         file,
         q,
-        { matchCase: kwMatchCase, wholeWord: kwWholeWord },
+        {
+          matchCase: kwMatchCase,
+          wholeWord: kwWholeWord,
+          ocr: kwOcr,
+          preloadedDoc: docRef.current ?? undefined,
+          onProgress: (p) => {
+            if (p.stage === "ocr") {
+              setKwStatus(`OCR scanning ${p.page}/${p.totalPages}…`);
+            } else if (kwOcr) {
+              setKwStatus(`Reading page ${p.page}/${p.totalPages}…`);
+            }
+          },
+        },
         1.5,
       );
       if (matches.length === 0) {
         toast.info(`No matches for "${q}"`, {
-          description: "Tip: scanned PDFs have no text layer — run Auto-detect (OCR) first.",
+          description: kwOcr
+            ? "Nothing matched, even after OCR. Try a shorter or partial term."
+            : "Scanned pages were skipped — turn on Search scanned pages (OCR) and try again.",
         });
         return;
       }
-      // Stage matches; the user confirms before they become redaction boxes.
       setPendingMatches({ query: q, matchCase: kwMatchCase, wholeWord: kwWholeWord, matches });
     } catch (err) {
       console.error(err);
       toast.error("Search failed");
     } finally {
       setKwSearching(false);
+      setKwStatus(null);
     }
-  }, [file, kwQuery, kwMatchCase, kwWholeWord]);
+  }, [file, kwQuery, kwMatchCase, kwWholeWord, kwOcr]);
 
   const confirmKeywordRedact = useCallback(() => {
     if (!pendingMatches) return;
