@@ -453,6 +453,16 @@ function CompressPage() {
           </div>
         )}
       </div>
+      <BatchDialog
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        title="Compress every tray PDF"
+        description="Uses the current preset and grayscale setting."
+        op={compressOp}
+        opts={{ preset, grayscale }}
+        suffix="compressed"
+        zipName="vaultpdf-compressed.zip"
+      />
     </AppShell>
   );
 }
