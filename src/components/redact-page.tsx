@@ -213,6 +213,10 @@ export function RedactPage() {
   const [tool, setTool] = useState<"select" | "box">("box");
   const [currentPage, setCurrentPage] = useState<number>(1);
   useEffect(() => {
+    const el = thumbRefs.current.get(currentPage);
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentPage]);
+  useEffect(() => {
     if (!file) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
