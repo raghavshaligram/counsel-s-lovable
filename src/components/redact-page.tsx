@@ -413,7 +413,15 @@ export function RedactPage() {
       );
       if (matches.length === 0) {
         toast.info(`No matches for "${q}"`, {
-          description: "Tip: scanned PDFs have no text layer — run Auto-detect (OCR) first.",
+          description:
+            "Scanned PDFs have no text layer. Run Auto-detect (OCR) to read the page, then search again.",
+          duration: 8000,
+          action: {
+            label: "Run OCR now",
+            onClick: () => {
+              void runAutoDetect();
+            },
+          },
         });
         return;
       }
