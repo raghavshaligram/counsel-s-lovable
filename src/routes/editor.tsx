@@ -23,7 +23,9 @@ import { loadPdfjs } from "@/lib/pdf/worker";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { CommentsPanel } from "@/components/editor/CommentsPanel";
+import { DocOpsMenu } from "@/components/editor/doc-ops-menu";
 import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, TextSource, WatermarkSettings } from "@/lib/editor/types";
+
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -315,7 +317,9 @@ function Editor() {
         onExport={onExport}
         commentsOpen={commentsOpen}
         onToggleComments={() => setCommentsOpen((v) => !v)}
+        onReloadDoc={(d) => dispatch({ type: "LOAD", doc: d })}
       />
+
       <div className="flex flex-1 min-h-0">
         <PagesSidebar state={state} dispatch={dispatch} />
         <div className="flex-1 min-w-0 overflow-auto bg-muted/40">
@@ -365,7 +369,7 @@ function Editor() {
 
 // ---------- toolbar ----------
 
-function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void; commentsOpen: boolean; onToggleComments: () => void }) {
+function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments, onReloadDoc }: { state: State; dispatch: React.Dispatch<Action>; onExport: () => void; commentsOpen: boolean; onToggleComments: () => void; onReloadDoc: (doc: EditorDoc) => void }) {
   const [signOpen, setSignOpen] = useState(false);
   const [stampOpen, setStampOpen] = useState(false);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
@@ -555,7 +559,9 @@ function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments }: 
       </Button>
 
       <div className="ml-auto flex items-center gap-2">
+        <DocOpsMenu doc={state.doc} onReload={onReloadDoc} />
         <Button
+
           size="sm"
           variant={commentsOpen ? "default" : "outline"}
           onClick={onToggleComments}

@@ -35,6 +35,7 @@ import { Route as HeaderFooterRouteImport } from './routes/header-footer'
 import { Route as FlattenRouteImport } from './routes/flatten'
 import { Route as ExtractRouteImport } from './routes/extract'
 import { Route as EditorRouteImport } from './routes/editor'
+import { Route as CropRouteImport } from './routes/crop'
 import { Route as CompressRouteImport } from './routes/compress'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as ChatRouteImport } from './routes/chat'
@@ -171,6 +172,11 @@ const EditorRoute = EditorRouteImport.update({
   path: '/editor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CropRoute = CropRouteImport.update({
+  id: '/crop',
+  path: '/crop',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CompressRoute = CompressRouteImport.update({
   id: '/compress',
   path: '/compress',
@@ -203,6 +209,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
+  '/crop': typeof CropRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
@@ -236,6 +243,7 @@ export interface FileRoutesByTo {
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
+  '/crop': typeof CropRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
@@ -270,6 +278,7 @@ export interface FileRoutesById {
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
   '/compress': typeof CompressRoute
+  '/crop': typeof CropRoute
   '/editor': typeof EditorRoute
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
@@ -305,6 +314,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/compare'
     | '/compress'
+    | '/crop'
     | '/editor'
     | '/extract'
     | '/flatten'
@@ -338,6 +348,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/compare'
     | '/compress'
+    | '/crop'
     | '/editor'
     | '/extract'
     | '/flatten'
@@ -371,6 +382,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/compare'
     | '/compress'
+    | '/crop'
     | '/editor'
     | '/extract'
     | '/flatten'
@@ -405,6 +417,7 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   CompareRoute: typeof CompareRoute
   CompressRoute: typeof CompressRoute
+  CropRoute: typeof CropRoute
   EditorRoute: typeof EditorRoute
   ExtractRoute: typeof ExtractRoute
   FlattenRoute: typeof FlattenRoute
@@ -617,6 +630,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EditorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/crop': {
+      id: '/crop'
+      path: '/crop'
+      fullPath: '/crop'
+      preLoaderRoute: typeof CropRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/compress': {
       id: '/compress'
       path: '/compress'
@@ -661,6 +681,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   CompareRoute: CompareRoute,
   CompressRoute: CompressRoute,
+  CropRoute: CropRoute,
   EditorRoute: EditorRoute,
   ExtractRoute: ExtractRoute,
   FlattenRoute: FlattenRoute,
