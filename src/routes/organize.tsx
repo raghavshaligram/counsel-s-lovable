@@ -219,16 +219,24 @@ function OrganizePage() {
     <AppShell>
       <div className="mx-auto max-w-[1400px] px-5 md:px-8 py-10 space-y-6">
         <header className="flex items-end justify-between gap-6 flex-wrap">
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-vault/80 font-mono">
               <Layers className="h-3 w-3" /> Organize
             </div>
-            <h1 className="font-display text-3xl md:text-4xl text-foreground leading-tight max-w-2xl">
-              One canvas for every page in your tray.
-            </h1>
-            <p className="text-muted-foreground max-w-xl text-sm">
-              Drag pages to reorder, multi-select to delete or rotate in bulk, then build the result into a single PDF. Nothing leaves your browser.
-            </p>
+            {entries.length === 0 ? (
+              <>
+                <h1 className="font-display text-3xl md:text-4xl text-foreground leading-tight max-w-2xl">
+                  One canvas for every page in your tray.
+                </h1>
+                <p className="text-muted-foreground max-w-xl text-sm">
+                  Drag pages to reorder, multi-select to delete or rotate in bulk, then build the result into a single PDF. Nothing leaves your browser.
+                </p>
+              </>
+            ) : (
+              <h1 className="font-display text-lg md:text-xl text-foreground leading-tight">
+                Organize pages
+              </h1>
+            )}
           </div>
 
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">

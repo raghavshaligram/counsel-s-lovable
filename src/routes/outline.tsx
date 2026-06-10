@@ -360,20 +360,28 @@ function OutlinePage() {
     <AppShell>
       <div className="mx-auto max-w-[1600px] px-5 md:px-8 py-8 space-y-6">
         <header className="flex items-end justify-between gap-6 flex-wrap">
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-vault/80 font-mono">
               <ListTree className="h-3 w-3" /> Outline & Links
             </div>
-            <h1 className="font-display text-3xl md:text-4xl text-foreground leading-tight max-w-2xl">
-              Edit bookmarks and links — keyboard first.
-            </h1>
-            <p className="text-muted-foreground max-w-xl text-sm">
-              Tree on the left, page in the middle, inspector on the right.{" "}
-              <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Tab</kbd>{" "}
-              nests, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Alt+↑↓</kbd>{" "}
-              reorders, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Ctrl+L</kbd>{" "}
-              linkifies URLs.
-            </p>
+            {!sourceBytes ? (
+              <>
+                <h1 className="font-display text-3xl md:text-4xl text-foreground leading-tight max-w-2xl">
+                  Edit bookmarks and links — keyboard first.
+                </h1>
+                <p className="text-muted-foreground max-w-xl text-sm">
+                  Tree on the left, page in the middle, inspector on the right.{" "}
+                  <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Tab</kbd>{" "}
+                  nests, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Alt+↑↓</kbd>{" "}
+                  reorders, <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-card border border-whisper">Ctrl+L</kbd>{" "}
+                  linkifies URLs.
+                </p>
+              </>
+            ) : (
+              <h1 className="font-display text-lg md:text-xl text-foreground leading-tight truncate max-w-[60ch]">
+                {sourceName || "Outline & Links"}
+              </h1>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
