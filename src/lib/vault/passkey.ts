@@ -13,7 +13,7 @@ export type EnrollResult =
   | { kind: "no-prf"; credentialId: ArrayBuffer }
   | { kind: "unsupported" };
 
-export async function enrollPasskey(userId: Uint8Array, userName: string): Promise<EnrollResult> {
+export async function enrollPasskey(userId: BufferSource, userName: string): Promise<EnrollResult> {
   if (typeof PublicKeyCredential === "undefined") return { kind: "unsupported" };
   const salt = crypto.getRandomValues(new Uint8Array(32));
   const cred = (await navigator.credentials.create({
