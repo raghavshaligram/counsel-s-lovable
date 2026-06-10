@@ -19,9 +19,12 @@ export const Route = createFileRoute("/vault")({
 function VaultPage() {
   const [status, setStatus] = useState<{ unlocked: boolean; hasSigningKey: boolean } | null>(null);
   const [resources, setResources] = useState<ReturnType<typeof detectResources> | null>(null);
+  const [unlockOpen, setUnlockOpen] = useState(false);
+
+  const refresh = () => { void vaultStatus().then(setStatus); };
 
   useEffect(() => {
-    void vaultStatus().then(setStatus);
+    refresh();
     setResources(detectResources());
   }, []);
 
@@ -37,7 +40,13 @@ function VaultPage() {
         </header>
 
         <div className="space-y-3">
-          <Card icon={<Lock className="h-4 w-4" />} title="Unlock" body={status?.unlocked ? "Vault unlocked." : "Vault is locked. Passkey-first, passphrase fallback."} action="Set up" />
+          <Card
+            icon={<Lock className="h-4 w-4" />}
+            title="Unlock"
+            body={status?.unlocked ? "Vault unlocked." : "Vault is locked. Passkey-first, passphrase fallback."}
+            action={status?.unlocked ? "Locked" : "Unlock"}
+            onAction={() => setUnlockOpen(true)}
+          />
           <Card icon={<KeyRound className="h-4 w-4" />} title="AI Providers" body="BYOK: OpenAI · Anthropic · Google · Ollama · OpenAI-compatible. Keys stored encrypted." action="Add provider" />
           <Card icon={<ShieldCheck className="h-4 w-4" />} title="Signing Key" body={status?.hasSigningKey ? "Ed25519 key active. Embedded in every certificate." : "Auto-generated on first unlock."} action="View public key" />
           <Card icon={<Cpu className="h-4 w-4" />} title="Document Cache" body={`Encrypted IndexedDB. Mode: ${resources?.tier ?? "—"} (${resources?.memory ?? "?"} GB / ${resources?.cores ?? "?"} cores).`} action="Clear cache" />
@@ -45,6 +54,7 @@ function VaultPage() {
           <Card icon={<Terminal className="h-4 w-4" />} title="CSP Templates" body="Copy-paste CSP + reverse-proxy snippets for self-hosted Ollama or custom endpoints." action="Show snippets" />
         </div>
       </main>
+      <UnlockDialog open={unlockOpen} onOpenChange={setUnlockOpen} onUnlocked={refresh} />
     </AppShell>
   );
 }
