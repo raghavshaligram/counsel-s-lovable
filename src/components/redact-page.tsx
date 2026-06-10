@@ -1016,6 +1016,7 @@ export function RedactPage() {
                   <PageCanvas
                     page={p}
                     boxes={allBoxes.filter((b) => b.page === p.pageNumber)}
+                    pendingBoxes={pendingPreviewBoxes.filter((b) => b.page === p.pageNumber)}
                     onAddBox={addBox}
                     onRemoveBox={removeBox}
                     onLabelChange={setBoxLabel}
