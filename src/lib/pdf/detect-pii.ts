@@ -238,6 +238,8 @@ export type KeywordMatch = {
 // boxes in the same coordinate space the redact route uses (scale 1.5).
 // When `ocr` is true, scanned pages (no text layer) are OCR'd and word boxes
 // matched too — necessary for scanned PDFs where there's nothing to text-search.
+export type KeywordScope = "word" | "line" | "sentence" | "page";
+
 export async function findKeywordInPdf(
   file: File,
   query: string,
@@ -245,6 +247,7 @@ export async function findKeywordInPdf(
     matchCase?: boolean;
     wholeWord?: boolean;
     ocr?: boolean;
+    scope?: KeywordScope;
     onProgress?: (p: { stage: "text" | "ocr"; page: number; totalPages: number }) => void;
     preloadedDoc?: { numPages: number; getPage: (n: number) => Promise<unknown> };
   } = {},
@@ -252,6 +255,7 @@ export async function findKeywordInPdf(
 ): Promise<KeywordMatch[]> {
   const q = query.trim();
   if (!q) return [];
+  const scope: KeywordScope = opts.scope ?? "word";
   const pdfjs = await getPdfjs();
   const doc =
     (opts.preloadedDoc as unknown as Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>) ??
@@ -259,10 +263,7 @@ export async function findKeywordInPdf(
 
   const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = opts.wholeWord ? `\\b${escaped}\\b` : escaped;
-  // Global regex so we capture every occurrence inside a text item (Acrobat
-  // boxes each hit, not the whole line).
   const reGlobal = new RegExp(pattern, opts.matchCase ? "g" : "gi");
-  // Substring re-test on OCR words (per-word match, not contains).
   const wordRe = new RegExp(
     opts.wholeWord ? `^${escaped}$` : escaped,
     opts.matchCase ? "" : "i",
@@ -287,6 +288,7 @@ export async function findKeywordInPdf(
       scannedPages.push(i);
       continue;
     }
+    let pageHasHit = false;
     for (const raw of items) {
       if (!raw.str) continue;
       const str = raw.str;
@@ -305,21 +307,56 @@ export async function findKeywordInPdf(
           reGlobal.lastIndex++;
           continue;
         }
-        // Cover just the matched substring, not the whole text item (which
-        // can be an entire sentence). Approximates per-char width — fine for
-        // redaction since over-cover is acceptable.
-        const xStart = baseX + perChar * mt.index;
-        const wMatch = perChar * matchText.length;
+        pageHasHit = true;
+        if (scope === "page") continue; // emit one per-page box later
+
+        let segStart = mt.index;
+        let segEnd = mt.index + matchText.length;
+        let segText = matchText;
+        if (scope === "line") {
+          segStart = 0;
+          segEnd = str.length;
+          segText = str;
+        } else if (scope === "sentence") {
+          // Expand to surrounding sentence within this text item.
+          const before = str.slice(0, mt.index);
+          const lastStop = Math.max(
+            before.lastIndexOf(". "),
+            before.lastIndexOf("? "),
+            before.lastIndexOf("! "),
+            before.lastIndexOf(". "),
+          );
+          segStart = lastStop >= 0 ? lastStop + 1 : 0;
+          const after = str.slice(mt.index);
+          const stops = [".", "?", "!"]
+            .map((c) => after.indexOf(c))
+            .filter((n) => n >= 0);
+          segEnd = stops.length ? mt.index + Math.min(...stops) + 1 : str.length;
+          segText = str.slice(segStart, segEnd);
+        }
+        const xStart = baseX + perChar * segStart;
+        const wSeg = perChar * (segEnd - segStart);
         matches.push({
           id: `kw-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
           page: i,
           x: xStart - pad,
           y: baseY - pad,
-          w: wMatch + pad * 2,
+          w: wSeg + pad * 2,
           h: fontHeight + pad * 2,
-          snippet: snippet(matchText),
+          snippet: snippet(segText),
         });
       }
+    }
+    if (scope === "page" && pageHasHit) {
+      matches.push({
+        id: `kw-page-${i}-${Math.random().toString(36).slice(2, 7)}`,
+        page: i,
+        x: 0,
+        y: 0,
+        w: viewport.width,
+        h: viewport.height,
+        snippet: `Whole page ${i}`,
+      });
     }
   }
 
@@ -373,17 +410,57 @@ export async function findKeywordInPdf(
           done++;
           opts.onProgress?.({ stage: "ocr", page: done, totalPages: scannedPages.length });
 
-          for (const w of words) {
-            if (!w.text || !wordRe.test(w.text)) continue;
+          const hitWords = words.filter((w) => w.text && wordRe.test(w.text));
+          if (hitWords.length === 0) return;
+
+          if (scope === "page") {
+            matches.push({
+              id: `kw-page-${i}-${Math.random().toString(36).slice(2, 7)}`,
+              page: i,
+              x: 0,
+              y: 0,
+              w: viewport.width,
+              h: viewport.height,
+              snippet: `Whole page ${i}`,
+            });
+            return;
+          }
+
+          for (const w of hitWords) {
             const { x0, y0, x1, y1 } = w.bbox;
             const pad = Math.max(2, (y1 - y0) * 0.15);
+            let bx = x0 - pad;
+            let by = y0 - pad;
+            let bw = x1 - x0 + pad * 2;
+            let bh = y1 - y0 + pad * 2;
+            if (scope === "line" || scope === "sentence") {
+              // Approximate line as all words whose vertical center sits
+              // within the match's band. Sentence falls back to line on
+              // OCR'd pages (no reliable punctuation positions).
+              const cy = (y0 + y1) / 2;
+              const band = (y1 - y0) * 0.6;
+              const sameLine = words.filter((o) => {
+                const ocy = (o.bbox.y0 + o.bbox.y1) / 2;
+                return Math.abs(ocy - cy) <= band;
+              });
+              if (sameLine.length > 0) {
+                const lx0 = Math.min(...sameLine.map((o) => o.bbox.x0));
+                const ly0 = Math.min(...sameLine.map((o) => o.bbox.y0));
+                const lx1 = Math.max(...sameLine.map((o) => o.bbox.x1));
+                const ly1 = Math.max(...sameLine.map((o) => o.bbox.y1));
+                bx = lx0 - pad;
+                by = ly0 - pad;
+                bw = lx1 - lx0 + pad * 2;
+                bh = ly1 - ly0 + pad * 2;
+              }
+            }
             matches.push({
               id: `kw-ocr-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
               page: i,
-              x: x0 - pad,
-              y: y0 - pad,
-              w: x1 - x0 + pad * 2,
-              h: y1 - y0 + pad * 2,
+              x: bx,
+              y: by,
+              w: bw,
+              h: bh,
               snippet: snippet(w.text),
             });
           }
@@ -396,6 +473,7 @@ export async function findKeywordInPdf(
 
   return matches;
 }
+
 
 
 
