@@ -193,6 +193,13 @@ export const useWorkspace = create<WorkspaceDocState>((set, get) => {
       set({ boxes: [...get().boxes, { ...box, id }] });
       scheduleFlush(get);
     },
+    addBoxes(boxes) {
+      if (boxes.length === 0) return 0;
+      const made: PageBox[] = boxes.map((b) => ({ ...b, id: crypto.randomUUID() }));
+      set({ boxes: [...get().boxes, ...made] });
+      scheduleFlush(get);
+      return made.length;
+    },
     removeBox(id) {
       set({ boxes: get().boxes.filter((b) => b.id !== id) });
       scheduleFlush(get);
