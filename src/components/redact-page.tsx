@@ -208,6 +208,17 @@ export function RedactPage() {
   const [tool, setTool] = useState<"select" | "box">("box");
   const [currentPage, setCurrentPage] = useState<number>(1);
   useEffect(() => {
+    if (!file) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "v" || e.key === "V") setTool("select");
+      if (e.key === "b" || e.key === "B") setTool("box");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [file]);
+  useEffect(() => {
     try {
       const s = localStorage.getItem("vault.redact.stripMetadata");
       if (s !== null) setStripMetadata(s === "1");
