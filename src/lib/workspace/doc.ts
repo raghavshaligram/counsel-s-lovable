@@ -13,6 +13,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 import { create } from "zustand";
 import { wrap, type VaultHandle } from "@/lib/vault/store";
+import { analyzeDocument, type Insight } from "@/lib/intelligence/insights";
 
 export type PageBox = { id: string; page: number; x: number; y: number; w: number; h: number; kind: "pending" | "committed"; reason?: string };
 
