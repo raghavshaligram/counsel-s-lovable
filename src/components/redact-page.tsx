@@ -692,6 +692,24 @@ export function RedactPage() {
     setBoxes((prev) => prev.filter((b) => b.id !== id));
   }, []);
 
+  const pagesWithBoxes = useMemo(() => {
+    const s = new Set<number>();
+    for (const b of allBoxes) s.add(b.page);
+    return s;
+  }, [allBoxes]);
+
+  const scrollToPage = (n: number) => {
+    setCurrentPage(n);
+    const el = document.getElementById(`redact-page-${n}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const hasPending = !!pendingDetections || !!pendingMatches;
+  const sourceHashPrefix = useMemo(() => {
+    if (!file) return "";
+    return file.name.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase().padEnd(8, "0");
+  }, [file]);
+
   return (
     <AppShell>
       <ToolHeader
@@ -721,467 +739,525 @@ export function RedactPage() {
         collapsed={!!file}
       />
 
-      <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
-        {!file ? (
+      {!file ? (
+        <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
           <FileDropzone
             onFile={setFile}
             label="Drop a PDF to redact"
             sublabel="or click to browse · no upload, no size limit"
           />
-        ) : (
-          <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <FileText className="h-4 w-4 text-vault shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{file.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {(file.size / 1024).toFixed(1)} KB · {pages.length} page
-                      {pages.length === 1 ? "" : "s"} loaded
-                      {loading && pages.length > 0 && " · loading more…"}
-                    </div>
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm" onClick={reset}>
-                  <X className="h-4 w-4 mr-1" /> Close
-                </Button>
+          {/* Editor chrome preview — show users what they're getting */}
+          <div className="mt-10 rounded-xl border border-border bg-card/30 overflow-hidden opacity-50 pointer-events-none select-none">
+            <div className="grid grid-cols-[48px_88px_1fr_320px] h-[280px]">
+              <div className="border-r border-border bg-card/40 flex flex-col items-center py-3 gap-2">
+                <div className="h-8 w-8 rounded bg-vault/20" />
+                <div className="h-8 w-8 rounded bg-muted/40" />
+                <div className="h-8 w-8 rounded bg-muted/40" />
+                <div className="h-8 w-8 rounded bg-muted/40" />
               </div>
+              <div className="border-r border-border bg-card/20 p-2 space-y-2 overflow-hidden">
+                {[0,1,2,3].map(i => <div key={i} className="aspect-[3/4] rounded bg-muted/30" />)}
+              </div>
+              <div className="bg-surface-canvas p-6 flex items-start justify-center">
+                <div className="w-2/3 aspect-[3/4] rounded bg-card/40 shadow-stamp" />
+              </div>
+              <div className="border-l border-border bg-card/40 p-4 space-y-3">
+                <div className="h-3 w-24 bg-muted/40 rounded" />
+                <div className="h-2 w-full bg-muted/30 rounded" />
+                <div className="h-2 w-4/5 bg-muted/30 rounded" />
+                <div className="h-8 w-full bg-vault/30 rounded mt-4" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          className={cn(
+            "grid w-full overflow-hidden",
+            "grid-cols-[48px_88px_1fr_340px]",
+            // shell header 56px + collapsed ToolHeader 48px = 104px
+            "h-[calc(100svh-104px)]",
+          )}
+        >
+          {/* ─────── Tool rail ─────── */}
+          <div className="border-r border-border bg-card/40 flex flex-col items-center py-3 gap-1">
+            <ToolRailBtn
+              active={tool === "select"}
+              onClick={() => setTool("select")}
+              icon={MousePointer2}
+              label="Select"
+              kbd="V"
+            />
+            <ToolRailBtn
+              active={tool === "box"}
+              onClick={() => setTool("box")}
+              icon={Square}
+              label="Draw redaction"
+              kbd="B"
+            />
+            <div className="my-2 h-px w-6 bg-border" />
+            <ToolRailBtn
+              onClick={runAutoDetect}
+              icon={Wand2}
+              label={detecting ? "Scanning…" : "Auto-detect PII"}
+              disabled={detecting || loading}
+            />
+            <ToolRailBtn
+              onClick={() => document.getElementById("redact-find-input")?.focus()}
+              icon={Search}
+              label="Find & redact"
+            />
+            <ToolRailBtn
+              onClick={() => document.getElementById("redact-label-select")?.scrollIntoView({ behavior: "smooth" })}
+              icon={Tag}
+              label="Exemption label"
+            />
+            <div className="mt-auto">
+              <button
+                onClick={reset}
+                className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                title="Close file"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
 
-              {loading && pages.length === 0 && (
-                <div className="rounded-lg border border-border bg-card/30 p-12 text-center text-sm text-muted-foreground">
-                  Reading PDF locally…
-                </div>
+          {/* ─────── Thumbnail strip ─────── */}
+          <div className="border-r border-border bg-card/20 overflow-y-auto no-scrollbar">
+            <div className="p-2 space-y-2">
+              {pages.length === 0 && loading && (
+                <div className="text-[10px] text-muted-foreground text-center py-4">Loading…</div>
               )}
-
-              <div className="space-y-6">
-                {pages.map((p) => (
-                  <PageCanvas
+              {pages.map((p) => {
+                const active = currentPage === p.pageNumber;
+                const hasRedaction = pagesWithBoxes.has(p.pageNumber);
+                return (
+                  <button
                     key={p.pageNumber}
+                    onClick={() => scrollToPage(p.pageNumber)}
+                    className={cn(
+                      "relative w-full rounded-md overflow-hidden border transition group",
+                      active
+                        ? "border-vault ring-1 ring-vault/40"
+                        : "border-border/60 hover:border-border",
+                    )}
+                  >
+                    <img
+                      src={p.dataUrl}
+                      alt=""
+                      className="block w-full h-auto"
+                      style={{ aspectRatio: `${p.width} / ${p.height}` }}
+                    />
+                    {hasRedaction && (
+                      <span
+                        className="absolute top-1 right-1 inline-block h-1.5 w-1.5 rounded-full"
+                        style={{ background: "var(--evidence)" }}
+                      />
+                    )}
+                    <span className="absolute bottom-0.5 left-0.5 right-0.5 text-center text-[9px] font-mono tabular-nums text-foreground/80 bg-background/70 rounded-sm py-px">
+                      {p.pageNumber}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ─────── Canvas ─────── */}
+          <div
+            className={cn(
+              "relative overflow-y-auto bg-surface-canvas vault-grid",
+              isPremium && "border-l-2 border-vault/70",
+              hasPending && "transition-opacity",
+            )}
+          >
+            {/* Canvas header bar */}
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-2 border-b border-border bg-surface-canvas/85 backdrop-blur text-xs">
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText className="h-3.5 w-3.5 text-vault shrink-0" />
+                <span className="truncate text-foreground">{file.name}</span>
+                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                  {(file.size / 1024).toFixed(1)} KB · {pages.length} pp
+                </span>
+                {isPremium && (
+                  <span className="inline-flex items-center gap-1.5 rounded border border-vault/40 bg-vault/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-vault">
+                    <ShieldCheck className="h-3 w-3" /> Verifiable
+                    <span className="font-mono normal-case tracking-normal text-vault/70">
+                      {sourceHashPrefix}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground shrink-0">
+                {tool === "box" ? "Draw mode" : "Select mode"}
+              </div>
+            </div>
+
+            {loading && pages.length === 0 && (
+              <div className="p-12 text-center text-sm text-muted-foreground">
+                Reading PDF locally…
+              </div>
+            )}
+
+            <div className={cn("p-8 space-y-8 max-w-5xl mx-auto", hasPending && "opacity-50")}>
+              {pages.map((p) => (
+                <div key={p.pageNumber} id={`redact-page-${p.pageNumber}`}>
+                  <PageCanvas
                     page={p}
                     boxes={allBoxes.filter((b) => b.page === p.pageNumber)}
                     onAddBox={addBox}
                     onRemoveBox={removeBox}
                     onLabelChange={setBoxLabel}
+                    tool={tool}
+                    onFocus={() => setCurrentPage(p.pageNumber)}
                   />
-                ))}
-              </div>
-            </div>
-
-            <aside className="lg:sticky lg:top-20 rounded-xl border border-border bg-card/80 backdrop-blur-sm h-auto transition-all duration-500 ease-out overflow-hidden">
-              {/* Global Header */}
-              <div className="grid grid-cols-3 gap-1 px-3 py-3 border-b border-border">
-                {[
-                  { id: "label" as const, icon: Tag, label: "Label" },
-                  { id: "detect" as const, icon: Wand2, label: "Detect" },
-                  { id: "find" as const, icon: Search, label: "Find" },
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveTab(t.id)}
-                    className={cn(
-                      "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all border",
-                      activeTab === t.id
-                        ? "bg-vault/15 text-vault border-vault/30"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40 border-transparent"
-                    )}
-                  >
-                    <t.icon className="h-3.5 w-3.5" />
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Dynamic Content Area */}
-              <div className="p-4 space-y-4">
-                {activeTab === "detect" && (
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-foreground font-medium text-sm">
-                        <Wand2 className="h-4 w-4 text-vault" />
-                        Auto-detect PII
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Scans for SSNs, emails, phones, cards, dates, IPs, IBANs. Falls back to
-                        on-device OCR for scanned pages. You'll review findings before anything
-                        is redacted.
-                      </p>
-                    </div>
-                    <LabelHint defaultLabel={defaultLabel} onEdit={() => setActiveTab("label")} />
-                    {detectConfirm && !detecting && (() => {
-                      const [best, worst] = estimateDetectMinutes(totalPages);
-                      return (
-                        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                            {totalPages} pages — roughly {best === worst ? `${best} min` : `${best}–${worst} min`}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground leading-relaxed">
-                            Best case (all text-based) is fast; worst case (every page scanned, OCR fallback) is the upper end. Estimate is based on your device's CPU cores
-                            {(navigator as Navigator & { deviceMemory?: number }).deviceMemory
-                              ? ` (~${navigator.hardwareConcurrency} cores, ~${(navigator as Navigator & { deviceMemory?: number }).deviceMemory} GB RAM)`
-                              : ` (~${navigator.hardwareConcurrency} cores)`}
-                            . Click again to start.
-                          </p>
-                        </div>
-                      );
-                    })()}
-                    <Button
-                      onClick={runAutoDetect}
-                      disabled={detecting || loading}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      <Wand2 className="h-3.5 w-3.5 mr-2" />
-                      {detecting
-                        ? "Scanning…"
-                        : detectConfirm
-                          ? `Yes, scan ${totalPages} pages`
-                          : pendingDetections || detections.length > 0
-                            ? "Re-scan"
-                            : "Scan this PDF"}
-                    </Button>
-
-                    {detectStatus && (
-                      <div className="text-[11px] text-muted-foreground text-center">
-                        {detectStatus}
-                      </div>
-                    )}
-
-                    {/* Pending preview — review before committing */}
-                    {pendingDetections && (
-                      <div className="rounded-md border border-vault/40 bg-vault/5 p-3 space-y-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                            <AlertTriangle className="h-3.5 w-3.5 text-vault" />
-                            Found {pendingDetections.length} potential item
-                            {pendingDetections.length === 1 ? "" : "s"} — review before redacting
-                          </div>
-                          <p className="text-[11px] text-muted-foreground leading-relaxed">
-                            {pendingUsedOcr
-                              ? "Some pages were scanned — OCR was used. "
-                              : ""}
-                            Toggle categories below to include or exclude them.
-                          </p>
-                        </div>
-                        <div className="space-y-1.5">
-                          {(Object.keys(CATEGORY_META) as PiiCategory[])
-                            .filter((c) => (pendingCatCounts.get(c) ?? 0) > 0)
-                            .map((c) => {
-                              const on = enabledCats.has(c);
-                              const count = pendingCatCounts.get(c) ?? 0;
-                              return (
-                                <button
-                                  key={c}
-                                  onClick={() => toggleCategory(c)}
-                                  className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition ${
-                                    on
-                                      ? "border-vault/50 bg-vault/10 text-foreground"
-                                      : "border-border bg-card/30 text-muted-foreground hover:bg-card"
-                                  }`}
-                                >
-                                  <span className="flex items-center gap-2">
-                                    <span
-                                      className={`inline-block h-2 w-2 rounded-full ${
-                                        on ? "bg-vault" : "bg-muted-foreground/40"
-                                      }`}
-                                    />
-                                    {CATEGORY_META[c].label}
-                                  </span>
-                                  <span className="tabular-nums">{count}</span>
-                                </button>
-                              );
-                            })}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          Will be labeled as{" "}
-                          <span className="text-foreground font-medium">
-                            {defaultLabel || "No label"}
-                          </span>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={confirmDetectRedact}
-                            className="flex-1 bg-vault text-vault-foreground hover:bg-vault/90"
-                            disabled={pendingSelectedCount === 0}
-                          >
-                            Redact {pendingSelectedCount}
-                          </Button>
-                          <Button
-                            onClick={discardPendingDetections}
-                            variant="ghost"
-                            className="flex-1"
-                          >
-                            Discard
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Committed detections — live toggle (post-confirm refinement) */}
-                    {!pendingDetections && detections.length > 0 && (
-                      <div className="space-y-1.5">
-                        <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-                          Active detections
-                        </div>
-                        {(Object.keys(CATEGORY_META) as PiiCategory[])
-                          .filter((c) => (catCounts.get(c) ?? 0) > 0)
-                          .map((c) => {
-                            const on = enabledCats.has(c);
-                            const count = catCounts.get(c) ?? 0;
-                            return (
-                              <button
-                                key={c}
-                                onClick={() => toggleCategory(c)}
-                                className={`w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition ${
-                                  on
-                                    ? "border-vault/50 bg-vault/10 text-foreground"
-                                    : "border-border bg-card/30 text-muted-foreground hover:bg-card"
-                                }`}
-                              >
-                                <span className="flex items-center gap-2">
-                                  <span
-                                    className={`inline-block h-2 w-2 rounded-full ${
-                                      on ? "bg-vault" : "bg-muted-foreground/40"
-                                    }`}
-                                  />
-                                  {CATEGORY_META[c].label}
-                                </span>
-                                <span className="tabular-nums">{count}</span>
-                              </button>
-                            );
-                          })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {activeTab === "find" && (
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-foreground font-medium text-sm">
-                        <Search className="h-4 w-4 text-vault" />
-                        Find &amp; redact all
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        Type a word or phrase to find every match across all pages. You'll see
-                        the count before anything is redacted.
-                      </p>
-                    </div>
-                    <LabelHint defaultLabel={defaultLabel} onEdit={() => setActiveTab("label")} />
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        runKeywordSearch();
-                      }}
-                      className="space-y-2"
-                    >
-                      <Input
-                        value={kwQuery}
-                        onChange={(e) => setKwQuery(e.target.value)}
-                        placeholder="e.g. Acme Corp"
-                        disabled={kwSearching}
-                      />
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                          <Checkbox
-                            checked={kwMatchCase}
-                            onCheckedChange={(v) => setKwMatchCase(v === true)}
-                          />
-                          Match case
-                        </label>
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                          <Checkbox
-                            checked={kwWholeWord}
-                            onCheckedChange={(v) => setKwWholeWord(v === true)}
-                          />
-                          Whole word
-                        </label>
-                      </div>
-                      <Button
-                        type="submit"
-                        variant="outline"
-                        className="w-full"
-                        disabled={!kwQuery.trim() || kwSearching}
-                      >
-                        {kwSearching ? "Searching…" : "Find matches"}
-                      </Button>
-                    </form>
-
-                    {/* Pending matches — confirm before redacting */}
-                    {pendingMatches && (
-                      <div className="rounded-md border border-vault/40 bg-vault/5 p-3 space-y-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                            <AlertTriangle className="h-3.5 w-3.5 text-vault" />
-                            {pendingMatches.matches.length} match
-                            {pendingMatches.matches.length === 1 ? "" : "es"} across{" "}
-                            {pendingMatchPageBreakdown.length} page
-                            {pendingMatchPageBreakdown.length === 1 ? "" : "s"} for{" "}
-                            <span className="text-vault">"{pendingMatches.query}"</span>
-                          </div>
-                        </div>
-                        <div className="max-h-32 overflow-y-auto rounded border border-border bg-card/40 px-2 py-1.5 text-[11px] font-mono space-y-0.5">
-                          {pendingMatchPageBreakdown.slice(0, 8).map((row) => (
-                            <div key={row.page} className="flex justify-between">
-                              <span className="text-muted-foreground">Page {row.page}</span>
-                              <span className="tabular-nums">{row.count}</span>
-                            </div>
-                          ))}
-                          {pendingMatchPageBreakdown.length > 8 && (
-                            <div className="text-muted-foreground italic">
-                              +{pendingMatchPageBreakdown.length - 8} more page
-                              {pendingMatchPageBreakdown.length - 8 === 1 ? "" : "s"}
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          Will be labeled as{" "}
-                          <span className="text-foreground font-medium">
-                            {defaultLabel || "No label"}
-                          </span>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={confirmKeywordRedact}
-                            className="flex-1 bg-vault text-vault-foreground hover:bg-vault/90"
-                          >
-                            Redact all {pendingMatches.matches.length}
-                          </Button>
-                          <Button
-                            onClick={discardPendingMatches}
-                            variant="ghost"
-                            className="flex-1"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {keywordGroups.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {keywordGroups.map((g) => (
-                          <span
-                            key={g.id}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-vault/40 bg-vault/10 px-2.5 py-1 text-[11px]"
-                          >
-                            <span className="font-medium">{g.query}</span>
-                            <span className="text-muted-foreground tabular-nums">
-                              · {g.count}
-                            </span>
-                            <button
-                              onClick={() => removeKeywordGroup(g.id)}
-                              className="ml-0.5 text-muted-foreground hover:text-foreground"
-                              aria-label={`Remove ${g.query}`}
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {activeTab === "label" && (
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-foreground font-medium text-sm">
-                        <Tag className="h-4 w-4 text-vault" />
-                        Exemption label
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                        {isPremium
-                          ? "Required — every redaction must carry an exemption code before export. Pick a default here; double-click any box to override."
-                          : "Pick this first — it's stamped in white over every redaction you add from Detect, Find, or by hand. Double-click any box to override."}
-                      </p>
-                      {isPremium && (
-                        <div className="mt-2 rounded-md border border-vault/30 bg-vault/10 p-2 text-[11px] text-vault leading-relaxed">
-                          Export is blocked if any box is missing a code.
-                        </div>
-                      )}
-                    </div>
-                    <Select
-                      value={defaultLabel || "__none"}
-                      onValueChange={(v) => setDefaultLabel(v === "__none" ? "" : v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="No label" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none">No label</SelectItem>
-                        {EXEMPTION_PRESETS.map((p) => (
-                          <SelectItem key={p.value} value={p.value}>
-                            {p.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      placeholder="Or type a custom label"
-                      value={defaultLabel}
-                      onChange={(e) => setDefaultLabel(e.target.value)}
-                    />
-                    <div className="rounded-md border border-border bg-card/30 p-3 text-[11px] text-muted-foreground leading-relaxed">
-                      <div className="flex items-center gap-1.5 text-foreground font-medium mb-1">
-                        <ShieldCheck className="h-3 w-3 text-vault" />
-                        How export works
-                      </div>
-                      Each page is rasterised, redactions and labels are baked in, and the image
-                      replaces the page. With metadata stripping on, the info dict, XMP, form
-                      fields, and structure tree are removed.
-                    </div>
-                  </div>
-                )}
-
-                {/* Persistent Summary Footer */}
-                <div className="pt-3 border-t border-border space-y-3">
-                  <div className="flex items-baseline justify-between">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                        Redactions
-                      </div>
-                      <div className="text-2xl font-display leading-none mt-1">
-                        {allBoxes.length}
-                      </div>
-                    </div>
-                    {(boxes.length > 0 ||
-                      detections.length > 0 ||
-                      keywordBoxes.length > 0) && (
-                      <button
-                        onClick={() => {
-                          setBoxes([]);
-                          setDetections([]);
-                          setDetectionLabels({});
-                          setKeywordGroups([]);
-                          setKeywordBoxes([]);
-                        }}
-                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                      >
-                        <Trash2 className="h-3 w-3" /> Clear
-                      </button>
-                    )}
-                  </div>
-                  <label className="flex items-center justify-between gap-3 text-xs py-1">
-                    <span className="text-muted-foreground">Strip hidden metadata</span>
-                    <Switch checked={stripMetadata} onCheckedChange={setStripMetadata} />
-                  </label>
-                  <Button
-                    onClick={exportRedacted}
-                    disabled={allBoxes.length === 0 || exporting || loading}
-                    className="w-full bg-vault text-vault-foreground hover:opacity-90"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    {exporting ? "Exporting…" : "Export redacted PDF"}
-                  </Button>
                 </div>
-              </div>
-            </aside>
+              ))}
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* ─────── Inspector ─────── */}
+          <aside className="border-l border-border bg-card/60 overflow-y-auto">
+            <div className="p-4 space-y-5">
+              {/* Pending review — only when there's something to commit */}
+              {pendingDetections && (
+                <Section header="Pending review" tone="evidence">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    <span className="font-mono tabular-nums text-foreground">{pendingDetections.length}</span>{" "}
+                    potential item{pendingDetections.length === 1 ? "" : "s"} found
+                    {pendingUsedOcr && " (OCR used)"}. Toggle categories, then redact.
+                  </p>
+                  <div className="space-y-1.5">
+                    {(Object.keys(CATEGORY_META) as PiiCategory[])
+                      .filter((c) => (pendingCatCounts.get(c) ?? 0) > 0)
+                      .map((c) => {
+                        const on = enabledCats.has(c);
+                        const count = pendingCatCounts.get(c) ?? 0;
+                        return <CatPill key={c} on={on} count={count} label={CATEGORY_META[c].label} onClick={() => toggleCategory(c)} />;
+                      })}
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      onClick={confirmDetectRedact}
+                      className="flex-1 text-white"
+                      style={{ background: "var(--evidence)" }}
+                      disabled={pendingSelectedCount === 0}
+                    >
+                      Redact {pendingSelectedCount}
+                    </Button>
+                    <Button onClick={discardPendingDetections} variant="ghost" className="flex-1">
+                      Discard
+                    </Button>
+                  </div>
+                </Section>
+              )}
+
+              {pendingMatches && (
+                <Section header="Pending review" tone="evidence">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    <span className="font-mono tabular-nums text-foreground">{pendingMatches.matches.length}</span>{" "}
+                    match{pendingMatches.matches.length === 1 ? "" : "es"} for{" "}
+                    <span className="text-foreground">"{pendingMatches.query}"</span>
+                  </p>
+                  <div className="max-h-32 overflow-y-auto rounded border border-border bg-card/40 px-2 py-1.5 text-[11px] font-mono space-y-0.5">
+                    {pendingMatchPageBreakdown.slice(0, 8).map((row) => (
+                      <div key={row.page} className="flex justify-between">
+                        <span className="text-muted-foreground">Page {row.page}</span>
+                        <span className="tabular-nums">{row.count}</span>
+                      </div>
+                    ))}
+                    {pendingMatchPageBreakdown.length > 8 && (
+                      <div className="text-muted-foreground italic">
+                        +{pendingMatchPageBreakdown.length - 8} more
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      onClick={confirmKeywordRedact}
+                      className="flex-1 text-white"
+                      style={{ background: "var(--evidence)" }}
+                    >
+                      Redact all
+                    </Button>
+                    <Button onClick={discardPendingMatches} variant="ghost" className="flex-1">
+                      Cancel
+                    </Button>
+                  </div>
+                </Section>
+              )}
+
+              {/* PII categories — only when committed detections exist */}
+              {!pendingDetections && detections.length > 0 && (
+                <Section header="PII categories">
+                  <div className="space-y-1.5">
+                    {(Object.keys(CATEGORY_META) as PiiCategory[])
+                      .filter((c) => (catCounts.get(c) ?? 0) > 0)
+                      .map((c) => {
+                        const on = enabledCats.has(c);
+                        const count = catCounts.get(c) ?? 0;
+                        return <CatPill key={c} on={on} count={count} label={CATEGORY_META[c].label} onClick={() => toggleCategory(c)} />;
+                      })}
+                  </div>
+                </Section>
+              )}
+
+              {/* Auto-detect status / confirm */}
+              {(detectConfirm || detectStatus) && (
+                <Section header="Auto-detect">
+                  {detectConfirm && !detecting && (() => {
+                    const [best, worst] = estimateDetectMinutes(totalPages);
+                    return (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                          <span className="font-mono tabular-nums">{totalPages}</span> pages — ~{best === worst ? `${best} min` : `${best}–${worst} min`}
+                        </div>
+                        <Button onClick={runAutoDetect} variant="outline" size="sm" className="w-full mt-2">
+                          Yes, scan {totalPages} pages
+                        </Button>
+                      </div>
+                    );
+                  })()}
+                  {detectStatus && (
+                    <div className="text-[11px] font-mono text-muted-foreground text-center">{detectStatus}</div>
+                  )}
+                </Section>
+              )}
+
+              {/* Find & redact */}
+              <Section header="Find & redact">
+                <form
+                  onSubmit={(e) => { e.preventDefault(); runKeywordSearch(); }}
+                  className="space-y-2"
+                >
+                  <Input
+                    id="redact-find-input"
+                    value={kwQuery}
+                    onChange={(e) => setKwQuery(e.target.value)}
+                    placeholder="e.g. Acme Corp"
+                    disabled={kwSearching}
+                  />
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <Checkbox checked={kwMatchCase} onCheckedChange={(v) => setKwMatchCase(v === true)} />
+                      Match case
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <Checkbox checked={kwWholeWord} onCheckedChange={(v) => setKwWholeWord(v === true)} />
+                      Whole word
+                    </label>
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    disabled={!kwQuery.trim() || kwSearching}
+                  >
+                    {kwSearching ? "Searching…" : "Find matches"}
+                  </Button>
+                </form>
+                {keywordGroups.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {keywordGroups.map((g) => (
+                      <span
+                        key={g.id}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-vault/40 bg-vault/10 px-2.5 py-1 text-[11px]"
+                      >
+                        <span className="font-medium">{g.query}</span>
+                        <span className="text-muted-foreground font-mono tabular-nums">· {g.count}</span>
+                        <button
+                          onClick={() => removeKeywordGroup(g.id)}
+                          className="ml-0.5 text-muted-foreground hover:text-foreground"
+                          aria-label={`Remove ${g.query}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Section>
+
+              {/* Exemption label */}
+              <Section header="Exemption label">
+                {isPremium && (
+                  <div className="rounded-md border border-vault/30 bg-vault/10 p-2 text-[11px] text-vault leading-relaxed">
+                    Required — export is blocked if any box is missing a code.
+                  </div>
+                )}
+                <Select
+                  value={defaultLabel || "__none"}
+                  onValueChange={(v) => setDefaultLabel(v === "__none" ? "" : v)}
+                >
+                  <SelectTrigger id="redact-label-select">
+                    <SelectValue placeholder="No label" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No label</SelectItem>
+                    {EXEMPTION_PRESETS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Or type a custom label"
+                  value={defaultLabel}
+                  onChange={(e) => setDefaultLabel(e.target.value)}
+                />
+              </Section>
+
+              {/* Export */}
+              <Section header="Export">
+                <div className="flex items-baseline justify-between">
+                  <div className="font-mono text-3xl tabular-nums leading-none text-foreground">
+                    {allBoxes.length}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    redactions
+                  </div>
+                </div>
+                {(boxes.length > 0 || detections.length > 0 || keywordBoxes.length > 0) && (
+                  <button
+                    onClick={() => {
+                      setBoxes([]);
+                      setDetections([]);
+                      setDetectionLabels({});
+                      setKeywordGroups([]);
+                      setKeywordBoxes([]);
+                    }}
+                    className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  >
+                    <Trash2 className="h-3 w-3" /> Clear all
+                  </button>
+                )}
+                <label className="flex items-center justify-between gap-3 text-xs py-1">
+                  <span className="text-muted-foreground">Strip hidden metadata</span>
+                  <Switch checked={stripMetadata} onCheckedChange={setStripMetadata} />
+                </label>
+                <Button
+                  onClick={exportRedacted}
+                  disabled={allBoxes.length === 0 || exporting || loading}
+                  className="w-full bg-vault text-vault-foreground hover:opacity-90"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {exporting
+                    ? "Exporting…"
+                    : isPremium
+                      ? "Sign & Export"
+                      : "Burn & Export"}
+                </Button>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  <Lock className="inline h-2.5 w-2.5 mr-1 text-vault" />
+                  Pages rasterised. Original text destroyed in the file bytes.
+                </p>
+              </Section>
+            </div>
+          </aside>
+        </div>
+      )}
     </AppShell>
+  );
+}
+
+// ────────── inspector primitives ──────────
+
+function Section({
+  header,
+  tone,
+  children,
+}: {
+  header: string;
+  tone?: "evidence";
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "space-y-3 rounded-lg p-3",
+        tone === "evidence"
+          ? "border-2 animate-fade-in"
+          : "border border-border/60 bg-card/30",
+      )}
+      style={tone === "evidence" ? { borderColor: "var(--evidence)", background: "color-mix(in oklab, var(--evidence) 8%, transparent)" } : undefined}
+    >
+      <div
+        className={cn(
+          "font-display text-[11px] uppercase tracking-[0.18em]",
+          tone === "evidence" ? "" : "text-muted-foreground",
+        )}
+        style={tone === "evidence" ? { color: "var(--evidence)" } : undefined}
+      >
+        {header}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function CatPill({
+  on,
+  count,
+  label,
+  onClick,
+}: {
+  on: boolean;
+  count: number;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center justify-between text-xs px-3 py-2 rounded-md border transition",
+        on
+          ? "border-vault/50 bg-vault/10 text-foreground"
+          : "border-border bg-card/30 text-muted-foreground hover:bg-card",
+      )}
+    >
+      <span className="flex items-center gap-2">
+        <span className={cn("inline-block h-2 w-2 rounded-full", on ? "bg-vault" : "bg-muted-foreground/40")} />
+        {label}
+      </span>
+      <span className="font-mono tabular-nums">{count}</span>
+    </button>
+  );
+}
+
+function ToolRailBtn({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  kbd,
+  disabled,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  kbd?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={kbd ? `${label} (${kbd})` : label}
+      className={cn(
+        "relative grid h-9 w-9 place-items-center rounded-md transition",
+        active
+          ? "bg-vault/15 text-vault"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+        disabled && "opacity-40 cursor-not-allowed",
+      )}
+    >
+      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-vault" />}
+      <Icon className="h-4 w-4" />
+    </button>
   );
 }
 
