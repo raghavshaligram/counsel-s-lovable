@@ -5,6 +5,7 @@ import { Lock, KeyRound, ShieldCheck, Cpu, Network, Terminal } from "lucide-reac
 import { detectResources } from "@/lib/workers/resources";
 import { vaultStatus } from "@/lib/vault/store";
 import { UnlockDialog } from "@/components/vault/unlock-dialog";
+import { ProvidersDialog } from "@/components/vault/providers-dialog";
 
 export const Route = createFileRoute("/vault")({
   ssr: false,
