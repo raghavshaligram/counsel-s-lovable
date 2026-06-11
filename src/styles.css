@@ -8,10 +8,14 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Instrument Serif", "Playfair Display", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Radii — soft & friendly (8/10/12/14) */
+  --radius-sm: 0.5rem;     /* 8px  — buttons, inputs */
+  --radius-md: 0.625rem;   /* 10px — cards */
+  --radius-lg: 0.75rem;    /* 12px — panels */
+  --radius-xl: 0.875rem;   /* 14px — popovers / dialogs */
+
+  /* shadcn semantic tokens → CSS vars */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -31,15 +35,24 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* Brand + semantic surfaces */
   --color-vault: var(--vault);
   --color-vault-foreground: var(--vault-foreground);
   --color-evidence: var(--evidence);
   --color-surface-canvas: var(--surface-canvas);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-ink: var(--ink);
   --color-paper: var(--paper);
   --color-canvas: var(--canvas);
   --color-whisper: var(--whisper);
-
+  --color-text-2: var(--text-2);
+  --color-text-muted: var(--text-muted);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
 
   /* Fluid type scale */
   --text-display: clamp(2.75rem, 6vw, 5rem);
@@ -49,93 +62,98 @@
   --text-micro: 0.6875rem;
 }
 
-/* VaultPDF — deep navy ink + signal-amber accent.
-   Tone: serious legal-grade with a confident accent. */
+/* VaultPDF — warm, spacious, soft. Reference: UPDF / Linear / 1Password.
+   Amber is the ONLY accent. No gradients on chrome. */
 :root {
-  --radius: 0.375rem;
+  --radius: 0.625rem;
 
-  /* Base surfaces */
-  --background: oklch(0.16 0.02 260);          /* deep navy near-black */
-  --foreground: oklch(0.97 0.01 95);            /* warm paper */
-  --card: oklch(0.20 0.025 260);
-  --card-foreground: oklch(0.97 0.01 95);
-  --popover: oklch(0.20 0.025 260);
-  --popover-foreground: oklch(0.97 0.01 95);
+  /* App surfaces (warm dark) */
+  --background: #0E1116;
+  --foreground: #F2EFE9;
 
-  /* Primary = signal amber (acts like a vault key/tag) */
-  --primary: oklch(0.84 0.16 78);
-  --primary-foreground: oklch(0.16 0.02 260);
+  --surface-1: #141821;     /* rails, top bar, bottom bar */
+  --surface-2: #1B212C;     /* panels, cards, inputs, hover */
+  --surface-3: #20252E;     /* active states, popovers */
 
-  --secondary: oklch(0.25 0.025 260);
-  --secondary-foreground: oklch(0.97 0.01 95);
+  --card: #141821;
+  --card-foreground: #F2EFE9;
+  --popover: #1B212C;
+  --popover-foreground: #F2EFE9;
 
-  --muted: oklch(0.24 0.02 260);
-  --muted-foreground: oklch(0.72 0.015 250);
+  /* Amber = primary + brand vault stamp */
+  --primary: #F5A623;
+  --primary-foreground: #0E1116;
+  --vault: #F5A623;
+  --vault-foreground: #0E1116;
+  --accent-soft: rgba(245, 166, 35, 0.12);
 
-  --accent: oklch(0.32 0.04 260);
-  --accent-foreground: oklch(0.97 0.01 95);
+  --secondary: #1B212C;
+  --secondary-foreground: #F2EFE9;
 
-  --destructive: oklch(0.62 0.22 25);
-  --destructive-foreground: oklch(0.97 0.01 95);
+  --muted: #1B212C;
+  --muted-foreground: #8B92A0;
 
-  --border: oklch(0.30 0.025 260);
-  --input: oklch(0.28 0.025 260);
-  --ring: oklch(0.84 0.16 78);
+  --accent: #20252E;
+  --accent-foreground: #F2EFE9;
 
-  /* Brand token: the vault stamp */
-  --vault: oklch(0.84 0.16 78);
-  --vault-foreground: oklch(0.16 0.02 260);
+  /* Status — used sparingly */
+  --success: #34C98E;
+  --danger: #E5484D;
+  --destructive: #E5484D;
+  --destructive-foreground: #F2EFE9;
+  --evidence: #E5484D;
 
-  /* Critical / destructive — reserved for redaction & destroy actions */
-  --evidence: oklch(0.58 0.22 25);
+  --border: rgba(255, 255, 255, 0.06);   /* hairline */
+  --input: #1B212C;
+  --ring: #F5A623;
 
-  /* Deep neutral for the editor backdrop, distinct from page bg */
-  --surface-canvas: oklch(0.12 0.015 260);
+  /* Locked semantic surfaces */
+  --ink: #F2EFE9;
+  --text-2: #B8BEC9;
+  --text-muted: #8B92A0;
+  --paper: #FAF7F0;                /* warm page surface for PDF render */
+  --canvas: #0B0E13;               /* editor backdrop behind paper */
+  --surface-canvas: #0B0E13;
+  --whisper: rgba(255, 255, 255, 0.06);
 
-  /* Locked semantic tokens — single source of truth for v2 surfaces.
-     --ink: primary text / committed actions
-     --paper: page surface (PDF render bg)
-     --canvas: editor backdrop behind paper
-     --whisper: 1px dividers, placeholder borders, hairlines */
-  --ink: oklch(0.97 0.01 95);
-  --paper: oklch(0.985 0.005 95);
-  --canvas: oklch(0.12 0.015 260);
-  --whisper: oklch(1 0 0 / 0.08);
+  /* Chart palette — amber-led, muted supporting hues */
+  --chart-1: #F5A623;
+  --chart-2: #7BB8E0;
+  --chart-3: #E5484D;
+  --chart-4: #34C98E;
+  --chart-5: #B98AD6;
 
+  /* Marketing-only soft glow (used behind hero CTAs). No gradients on UI chrome. */
+  --gradient-vault: linear-gradient(135deg, #1B212C, #0E1116);
+  --gradient-glow: radial-gradient(60% 80% at 50% 0%, rgba(245, 166, 35, 0.10), transparent 70%);
 
-  --chart-1: oklch(0.84 0.16 78);
-  --chart-2: oklch(0.70 0.13 200);
-  --chart-3: oklch(0.62 0.22 25);
-  --chart-4: oklch(0.75 0.14 150);
-  --chart-5: oklch(0.65 0.18 320);
-
-  --gradient-vault: linear-gradient(135deg, oklch(0.20 0.025 260), oklch(0.16 0.02 260));
-  --gradient-glow: radial-gradient(60% 80% at 50% 0%, oklch(0.84 0.16 78 / 0.18), transparent 70%);
-  --shadow-stamp: 0 1px 0 0 oklch(1 0 0 / 0.04) inset, 0 20px 50px -25px oklch(0 0 0 / 0.6);
-  --shadow-float: 0 1px 0 0 oklch(1 0 0 / 0.05) inset, 0 12px 32px -12px oklch(0 0 0 / 0.7);
+  /* Gentle shadows — lift floating things off the canvas */
+  --shadow-card:  0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.40);
+  --shadow-stamp: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
-/* This is a dark-first product; .dark mirrors :root */
+/* dark-first product — .dark mirrors :root */
 .dark {
-  --background: oklch(0.16 0.02 260);
-  --foreground: oklch(0.97 0.01 95);
-  --card: oklch(0.20 0.025 260);
-  --card-foreground: oklch(0.97 0.01 95);
-  --popover: oklch(0.20 0.025 260);
-  --popover-foreground: oklch(0.97 0.01 95);
-  --primary: oklch(0.84 0.16 78);
-  --primary-foreground: oklch(0.16 0.02 260);
-  --secondary: oklch(0.25 0.025 260);
-  --secondary-foreground: oklch(0.97 0.01 95);
-  --muted: oklch(0.24 0.02 260);
-  --muted-foreground: oklch(0.72 0.015 250);
-  --accent: oklch(0.32 0.04 260);
-  --accent-foreground: oklch(0.97 0.01 95);
-  --destructive: oklch(0.62 0.22 25);
-  --destructive-foreground: oklch(0.97 0.01 95);
-  --border: oklch(0.30 0.025 260);
-  --input: oklch(0.28 0.025 260);
-  --ring: oklch(0.84 0.16 78);
+  --background: #0E1116;
+  --foreground: #F2EFE9;
+  --card: #141821;
+  --card-foreground: #F2EFE9;
+  --popover: #1B212C;
+  --popover-foreground: #F2EFE9;
+  --primary: #F5A623;
+  --primary-foreground: #0E1116;
+  --secondary: #1B212C;
+  --secondary-foreground: #F2EFE9;
+  --muted: #1B212C;
+  --muted-foreground: #8B92A0;
+  --accent: #20252E;
+  --accent-foreground: #F2EFE9;
+  --destructive: #E5484D;
+  --destructive-foreground: #F2EFE9;
+  --border: rgba(255, 255, 255, 0.06);
+  --input: #1B212C;
+  --ring: #F5A623;
 }
 
 @layer base {
@@ -148,23 +166,33 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     font-feature-settings: "ss01", "cv11";
+    font-weight: 400;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Sentence case everywhere — no aggressive tracking. */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 500;
+    letter-spacing: -0.005em;
   }
 
   .font-display {
     font-family: var(--font-display);
+    font-weight: 400;
     letter-spacing: -0.01em;
   }
 
   .font-mono {
     font-family: var(--font-mono);
+    font-feature-settings: "tnum", "zero";
   }
 
   .vault-grid {
     background-image:
-      linear-gradient(to right, oklch(1 0 0 / 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(1 0 0 / 0.04) 1px, transparent 1px);
-    background-size: 48px 48px;
+      linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 56px 56px;
   }
 }
 
@@ -177,5 +205,3 @@
     display: none;
   }
 }
-
-

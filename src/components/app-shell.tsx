@@ -441,16 +441,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 
           <div className="flex items-center gap-3 shrink-0">
-            <span className="hidden lg:inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-vault animate-pulse" />
+            <span className="hidden xl:inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-xs text-text-2">
+              <Lock className="h-3 w-3 text-vault" strokeWidth={2} />
               100% in your browser
             </span>
             <Link
               to="/pricing"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 hover:bg-vault/20 text-vault px-3 py-1.5 text-sm font-medium transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-vault px-3.5 py-1.5 text-sm font-medium text-vault-foreground hover:opacity-90 transition-opacity"
             >
               Lifetime deal
             </Link>
+
 
 
             {/* Mobile trigger */}
