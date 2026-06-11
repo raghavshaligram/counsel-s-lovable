@@ -838,29 +838,6 @@ export function RedactPage() {
             label="Drop a PDF to redact"
             sublabel="or click to browse · no upload, no size limit"
           />
-          {/* Editor chrome preview — show users what they're getting */}
-          <div className="mt-10 rounded-xl border border-border bg-card/30 overflow-hidden opacity-50 pointer-events-none select-none">
-            <div className="grid grid-cols-[48px_88px_1fr_320px] h-[280px]">
-              <div className="border-r border-border bg-card/40 flex flex-col items-center py-3 gap-2">
-                <div className="h-8 w-8 rounded bg-vault/20" />
-                <div className="h-8 w-8 rounded bg-muted/40" />
-                <div className="h-8 w-8 rounded bg-muted/40" />
-                <div className="h-8 w-8 rounded bg-muted/40" />
-              </div>
-              <div className="border-r border-border bg-card/20 p-2 space-y-2 overflow-hidden">
-                {[0,1,2,3].map(i => <div key={i} className="aspect-[3/4] rounded bg-muted/30" />)}
-              </div>
-              <div className="bg-surface-canvas p-6 flex items-start justify-center">
-                <div className="w-2/3 aspect-[3/4] rounded bg-card/40 shadow-stamp" />
-              </div>
-              <div className="border-l border-border bg-card/40 p-4 space-y-3">
-                <div className="h-3 w-24 bg-muted/40 rounded" />
-                <div className="h-2 w-full bg-muted/30 rounded" />
-                <div className="h-2 w-4/5 bg-muted/30 rounded" />
-                <div className="h-8 w-full bg-vault/30 rounded mt-4" />
-              </div>
-            </div>
-          </div>
         </div>
       ) : (
         <TooltipProvider delayDuration={250}>
