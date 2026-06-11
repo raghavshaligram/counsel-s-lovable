@@ -84,7 +84,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Privacy-architected PDF toolkit. Redact, sign, mail-merge, and extract tables 100% in your browser. No uploads, no limits.",
       },
-      { name: "theme-color", content: "#1c1f33" },
+      { name: "theme-color", content: "#0E1116" },
       { property: "og:type", content: "website" },
       { property: "og:site_name", content: "VaultPDF" },
       { name: "twitter:card", content: "summary_large_image" },
