@@ -8,14 +8,17 @@
 // call converts: pdfY = pageHeight - (y + h).
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
+import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
 export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
   const srcDoc = await PDFDocument.load(doc.srcBytes);
   const out = await PDFDocument.create();
+  out.registerFontkit(fontkit);
   const fonts = {
     sans: await out.embedFont(StandardFonts.Helvetica),
     sansBold: await out.embedFont(StandardFonts.HelveticaBold),
@@ -31,6 +34,29 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     monoBoldItalic: await out.embedFont(StandardFonts.CourierBoldOblique),
   };
   const font = fonts.sans;
+
+  // Lazy-embed any bundled metric-compatible open fonts referenced by
+  // text-edit annotations. Keyed by `${fontKey}|b|i` to dedupe per variant.
+  const bundledFonts = new Map<string, import("pdf-lib").PDFFont>();
+  const ensureBundled = async (key: FontKey, bold: boolean, italic: boolean) => {
+    if (!FONT_META[key]) return undefined;
+    const cacheKey = `${key}|${bold ? 1 : 0}|${italic ? 1 : 0}`;
+    let f = bundledFonts.get(cacheKey);
+    if (f) return f;
+    try {
+      const bytes = await loadFontBytes(key, bold, italic);
+      f = await out.embedFont(bytes, { subset: true });
+      bundledFonts.set(cacheKey, f);
+      return f;
+    } catch {
+      return undefined;
+    }
+  };
+  for (const a of doc.annotations) {
+    if (a.kind === "text-edit" && a.fontKey) {
+      await ensureBundled(a.fontKey as FontKey, !!a.bold, !!a.italic);
+    }
+  }
 
   // Pre-embed images once, dedupe by dataUrl
   const imageCache = new Map<string, import("pdf-lib").PDFImage>();
