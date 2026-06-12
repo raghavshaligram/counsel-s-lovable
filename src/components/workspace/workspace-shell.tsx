@@ -784,36 +784,92 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 /* ----------------------------- Pages --------------------------------- */
 
 function PagesPlaceholder({
+  file,
   zoom,
   layout,
   gap,
   continuous,
 }: {
+  file: File | null;
   zoom: number;
   layout: "single" | "double";
   gap: number;
   continuous: boolean;
 }) {
   const widthPct = layout === "double" ? 84 : 72;
-  const count = continuous ? 6 : 1;
+  const [pages, setPages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPages([]);
+      return;
+    }
+    // Blank / template (synthetic empty file) → show a single blank A4 sheet
+    if (file.size === 0) {
+      setPages([""]);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const pdfjs = await loadPdfjs();
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        const urls: string[] = [];
+        const count = continuous ? doc.numPages : Math.min(1, doc.numPages);
+        for (let i = 1; i <= count; i++) {
+          const page = await doc.getPage(i);
+          const viewport = page.getViewport({ scale: 1.5 });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+          urls.push(canvas.toDataURL("image/png"));
+          if (cancelled) return;
+        }
+        if (!cancelled) setPages(urls);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load PDF");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file, continuous]);
+
+  const sheets = pages.length > 0 ? pages : [""];
+
   return (
     <div
       className="mx-auto flex flex-col items-center py-8"
       style={{ gap, width: `${widthPct}%` }}
     >
-      {Array.from({ length: count }).map((_, i) => (
+      {loading && (
+        <div className="text-[12px] text-text-muted">Loading document…</div>
+      )}
+      {error && (
+        <div className="text-[12px] text-destructive">{error}</div>
+      )}
+      {sheets.map((src, i) => (
         <div
           key={i}
-          className={cn(
-            "w-full",
-            layout === "double" && "grid grid-cols-2",
-          )}
+          className={cn("w-full", layout === "double" && "grid grid-cols-2")}
           style={{ gap: layout === "double" ? gap : undefined }}
         >
           {Array.from({ length: layout === "double" ? 2 : 1 }).map((_, j) => (
             <div
               key={j}
-              className="aspect-[1/1.414] w-full"
+              className="aspect-[1/1.414] w-full overflow-hidden"
               style={{
                 background: "var(--paper)",
                 borderRadius: 6,
@@ -821,7 +877,16 @@ function PagesPlaceholder({
                 transform: `scale(${zoom / 100})`,
                 transformOrigin: "top center",
               }}
-            />
+            >
+              {src && (
+                <img
+                  src={src}
+                  alt={`Page ${i + 1}`}
+                  className="h-full w-full object-contain"
+                  draggable={false}
+                />
+              )}
+            </div>
           ))}
         </div>
       ))}
