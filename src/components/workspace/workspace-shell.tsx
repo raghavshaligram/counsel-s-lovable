@@ -1939,3 +1939,44 @@ function relTime(ts: number) {
   return `${d}d ago`;
 }
 
+
+/* ---------------------- Editor pages list (native) -------------------- */
+// Renders every page of the loaded EditorDoc using the ported EditorCanvas.
+// Reuses the shared reducer; the workspace's floating toolbar drives state.
+
+import type { Dispatch as ReactDispatch } from "react";
+import type { State as EditorState, Action as EditorAction } from "@/lib/editor/state";
+
+function EditorPages({
+  state, dispatch, zoom, gap,
+}: {
+  state: EditorState;
+  dispatch: ReactDispatch<EditorAction>;
+  zoom: number;
+  gap: number;
+}) {
+  if (!state.doc) return null;
+  const scale = (zoom / 100) * 1.3;
+  return (
+    <div
+      className="mx-auto flex flex-col items-center py-6 px-4"
+      style={{ gap }}
+    >
+      {state.doc.pages.map((op, i) => {
+        const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
+        return (
+          <EditorCanvas
+            key={`${i}-${op.srcPage}-${op.rotation}-${op.blank ? 1 : 0}`}
+            pageIndex={i}
+            op={op}
+            srcBytes={state.doc!.srcBytes}
+            annos={annosForPage}
+            state={state}
+            dispatch={dispatch}
+            scale={scale}
+          />
+        );
+      })}
+    </div>
+  );
+}
