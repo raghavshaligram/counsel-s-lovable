@@ -193,70 +193,118 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 };
 
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
-  const [, setActiveGroup] = useState<ToolId | null>(initialTool ?? null);
-  const [activeToolId, setActiveToolId] = useState<string | null>(
-    initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
+  // ----------------- Tabs: array of open documents -------------------
+  // Each tab owns its OWN file, editor state, active tool, view settings,
+  // undo history, and dirty flag. The canvas/inspector/toolbar/command bar
+  // always read from the ACTIVE tab; switching tabs swaps which doc is live.
+  const [tabs, setTabs] = useState<TabState[]>(() => [
+    makeBlankTab({
+      activeToolId: initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
+      inspectorOpen: Boolean(initialTool),
+    }),
+  ]);
+  const [activeId, setActiveId] = useState<string>(() => tabs[0].id);
+  const active = useMemo(
+    () => tabs.find((t) => t.id === activeId) ?? tabs[0],
+    [tabs, activeId],
   );
-  const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
-  // Shared editor state (reducer ported from /editor route).
-  const [editorState, editorDispatch] = useReducer(reducer, initialState);
-  const editorTool = editorState.tool;
-
-  // When the active rail tool is "redact", default the canvas mode to redact.
-  // When leaving redact, fall back to select. The floating toolbar shows the
-  // contextual redact set during this window; logic stays in the single store.
+  // Stable ref for callbacks that need the current active id without
+  // re-binding every render.
+  const activeIdRef = useRef(activeId);
   useEffect(() => {
-    if (activeToolId === "redact") editorDispatch({ type: "SET_TOOL", t: "redact" });
-    else if (editorState.tool === "redact") editorDispatch({ type: "SET_TOOL", t: "select" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeToolId]);
-  const [zoom, setZoom] = useState<number>(100);
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  // Pending close (for the unsaved-changes guard).
+  const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
+  const [pendingHomeClose, setPendingHomeClose] = useState(false); // legacy guard
+
+  // ----------------- Patch helpers ------------------------------------
+  const patchTab = useCallback((id: string, patch: Partial<TabState>) => {
+    setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }, []);
+  const patchActive = useCallback(
+    (patch: Partial<TabState>) => patchTab(activeIdRef.current, patch),
+    [patchTab],
+  );
+  const dispatchEditorFor = useCallback((id: string, action: EditorAction) => {
+    setTabs((ts) =>
+      ts.map((t) => (t.id === id ? { ...t, editor: reducer(t.editor, action) } : t)),
+    );
+  }, []);
+  const editorDispatch = useCallback(
+    (action: EditorAction) => dispatchEditorFor(activeIdRef.current, action),
+    [dispatchEditorFor],
+  );
+
+  // Convenience aliases — every render reads from `active`.
+  const file = active.file;
+  const isDirty = active.isDirty;
+  const editorState = active.editor;
+  const editorTool = editorState.tool;
+  const activeToolId = active.activeToolId;
+  const inspectorOpen = active.inspectorOpen;
+  const zoom = active.zoom;
+  const pageLayout = active.pageLayout;
+  const continuous = active.continuous;
+  const showGaps = active.showGaps;
+  const theme = active.theme;
+
+  // ----------------- Global UI state ---------------------------------
   const [viewOpen, setViewOpen] = useState(false);
-  const [pageLayout, setPageLayout] = useState<"single" | "double">("single");
-  const [continuous, setContinuous] = useState(true);
-  const [showGaps, setShowGaps] = useState(true);
-  const [theme, setTheme] = useState<ReadingTheme>("dark");
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
   const [toolModalOpen, setToolModalOpen] = useState(false);
-  // Defer localStorage read to the client to avoid SSR hydration mismatch.
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [recents, setRecents] = useState<RecentMeta[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Hydrate persisted UI state + usage + recents on the client only.
+  // Hydrate persisted UI, usage, recents, and the previously-open tab set.
   useEffect(() => {
     let cancelled = false;
     try {
       const raw = window.localStorage.getItem(USAGE_KEY);
       if (raw) setUsage(JSON.parse(raw));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     (async () => {
-      const [ui, recentsList] = await Promise.all([loadUIState(), listRecents()]);
+      const [ui, recentsList, openTabs] = await Promise.all([
+        loadUIState(),
+        listRecents(),
+        loadOpenTabs(),
+      ]);
       if (cancelled) return;
       if (ui) {
-        if (ui.activeToolId) setActiveToolId(ui.activeToolId);
-        if (typeof ui.inspectorOpen === "boolean") setInspectorOpen(ui.inspectorOpen);
-        if (ui.pageLayout) setPageLayout(ui.pageLayout);
-        if (typeof ui.continuous === "boolean") setContinuous(ui.continuous);
-        if (typeof ui.showGaps === "boolean") setShowGaps(ui.showGaps);
-        if (ui.theme) setTheme(ui.theme);
-        if (typeof ui.zoom === "number") setZoom(ui.zoom);
+        // Apply last-session view defaults to the initial tab.
+        patchTab(activeIdRef.current, {
+          activeToolId: ui.activeToolId ?? null,
+          inspectorOpen: typeof ui.inspectorOpen === "boolean" ? ui.inspectorOpen : false,
+          pageLayout: ui.pageLayout ?? "single",
+          continuous: typeof ui.continuous === "boolean" ? ui.continuous : true,
+          showGaps: typeof ui.showGaps === "boolean" ? ui.showGaps : true,
+          theme: ui.theme ?? "dark",
+          zoom: typeof ui.zoom === "number" ? ui.zoom : 100,
+        });
       }
       setRecents(recentsList);
+      // Only offer resume for tabs whose bytes still exist in recents.
+      const restorable = openTabs.filter((m) =>
+        recentsList.some((r) => r.name === m.name && r.size === m.size),
+      );
+      setPendingResume(restorable);
       setHydrated(true);
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist UI state (debounced) once hydrated.
+  // Persist active tab's UI state (debounced).
   useEffect(() => {
     if (!hydrated) return;
     saveUIStateDebounced({
@@ -271,12 +319,35 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     });
   }, [hydrated, activeToolId, inspectorOpen, pageLayout, continuous, showGaps, theme, zoom]);
 
+  // Persist the open-tabs metadata so we can offer Resume on refresh.
+  useEffect(() => {
+    if (!hydrated) return;
+    const meta: OpenTabMeta[] = tabs
+      .filter((t) => t.file && t.file.size > 0)
+      .map((t) => ({ name: t.file!.name, size: t.file!.size }));
+    void saveOpenTabs(meta);
+  }, [hydrated, tabs]);
 
-  // Mark the document dirty when the user picks a mutating editor tool.
-  const setEditorTool = useCallback((t: EditorTool) => {
-    editorDispatch({ type: "SET_TOOL", t });
-    if (t !== "select" && t !== "note") setIsDirty(true);
-  }, []);
+  // ----------------- Tool selection (per-active-tab) ------------------
+  // When the active rail tool flips to "redact" on this tab, default its
+  // editor canvas mode to redact. Leaving redact reverts to select.
+  useEffect(() => {
+    const id = active.id;
+    if (active.activeToolId === "redact" && active.editor.tool !== "redact") {
+      dispatchEditorFor(id, { type: "SET_TOOL", t: "redact" });
+    } else if (active.activeToolId !== "redact" && active.editor.tool === "redact") {
+      dispatchEditorFor(id, { type: "SET_TOOL", t: "select" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active.id, active.activeToolId]);
+
+  const setEditorTool = useCallback(
+    (t: EditorTool) => {
+      editorDispatch({ type: "SET_TOOL", t });
+      if (t !== "select" && t !== "note") patchActive({ isDirty: true });
+    },
+    [editorDispatch, patchActive],
+  );
 
   const pins = useMemo(() => computePins(usage), [usage]);
   const pinnedTools = useMemo(
@@ -300,21 +371,61 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     (toolId: string, opts?: { bump?: boolean }) => {
       const tool = toolById(toolId);
       if (!tool) return;
-      setActiveGroup(tool.group);
-      setActiveToolId(tool.id);
-      setInspectorOpen(true);
+      patchActive({ activeToolId: tool.id, inspectorOpen: true });
       setToolModalOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
-    [bumpUsage],
+    [bumpUsage, patchActive],
   );
 
+  // ----------------- Tab operations -----------------------------------
+  const openNewStartTab = useCallback(() => {
+    setTabs((ts) => {
+      if (ts.length >= TAB_CAP) {
+        toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+        return ts;
+      }
+      const next = makeBlankTab();
+      setActiveId(next.id);
+      return [...ts, next];
+    });
+  }, []);
+
+  const closeTab = useCallback(
+    (id: string, opts?: { force?: boolean }) => {
+      const target = tabs.find((t) => t.id === id);
+      if (!target) return;
+      if (!opts?.force && target.isDirty && target.file) {
+        setPendingCloseId(id);
+        return;
+      }
+      setTabs((ts) => {
+        const next = ts.filter((t) => t.id !== id);
+        if (next.length === 0) {
+          // Always keep at least one tab open.
+          const blank = makeBlankTab();
+          setActiveId(blank.id);
+          return [blank];
+        }
+        if (activeIdRef.current === id) {
+          const idx = ts.findIndex((t) => t.id === id);
+          const fallback = next[Math.max(0, idx - 1)] ?? next[0];
+          setActiveId(fallback.id);
+        }
+        return next;
+      });
+      setPendingCloseId(null);
+    },
+    [tabs],
+  );
+
+  // ----------------- File open (into the ACTIVE tab) ------------------
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
-  const onFiles = useCallback((files: FileList | null) => {
-    const f = files?.[0];
-    if (f) {
-      setFile(f);
-      setIsDirty(false);
+  const onFiles = useCallback(
+    (files: FileList | null) => {
+      const f = files?.[0];
+      if (!f) return;
+      patchActive({ file: f, isDirty: false });
       void (async () => {
         const meta = await addRecent(f);
         if (meta) {
@@ -322,20 +433,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           setRecents(list);
         }
       })();
-    }
-  }, []);
+    },
+    [patchActive],
+  );
 
-  const resumeRecent = useCallback(async (id: string) => {
-    const rec = await getRecent(id);
-    if (!rec) return;
-    const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
-    const f = new File([blob], rec.name, { type: "application/pdf" });
-    setFile(f);
-    setIsDirty(false);
-    // Bump addedAt so newest sits first next time.
-    await addRecent(f);
-    setRecents(await listRecents());
-  }, []);
+  const resumeRecent = useCallback(
+    async (id: string) => {
+      const rec = await getRecent(id);
+      if (!rec) return;
+      const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
+      const f = new File([blob], rec.name, { type: "application/pdf" });
+      patchActive({ file: f, isDirty: false });
+      await addRecent(f);
+      setRecents(await listRecents());
+    },
+    [patchActive],
+  );
 
   const dismissRecent = useCallback(async (id: string) => {
     await removeRecent(id);
@@ -347,56 +460,84 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setRecents([]);
   }, []);
 
-
-  const loadBlank = useCallback(() => {
-    setFile(new File([], "Untitled.pdf", { type: "application/pdf" }));
-    setIsDirty(false);
-  }, []);
-  const loadTemplate = useCallback((name: string) => {
-    setFile(new File([], `${name}.pdf`, { type: "application/pdf" }));
-    setIsDirty(false);
-  }, []);
-
-  const clearToStart = useCallback(() => {
-    setFile(null);
-    setIsDirty(false);
-    editorDispatch({ type: "SET_TOOL", t: "select" });
-    setInspectorOpen(false);
-    setActiveToolId(null);
-  }, []);
-
-  // Guarded "go to Start". If the doc has unsaved edits, ask first.
-  const goHome = useCallback(() => {
-    if (file && isDirty) {
-      setConfirmClearOpen(true);
+  // Restore previously-open documents into tabs.
+  const restoreOpenTabs = useCallback(async () => {
+    const list = pendingResume;
+    setPendingResume([]);
+    if (list.length === 0) return;
+    const recentsNow = await listRecents();
+    const restored: TabState[] = [];
+    for (const m of list) {
+      if (restored.length >= TAB_CAP) break;
+      const meta = recentsNow.find((r) => r.name === m.name && r.size === m.size);
+      if (!meta) continue;
+      const rec = await getRecent(meta.id);
+      if (!rec) continue;
+      const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
+      const f = new File([blob], rec.name, { type: "application/pdf" });
+      restored.push(makeBlankTab({ file: f }));
+    }
+    if (restored.length === 0) {
+      toast.error("Couldn't restore — the previous files are no longer in local storage.");
       return;
     }
-    clearToStart();
-  }, [file, isDirty, clearToStart]);
+    setTabs((ts) => {
+      // Replace the first blank tab if present; otherwise append.
+      const firstIsBlank = ts.length === 1 && !ts[0].file;
+      const base = firstIsBlank ? [] : ts;
+      const combined = [...base, ...restored].slice(0, TAB_CAP);
+      setActiveId(combined[base.length].id);
+      return combined;
+    });
+  }, [pendingResume]);
 
-  const handleSaveAndClear = useCallback(() => {
-    // Export flow placeholder — real export lives in the feature panels.
+  const dismissResume = useCallback(() => {
+    setPendingResume([]);
+    void clearOpenTabs();
+  }, []);
+
+  const loadBlank = useCallback(() => {
+    patchActive({ file: new File([], "Untitled.pdf", { type: "application/pdf" }), isDirty: false });
+  }, [patchActive]);
+  const loadTemplate = useCallback(
+    (name: string) => {
+      patchActive({
+        file: new File([], `${name}.pdf`, { type: "application/pdf" }),
+        isDirty: false,
+      });
+    },
+    [patchActive],
+  );
+
+  // Home / New = open a fresh Start tab. Existing work stays in its tabs;
+  // nothing is closed, so no dirty guard is needed.
+  const goHome = useCallback(() => {
+    openNewStartTab();
+  }, [openNewStartTab]);
+
+  // Unsaved-changes guard used only when CLOSING a dirty tab.
+  const handleSaveAndClose = useCallback(() => {
+    // Export hook placeholder — real export lives in feature panels.
     // eslint-disable-next-line no-console
-    console.log("[workspace] save before leaving", file?.name);
-    setConfirmClearOpen(false);
-    clearToStart();
-  }, [file, clearToStart]);
+    console.log("[workspace] save before close", pendingCloseId);
+    if (pendingCloseId) closeTab(pendingCloseId, { force: true });
+  }, [pendingCloseId, closeTab]);
 
-  const handleDiscardAndClear = useCallback(() => {
-    setConfirmClearOpen(false);
-    clearToStart();
-  }, [clearToStart]);
+  const handleDiscardAndClose = useCallback(() => {
+    if (pendingCloseId) closeTab(pendingCloseId, { force: true });
+  }, [pendingCloseId, closeTab]);
 
-  // Warn on page unload too, so a stray refresh doesn't lose edits.
+  // Warn on actual page unload if any tab is dirty.
   useEffect(() => {
-    if (!isDirty) return;
+    const anyDirty = tabs.some((t) => t.isDirty);
+    if (!anyDirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [isDirty]);
+  }, [tabs]);
 
   // Shortcuts
   useEffect(() => {
@@ -407,26 +548,36 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         aiRef.current?.focus();
       } else if (meta && e.key === "\\") {
         e.preventDefault();
-        setInspectorOpen((v) => !v);
-      } else if (!meta && e.key.toLowerCase() === "o" && document.activeElement === document.body) {
+        patchActive({ inspectorOpen: !inspectorOpen });
+      } else if (meta && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        openNewStartTab();
+      } else if (
+        !meta &&
+        e.key.toLowerCase() === "o" &&
+        document.activeElement === document.body
+      ) {
         e.preventDefault();
         openFile();
       } else if (!meta && (e.key === "+" || e.key === "=")) {
-        setZoom((z) => Math.min(400, z + 10));
+        patchActive({ zoom: Math.min(400, zoom + 10) });
       } else if (!meta && e.key === "-") {
-        setZoom((z) => Math.max(25, z - 10));
+        patchActive({ zoom: Math.max(25, zoom - 10) });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openFile]);
+  }, [openFile, openNewStartTab, patchActive, inspectorOpen, zoom]);
 
-  // Drag-drop anywhere
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    onFiles(e.dataTransfer.files);
-  }, [onFiles]);
+  // Drag-drop anywhere → open into active tab.
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      onFiles(e.dataTransfer.files);
+    },
+    [onFiles],
+  );
 
   const submitAi = useCallback(() => {
     if (!aiText.trim()) return;
@@ -438,41 +589,46 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
   // Inject font @font-face rules once (used by edit-text overlays).
-  useEffect(() => { injectFontFaces(); }, []);
-
-  // Build an EditorDoc whenever a real PDF is opened. Blank/template files
-  // (size 0) skip — keep them on the placeholder until real content lands.
   useEffect(() => {
+    injectFontFaces();
+  }, []);
+
+  // Build an EditorDoc for the ACTIVE tab whenever its file changes.
+  // Skips when the editor already holds that document (so tab-switching
+  // doesn't re-parse).
+  useEffect(() => {
+    const tabId = active.id;
+    const f = active.file;
+    if (!f || f.size === 0) return;
+    const already =
+      active.editor.doc &&
+      active.editor.doc.fileName === f.name &&
+      active.editor.doc.pages.length > 0;
+    if (already) return;
     let cancelled = false;
-    if (!file || file.size === 0) {
-      // Clear any previous doc when the workspace clears the file.
-      if (editorState.doc) {
-        editorDispatch({ type: "LOAD", doc: { fileName: "", srcBytes: new Uint8Array(), pages: [], annotations: [] } });
-      }
-      return;
-    }
     (async () => {
       try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        const bytes = new Uint8Array(await f.arrayBuffer());
         const lib = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const pages: PageOp[] = lib.getPages().map((p, i) => {
           const { width, height } = p.getSize();
           return { srcPage: i, rotation: 0, width, height };
         });
         if (cancelled) return;
-        console.log("[workspace] loaded PDF", { name: file.name, size: file.size, pages: pages.length });
-        editorDispatch({
+        dispatchEditorFor(tabId, {
           type: "LOAD",
-          doc: { fileName: file.name, srcBytes: bytes, pages, annotations: [] },
+          doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
       } catch (err) {
         console.error("[workspace] PDFDocument.load failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file]);
+  }, [active.id, active.file]);
 
   const onExport = useCallback(async () => {
     if (!editorState.doc || editorState.doc.pages.length === 0) {
@@ -495,6 +651,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }
   }, [editorState.doc]);
 
+  // Unused placeholder to keep TS happy if referenced elsewhere
+  void pendingHomeClose;
 
   return (
     <div
@@ -520,8 +678,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           <button
             type="button"
             onClick={goHome}
-            title="Start screen"
-            aria-label="Go to Start"
+            title="New tab (Start screen)"
+            aria-label="New tab"
             className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-0.5 hover:bg-surface-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span
@@ -535,8 +693,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           <button
             type="button"
             onClick={goHome}
-            title="New (return to Start)"
-            aria-label="New"
+            title="New tab"
+            aria-label="New tab"
             className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors"
           >
             <FilePlus2 className="h-[15px] w-[15px]" />
@@ -545,14 +703,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           <span className="truncate text-[13px] text-text-2">
             {file?.name ?? "Untitled document"}
             {isDirty && file && (
-              <span className="ml-1.5 text-vault" aria-label="Unsaved changes" title="Unsaved changes">•</span>
+              <span
+                className="ml-1.5 text-vault"
+                aria-label="Unsaved changes"
+                title="Unsaved changes"
+              >
+                •
+              </span>
             )}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault"
-          >
+          <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault">
             <Lock className="h-3 w-3" strokeWidth={2.5} />
             100% in your browser
           </span>
@@ -566,6 +728,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </button>
         </div>
       </header>
+
+      {/* TAB STRIP */}
+      <TabStrip
+        tabs={tabs}
+        activeId={activeId}
+        onActivate={setActiveId}
+        onClose={(id) => closeTab(id)}
+        onNew={openNewStartTab}
+      />
 
       {/* MAIN ROW */}
       <div className="flex min-h-0 flex-1">
@@ -597,7 +768,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         <div className="relative flex min-w-0 flex-1">
           {/* CANVAS */}
           <main className="relative flex min-w-0 flex-1 flex-col bg-background">
-            {/* Floating toolbar + view popover anchor */}
             {file && (
               <>
                 <FloatingToolbar
@@ -611,10 +781,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               </>
             )}
             <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
-              <CanvasIconButton
-                label="Thumbnails"
-                onClick={() => openTool("organize")}
-              >
+              <CanvasIconButton label="Thumbnails" onClick={() => openTool("organize")}>
                 <LayoutGrid className="h-[15px] w-[15px]" />
               </CanvasIconButton>
               <CanvasIconButton
@@ -627,13 +794,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               {viewOpen && (
                 <ViewPopover
                   pageLayout={pageLayout}
-                  onPageLayout={setPageLayout}
+                  onPageLayout={(v) => patchActive({ pageLayout: v })}
                   continuous={continuous}
-                  onContinuous={setContinuous}
+                  onContinuous={(v) => patchActive({ continuous: v })}
                   showGaps={showGaps}
-                  onShowGaps={setShowGaps}
+                  onShowGaps={(v) => patchActive({ showGaps: v })}
                   theme={theme}
-                  onTheme={setTheme}
+                  onTheme={(v) => patchActive({ theme: v })}
                   onClose={() => setViewOpen(false)}
                 />
               )}
@@ -641,7 +808,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
             {/* Scroll area */}
             <div className="relative flex-1 overflow-auto">
-              {/* Theme tint overlay (view-only) */}
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0 transition-colors"
@@ -661,15 +827,36 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   </div>
                 )
               ) : (
-                <EmptyStart
-                  onOpen={openFile}
-                  onBlank={loadBlank}
-                  onTemplate={loadTemplate}
-                  recents={recents}
-                  onResume={resumeRecent}
-                  onDismissRecent={dismissRecent}
-                  onClearRecents={clearAllRecents}
-                />
+                <div className="relative h-full">
+                  {pendingResume.length > 0 && (
+                    <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 rounded-md border border-vault/40 bg-accent-soft px-3 py-1.5 text-[12px] text-vault">
+                      <span>Resume your {pendingResume.length} previously open document{pendingResume.length === 1 ? "" : "s"}?</span>
+                      <button
+                        type="button"
+                        onClick={restoreOpenTabs}
+                        className="rounded-md bg-vault px-2 py-0.5 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
+                      >
+                        Resume
+                      </button>
+                      <button
+                        type="button"
+                        onClick={dismissResume}
+                        className="rounded-md px-1.5 py-0.5 text-[11.5px] text-vault/80 hover:bg-vault/10"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                  <EmptyStart
+                    onOpen={openFile}
+                    onBlank={loadBlank}
+                    onTemplate={loadTemplate}
+                    recents={recents}
+                    onResume={resumeRecent}
+                    onDismissRecent={dismissRecent}
+                    onClearRecents={clearAllRecents}
+                  />
+                </div>
               )}
             </div>
 
@@ -700,7 +887,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           <Inspector
             open={inspectorOpen}
             activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
-            onClose={() => setInspectorOpen(false)}
+            onClose={() => patchActive({ inspectorOpen: false })}
           />
         </div>
       </div>
@@ -720,22 +907,28 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           {file ? `${file.name} · — pages · ${sizeLabel}` : "No document loaded"}
         </div>
         <div className="flex items-center gap-1">
-          <ZoomButton onClick={() => setZoom((z) => Math.max(25, z - 10))} label="Zoom out">
+          <ZoomButton
+            onClick={() => patchActive({ zoom: Math.max(25, zoom - 10) })}
+            label="Zoom out"
+          >
             <Minus className="h-3.5 w-3.5" />
           </ZoomButton>
           <button
             type="button"
-            onClick={() => setZoom(100)}
+            onClick={() => patchActive({ zoom: 100 })}
             title="Reset to 100%"
             className="font-mono tabular-nums px-2 text-text-2 hover:text-foreground min-w-[3.5rem] text-center"
           >
             {zoom}%
           </button>
-          <ZoomButton onClick={() => setZoom((z) => Math.min(400, z + 10))} label="Zoom in">
+          <ZoomButton
+            onClick={() => patchActive({ zoom: Math.min(400, zoom + 10) })}
+            label="Zoom in"
+          >
             <Plus className="h-3.5 w-3.5" />
           </ZoomButton>
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <ZoomButton onClick={() => setZoom(100)} label="Fit width">
+          <ZoomButton onClick={() => patchActive({ zoom: 100 })} label="Fit width">
             <StretchHorizontal className="h-3.5 w-3.5" />
           </ZoomButton>
         </div>
@@ -756,18 +949,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         </div>
       )}
 
-      {/* Unsaved-changes guard */}
-      {confirmClearOpen && (
+      {/* Unsaved-changes guard — used only when closing a dirty tab */}
+      {pendingCloseId && (
         <UnsavedChangesDialog
-          filename={file?.name}
-          onSave={handleSaveAndClear}
-          onDiscard={handleDiscardAndClear}
-          onCancel={() => setConfirmClearOpen(false)}
+          filename={tabs.find((t) => t.id === pendingCloseId)?.file?.name}
+          onSave={handleSaveAndClose}
+          onDiscard={handleDiscardAndClose}
+          onCancel={() => setPendingCloseId(null)}
         />
       )}
     </div>
   );
 }
+
 
 /* -------------------- Unsaved changes dialog ------------------------ */
 
