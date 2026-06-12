@@ -1191,11 +1191,14 @@ function PageCanvas({
       case "text-edit": {
         const isEditing = editingId === a.id;
         const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
-        const fam = a.kind === "text-edit"
-          ? (a.family === "serif" ? `'Times New Roman', Times, serif`
-            : a.family === "mono" ? `'Courier New', Courier, monospace`
-            : `Helvetica, Arial, sans-serif`)
-          : `Helvetica, Arial, sans-serif`;
+        const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
+        const fam = editFontKey && FONT_META[editFontKey]
+          ? FONT_META[editFontKey].cssFamily
+          : a.kind === "text-edit"
+            ? (a.family === "serif" ? `'Times New Roman', Times, serif`
+              : a.family === "mono" ? `'Courier New', Courier, monospace`
+              : `Helvetica, Arial, sans-serif`)
+            : `Helvetica, Arial, sans-serif`;
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * displayScale : 0;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
