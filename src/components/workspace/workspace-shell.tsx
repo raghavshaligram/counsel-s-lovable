@@ -31,7 +31,6 @@ import {
   Plus,
   Maximize2,
   Upload,
-  Upload,
   FilePlus2,
   LayoutTemplate,
   Images as PhotoIcon,
