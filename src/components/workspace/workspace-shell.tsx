@@ -371,36 +371,36 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               <>
                 <FloatingToolbar active={editorTool} onChange={setEditorTool} />
                 <ContextualBar tool={editorTool} />
-                <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
-                  <CanvasIconButton
-                    label="Thumbnails"
-                    onClick={() => openTool("organize")}
-                  >
-                    <LayoutGrid className="h-[15px] w-[15px]" />
-                  </CanvasIconButton>
-                  <CanvasIconButton
-                    label="View options"
-                    active={viewOpen}
-                    onClick={() => setViewOpen((v) => !v)}
-                  >
-                    <SlidersHorizontal className="h-[15px] w-[15px]" />
-                  </CanvasIconButton>
-                  {viewOpen && (
-                    <ViewPopover
-                      pageLayout={pageLayout}
-                      onPageLayout={setPageLayout}
-                      continuous={continuous}
-                      onContinuous={setContinuous}
-                      showGaps={showGaps}
-                      onShowGaps={setShowGaps}
-                      theme={theme}
-                      onTheme={setTheme}
-                      onClose={() => setViewOpen(false)}
-                    />
-                  )}
-                </div>
               </>
             )}
+            <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
+              <CanvasIconButton
+                label="Thumbnails"
+                onClick={() => openTool("organize")}
+              >
+                <LayoutGrid className="h-[15px] w-[15px]" />
+              </CanvasIconButton>
+              <CanvasIconButton
+                label="Adjust view"
+                active={viewOpen}
+                onClick={() => setViewOpen((v) => !v)}
+              >
+                <SlidersHorizontal className="h-[15px] w-[15px]" />
+              </CanvasIconButton>
+              {viewOpen && (
+                <ViewPopover
+                  pageLayout={pageLayout}
+                  onPageLayout={setPageLayout}
+                  continuous={continuous}
+                  onContinuous={setContinuous}
+                  showGaps={showGaps}
+                  onShowGaps={setShowGaps}
+                  theme={theme}
+                  onTheme={setTheme}
+                  onClose={() => setViewOpen(false)}
+                />
+              )}
+            </div>
 
             {/* Scroll area */}
             <div className="relative flex-1 overflow-auto">
