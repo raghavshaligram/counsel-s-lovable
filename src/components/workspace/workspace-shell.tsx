@@ -10,7 +10,6 @@ import {
   Layout,
   Scale,
   Sparkles,
-  MoreHorizontal,
   X,
   MousePointer2,
   Type,
@@ -36,9 +35,23 @@ import {
   Images as PhotoIcon,
   FileType,
   ArrowRight,
+  Scissors,
+  RotateCw,
+  Table2 as TableIcon,
+  FileStack,
+  ScanText,
+  Stamp,
+  PackageOpen,
+  ListTree,
+  Hash,
+  Layers,
+  ScanSearch,
+  Grid3x3,
+  Search,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+
 
 type ToolId =
   | "pages"
@@ -50,23 +63,101 @@ type ToolId =
   | "legal"
   | "ai";
 
-type RailItem = {
-  id: ToolId;
+type ToolGroupLabel =
+  | "Pages"
+  | "Convert"
+  | "Edit"
+  | "Redact"
+  | "Secure"
+  | "Layout"
+  | "Legal"
+  | "AI";
+
+type Tool = {
+  id: string;
   label: string;
-  subtitle: string;
   icon: React.ComponentType<{ className?: string }>;
+  group: ToolId;
+  groupLabel: ToolGroupLabel;
 };
 
-const RAIL: RailItem[] = [
-  { id: "pages", label: "Pages", subtitle: "Organize, split, merge, rotate", icon: Files },
-  { id: "redact", label: "Redact", subtitle: "Permanently remove sensitive content", icon: Shield },
-  { id: "sign", label: "Sign", subtitle: "Sign and request signatures", icon: PenLine },
-  { id: "convert", label: "Convert", subtitle: "To/from Word, Excel, images", icon: RefreshCw },
-  { id: "secure", label: "Secure", subtitle: "Encrypt, unlock, watermark", icon: KeyRound },
-  { id: "layout", label: "Layout", subtitle: "Crop, headers, page numbers", icon: Layout },
-  { id: "legal", label: "Legal", subtitle: "Bates, privilege, compare", icon: Scale },
-  { id: "ai", label: "AI", subtitle: "Ask, summarize, extract", icon: Sparkles },
+const TOOLS: Tool[] = [
+  // Pages
+  { id: "organize", label: "Organize", icon: LayoutGrid, group: "pages", groupLabel: "Pages" },
+  { id: "merge", label: "Merge", icon: Files, group: "pages", groupLabel: "Pages" },
+  { id: "split", label: "Split", icon: Scissors, group: "pages", groupLabel: "Pages" },
+  { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Pages" },
+  { id: "extract", label: "Extract", icon: TableIcon, group: "pages", groupLabel: "Pages" },
+  { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Pages" },
+  { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
+  // Convert
+  { id: "to-word", label: "PDF → Word", icon: FileType, group: "convert", groupLabel: "Convert" },
+  { id: "word-to-pdf", label: "Word → PDF", icon: FileType, group: "convert", groupLabel: "Convert" },
+  { id: "to-images", label: "PDF → Images", icon: PhotoIcon, group: "convert", groupLabel: "Convert" },
+  { id: "images-to-pdf", label: "Images → PDF", icon: PhotoIcon, group: "convert", groupLabel: "Convert" },
+  { id: "to-excel", label: "PDF → Excel", icon: TableIcon, group: "convert", groupLabel: "Convert" },
+  { id: "ocr", label: "Make Searchable", icon: ScanText, group: "convert", groupLabel: "Convert" },
+  // Edit
+  { id: "sign", label: "Sign & Fill", icon: PenLine, group: "sign", groupLabel: "Edit" },
+  { id: "watermark", label: "Watermark", icon: Stamp, group: "secure", groupLabel: "Edit" },
+  { id: "compress", label: "Compress", icon: PackageOpen, group: "secure", groupLabel: "Edit" },
+  // Redact
+  { id: "redact", label: "Redact", icon: Shield, group: "redact", groupLabel: "Redact" },
+  // Secure
+  { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
+  { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
+  { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
+  // Layout
+  { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
+  { id: "page-numbers", label: "Page Numbers", icon: Hash, group: "layout", groupLabel: "Layout" },
+  { id: "header-footer", label: "Header & Footer", icon: Layout, group: "layout", groupLabel: "Layout" },
+  { id: "flatten", label: "Flatten", icon: Layers, group: "layout", groupLabel: "Layout" },
+  // Legal
+  { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
+  { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal" },
+  { id: "privilege-scan", label: "Privilege Scan", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  // AI
+  { id: "chat", label: "Search Inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
 ];
+
+const GROUP_ORDER: ToolGroupLabel[] = [
+  "Pages", "Convert", "Edit", "Redact", "Secure", "Layout", "Legal", "AI",
+];
+
+const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
+const PIN_CAP = 5;
+const USAGE_KEY = "vaultpdf:tool-usage";
+
+function loadUsage(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(USAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function computePins(counts: Record<string, number>): string[] {
+  // Tools must be used 2+ times to "earn" a pinned slot.
+  const earned = Object.entries(counts)
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id);
+  const result: string[] = [];
+  for (const id of earned) {
+    if (result.length >= PIN_CAP) break;
+    if (TOOLS.some((t) => t.id === id)) result.push(id);
+  }
+  for (const id of DEFAULT_PINS) {
+    if (result.length >= PIN_CAP) break;
+    if (!result.includes(id) && TOOLS.some((t) => t.id === id)) result.push(id);
+  }
+  return result.slice(0, PIN_CAP);
+}
+
+function toolById(id: string): Tool | undefined {
+  return TOOLS.find((t) => t.id === id);
+}
 
 type EditorTool =
   | "select"
@@ -92,7 +183,10 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [file, setFile] = useState<File | null>(null);
-  const [activeGroup, setActiveGroup] = useState<ToolId | null>(initialTool ?? null);
+  const [, setActiveGroup] = useState<ToolId | null>(initialTool ?? null);
+  const [activeToolId, setActiveToolId] = useState<string | null>(
+    initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
+  );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
   const [editorTool, setEditorTool] = useState<EditorTool>("select");
   const [zoom, setZoom] = useState<number>(100);
@@ -103,13 +197,41 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [theme, setTheme] = useState<ReadingTheme>("dark");
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
+  const [toolModalOpen, setToolModalOpen] = useState(false);
+  const [usage, setUsage] = useState<Record<string, number>>(() => loadUsage());
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const onOpenGroup = useCallback((id: ToolId) => {
-    setActiveGroup(id);
-    setInspectorOpen(true);
+  const pins = useMemo(() => computePins(usage), [usage]);
+  const pinnedTools = useMemo(
+    () => pins.map((id) => toolById(id)).filter((t): t is Tool => Boolean(t)),
+    [pins],
+  );
+
+  const bumpUsage = useCallback((id: string) => {
+    setUsage((prev) => {
+      const next = { ...prev, [id]: (prev[id] || 0) + 1 };
+      try {
+        window.localStorage.setItem(USAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   }, []);
+
+  const openTool = useCallback(
+    (toolId: string, opts?: { bump?: boolean }) => {
+      const tool = toolById(toolId);
+      if (!tool) return;
+      setActiveGroup(tool.group);
+      setActiveToolId(tool.id);
+      setInspectorOpen(true);
+      setToolModalOpen(false);
+      if (opts?.bump !== false) bumpUsage(toolId);
+    },
+    [bumpUsage],
+  );
 
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback((files: FileList | null) => {
@@ -219,20 +341,24 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         {/* LEFT RAIL */}
         <nav className="flex w-[52px] shrink-0 flex-col items-center justify-between border-r border-border bg-surface-1 py-3">
           <ul className="flex flex-col items-center gap-1.5">
-            {RAIL.map((item) => (
-              <li key={item.id}>
+            {pinnedTools.map((tool) => (
+              <li key={tool.id}>
                 <RailButton
-                  active={activeGroup === item.id && inspectorOpen}
-                  label={item.label}
-                  onClick={() => onOpenGroup(item.id)}
+                  active={activeToolId === tool.id && inspectorOpen}
+                  label={tool.label}
+                  onClick={() => openTool(tool.id)}
                 >
-                  <item.icon className="h-[18px] w-[18px]" />
+                  <tool.icon className="h-[18px] w-[18px]" />
                 </RailButton>
               </li>
             ))}
           </ul>
-          <RailButton label="More" onClick={() => {}}>
-            <MoreHorizontal className="h-[18px] w-[18px]" />
+          <RailButton
+            label="All tools"
+            active={toolModalOpen}
+            onClick={() => setToolModalOpen((v) => !v)}
+          >
+            <Grid3x3 className="h-[18px] w-[18px]" />
           </RailButton>
         </nav>
 
@@ -248,7 +374,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
                   <CanvasIconButton
                     label="Thumbnails"
-                    onClick={() => onOpenGroup("pages")}
+                    onClick={() => openTool("organize")}
                   >
                     <LayoutGrid className="h-[15px] w-[15px]" />
                   </CanvasIconButton>
@@ -327,11 +453,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           {/* INSPECTOR slide-over */}
           <Inspector
             open={inspectorOpen}
-            group={activeGroup}
+            activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
             onClose={() => setInspectorOpen(false)}
           />
         </div>
       </div>
+
+      {/* TOOL MODAL */}
+      {toolModalOpen && (
+        <ToolModal
+          activeToolId={activeToolId}
+          onSelect={(id) => openTool(id)}
+          onClose={() => setToolModalOpen(false)}
+        />
+      )}
 
       {/* BOTTOM BAR */}
       <footer className="flex h-[38px] shrink-0 items-center justify-between border-t border-border bg-surface-1 px-3 text-[11.5px]">
@@ -1124,14 +1259,13 @@ function ShortcutChip({
 
 function Inspector({
   open,
-  group,
+  activeTool,
   onClose,
 }: {
   open: boolean;
-  group: ToolId | null;
+  activeTool: Tool | null;
   onClose: () => void;
 }) {
-  const meta = group ? RAIL.find((r) => r.id === group) : null;
   return (
     <aside
       aria-label="Inspector"
@@ -1140,22 +1274,20 @@ function Inspector({
         "transition-[width] duration-200",
       )}
       style={{
-        width: open && meta ? 224 : 0,
+        width: open && activeTool ? 240 : 0,
         transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
       }}
     >
-      {meta && (
-        <div className="flex h-full w-[224px] flex-col">
+      {activeTool && (
+        <div className="flex h-full w-[240px] flex-col">
           <header className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault"
-              >
-                <meta.icon className="h-[15px] w-[15px]" />
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault">
+                <activeTool.icon className="h-[15px] w-[15px]" />
               </span>
               <div className="min-w-0">
-                <div className="text-[13px] font-medium leading-tight">{meta.label}</div>
-                <div className="truncate text-[11px] text-text-muted">{meta.subtitle}</div>
+                <div className="text-[13px] font-medium leading-tight">{activeTool.label}</div>
+                <div className="truncate text-[11px] text-text-muted">{activeTool.groupLabel}</div>
               </div>
             </div>
             <button
@@ -1169,10 +1301,10 @@ function Inspector({
           </header>
           <div className="flex-1 overflow-auto px-3 py-4">
             <div
-              data-mount-slot={meta.id}
+              data-mount-slot={activeTool.id}
               className="grid place-items-center rounded-lg border border-dashed border-border bg-surface-2 px-3 py-10 text-center text-[12px] text-text-muted"
             >
-              {meta.label} controls
+              {activeTool.label} controls
               <span className="mt-1 text-[10.5px] text-text-muted/70">
                 Mount slot — feature panel loads here
               </span>
@@ -1183,6 +1315,119 @@ function Inspector({
     </aside>
   );
 }
+
+/* --------------------------- Tool modal ------------------------------ */
+
+function ToolModal({
+  onSelect,
+  onClose,
+  activeToolId,
+}: {
+  onSelect: (id: string) => void;
+  onClose: () => void;
+  activeToolId: string | null;
+}) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? TOOLS.filter((t) => t.label.toLowerCase().includes(q))
+    : TOOLS;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[min(520px,92vw)] max-h-[80vh] flex flex-col border border-border bg-surface-1 overflow-hidden"
+        style={{ borderRadius: 14, boxShadow: "var(--shadow-float)" }}
+        role="dialog"
+        aria-label="All tools"
+      >
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+          <Search className="h-4 w-4 text-text-muted shrink-0" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search tools…"
+            className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto px-3 py-3 space-y-4">
+          {GROUP_ORDER.map((groupLabel) => {
+            const items = filtered.filter((t) => t.groupLabel === groupLabel);
+            if (items.length === 0) return null;
+            return (
+              <div key={groupLabel}>
+                <div className="mb-1.5 px-1 text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
+                  {groupLabel}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {items.map((tool) => (
+                    <button
+                      key={tool.id}
+                      type="button"
+                      onClick={() => onSelect(tool.id)}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-md border border-transparent bg-surface-2 px-2.5 py-2 text-left transition-colors",
+                        "hover:bg-surface-3 hover:border-border",
+                        activeToolId === tool.id && "border-vault/40 bg-accent-soft",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "grid h-7 w-7 place-items-center rounded-md bg-surface-1 text-text-2",
+                          activeToolId === tool.id && "bg-vault/15 text-vault",
+                        )}
+                      >
+                        <tool.icon className="h-[15px] w-[15px]" />
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[12.5px] text-foreground truncate",
+                          activeToolId === tool.id && "text-vault font-medium",
+                        )}
+                      >
+                        {tool.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="grid place-items-center py-8 text-[12px] text-text-muted">
+              No tools match "{query}"
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 /* ----------------------------- Bits ---------------------------------- */
 
