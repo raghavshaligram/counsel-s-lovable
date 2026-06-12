@@ -10,7 +10,6 @@ import {
   Layout,
   Scale,
   Sparkles,
-  MoreHorizontal,
   X,
   MousePointer2,
   Type,
@@ -36,9 +35,23 @@ import {
   Images as PhotoIcon,
   FileType,
   ArrowRight,
+  Scissors,
+  RotateCw,
+  Table2 as TableIcon,
+  FileStack,
+  ScanText,
+  Stamp,
+  PackageOpen,
+  ListTree,
+  Hash,
+  Layers,
+  ScanSearch,
+  Grid3x3,
+  Search,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+
 
 type ToolId =
   | "pages"
