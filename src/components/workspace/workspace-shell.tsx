@@ -583,13 +583,16 @@ function Select({ label }: { label: string }) {
 function PropBtn({
   children,
   className,
+  title,
 }: {
   children: React.ReactNode;
   className?: string;
+  title?: string;
 }) {
   return (
     <button
       type="button"
+      title={title}
       className={cn(
         "grid h-6 min-w-[24px] place-items-center rounded-md px-1.5 text-[12px] text-text-2 hover:bg-surface-2 hover:text-foreground",
         className
