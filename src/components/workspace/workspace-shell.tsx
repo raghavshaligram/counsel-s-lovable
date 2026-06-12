@@ -30,7 +30,7 @@ import {
   Minus,
   Plus,
   Maximize2,
-  FileText,
+  Upload,
   Upload,
   FilePlus2,
   LayoutTemplate,
