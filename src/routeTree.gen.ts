@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as WordToPdfRouteImport } from './routes/word-to-pdf'
 import { Route as WatermarkRouteImport } from './routes/watermark'
 import { Route as VerifiableRedactionRouteImport } from './routes/verifiable-redaction'
@@ -40,6 +41,11 @@ import { Route as ChatRouteImport } from './routes/chat'
 import { Route as BatesRouteImport } from './routes/bates'
 import { Route as IndexRouteImport } from './routes/index'
 
+const WorkspaceRoute = WorkspaceRouteImport.update({
+  id: '/workspace',
+  path: '/workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WordToPdfRoute = WordToPdfRouteImport.update({
   id: '/word-to-pdf',
   path: '/word-to-pdf',
@@ -222,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/verifiable-redaction': typeof VerifiableRedactionRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
+  '/workspace': typeof WorkspaceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -254,6 +261,7 @@ export interface FileRoutesByTo {
   '/verifiable-redaction': typeof VerifiableRedactionRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
+  '/workspace': typeof WorkspaceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -287,6 +295,7 @@ export interface FileRoutesById {
   '/verifiable-redaction': typeof VerifiableRedactionRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
+  '/workspace': typeof WorkspaceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -321,6 +330,7 @@ export interface FileRouteTypes {
     | '/verifiable-redaction'
     | '/watermark'
     | '/word-to-pdf'
+    | '/workspace'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -353,6 +363,7 @@ export interface FileRouteTypes {
     | '/verifiable-redaction'
     | '/watermark'
     | '/word-to-pdf'
+    | '/workspace'
   id:
     | '__root__'
     | '/'
@@ -385,6 +396,7 @@ export interface FileRouteTypes {
     | '/verifiable-redaction'
     | '/watermark'
     | '/word-to-pdf'
+    | '/workspace'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -418,10 +430,18 @@ export interface RootRouteChildren {
   VerifiableRedactionRoute: typeof VerifiableRedactionRoute
   WatermarkRoute: typeof WatermarkRoute
   WordToPdfRoute: typeof WordToPdfRoute
+  WorkspaceRoute: typeof WorkspaceRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workspace': {
+      id: '/workspace'
+      path: '/workspace'
+      fullPath: '/workspace'
+      preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/word-to-pdf': {
       id: '/word-to-pdf'
       path: '/word-to-pdf'
@@ -666,17 +686,8 @@ const rootRouteChildren: RootRouteChildren = {
   VerifiableRedactionRoute: VerifiableRedactionRoute,
   WatermarkRoute: WatermarkRoute,
   WordToPdfRoute: WordToPdfRoute,
+  WorkspaceRoute: WorkspaceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
