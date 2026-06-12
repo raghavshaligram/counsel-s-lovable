@@ -92,7 +92,7 @@ type ToolGroupLabel =
   | "Legal"
   | "AI";
 
-type Tool = {
+type RailTool = {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -100,7 +100,7 @@ type Tool = {
   groupLabel: ToolGroupLabel;
 };
 
-const TOOLS: Tool[] = [
+const TOOLS: RailTool[] = [
   // Pages
   { id: "organize", label: "Organize", icon: LayoutGrid, group: "pages", groupLabel: "Pages" },
   { id: "merge", label: "Merge", icon: Files, group: "pages", groupLabel: "Pages" },
@@ -174,7 +174,7 @@ function computePins(counts: Record<string, number>): string[] {
   return result.slice(0, PIN_CAP);
 }
 
-function toolById(id: string): Tool | undefined {
+function toolById(id: string): RailTool | undefined {
   return TOOLS.find((t) => t.id === id);
 }
 
@@ -287,7 +287,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const pins = useMemo(() => computePins(usage), [usage]);
   const pinnedTools = useMemo(
-    () => pins.map((id) => toolById(id)).filter((t): t is Tool => Boolean(t)),
+    () => pins.map((id) => toolById(id)).filter((t): t is RailTool => Boolean(t)),
     [pins],
   );
 
@@ -1653,7 +1653,7 @@ function Inspector({
   onClose,
 }: {
   open: boolean;
-  activeTool: Tool | null;
+  activeTool: RailTool | null;
   onClose: () => void;
 }) {
   return (
