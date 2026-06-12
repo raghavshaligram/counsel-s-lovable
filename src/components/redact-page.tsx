@@ -164,11 +164,25 @@ function buildPrivilegeLogCsv(sourceName: string, boxes: Box[]): string {
 }
 
 
-export function RedactPage() {
+export function RedactPage({
+  embedded = false,
+  externalFile = null,
+  premium,
+}: {
+  embedded?: boolean;
+  externalFile?: File | null;
+  premium?: boolean;
+} = {}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isPremium = pathname === "/verifiable-redaction";
+  const isPremium = typeof premium === "boolean" ? premium : pathname === "/verifiable-redaction";
 
-  const [file, setFile] = useState<File | null>(null);
+
+  const [file, setFile] = useState<File | null>(externalFile);
+  // Sync workspace-provided file into local state without changing existing logic.
+  useEffect(() => {
+    if (embedded) setFile(externalFile);
+  }, [embedded, externalFile]);
+
   const [pages, setPages] = useState<RenderedPage[]>([]);
   const [loading, setLoading] = useState(false);
   const [boxes, setBoxes] = useState<Box[]>([]);
@@ -802,51 +816,61 @@ export function RedactPage() {
     return file.name.replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase().padEnd(8, "0");
   }, [file]);
 
+  const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) =>
+    embedded ? <div className="flex h-full flex-col bg-surface-1">{children}</div> : <AppShell>{children}</AppShell>;
+
   return (
-    <AppShell>
-      <ToolHeader
-        tag={isPremium ? "Verifiable Redaction · Legal" : "Smart Redact"}
-        title={
-          isPremium
-            ? "Court-defensible redaction with a signed audit trail."
-            : "Permanently remove anything sensitive."
-        }
-        sub={
-          isPremium ? (
-            <>
-              Every box requires an exemption code. On export you get the redacted PDF, a
-              Certificate of Redaction with{" "}
-              <span className="text-foreground">SHA-256 hashes of source and output</span>,
-              and a privilege log ready to file alongside production.
-            </>
-          ) : (
-            <>
-              Auto-detect PII, batch-redact every instance of a keyword, and optionally label
-              each box. On export every page is rasterised and re-baked — the original text
-              is <span className="text-foreground">destroyed in the file bytes</span>, not
-              just covered.
-            </>
-          )
-        }
-        collapsed={!!file}
-      />
+    <Shell>
+      {!embedded && (
+        <ToolHeader
+          tag={isPremium ? "Verifiable Redaction · Legal" : "Smart Redact"}
+          title={
+            isPremium
+              ? "Court-defensible redaction with a signed audit trail."
+              : "Permanently remove anything sensitive."
+          }
+          sub={
+            isPremium ? (
+              <>
+                Every box requires an exemption code. On export you get the redacted PDF, a
+                Certificate of Redaction with{" "}
+                <span className="text-foreground">SHA-256 hashes of source and output</span>,
+                and a privilege log ready to file alongside production.
+              </>
+            ) : (
+              <>
+                Auto-detect PII, batch-redact every instance of a keyword, and optionally label
+                each box. On export every page is rasterised and re-baked — the original text
+                is <span className="text-foreground">destroyed in the file bytes</span>, not
+                just covered.
+              </>
+            )
+          }
+          collapsed={!!file}
+        />
+      )}
 
       {!file ? (
-        <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
-          <FileDropzone
-            onFile={setFile}
-            label="Drop a PDF to redact"
-            sublabel="or click to browse · no upload, no size limit"
-          />
-        </div>
+        embedded ? (
+          <div className="grid flex-1 place-items-center px-6 py-10 text-center text-[12px] text-text-muted">
+            Open a PDF in the workspace to start redacting.
+          </div>
+        ) : (
+          <div className="mx-auto max-w-6xl px-5 md:px-8 py-10">
+            <FileDropzone
+              onFile={setFile}
+              label="Drop a PDF to redact"
+              sublabel="or click to browse · no upload, no size limit"
+            />
+          </div>
+        )
       ) : (
         <TooltipProvider delayDuration={250}>
         <div
           className={cn(
             "grid w-full overflow-hidden",
             "grid-cols-[48px_88px_1fr_340px]",
-            // shell header 56px + collapsed ToolHeader 48px = 104px
-            "h-[calc(100svh-104px)]",
+            embedded ? "h-full" : "h-[calc(100svh-104px)]",
           )}
         >
           {/* ─────── Tool rail ─────── */}
@@ -1319,7 +1343,7 @@ export function RedactPage() {
         </div>
         </TooltipProvider>
       )}
-    </AppShell>
+    </Shell>
   );
 }
 

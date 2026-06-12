@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { RedactPage } from "@/components/redact-page";
 
 type ToolId =
   | "pages"
@@ -285,13 +286,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
               {file ? (
-                <PagesPlaceholder
-                  file={file}
-                  zoom={zoom}
-                  layout={pageLayout}
-                  gap={showGaps ? 18 : 0}
-                  continuous={continuous}
-                />
+                activeGroup === "redact" && inspectorOpen ? (
+                  <div className="absolute inset-0">
+                    <RedactPage embedded externalFile={file} premium={false} />
+                  </div>
+                ) : (
+                  <PagesPlaceholder
+                    file={file}
+                    zoom={zoom}
+                    layout={pageLayout}
+                    gap={showGaps ? 18 : 0}
+                    continuous={continuous}
+                  />
+                )
               ) : (
                 <EmptyStart
                   onOpen={openFile}
