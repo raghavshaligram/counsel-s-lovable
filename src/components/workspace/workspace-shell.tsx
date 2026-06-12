@@ -813,17 +813,14 @@ function ViewPopover({
             onClick={() => onPageLayout("single")}
             label="Single"
           >
-            <div className="mx-auto h-9 w-6 rounded-[3px] bg-surface-3" />
+            <PageGlyph variant="single" active={pageLayout === "single"} />
           </LayoutCard>
           <LayoutCard
             active={pageLayout === "double"}
             onClick={() => onPageLayout("double")}
             label="Double"
           >
-            <div className="mx-auto flex h-9 gap-1">
-              <div className="h-full w-5 rounded-[3px] bg-surface-3" />
-              <div className="h-full w-5 rounded-[3px] bg-surface-3" />
-            </div>
+            <PageGlyph variant="double" active={pageLayout === "double"} />
           </LayoutCard>
         </div>
       </Section>
