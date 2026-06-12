@@ -133,8 +133,8 @@ export function EditorCanvas({
           return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color }];
         });
         setTextItems(items);
-      } catch {
-        /* page failed to render — leave canvas blank */
+      } catch (err) {
+        console.error("[workspace EditorCanvas] page render failed", err);
       }
     })();
     return () => { cancelled = true; };
