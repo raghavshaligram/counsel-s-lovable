@@ -34,7 +34,7 @@ import {
   Upload,
   FilePlus2,
   LayoutTemplate,
-  Image as PhotoIcon,
+  Images as PhotoIcon,
   FileType,
   ArrowRight,
 } from "lucide-react";
