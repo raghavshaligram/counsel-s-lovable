@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { ToolPanel } from "./tool-panels";
 import {
   loadUIState,
   saveUIStateDebounced,
@@ -1625,13 +1626,13 @@ function Inspector({
         "transition-[width] duration-200",
       )}
       style={{
-        width: open && activeTool ? 240 : 0,
+        width: open && activeTool ? 280 : 0,
         transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
       }}
     >
-      {activeTool && (
-        <div className="flex h-full w-[240px] flex-col">
-          <header className="flex items-center justify-between border-b border-border px-3 py-2.5">
+      {activeTool ? (
+        <div className="flex h-full w-[280px] flex-col">
+          <header className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2.5">
             <div className="flex items-center gap-2 min-w-0">
               <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault">
                 <activeTool.icon className="h-[15px] w-[15px]" />
@@ -1650,18 +1651,16 @@ function Inspector({
               <X className="h-4 w-4" />
             </button>
           </header>
-          <div className="flex-1 overflow-auto px-3 py-4">
-            <div
-              data-mount-slot={activeTool.id}
-              className="grid place-items-center rounded-lg border border-dashed border-border bg-surface-2 px-3 py-10 text-center text-[12px] text-text-muted"
-            >
-              {activeTool.label} controls
-              <span className="mt-1 text-[10.5px] text-text-muted/70">
-                Mount slot — feature panel loads here
-              </span>
-            </div>
+          <div className="flex-1 overflow-auto px-3 py-3">
+            <ToolPanel toolId={activeTool.id} />
           </div>
         </div>
+      ) : (
+        open && (
+          <div className="grid h-full w-[280px] place-items-center px-4 text-center text-[11.5px] text-text-muted">
+            Mount slot — feature panel loads here
+          </div>
+        )
       )}
     </aside>
   );
