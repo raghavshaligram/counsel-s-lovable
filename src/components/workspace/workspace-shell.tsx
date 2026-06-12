@@ -644,13 +644,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
               {file ? (
-                <PagesPlaceholder
-                  file={file}
-                  zoom={zoom}
-                  layout={pageLayout}
-                  gap={showGaps ? 18 : 0}
-                  continuous={continuous}
-                />
+                editorState.doc && editorState.doc.pages.length > 0 ? (
+                  <EditorPages
+                    state={editorState}
+                    dispatch={editorDispatch}
+                    zoom={zoom}
+                    gap={showGaps ? 18 : 0}
+                  />
+                ) : (
+                  <PagesPlaceholder
+                    file={file}
+                    zoom={zoom}
+                    layout={pageLayout}
+                    gap={showGaps ? 18 : 0}
+                    continuous={continuous}
+                  />
+                )
               ) : (
                 <EmptyStart
                   onOpen={openFile}
