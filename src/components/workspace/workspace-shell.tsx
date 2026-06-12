@@ -244,44 +244,41 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <RedactPage embedded externalFile={file} premium={false} />
           </div>
         ) : (
-        <div className="relative flex min-w-0 flex-1">
-          {/* CANVAS */}
-          <main className="relative flex min-w-0 flex-1 flex-col bg-background">
-            {/* Floating toolbar + view popover anchor */}
-            {file && (
-              <>
-                <FloatingToolbar active={editorTool} onChange={setEditorTool} />
-                <ContextualBar tool={editorTool} />
-                <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
-                  <CanvasIconButton
-                    label="Thumbnails"
-                    onClick={() => onOpenGroup("pages")}
-                  >
-                    <LayoutGrid className="h-[15px] w-[15px]" />
-                  </CanvasIconButton>
-                  <CanvasIconButton
-                    label="View options"
-                    active={viewOpen}
-                    onClick={() => setViewOpen((v) => !v)}
-                  >
-                    <SlidersHorizontal className="h-[15px] w-[15px]" />
-                  </CanvasIconButton>
-                  {viewOpen && (
-                    <ViewPopover
-                      pageLayout={pageLayout}
-                      onPageLayout={setPageLayout}
-                      continuous={continuous}
-                      onContinuous={setContinuous}
-                      showGaps={showGaps}
-                      onShowGaps={setShowGaps}
-                      theme={theme}
-                      onTheme={setTheme}
-                      onClose={() => setViewOpen(false)}
-                    />
-                  )}
-                </div>
-              </>
-            )}
+          <div className="relative flex min-w-0 flex-1">
+            {/* CANVAS */}
+            <main className="relative flex min-w-0 flex-1 flex-col bg-background">
+              {/* Floating toolbar + view popover anchor */}
+              {file && (
+                <>
+                  <FloatingToolbar active={editorTool} onChange={setEditorTool} />
+                  <ContextualBar tool={editorTool} />
+                  <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
+                    <CanvasIconButton label="Thumbnails" onClick={() => onOpenGroup("pages")}>
+                      <LayoutGrid className="h-[15px] w-[15px]" />
+                    </CanvasIconButton>
+                    <CanvasIconButton
+                      label="View options"
+                      active={viewOpen}
+                      onClick={() => setViewOpen((v) => !v)}
+                    >
+                      <SlidersHorizontal className="h-[15px] w-[15px]" />
+                    </CanvasIconButton>
+                    {viewOpen && (
+                      <ViewPopover
+                        pageLayout={pageLayout}
+                        onPageLayout={setPageLayout}
+                        continuous={continuous}
+                        onContinuous={setContinuous}
+                        showGaps={showGaps}
+                        onShowGaps={setShowGaps}
+                        theme={theme}
+                        onTheme={setTheme}
+                        onClose={() => setViewOpen(false)}
+                      />
+                    )}
+                  </div>
+                </>
+              )}
 
             {/* Scroll area */}
             <div className="relative flex-1 overflow-auto">
@@ -329,15 +326,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 <KeyChip>⌘K</KeyChip>
               </form>
             </div>
-          </main>
+            </main>
 
           {/* INSPECTOR slide-over */}
-          <Inspector
-            open={inspectorOpen}
-            group={activeGroup}
-            onClose={() => setInspectorOpen(false)}
-          />
-        </div>
+            <Inspector
+              open={inspectorOpen}
+              group={activeGroup}
+              onClose={() => setInspectorOpen(false)}
+            />
+          </div>
         )}
       </div>
 
