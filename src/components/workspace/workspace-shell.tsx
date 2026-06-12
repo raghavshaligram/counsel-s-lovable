@@ -178,20 +178,10 @@ function toolById(id: string): RailTool | undefined {
   return TOOLS.find((t) => t.id === id);
 }
 
-type EditorTool =
-  | "select"
-  | "text"
-  | "edit-text"
-  | "highlight"
-  | "underline"
-  | "strike"
-  | "comment"
-  | "image"
-  | "crop"
-  | "shape"
-  | "pen"
-  | "redact-select"
-  | "redact-draw";
+// Editor tools = the shared editor Tool union (state.tool). The floating
+// toolbar dispatches SET_TOOL with these ids; renderers in editor-canvas
+// react accordingly. No second taxonomy.
+type EditorTool = Tool;
 
 type ReadingTheme = "dark" | "sepia" | "soft" | "white";
 
