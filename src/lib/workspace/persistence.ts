@@ -1,0 +1,177 @@
+/**
+ * Workspace persistence — IndexedDB only. Nothing leaves the device.
+ *
+ * Stores:
+ *  - ui:    one record at key "ui" with serializable workspace state.
+ *  - docs:  recent documents (name, size, addedAt, bytes). Capped by count
+ *           and total size; oldest evicted first.
+ */
+import { openDB, type IDBPDatabase } from "idb";
+
+const DB_NAME = "vaultpdf-workspace";
+const UI_STORE = "ui";
+const DOC_STORE = "docs";
+
+export const MAX_RECENT_COUNT = 6;
+export const MAX_RECENT_SIZE = 25 * 1024 * 1024; // 25 MB per doc
+export const MAX_TOTAL_SIZE = 120 * 1024 * 1024; // 120 MB total
+
+export type WorkspaceUIState = {
+  activeToolId: string | null;
+  inspectorOpen: boolean;
+  pageLayout: "single" | "double";
+  continuous: boolean;
+  showGaps: boolean;
+  theme: "dark" | "sepia" | "soft" | "white";
+  zoom: number;
+  licenseKey: string | null;
+};
+
+export type RecentDoc = {
+  id: string;
+  name: string;
+  size: number;
+  addedAt: number;
+  bytes: Uint8Array;
+};
+
+export type RecentMeta = Omit<RecentDoc, "bytes">;
+
+let dbp: Promise<IDBPDatabase> | null = null;
+function db() {
+  if (typeof indexedDB === "undefined") return null;
+  if (!dbp) {
+    dbp = openDB(DB_NAME, 1, {
+      upgrade(d) {
+        if (!d.objectStoreNames.contains(UI_STORE)) d.createObjectStore(UI_STORE);
+        if (!d.objectStoreNames.contains(DOC_STORE)) d.createObjectStore(DOC_STORE);
+      },
+    });
+  }
+  return dbp;
+}
+
+/* ----------------------------- UI state ----------------------------- */
+
+export async function loadUIState(): Promise<Partial<WorkspaceUIState> | null> {
+  const d = db();
+  if (!d) return null;
+  try {
+    return ((await (await d).get(UI_STORE, "state")) as Partial<WorkspaceUIState>) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+export function saveUIStateDebounced(state: Partial<WorkspaceUIState>) {
+  const d = db();
+  if (!d) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      (await d).put(UI_STORE, state, "state");
+    } catch {
+      /* ignore */
+    }
+  }, 250);
+}
+
+/* ----------------------------- Recents ----------------------------- */
+
+function uid() {
+  return crypto.randomUUID();
+}
+
+export async function listRecents(): Promise<RecentMeta[]> {
+  const d = db();
+  if (!d) return [];
+  try {
+    const conn = await d;
+    const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
+    const out: RecentMeta[] = [];
+    for (const k of keys) {
+      const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+      if (v) out.push({ id: v.id, name: v.name, size: v.size, addedAt: v.addedAt });
+    }
+    return out.sort((a, b) => b.addedAt - a.addedAt);
+  } catch {
+    return [];
+  }
+}
+
+export async function getRecent(id: string): Promise<RecentDoc | null> {
+  const d = db();
+  if (!d) return null;
+  try {
+    return ((await (await d).get(DOC_STORE, id)) as RecentDoc) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function addRecent(file: File): Promise<RecentMeta | null> {
+  const d = db();
+  if (!d) return null;
+  if (file.size === 0 || file.size > MAX_RECENT_SIZE) return null;
+  try {
+    const conn = await d;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const id = uid();
+    const rec: RecentDoc = {
+      id,
+      name: file.name,
+      size: file.size,
+      addedAt: Date.now(),
+      bytes,
+    };
+    await conn.put(DOC_STORE, rec, id);
+    await evict(conn);
+    return { id, name: rec.name, size: rec.size, addedAt: rec.addedAt };
+  } catch {
+    return null;
+  }
+}
+
+export async function removeRecent(id: string): Promise<void> {
+  const d = db();
+  if (!d) return;
+  try {
+    (await d).delete(DOC_STORE, id);
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function clearRecents(): Promise<void> {
+  const d = db();
+  if (!d) return;
+  try {
+    (await d).clear(DOC_STORE);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function evict(conn: IDBPDatabase): Promise<void> {
+  const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
+  const metas: Array<RecentMeta & { key: string }> = [];
+  for (const k of keys) {
+    const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+    if (v) metas.push({ id: v.id, name: v.name, size: v.size, addedAt: v.addedAt, key: k });
+  }
+  // newest first
+  metas.sort((a, b) => b.addedAt - a.addedAt);
+  const kept: typeof metas = [];
+  let total = 0;
+  for (const m of metas) {
+    if (kept.length >= MAX_RECENT_COUNT) break;
+    if (total + m.size > MAX_TOTAL_SIZE) break;
+    kept.push(m);
+    total += m.size;
+  }
+  const keepSet = new Set(kept.map((m) => m.key));
+  for (const m of metas) {
+    if (!keepSet.has(m.key)) await conn.delete(DOC_STORE, m.key);
+  }
+}

@@ -52,6 +52,16 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import {
+  loadUIState,
+  saveUIStateDebounced,
+  listRecents,
+  addRecent,
+  getRecent,
+  removeRecent,
+  clearRecents,
+  type RecentMeta,
+} from "@/lib/workspace/persistence";
 
 
 type ToolId =
@@ -201,9 +211,55 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
   const [toolModalOpen, setToolModalOpen] = useState(false);
-  const [usage, setUsage] = useState<Record<string, number>>(() => loadUsage());
+  // Defer localStorage read to the client to avoid SSR hydration mismatch.
+  const [usage, setUsage] = useState<Record<string, number>>({});
+  const [recents, setRecents] = useState<RecentMeta[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Hydrate persisted UI state + usage + recents on the client only.
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const raw = window.localStorage.getItem(USAGE_KEY);
+      if (raw) setUsage(JSON.parse(raw));
+    } catch { /* ignore */ }
+    (async () => {
+      const [ui, recentsList] = await Promise.all([loadUIState(), listRecents()]);
+      if (cancelled) return;
+      if (ui) {
+        if (ui.activeToolId) setActiveToolId(ui.activeToolId);
+        if (typeof ui.inspectorOpen === "boolean") setInspectorOpen(ui.inspectorOpen);
+        if (ui.pageLayout) setPageLayout(ui.pageLayout);
+        if (typeof ui.continuous === "boolean") setContinuous(ui.continuous);
+        if (typeof ui.showGaps === "boolean") setShowGaps(ui.showGaps);
+        if (ui.theme) setTheme(ui.theme);
+        if (typeof ui.zoom === "number") setZoom(ui.zoom);
+      }
+      setRecents(recentsList);
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist UI state (debounced) once hydrated.
+  useEffect(() => {
+    if (!hydrated) return;
+    saveUIStateDebounced({
+      activeToolId,
+      inspectorOpen,
+      pageLayout,
+      continuous,
+      showGaps,
+      theme,
+      zoom,
+      licenseKey: null,
+    });
+  }, [hydrated, activeToolId, inspectorOpen, pageLayout, continuous, showGaps, theme, zoom]);
+
 
   // Mark the document dirty when the user picks a mutating editor tool.
   const setEditorTool = useCallback((t: EditorTool) => {
@@ -248,8 +304,38 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     if (f) {
       setFile(f);
       setIsDirty(false);
+      void (async () => {
+        const meta = await addRecent(f);
+        if (meta) {
+          const list = await listRecents();
+          setRecents(list);
+        }
+      })();
     }
   }, []);
+
+  const resumeRecent = useCallback(async (id: string) => {
+    const rec = await getRecent(id);
+    if (!rec) return;
+    const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
+    const f = new File([blob], rec.name, { type: "application/pdf" });
+    setFile(f);
+    setIsDirty(false);
+    // Bump addedAt so newest sits first next time.
+    await addRecent(f);
+    setRecents(await listRecents());
+  }, []);
+
+  const dismissRecent = useCallback(async (id: string) => {
+    await removeRecent(id);
+    setRecents(await listRecents());
+  }, []);
+
+  const clearAllRecents = useCallback(async () => {
+    await clearRecents();
+    setRecents([]);
+  }, []);
+
 
   const loadBlank = useCallback(() => {
     setFile(new File([], "Untitled.pdf", { type: "application/pdf" }));
@@ -497,6 +583,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   onOpen={openFile}
                   onBlank={loadBlank}
                   onTemplate={loadTemplate}
+                  recents={recents}
+                  onResume={resumeRecent}
+                  onDismissRecent={dismissRecent}
+                  onClearRecents={clearAllRecents}
                 />
               )}
             </div>
@@ -1271,10 +1361,18 @@ function EmptyStart({
   onOpen,
   onBlank,
   onTemplate,
+  recents,
+  onResume,
+  onDismissRecent,
+  onClearRecents,
 }: {
   onOpen: () => void;
   onBlank: () => void;
   onTemplate: (name: string) => void;
+  recents: RecentMeta[];
+  onResume: (id: string) => void;
+  onDismissRecent: (id: string) => void;
+  onClearRecents: () => void;
 }) {
   const navigate = useNavigate();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1309,6 +1407,66 @@ function EmptyStart({
             onClick={() => setPickerOpen(true)}
           />
         </div>
+
+        {recents.length > 0 && (
+          <div className="mt-8 text-left">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <div className="text-[10.5px] uppercase tracking-[0.18em] text-text-muted">
+                Resume recent
+              </div>
+              <button
+                type="button"
+                onClick={onClearRecents}
+                className="text-[11px] text-text-muted hover:text-foreground"
+              >
+                Clear
+              </button>
+            </div>
+            <ul className="space-y-1.5">
+              {recents.map((r) => (
+                <li
+                  key={r.id}
+                  className="group flex items-center gap-2 rounded-md border border-border/70 bg-surface-2 px-2.5 py-2"
+                  style={{ borderWidth: 0.5, borderRadius: 9 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onResume(r.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    title={`Resume ${r.name}`}
+                  >
+                    <span
+                      className="grid h-7 w-7 shrink-0 place-items-center bg-accent-soft text-vault"
+                      style={{ borderRadius: 7 }}
+                    >
+                      <FileType className="h-[14px] w-[14px]" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] text-foreground">
+                        Resume {r.name}
+                      </span>
+                      <span className="block font-mono text-[10.5px] text-text-muted">
+                        {prettyBytes(r.size)} · {relTime(r.addedAt)}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDismissRecent(r.id)}
+                    aria-label={`Remove ${r.name}`}
+                    className="grid h-7 w-7 place-items-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-surface-3 hover:text-foreground group-hover:opacity-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 px-1 text-[10.5px] text-text-muted">
+              Recent files are stored only on this device.
+            </div>
+          </div>
+        )}
+
 
         {/* Secondary chips */}
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
@@ -1670,3 +1828,15 @@ function prettyBytes(n: number) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
+
+function relTime(ts: number) {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
