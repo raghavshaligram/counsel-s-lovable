@@ -29,6 +29,7 @@ import {
   Minus,
   Plus,
   Maximize2,
+  StretchHorizontal,
   Upload,
   FilePlus2,
   LayoutTemplate,
