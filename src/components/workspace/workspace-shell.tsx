@@ -423,7 +423,7 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   [{ id: "comment", label: "Comment", Icon: MessageSquare }],
   [
     { id: "image", label: "Insert image", Icon: ImageIcon },
-    { id: "crop", label: "Crop", Icon: Crop },
+    { id: "crop", label: "Crop page — trim the page area. With an image selected, the contextual bar shows a separate Crop image affordance.", Icon: Crop },
     { id: "shape", label: "Shapes", Icon: Square },
     { id: "pen", label: "Freehand", Icon: Pencil },
   ],
