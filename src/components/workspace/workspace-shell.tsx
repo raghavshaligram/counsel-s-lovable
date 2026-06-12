@@ -900,6 +900,46 @@ function LayoutCard({
   );
 }
 
+function PageGlyph({ variant, active }: { variant: "single" | "double"; active: boolean }) {
+  const stroke = active ? "var(--vault)" : "currentColor";
+  const fill = active ? "color-mix(in oklab, var(--vault) 12%, transparent)" : "var(--paper)";
+  const op = active ? 1 : 0.55;
+  if (variant === "single") {
+    return (
+      <svg
+        viewBox="0 0 24 32"
+        width="22"
+        height="30"
+        className="mx-auto text-text-2"
+        style={{ opacity: op }}
+        aria-hidden
+      >
+        <rect x="1.5" y="1.5" width="21" height="29" rx="2" fill={fill} stroke={stroke} strokeWidth="1.2" />
+        <line x1="5" y1="8" x2="19" y2="8" stroke={stroke} strokeWidth="1" opacity="0.45" />
+        <line x1="5" y1="12" x2="19" y2="12" stroke={stroke} strokeWidth="1" opacity="0.45" />
+        <line x1="5" y1="16" x2="15" y2="16" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      width="30"
+      height="30"
+      className="mx-auto text-text-2"
+      style={{ opacity: op }}
+      aria-hidden
+    >
+      <rect x="1.5" y="2.5" width="13" height="27" rx="1.8" fill={fill} stroke={stroke} strokeWidth="1.2" />
+      <rect x="17.5" y="2.5" width="13" height="27" rx="1.8" fill={fill} stroke={stroke} strokeWidth="1.2" />
+      <line x1="4" y1="9" x2="12" y2="9" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      <line x1="4" y1="13" x2="12" y2="13" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      <line x1="20" y1="9" x2="28" y2="9" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      <line x1="20" y1="13" x2="28" y2="13" stroke={stroke} strokeWidth="1" opacity="0.45" />
+    </svg>
+  );
+}
+
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
