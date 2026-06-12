@@ -437,6 +437,63 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
+  // Inject font @font-face rules once (used by edit-text overlays).
+  useEffect(() => { injectFontFaces(); }, []);
+
+  // Build an EditorDoc whenever a real PDF is opened. Blank/template files
+  // (size 0) skip — keep them on the placeholder until real content lands.
+  useEffect(() => {
+    let cancelled = false;
+    if (!file || file.size === 0) {
+      // Clear any previous doc when the workspace clears the file.
+      if (editorState.doc) {
+        editorDispatch({ type: "LOAD", doc: { fileName: "", srcBytes: new Uint8Array(), pages: [], annotations: [] } });
+      }
+      return;
+    }
+    (async () => {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const lib = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages: PageOp[] = lib.getPages().map((p, i) => {
+          const { width, height } = p.getSize();
+          return { srcPage: i, rotation: 0, width, height };
+        });
+        if (cancelled) return;
+        editorDispatch({
+          type: "LOAD",
+          doc: { fileName: file.name, srcBytes: bytes, pages, annotations: [] },
+        });
+      } catch (err) {
+        toast.error("Could not open this PDF", { description: (err as Error).message });
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
+  const onExport = useCallback(async () => {
+    if (!editorState.doc || editorState.doc.pages.length === 0) {
+      toast.error("Nothing to export yet");
+      return;
+    }
+    try {
+      toast.loading("Building PDF…", { id: "wsx" });
+      const bytes = await exportEditedPdf(editorState.doc);
+      toast.success("Saved", { id: "wsx" });
+      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = editorState.doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error("Export failed", { id: "wsx", description: (err as Error).message });
+    }
+  }, [editorState.doc]);
+
+
   return (
     <div
       className="flex h-screen w-full flex-col bg-background text-foreground"
