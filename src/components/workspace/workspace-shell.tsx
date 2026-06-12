@@ -1476,14 +1476,18 @@ function ToolModal({
 function ZoomButton({
   children,
   onClick,
+  label,
 }: {
   children: React.ReactNode;
   onClick: () => void;
+  label?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={label}
+      aria-label={label}
       className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
     >
       {children}
