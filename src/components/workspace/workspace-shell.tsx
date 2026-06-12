@@ -907,10 +907,14 @@ function FloatingToolbar({
   activeToolId,
   active,
   onChange,
+  onUndo,
+  onRedo,
 }: {
   activeToolId: string | null;
   active: EditorTool;
   onChange: (t: EditorTool) => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
   const contextual = activeToolId ? CONTEXTUAL_GROUPS[activeToolId] : null;
   const groups = contextual ?? EDITOR_GROUPS;
@@ -938,10 +942,10 @@ function FloatingToolbar({
         </div>
       ))}
       <span className="mx-1 h-5 w-px bg-border" />
-      <ToolbarBtn label="Undo" onClick={() => {}}>
+      <ToolbarBtn label="Undo" onClick={onUndo}>
         <Undo2 className="h-[15px] w-[15px]" />
       </ToolbarBtn>
-      <ToolbarBtn label="Redo" onClick={() => {}}>
+      <ToolbarBtn label="Redo" onClick={onRedo}>
         <Redo2 className="h-[15px] w-[15px]" />
       </ToolbarBtn>
     </div>
