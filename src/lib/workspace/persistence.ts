@@ -92,6 +92,7 @@ export async function listRecents(): Promise<RecentMeta[]> {
   if (!d) return [];
   try {
     const conn = await d;
+    await dedupe(conn);
     const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
     const out: RecentMeta[] = [];
     for (const k of keys) {
