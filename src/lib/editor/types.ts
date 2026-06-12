@@ -166,6 +166,9 @@ export interface TextEditAnno extends BaseAnno {
   // background fill colour painted over original glyphs
   bg: RGB;
   family?: FontFamily;
+  // Bundled metric-compatible open font: "carlito" | "arimo" | "tinos" | "caladea" | "cousine".
+  // When present, overrides `family` for both on-screen overlay and PDF embed.
+  fontKey?: string;
   bold?: boolean;
   italic?: boolean;
   // top offset (in PDF points) inside the bbox where the text should start.
