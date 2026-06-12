@@ -182,7 +182,9 @@ type EditorTool =
   | "image"
   | "crop"
   | "shape"
-  | "pen";
+  | "pen"
+  | "redact-select"
+  | "redact-draw";
 
 type ReadingTheme = "dark" | "sepia" | "soft" | "white";
 
@@ -203,6 +205,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
   const [editorTool, setEditorToolRaw] = useState<EditorTool>("select");
+
+  // When the active tool changes, reset the floating-toolbar mode to that
+  // tool's default canvas action (redact → draw; everything else → select).
+  useEffect(() => {
+    if (activeToolId === "redact") setEditorToolRaw("redact-draw");
+    else if (editorTool.startsWith("redact-")) setEditorToolRaw("select");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeToolId]);
   const [zoom, setZoom] = useState<number>(100);
   const [viewOpen, setViewOpen] = useState(false);
   const [pageLayout, setPageLayout] = useState<"single" | "double">("single");
@@ -530,7 +540,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             {/* Floating toolbar + view popover anchor */}
             {file && (
               <>
-                <FloatingToolbar active={editorTool} onChange={setEditorTool} />
+                <FloatingToolbar
+                  activeToolId={activeToolId}
+                  active={editorTool}
+                  onChange={setEditorTool}
+                />
                 <ContextualBar tool={editorTool} />
               </>
             )}
@@ -811,21 +825,38 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   ],
 ];
 
+// Per-tool contextual canvas actions. When a tool is active and listed here,
+// the floating toolbar SWAPS to its actions — never opens a second rail.
+const CONTEXTUAL_GROUPS: Record<
+  string,
+  Array<Array<{ id: EditorTool; label: string; Icon: React.ComponentType<{ className?: string }> }>>
+> = {
+  redact: [
+    [{ id: "redact-select", label: "Select", Icon: MousePointer2 }],
+    [{ id: "redact-draw", label: "Draw redaction box", Icon: Square }],
+  ],
+};
+
 function FloatingToolbar({
+  activeToolId,
   active,
   onChange,
 }: {
+  activeToolId: string | null;
   active: EditorTool;
   onChange: (t: EditorTool) => void;
 }) {
+  const contextual = activeToolId ? CONTEXTUAL_GROUPS[activeToolId] : null;
+  const groups = contextual ?? EDITOR_GROUPS;
+  const label = contextual ? `${activeToolId} tools` : "Editor tools";
   return (
     <div
       className="absolute left-1/2 top-2.5 z-30 flex -translate-x-1/2 items-center gap-1 border border-border bg-surface-3 px-1.5 py-1"
       style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
       role="toolbar"
-      aria-label="Editor tools"
+      aria-label={label}
     >
-      {EDITOR_GROUPS.map((group, gi) => (
+      {groups.map((group, gi) => (
         <div key={gi} className="flex items-center gap-0.5">
           {gi > 0 && <span className="mx-1 h-5 w-px bg-border" />}
           {group.map(({ id, label, Icon }) => (
