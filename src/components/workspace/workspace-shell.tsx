@@ -553,11 +553,16 @@ function contextFor(tool: EditorTool): React.ReactNode | null {
       return (
         <>
           <PropBtn>Position</PropBtn>
-          <PropBtn>Crop</PropBtn>
+          <PropBtn title="Crop this image only (not the page)">Crop image</PropBtn>
+        </>
+      );
+    case "crop":
+      return (
+        <>
+          <span className="text-text-muted">Drag on the page to set the crop rectangle · trims the page area, not images</span>
         </>
       );
     case "comment":
-    case "crop":
     case "select":
     default:
       return null;
