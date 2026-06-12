@@ -739,7 +739,10 @@ function PageCanvas({
           "sans";
         const bold = /bold|black|heavy|semibold|demibold/.test(ffl);
         const italic = /italic|oblique/.test(ffl);
-        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName }];
+        const fontKey = mapPdfFontToKey(it.fontName ?? ff, family);
+        const x = m[4], y = m[5] - fh;
+        const color = sampleTextColor(ctx, x * displayScale, y * displayScale, it.width * displayScale, fh * displayScale);
+        return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color }];
       });
       setTextItems(items);
     })();
