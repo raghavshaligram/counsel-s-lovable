@@ -211,9 +211,55 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
   const [toolModalOpen, setToolModalOpen] = useState(false);
-  const [usage, setUsage] = useState<Record<string, number>>(() => loadUsage());
+  // Defer localStorage read to the client to avoid SSR hydration mismatch.
+  const [usage, setUsage] = useState<Record<string, number>>({});
+  const [recents, setRecents] = useState<RecentMeta[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Hydrate persisted UI state + usage + recents on the client only.
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const raw = window.localStorage.getItem(USAGE_KEY);
+      if (raw) setUsage(JSON.parse(raw));
+    } catch { /* ignore */ }
+    (async () => {
+      const [ui, recentsList] = await Promise.all([loadUIState(), listRecents()]);
+      if (cancelled) return;
+      if (ui) {
+        if (ui.activeToolId) setActiveToolId(ui.activeToolId);
+        if (typeof ui.inspectorOpen === "boolean") setInspectorOpen(ui.inspectorOpen);
+        if (ui.pageLayout) setPageLayout(ui.pageLayout);
+        if (typeof ui.continuous === "boolean") setContinuous(ui.continuous);
+        if (typeof ui.showGaps === "boolean") setShowGaps(ui.showGaps);
+        if (ui.theme) setTheme(ui.theme);
+        if (typeof ui.zoom === "number") setZoom(ui.zoom);
+      }
+      setRecents(recentsList);
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist UI state (debounced) once hydrated.
+  useEffect(() => {
+    if (!hydrated) return;
+    saveUIStateDebounced({
+      activeToolId,
+      inspectorOpen,
+      pageLayout,
+      continuous,
+      showGaps,
+      theme,
+      zoom,
+      licenseKey: null,
+    });
+  }, [hydrated, activeToolId, inspectorOpen, pageLayout, continuous, showGaps, theme, zoom]);
+
 
   // Mark the document dirty when the user picks a mutating editor tool.
   const setEditorTool = useCallback((t: EditorTool) => {
