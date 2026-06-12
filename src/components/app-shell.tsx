@@ -103,6 +103,7 @@ const groups: Group[] = [
 ];
 
 const primaryNav: { to: string; label: string }[] = [
+  { to: "/workspace", label: "Workspace" },
   { to: "/redact", label: "Redact" },
   { to: "/sign", label: "Sign & Fill" },
   { to: "/protect", label: "Protect" },
