@@ -811,14 +811,13 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   [
     { id: "highlight", label: "Highlight", Icon: Highlighter },
     { id: "underline", label: "Underline", Icon: UnderlineIcon },
-    { id: "strike", label: "Strikethrough", Icon: Strikethrough },
+    { id: "strikethrough", label: "Strikethrough", Icon: Strikethrough },
   ],
-  [{ id: "comment", label: "Comment", Icon: MessageSquare }],
+  [{ id: "note", label: "Comment", Icon: MessageSquare }],
   [
     { id: "image", label: "Insert image", Icon: ImageIcon },
-    { id: "crop", label: "Crop page — trim the page area. With an image selected, the contextual bar shows a separate Crop image affordance.", Icon: Crop },
-    { id: "shape", label: "Shapes", Icon: Square },
-    { id: "pen", label: "Freehand", Icon: Pencil },
+    { id: "rect", label: "Rectangle", Icon: Square },
+    { id: "freehand", label: "Freehand", Icon: Pencil },
   ],
 ];
 
@@ -829,8 +828,8 @@ const CONTEXTUAL_GROUPS: Record<
   Array<Array<{ id: EditorTool; label: string; Icon: React.ComponentType<{ className?: string }> }>>
 > = {
   redact: [
-    [{ id: "redact-select", label: "Select", Icon: MousePointer2 }],
-    [{ id: "redact-draw", label: "Draw redaction box", Icon: Square }],
+    [{ id: "select", label: "Select", Icon: MousePointer2 }],
+    [{ id: "redact", label: "Draw redaction box", Icon: Square }],
   ],
 };
 
