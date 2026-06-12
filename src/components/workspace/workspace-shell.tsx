@@ -184,12 +184,14 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [file, setFile] = useState<File | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [, setActiveGroup] = useState<ToolId | null>(initialTool ?? null);
   const [activeToolId, setActiveToolId] = useState<string | null>(
     initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
   );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
-  const [editorTool, setEditorTool] = useState<EditorTool>("select");
+  const [editorTool, setEditorToolRaw] = useState<EditorTool>("select");
   const [zoom, setZoom] = useState<number>(100);
   const [viewOpen, setViewOpen] = useState(false);
   const [pageLayout, setPageLayout] = useState<"single" | "double">("single");
@@ -202,6 +204,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [usage, setUsage] = useState<Record<string, number>>(() => loadUsage());
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Mark the document dirty when the user picks a mutating editor tool.
+  const setEditorTool = useCallback((t: EditorTool) => {
+    setEditorToolRaw(t);
+    if (t !== "select" && t !== "comment") setIsDirty(true);
+  }, []);
 
   const pins = useMemo(() => computePins(usage), [usage]);
   const pinnedTools = useMemo(
