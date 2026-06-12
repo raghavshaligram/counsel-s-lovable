@@ -1361,10 +1361,18 @@ function EmptyStart({
   onOpen,
   onBlank,
   onTemplate,
+  recents,
+  onResume,
+  onDismissRecent,
+  onClearRecents,
 }: {
   onOpen: () => void;
   onBlank: () => void;
   onTemplate: (name: string) => void;
+  recents: RecentMeta[];
+  onResume: (id: string) => void;
+  onDismissRecent: (id: string) => void;
+  onClearRecents: () => void;
 }) {
   const navigate = useNavigate();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1399,6 +1407,66 @@ function EmptyStart({
             onClick={() => setPickerOpen(true)}
           />
         </div>
+
+        {recents.length > 0 && (
+          <div className="mt-8 text-left">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <div className="text-[10.5px] uppercase tracking-[0.18em] text-text-muted">
+                Resume recent
+              </div>
+              <button
+                type="button"
+                onClick={onClearRecents}
+                className="text-[11px] text-text-muted hover:text-foreground"
+              >
+                Clear
+              </button>
+            </div>
+            <ul className="space-y-1.5">
+              {recents.map((r) => (
+                <li
+                  key={r.id}
+                  className="group flex items-center gap-2 rounded-md border border-border/70 bg-surface-2 px-2.5 py-2"
+                  style={{ borderWidth: 0.5, borderRadius: 9 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onResume(r.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    title={`Resume ${r.name}`}
+                  >
+                    <span
+                      className="grid h-7 w-7 shrink-0 place-items-center bg-accent-soft text-vault"
+                      style={{ borderRadius: 7 }}
+                    >
+                      <FileType className="h-[14px] w-[14px]" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] text-foreground">
+                        Resume {r.name}
+                      </span>
+                      <span className="block font-mono text-[10.5px] text-text-muted">
+                        {prettyBytes(r.size)} · {relTime(r.addedAt)}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDismissRecent(r.id)}
+                    aria-label={`Remove ${r.name}`}
+                    className="grid h-7 w-7 place-items-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-surface-3 hover:text-foreground group-hover:opacity-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 px-1 text-[10.5px] text-text-muted">
+              Recent files are stored only on this device.
+            </div>
+          </div>
+        )}
+
 
         {/* Secondary chips */}
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
