@@ -293,7 +293,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   continuous={continuous}
                 />
               ) : (
-                <EmptyStart onOpen={openFile} />
+                <EmptyStart
+                  onOpen={openFile}
+                  onBlank={loadBlank}
+                  onTemplate={loadTemplate}
+                />
               )}
             </div>
 
