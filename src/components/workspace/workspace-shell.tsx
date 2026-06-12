@@ -184,6 +184,7 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [file, setFile] = useState<File | null>(null);
   const [activeGroup, setActiveGroup] = useState<ToolId | null>(initialTool ?? null);
+  const [activeToolId, setActiveToolId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
   const [editorTool, setEditorTool] = useState<EditorTool>("select");
   const [zoom, setZoom] = useState<number>(100);
@@ -194,13 +195,41 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [theme, setTheme] = useState<ReadingTheme>("dark");
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
+  const [toolModalOpen, setToolModalOpen] = useState(false);
+  const [usage, setUsage] = useState<Record<string, number>>(() => loadUsage());
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const onOpenGroup = useCallback((id: ToolId) => {
-    setActiveGroup(id);
-    setInspectorOpen(true);
+  const pins = useMemo(() => computePins(usage), [usage]);
+  const pinnedTools = useMemo(
+    () => pins.map((id) => toolById(id)).filter((t): t is Tool => Boolean(t)),
+    [pins],
+  );
+
+  const bumpUsage = useCallback((id: string) => {
+    setUsage((prev) => {
+      const next = { ...prev, [id]: (prev[id] || 0) + 1 };
+      try {
+        window.localStorage.setItem(USAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   }, []);
+
+  const openTool = useCallback(
+    (toolId: string, opts?: { bump?: boolean }) => {
+      const tool = toolById(toolId);
+      if (!tool) return;
+      setActiveGroup(tool.group);
+      setActiveToolId(tool.id);
+      setInspectorOpen(true);
+      setToolModalOpen(false);
+      if (opts?.bump !== false) bumpUsage(toolId);
+    },
+    [bumpUsage],
+  );
 
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback((files: FileList | null) => {
