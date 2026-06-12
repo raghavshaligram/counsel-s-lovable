@@ -832,42 +832,191 @@ function PagesPlaceholder({
 
 /* -------------------------- Empty start ------------------------------ */
 
-function EmptyStart({ onOpen }: { onOpen: () => void }) {
+const TEMPLATES = [
+  { id: "invoice", label: "Invoice" },
+  { id: "resume", label: "Resume" },
+  { id: "letter", label: "Letter" },
+  { id: "blank", label: "Blank A4" },
+];
+
+function EmptyStart({
+  onOpen,
+  onBlank,
+  onTemplate,
+}: {
+  onOpen: () => void;
+  onBlank: () => void;
+  onTemplate: (name: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   return (
     <div className="grid h-full place-items-center px-6 py-12">
-      <div className="w-full max-w-[520px] text-center">
-        <div
-          className="mx-auto grid h-14 w-14 place-items-center bg-accent-soft text-vault"
-          style={{ borderRadius: 14 }}
-        >
-          <FileText className="h-6 w-6" />
-        </div>
-        <h1 className="mt-5 font-display text-[34px] leading-tight">Start something</h1>
-        <p className="mx-auto mt-2 max-w-[380px] text-[14px] text-text-2">
-          Open a PDF to begin. Everything happens on this device — files never leave your browser.
+      <div className="w-full max-w-[720px] text-center">
+        <h1 className="font-display text-[24px] leading-tight">Start something</h1>
+        <p className="mt-2 text-[12.5px] text-text-2">
+          Nothing is uploaded. Everything stays on your device.
         </p>
-        <div className="mt-6 flex items-center justify-center gap-2">
-          <button
-            type="button"
+
+        {/* Primary cards */}
+        <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StartCard
+            icon={<Upload className="h-[18px] w-[18px]" />}
+            title="Open a PDF"
+            sub="drop or browse"
             onClick={onOpen}
-            className="inline-flex items-center gap-2 rounded-md bg-vault px-4 py-2 text-[13px] font-medium text-vault-foreground hover:opacity-90"
-          >
-            <Upload className="h-4 w-4" />
-            Open file
-          </button>
-          <span className="text-[12px] text-text-muted">
-            or drop a PDF anywhere · <KeyChip inline>O</KeyChip>
-          </span>
+            amber
+          />
+          <StartCard
+            icon={<FilePlus2 className="h-[18px] w-[18px]" />}
+            title="Blank page"
+            sub="start empty"
+            onClick={onBlank}
+          />
+          <StartCard
+            icon={<LayoutTemplate className="h-[18px] w-[18px]" />}
+            title="Template"
+            sub="invoice, resume…"
+            onClick={() => setPickerOpen(true)}
+          />
         </div>
+
+        {/* Secondary chips */}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <ShortcutChip
+            icon={<PhotoIcon className="h-[14px] w-[14px]" />}
+            label="Images → PDF"
+            onClick={() => navigate({ to: "/images-to-pdf" })}
+          />
+          <ShortcutChip
+            icon={<FileType className="h-[14px] w-[14px]" />}
+            label="Word → PDF"
+            onClick={() => navigate({ to: "/word-to-pdf" })}
+          />
+        </div>
+
         <div className="mt-10 flex items-center justify-center gap-2 text-[11px] text-text-muted">
           <KeyChip inline>⌘K</KeyChip> command
           <span className="opacity-40">·</span>
           <KeyChip inline>⌘\</KeyChip> inspector
           <span className="opacity-40">·</span>
-          <KeyChip inline>+ / −</KeyChip> zoom
+          <KeyChip inline>O</KeyChip> open
         </div>
       </div>
+
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-background/60 backdrop-blur-sm"
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-[min(420px,92vw)] border border-border bg-surface-2 p-4"
+            style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="font-display text-[16px]">Choose a template</div>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-3 hover:text-foreground"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    onTemplate(t.label);
+                    setPickerOpen(false);
+                  }}
+                  className="flex items-center gap-2 border border-border bg-surface-1 px-3 py-3 text-left text-[13px] text-foreground hover:bg-surface-3 transition-colors"
+                  style={{ borderRadius: 9 }}
+                >
+                  <LayoutTemplate className="h-[15px] w-[15px] text-vault" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function StartCard({
+  icon,
+  title,
+  sub,
+  onClick,
+  amber,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+  onClick: () => void;
+  amber?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex flex-col items-center justify-center gap-2.5 border border-border/70 bg-surface-2 px-5 py-7 text-center",
+        "transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface-3",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      )}
+      style={{
+        borderRadius: 11,
+        borderWidth: 0.5,
+        transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
+      }}
+    >
+      <span
+        className={cn(
+          "grid h-10 w-10 place-items-center",
+          amber ? "bg-accent-soft text-vault" : "bg-surface-1 text-text-2"
+        )}
+        style={{ borderRadius: 9 }}
+      >
+        {icon}
+      </span>
+      <span className="font-display text-[15px] text-foreground">{title}</span>
+      <span className="text-[11.5px] text-text-muted">{sub}</span>
+    </button>
+  );
+}
+
+function ShortcutChip({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group inline-flex items-center gap-2 border border-border/70 bg-surface-1 px-3 py-2 text-[12px] text-text-2",
+        "transition-colors hover:bg-surface-2 hover:text-foreground",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      )}
+      style={{ borderRadius: 9, borderWidth: 0.5 }}
+    >
+      <span className="text-vault">{icon}</span>
+      {label}
+      <ArrowRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
+    </button>
   );
 }
 
