@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   Lock,
   Download,
@@ -51,8 +51,11 @@ import {
   Search,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { PDFDocument } from "pdf-lib";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
+import { EditorCanvas } from "./editor-canvas";
 import {
   loadUIState,
   saveUIStateDebounced,
@@ -63,6 +66,10 @@ import {
   clearRecents,
   type RecentMeta,
 } from "@/lib/workspace/persistence";
+import { reducer, initialState, PALETTE } from "@/lib/editor/state";
+import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
+import { exportEditedPdf } from "@/lib/editor/export";
+import { injectFontFaces } from "@/lib/editor/fonts";
 
 
 type ToolId =
@@ -85,7 +92,7 @@ type ToolGroupLabel =
   | "Legal"
   | "AI";
 
-type Tool = {
+type RailTool = {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -93,7 +100,7 @@ type Tool = {
   groupLabel: ToolGroupLabel;
 };
 
-const TOOLS: Tool[] = [
+const TOOLS: RailTool[] = [
   // Pages
   { id: "organize", label: "Organize", icon: LayoutGrid, group: "pages", groupLabel: "Pages" },
   { id: "merge", label: "Merge", icon: Files, group: "pages", groupLabel: "Pages" },
@@ -167,24 +174,14 @@ function computePins(counts: Record<string, number>): string[] {
   return result.slice(0, PIN_CAP);
 }
 
-function toolById(id: string): Tool | undefined {
+function toolById(id: string): RailTool | undefined {
   return TOOLS.find((t) => t.id === id);
 }
 
-type EditorTool =
-  | "select"
-  | "text"
-  | "edit-text"
-  | "highlight"
-  | "underline"
-  | "strike"
-  | "comment"
-  | "image"
-  | "crop"
-  | "shape"
-  | "pen"
-  | "redact-select"
-  | "redact-draw";
+// Editor tools = the shared editor Tool union (state.tool). The floating
+// toolbar dispatches SET_TOOL with these ids; renderers in editor-canvas
+// react accordingly. No second taxonomy.
+type EditorTool = Tool;
 
 type ReadingTheme = "dark" | "sepia" | "soft" | "white";
 
@@ -204,13 +201,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
   );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
-  const [editorTool, setEditorToolRaw] = useState<EditorTool>("select");
+  // Shared editor state (reducer ported from /editor route).
+  const [editorState, editorDispatch] = useReducer(reducer, initialState);
+  const editorTool = editorState.tool;
 
-  // When the active tool changes, reset the floating-toolbar mode to that
-  // tool's default canvas action (redact → draw; everything else → select).
+  // When the active rail tool is "redact", default the canvas mode to redact.
+  // When leaving redact, fall back to select. The floating toolbar shows the
+  // contextual redact set during this window; logic stays in the single store.
   useEffect(() => {
-    if (activeToolId === "redact") setEditorToolRaw("redact-draw");
-    else if (editorTool.startsWith("redact-")) setEditorToolRaw("select");
+    if (activeToolId === "redact") editorDispatch({ type: "SET_TOOL", t: "redact" });
+    else if (editorState.tool === "redact") editorDispatch({ type: "SET_TOOL", t: "select" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeToolId]);
   const [zoom, setZoom] = useState<number>(100);
@@ -274,13 +274,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   // Mark the document dirty when the user picks a mutating editor tool.
   const setEditorTool = useCallback((t: EditorTool) => {
-    setEditorToolRaw(t);
-    if (t !== "select" && t !== "comment") setIsDirty(true);
+    editorDispatch({ type: "SET_TOOL", t });
+    if (t !== "select" && t !== "note") setIsDirty(true);
   }, []);
 
   const pins = useMemo(() => computePins(usage), [usage]);
   const pinnedTools = useMemo(
-    () => pins.map((id) => toolById(id)).filter((t): t is Tool => Boolean(t)),
+    () => pins.map((id) => toolById(id)).filter((t): t is RailTool => Boolean(t)),
     [pins],
   );
 
@@ -360,7 +360,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const clearToStart = useCallback(() => {
     setFile(null);
     setIsDirty(false);
-    setEditorToolRaw("select");
+    editorDispatch({ type: "SET_TOOL", t: "select" });
     setInspectorOpen(false);
     setActiveToolId(null);
   }, []);
@@ -437,6 +437,63 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
+  // Inject font @font-face rules once (used by edit-text overlays).
+  useEffect(() => { injectFontFaces(); }, []);
+
+  // Build an EditorDoc whenever a real PDF is opened. Blank/template files
+  // (size 0) skip — keep them on the placeholder until real content lands.
+  useEffect(() => {
+    let cancelled = false;
+    if (!file || file.size === 0) {
+      // Clear any previous doc when the workspace clears the file.
+      if (editorState.doc) {
+        editorDispatch({ type: "LOAD", doc: { fileName: "", srcBytes: new Uint8Array(), pages: [], annotations: [] } });
+      }
+      return;
+    }
+    (async () => {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const lib = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages: PageOp[] = lib.getPages().map((p, i) => {
+          const { width, height } = p.getSize();
+          return { srcPage: i, rotation: 0, width, height };
+        });
+        if (cancelled) return;
+        editorDispatch({
+          type: "LOAD",
+          doc: { fileName: file.name, srcBytes: bytes, pages, annotations: [] },
+        });
+      } catch (err) {
+        toast.error("Could not open this PDF", { description: (err as Error).message });
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
+  const onExport = useCallback(async () => {
+    if (!editorState.doc || editorState.doc.pages.length === 0) {
+      toast.error("Nothing to export yet");
+      return;
+    }
+    try {
+      toast.loading("Building PDF…", { id: "wsx" });
+      const bytes = await exportEditedPdf(editorState.doc);
+      toast.success("Saved", { id: "wsx" });
+      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = editorState.doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error("Export failed", { id: "wsx", description: (err as Error).message });
+    }
+  }, [editorState.doc]);
+
+
   return (
     <div
       className="flex h-screen w-full flex-col bg-background text-foreground"
@@ -499,6 +556,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </span>
           <button
             type="button"
+            onClick={onExport}
             className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 transition-opacity"
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
@@ -544,6 +602,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   activeToolId={activeToolId}
                   active={editorTool}
                   onChange={setEditorTool}
+                  onUndo={() => editorDispatch({ type: "UNDO" })}
+                  onRedo={() => editorDispatch({ type: "REDO" })}
                 />
                 <ContextualBar tool={editorTool} />
               </>
@@ -586,13 +646,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
               {file ? (
-                <PagesPlaceholder
-                  file={file}
-                  zoom={zoom}
-                  layout={pageLayout}
-                  gap={showGaps ? 18 : 0}
-                  continuous={continuous}
-                />
+                editorState.doc && editorState.doc.pages.length > 0 ? (
+                  <EditorPages
+                    state={editorState}
+                    dispatch={editorDispatch}
+                    zoom={zoom}
+                    gap={showGaps ? 18 : 0}
+                  />
+                ) : (
+                  <PagesPlaceholder
+                    file={file}
+                    zoom={zoom}
+                    layout={pageLayout}
+                    gap={showGaps ? 18 : 0}
+                    continuous={continuous}
+                  />
+                )
               ) : (
                 <EmptyStart
                   onOpen={openFile}
@@ -814,14 +883,13 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   [
     { id: "highlight", label: "Highlight", Icon: Highlighter },
     { id: "underline", label: "Underline", Icon: UnderlineIcon },
-    { id: "strike", label: "Strikethrough", Icon: Strikethrough },
+    { id: "strikethrough", label: "Strikethrough", Icon: Strikethrough },
   ],
-  [{ id: "comment", label: "Comment", Icon: MessageSquare }],
+  [{ id: "note", label: "Comment", Icon: MessageSquare }],
   [
     { id: "image", label: "Insert image", Icon: ImageIcon },
-    { id: "crop", label: "Crop page — trim the page area. With an image selected, the contextual bar shows a separate Crop image affordance.", Icon: Crop },
-    { id: "shape", label: "Shapes", Icon: Square },
-    { id: "pen", label: "Freehand", Icon: Pencil },
+    { id: "rect", label: "Rectangle", Icon: Square },
+    { id: "freehand", label: "Freehand", Icon: Pencil },
   ],
 ];
 
@@ -832,8 +900,8 @@ const CONTEXTUAL_GROUPS: Record<
   Array<Array<{ id: EditorTool; label: string; Icon: React.ComponentType<{ className?: string }> }>>
 > = {
   redact: [
-    [{ id: "redact-select", label: "Select", Icon: MousePointer2 }],
-    [{ id: "redact-draw", label: "Draw redaction box", Icon: Square }],
+    [{ id: "select", label: "Select", Icon: MousePointer2 }],
+    [{ id: "redact", label: "Draw redaction box", Icon: Square }],
   ],
 };
 
@@ -841,10 +909,14 @@ function FloatingToolbar({
   activeToolId,
   active,
   onChange,
+  onUndo,
+  onRedo,
 }: {
   activeToolId: string | null;
   active: EditorTool;
   onChange: (t: EditorTool) => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
   const contextual = activeToolId ? CONTEXTUAL_GROUPS[activeToolId] : null;
   const groups = contextual ?? EDITOR_GROUPS;
@@ -872,10 +944,10 @@ function FloatingToolbar({
         </div>
       ))}
       <span className="mx-1 h-5 w-px bg-border" />
-      <ToolbarBtn label="Undo" onClick={() => {}}>
+      <ToolbarBtn label="Undo" onClick={onUndo}>
         <Undo2 className="h-[15px] w-[15px]" />
       </ToolbarBtn>
-      <ToolbarBtn label="Redo" onClick={() => {}}>
+      <ToolbarBtn label="Redo" onClick={onRedo}>
         <Redo2 className="h-[15px] w-[15px]" />
       </ToolbarBtn>
     </div>
@@ -946,15 +1018,18 @@ function contextFor(tool: EditorTool): React.ReactNode | null {
       );
     case "highlight":
     case "underline":
-    case "strike":
+    case "strikethrough":
       return (
         <>
           <ColorSwatch />
           <span className="text-text-muted">Color</span>
         </>
       );
-    case "shape":
-    case "pen":
+    case "rect":
+    case "ellipse":
+    case "line":
+    case "arrow":
+    case "freehand":
       return (
         <>
           <ColorSwatch />
@@ -969,13 +1044,13 @@ function contextFor(tool: EditorTool): React.ReactNode | null {
           <PropBtn title="Crop this image only (not the page)">Crop image</PropBtn>
         </>
       );
-    case "crop":
+    case "redact":
       return (
         <>
-          <span className="text-text-muted">Drag on the page to set the crop rectangle · trims the page area, not images</span>
+          <span className="text-text-muted">Drag to mark text or regions for permanent redaction on export</span>
         </>
       );
-    case "comment":
+    case "note":
     case "select":
     default:
       return null;
@@ -1646,7 +1721,7 @@ function Inspector({
   onClose,
 }: {
   open: boolean;
-  activeTool: Tool | null;
+  activeTool: RailTool | null;
   onClose: () => void;
 }) {
   return (
@@ -1870,3 +1945,44 @@ function relTime(ts: number) {
   return `${d}d ago`;
 }
 
+
+/* ---------------------- Editor pages list (native) -------------------- */
+// Renders every page of the loaded EditorDoc using the ported EditorCanvas.
+// Reuses the shared reducer; the workspace's floating toolbar drives state.
+
+import type { Dispatch as ReactDispatch } from "react";
+import type { State as EditorState, Action as EditorAction } from "@/lib/editor/state";
+
+function EditorPages({
+  state, dispatch, zoom, gap,
+}: {
+  state: EditorState;
+  dispatch: ReactDispatch<EditorAction>;
+  zoom: number;
+  gap: number;
+}) {
+  if (!state.doc) return null;
+  const scale = (zoom / 100) * 1.3;
+  return (
+    <div
+      className="mx-auto flex flex-col items-center py-6 px-4"
+      style={{ gap }}
+    >
+      {state.doc.pages.map((op, i) => {
+        const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
+        return (
+          <EditorCanvas
+            key={`${i}-${op.srcPage}-${op.rotation}-${op.blank ? 1 : 0}`}
+            pageIndex={i}
+            op={op}
+            srcBytes={state.doc!.srcBytes}
+            annos={annosForPage}
+            state={state}
+            dispatch={dispatch}
+            scale={scale}
+          />
+        );
+      })}
+    </div>
+  );
+}
