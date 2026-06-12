@@ -12,9 +12,13 @@ const DB_NAME = "vaultpdf-workspace";
 const UI_STORE = "ui";
 const DOC_STORE = "docs";
 
-export const MAX_RECENT_COUNT = 6;
+export const MAX_RECENT_COUNT = 10;
 export const MAX_RECENT_SIZE = 25 * 1024 * 1024; // 25 MB per doc
 export const MAX_TOTAL_SIZE = 120 * 1024 * 1024; // 120 MB total
+
+function identityKey(name: string, size: number) {
+  return `${name}::${size}`;
+}
 
 export type WorkspaceUIState = {
   activeToolId: string | null;
@@ -88,6 +92,7 @@ export async function listRecents(): Promise<RecentMeta[]> {
   if (!d) return [];
   try {
     const conn = await d;
+    await dedupe(conn);
     const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
     const out: RecentMeta[] = [];
     for (const k of keys) {
@@ -117,7 +122,25 @@ export async function addRecent(file: File): Promise<RecentMeta | null> {
   try {
     const conn = await d;
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const id = uid();
+    const key = identityKey(file.name, file.size);
+
+    // Find existing entry with same identity (any number of duplicates).
+    const allKeys = (await conn.getAllKeys(DOC_STORE)) as string[];
+    let reuseId: string | null = null;
+    for (const k of allKeys) {
+      const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+      if (!v) continue;
+      if (identityKey(v.name, v.size) === key) {
+        if (!reuseId) {
+          reuseId = v.id;
+        } else {
+          // Collapse any extra duplicates.
+          await conn.delete(DOC_STORE, k);
+        }
+      }
+    }
+
+    const id = reuseId ?? uid();
     const rec: RecentDoc = {
       id,
       name: file.name,
@@ -174,4 +197,27 @@ async function evict(conn: IDBPDatabase): Promise<void> {
   for (const m of metas) {
     if (!keepSet.has(m.key)) await conn.delete(DOC_STORE, m.key);
   }
+}
+
+// One-shot dedupe of stored recents: collapse any entries sharing (name+size)
+// to a single record — the newest addedAt wins; older duplicates are deleted.
+async function dedupe(conn: IDBPDatabase): Promise<void> {
+  const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
+  const byKey = new Map<string, { key: string; addedAt: number }>();
+  const toDelete: string[] = [];
+  for (const k of keys) {
+    const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+    if (!v) continue;
+    const ident = identityKey(v.name, v.size);
+    const prev = byKey.get(ident);
+    if (!prev) {
+      byKey.set(ident, { key: k, addedAt: v.addedAt });
+    } else if (v.addedAt > prev.addedAt) {
+      toDelete.push(prev.key);
+      byKey.set(ident, { key: k, addedAt: v.addedAt });
+    } else {
+      toDelete.push(k);
+    }
+  }
+  for (const k of toDelete) await conn.delete(DOC_STORE, k);
 }
