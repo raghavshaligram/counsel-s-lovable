@@ -418,7 +418,7 @@ function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments, on
     { id: "freehand", icon: Pen, label: "Draw" },
     { id: "note", icon: StickyNote, label: "Note" },
     { id: "image", icon: ImageIcon, label: "Image" },
-    { id: "edit-text", icon: PencilLine, label: "Edit text" },
+    { id: "edit-text", icon: PencilLine, label: "Edit text — click a line of text to replace it. Replacement is overlaid in a metric-matched font; adjust font, size, and colour in the dialog." },
     { id: "redact", icon: EyeOff, label: "Redact (D)" },
   ];
 
