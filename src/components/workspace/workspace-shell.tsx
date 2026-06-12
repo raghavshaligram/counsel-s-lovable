@@ -2149,7 +2149,7 @@ function relTime(ts: number) {
 // Reuses the shared reducer; the workspace's floating toolbar drives state.
 
 import type { Dispatch as ReactDispatch } from "react";
-import type { State as EditorState, Action as EditorAction } from "@/lib/editor/state";
+import type { State as EditorState } from "@/lib/editor/state";
 
 function EditorPages({
   state, dispatch, zoom, gap,
