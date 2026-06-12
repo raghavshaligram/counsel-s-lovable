@@ -56,6 +56,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
 import { EditorCanvas } from "./editor-canvas";
+import { TabStrip } from "./tab-strip";
 import {
   loadUIState,
   saveUIStateDebounced,
@@ -64,12 +65,17 @@ import {
   getRecent,
   removeRecent,
   clearRecents,
+  loadOpenTabs,
+  saveOpenTabs,
+  clearOpenTabs,
   type RecentMeta,
+  type OpenTabMeta,
 } from "@/lib/workspace/persistence";
-import { reducer, initialState, PALETTE } from "@/lib/editor/state";
+import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/lib/editor/state";
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { injectFontFaces } from "@/lib/editor/fonts";
+import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 
 
 type ToolId =
