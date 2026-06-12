@@ -1855,11 +1855,6 @@ function ProtectDialog({
 
 // ---------- Edit Text dialog ----------
 
-const FAMILY_OPTIONS: { value: "sans" | "serif" | "mono"; label: string; css: string }[] = [
-  { value: "sans", label: "Sans (Helvetica)", css: "Helvetica, Arial, sans-serif" },
-  { value: "serif", label: "Serif (Times)", css: "'Times New Roman', Times, serif" },
-  { value: "mono", label: "Mono (Courier)", css: "'Courier New', Courier, monospace" },
-];
 
 function rgbToHex(c: RGB): string {
   const h = (n: number) => Math.round(n * 255).toString(16).padStart(2, "0");
