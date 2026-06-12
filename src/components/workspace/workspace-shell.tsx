@@ -32,7 +32,13 @@ import {
   Maximize2,
   FileText,
   Upload,
+  FilePlus2,
+  LayoutTemplate,
+  Image as PhotoIcon,
+  FileType,
+  ArrowRight,
 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 type ToolId =
