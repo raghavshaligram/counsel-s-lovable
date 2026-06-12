@@ -556,6 +556,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </span>
           <button
             type="button"
+            onClick={onExport}
             className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 transition-opacity"
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
