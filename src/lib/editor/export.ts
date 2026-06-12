@@ -88,7 +88,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
 
     const { width: pw, height: ph } = outPage.getSize();
     const annos = doc.annotations.filter((a) => a.page === i);
-    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts);
+    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
 
     // Watermark (drawn on top of annotations so it is visible)
     if (settings?.watermark && settings.watermark.text.trim()) {
