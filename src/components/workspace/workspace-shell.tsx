@@ -474,18 +474,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           {file ? `${file.name} · — pages · ${sizeLabel}` : "No document loaded"}
         </div>
         <div className="flex items-center gap-1">
-          <ZoomButton onClick={() => setZoom((z) => Math.max(25, z - 10))}>
+          <ZoomButton onClick={() => setZoom((z) => Math.max(25, z - 10))} label="Zoom out">
             <Minus className="h-3.5 w-3.5" />
           </ZoomButton>
-          <span className="font-mono tabular-nums px-2 text-text-2 min-w-[3.5rem] text-center">
+          <button
+            type="button"
+            onClick={() => setZoom(100)}
+            title="Reset to 100%"
+            className="font-mono tabular-nums px-2 text-text-2 hover:text-foreground min-w-[3.5rem] text-center"
+          >
             {zoom}%
-          </span>
-          <ZoomButton onClick={() => setZoom((z) => Math.min(400, z + 10))}>
+          </button>
+          <ZoomButton onClick={() => setZoom((z) => Math.min(400, z + 10))} label="Zoom in">
             <Plus className="h-3.5 w-3.5" />
           </ZoomButton>
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <ZoomButton onClick={() => setZoom(100)}>
-            <Maximize2 className="h-3.5 w-3.5" />
+          <ZoomButton onClick={() => setZoom(100)} label="Fit width">
+            <StretchHorizontal className="h-3.5 w-3.5" />
           </ZoomButton>
         </div>
         <div className="flex items-center gap-1.5 text-text-muted">
