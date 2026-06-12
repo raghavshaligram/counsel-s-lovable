@@ -81,6 +81,40 @@ export function saveUIStateDebounced(state: Partial<WorkspaceUIState>) {
   }, 250);
 }
 
+/* ----------------------------- Open tabs ---------------------------- */
+
+export type OpenTabMeta = { name: string; size: number };
+
+export async function saveOpenTabs(tabs: OpenTabMeta[]): Promise<void> {
+  const d = db();
+  if (!d) return;
+  try {
+    (await d).put(UI_STORE, tabs, "openTabs");
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function loadOpenTabs(): Promise<OpenTabMeta[]> {
+  const d = db();
+  if (!d) return [];
+  try {
+    return ((await (await d).get(UI_STORE, "openTabs")) as OpenTabMeta[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function clearOpenTabs(): Promise<void> {
+  const d = db();
+  if (!d) return;
+  try {
+    (await d).delete(UI_STORE, "openTabs");
+  } catch {
+    /* ignore */
+  }
+}
+
 /* ----------------------------- Recents ----------------------------- */
 
 function uid() {
