@@ -29,6 +29,7 @@ import {
   Minus,
   Plus,
   Maximize2,
+  StretchHorizontal,
   Upload,
   FilePlus2,
   LayoutTemplate,
@@ -371,36 +372,36 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               <>
                 <FloatingToolbar active={editorTool} onChange={setEditorTool} />
                 <ContextualBar tool={editorTool} />
-                <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
-                  <CanvasIconButton
-                    label="Thumbnails"
-                    onClick={() => openTool("organize")}
-                  >
-                    <LayoutGrid className="h-[15px] w-[15px]" />
-                  </CanvasIconButton>
-                  <CanvasIconButton
-                    label="View options"
-                    active={viewOpen}
-                    onClick={() => setViewOpen((v) => !v)}
-                  >
-                    <SlidersHorizontal className="h-[15px] w-[15px]" />
-                  </CanvasIconButton>
-                  {viewOpen && (
-                    <ViewPopover
-                      pageLayout={pageLayout}
-                      onPageLayout={setPageLayout}
-                      continuous={continuous}
-                      onContinuous={setContinuous}
-                      showGaps={showGaps}
-                      onShowGaps={setShowGaps}
-                      theme={theme}
-                      onTheme={setTheme}
-                      onClose={() => setViewOpen(false)}
-                    />
-                  )}
-                </div>
               </>
             )}
+            <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
+              <CanvasIconButton
+                label="Thumbnails"
+                onClick={() => openTool("organize")}
+              >
+                <LayoutGrid className="h-[15px] w-[15px]" />
+              </CanvasIconButton>
+              <CanvasIconButton
+                label="Adjust view"
+                active={viewOpen}
+                onClick={() => setViewOpen((v) => !v)}
+              >
+                <SlidersHorizontal className="h-[15px] w-[15px]" />
+              </CanvasIconButton>
+              {viewOpen && (
+                <ViewPopover
+                  pageLayout={pageLayout}
+                  onPageLayout={setPageLayout}
+                  continuous={continuous}
+                  onContinuous={setContinuous}
+                  showGaps={showGaps}
+                  onShowGaps={setShowGaps}
+                  theme={theme}
+                  onTheme={setTheme}
+                  onClose={() => setViewOpen(false)}
+                />
+              )}
+            </div>
 
             {/* Scroll area */}
             <div className="relative flex-1 overflow-auto">
@@ -474,18 +475,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           {file ? `${file.name} · — pages · ${sizeLabel}` : "No document loaded"}
         </div>
         <div className="flex items-center gap-1">
-          <ZoomButton onClick={() => setZoom((z) => Math.max(25, z - 10))}>
+          <ZoomButton onClick={() => setZoom((z) => Math.max(25, z - 10))} label="Zoom out">
             <Minus className="h-3.5 w-3.5" />
           </ZoomButton>
-          <span className="font-mono tabular-nums px-2 text-text-2 min-w-[3.5rem] text-center">
+          <button
+            type="button"
+            onClick={() => setZoom(100)}
+            title="Reset to 100%"
+            className="font-mono tabular-nums px-2 text-text-2 hover:text-foreground min-w-[3.5rem] text-center"
+          >
             {zoom}%
-          </span>
-          <ZoomButton onClick={() => setZoom((z) => Math.min(400, z + 10))}>
+          </button>
+          <ZoomButton onClick={() => setZoom((z) => Math.min(400, z + 10))} label="Zoom in">
             <Plus className="h-3.5 w-3.5" />
           </ZoomButton>
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <ZoomButton onClick={() => setZoom(100)}>
-            <Maximize2 className="h-3.5 w-3.5" />
+          <ZoomButton onClick={() => setZoom(100)} label="Fit width">
+            <StretchHorizontal className="h-3.5 w-3.5" />
           </ZoomButton>
         </div>
         <div className="flex items-center gap-1.5 text-text-muted">
@@ -813,17 +819,14 @@ function ViewPopover({
             onClick={() => onPageLayout("single")}
             label="Single"
           >
-            <div className="mx-auto h-9 w-6 rounded-[3px] bg-surface-3" />
+            <PageGlyph variant="single" active={pageLayout === "single"} />
           </LayoutCard>
           <LayoutCard
             active={pageLayout === "double"}
             onClick={() => onPageLayout("double")}
             label="Double"
           >
-            <div className="mx-auto flex h-9 gap-1">
-              <div className="h-full w-5 rounded-[3px] bg-surface-3" />
-              <div className="h-full w-5 rounded-[3px] bg-surface-3" />
-            </div>
+            <PageGlyph variant="double" active={pageLayout === "double"} />
           </LayoutCard>
         </div>
       </Section>
@@ -900,6 +903,46 @@ function LayoutCard({
       {children}
       <span className="text-[11px] text-text-2">{label}</span>
     </button>
+  );
+}
+
+function PageGlyph({ variant, active }: { variant: "single" | "double"; active: boolean }) {
+  const stroke = active ? "var(--vault)" : "currentColor";
+  const fill = active ? "color-mix(in oklab, var(--vault) 12%, transparent)" : "var(--paper)";
+  const op = active ? 1 : 0.55;
+  if (variant === "single") {
+    return (
+      <svg
+        viewBox="0 0 24 32"
+        width="22"
+        height="30"
+        className="mx-auto text-text-2"
+        style={{ opacity: op }}
+        aria-hidden
+      >
+        <rect x="1.5" y="1.5" width="21" height="29" rx="2" fill={fill} stroke={stroke} strokeWidth="1.2" />
+        <line x1="5" y1="8" x2="19" y2="8" stroke={stroke} strokeWidth="1" opacity="0.45" />
+        <line x1="5" y1="12" x2="19" y2="12" stroke={stroke} strokeWidth="1" opacity="0.45" />
+        <line x1="5" y1="16" x2="15" y2="16" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      width="30"
+      height="30"
+      className="mx-auto text-text-2"
+      style={{ opacity: op }}
+      aria-hidden
+    >
+      <rect x="1.5" y="2.5" width="13" height="27" rx="1.8" fill={fill} stroke={stroke} strokeWidth="1.2" />
+      <rect x="17.5" y="2.5" width="13" height="27" rx="1.8" fill={fill} stroke={stroke} strokeWidth="1.2" />
+      <line x1="4" y1="9" x2="12" y2="9" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      <line x1="4" y1="13" x2="12" y2="13" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      <line x1="20" y1="9" x2="28" y2="9" stroke={stroke} strokeWidth="1" opacity="0.45" />
+      <line x1="20" y1="13" x2="28" y2="13" stroke={stroke} strokeWidth="1" opacity="0.45" />
+    </svg>
   );
 }
 
@@ -1434,14 +1477,18 @@ function ToolModal({
 function ZoomButton({
   children,
   onClick,
+  label,
 }: {
   children: React.ReactNode;
   onClick: () => void;
+  label?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={label}
+      aria-label={label}
       className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
     >
       {children}
