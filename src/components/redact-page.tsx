@@ -164,9 +164,18 @@ function buildPrivilegeLogCsv(sourceName: string, boxes: Box[]): string {
 }
 
 
-export function RedactPage() {
+export function RedactPage({
+  embedded = false,
+  externalFile = null,
+  premium,
+}: {
+  embedded?: boolean;
+  externalFile?: File | null;
+  premium?: boolean;
+} = {}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isPremium = pathname === "/verifiable-redaction";
+  const isPremium = typeof premium === "boolean" ? premium : pathname === "/verifiable-redaction";
+
 
   const [file, setFile] = useState<File | null>(null);
   const [pages, setPages] = useState<RenderedPage[]>([]);
