@@ -122,7 +122,25 @@ export async function addRecent(file: File): Promise<RecentMeta | null> {
   try {
     const conn = await d;
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const id = uid();
+    const key = identityKey(file.name, file.size);
+
+    // Find existing entry with same identity (any number of duplicates).
+    const allKeys = (await conn.getAllKeys(DOC_STORE)) as string[];
+    let reuseId: string | null = null;
+    for (const k of allKeys) {
+      const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+      if (!v) continue;
+      if (identityKey(v.name, v.size) === key) {
+        if (!reuseId) {
+          reuseId = v.id;
+        } else {
+          // Collapse any extra duplicates.
+          await conn.delete(DOC_STORE, k);
+        }
+      }
+    }
+
+    const id = reuseId ?? uid();
     const rec: RecentDoc = {
       id,
       name: file.name,
