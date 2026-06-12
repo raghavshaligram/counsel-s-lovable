@@ -339,20 +339,24 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         {/* LEFT RAIL */}
         <nav className="flex w-[52px] shrink-0 flex-col items-center justify-between border-r border-border bg-surface-1 py-3">
           <ul className="flex flex-col items-center gap-1.5">
-            {RAIL.map((item) => (
-              <li key={item.id}>
+            {pinnedTools.map((tool) => (
+              <li key={tool.id}>
                 <RailButton
-                  active={activeGroup === item.id && inspectorOpen}
-                  label={item.label}
-                  onClick={() => onOpenGroup(item.id)}
+                  active={activeToolId === tool.id && inspectorOpen}
+                  label={tool.label}
+                  onClick={() => openTool(tool.id)}
                 >
-                  <item.icon className="h-[18px] w-[18px]" />
+                  <tool.icon className="h-[18px] w-[18px]" />
                 </RailButton>
               </li>
             ))}
           </ul>
-          <RailButton label="More" onClick={() => {}}>
-            <MoreHorizontal className="h-[18px] w-[18px]" />
+          <RailButton
+            label="All tools"
+            active={toolModalOpen}
+            onClick={() => setToolModalOpen((v) => !v)}
+          >
+            <Grid3x3 className="h-[18px] w-[18px]" />
           </RailButton>
         </nav>
 
