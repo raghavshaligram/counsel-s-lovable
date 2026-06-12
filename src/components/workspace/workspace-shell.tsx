@@ -451,11 +451,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           {/* INSPECTOR slide-over */}
           <Inspector
             open={inspectorOpen}
-            group={activeGroup}
+            activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
             onClose={() => setInspectorOpen(false)}
           />
         </div>
       </div>
+
+      {/* TOOL MODAL */}
+      {toolModalOpen && (
+        <ToolModal
+          activeToolId={activeToolId}
+          onSelect={(id) => openTool(id)}
+          onClose={() => setToolModalOpen(false)}
+        />
+      )}
 
       {/* BOTTOM BAR */}
       <footer className="flex h-[38px] shrink-0 items-center justify-between border-t border-border bg-surface-1 px-3 text-[11.5px]">
