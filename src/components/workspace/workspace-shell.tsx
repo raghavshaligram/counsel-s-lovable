@@ -361,17 +361,36 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       {/* TOP BAR */}
       <header className="flex h-[46px] shrink-0 items-center justify-between border-b border-border bg-surface-1 px-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className="grid h-6 w-6 place-items-center bg-vault text-vault-foreground"
-            style={{ borderRadius: 7 }}
-            aria-label="VaultPDF"
+          <button
+            type="button"
+            onClick={goHome}
+            title="Start screen"
+            aria-label="Go to Start"
+            className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-0.5 hover:bg-surface-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-          </div>
-          <span className="font-display text-[15px] leading-none">VaultPDF</span>
+            <span
+              className="grid h-6 w-6 place-items-center bg-vault text-vault-foreground"
+              style={{ borderRadius: 7 }}
+            >
+              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </span>
+            <span className="font-display text-[15px] leading-none">VaultPDF</span>
+          </button>
+          <button
+            type="button"
+            onClick={goHome}
+            title="New (return to Start)"
+            aria-label="New"
+            className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors"
+          >
+            <FilePlus2 className="h-[15px] w-[15px]" />
+          </button>
           <span className="mx-1 h-4 w-px bg-border" />
           <span className="truncate text-[13px] text-text-2">
             {file?.name ?? "Untitled document"}
+            {isDirty && file && (
+              <span className="ml-1.5 text-vault" aria-label="Unsaved changes" title="Unsaved changes">•</span>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-2">
