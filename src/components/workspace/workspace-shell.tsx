@@ -921,7 +921,6 @@ function PageCanvas({
   }, [index, render]);
   return <canvas ref={ref} className="block h-full w-full object-contain" />;
 }
-}
 
 /* -------------------------- Empty start ------------------------------ */
 
