@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { ToolPanel } from "./tool-panels";
 import {
   loadUIState,
   saveUIStateDebounced,
