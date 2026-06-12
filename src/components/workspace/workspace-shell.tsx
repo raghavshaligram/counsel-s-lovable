@@ -945,15 +945,18 @@ function contextFor(tool: EditorTool): React.ReactNode | null {
       );
     case "highlight":
     case "underline":
-    case "strike":
+    case "strikethrough":
       return (
         <>
           <ColorSwatch />
           <span className="text-text-muted">Color</span>
         </>
       );
-    case "shape":
-    case "pen":
+    case "rect":
+    case "ellipse":
+    case "line":
+    case "arrow":
+    case "freehand":
       return (
         <>
           <ColorSwatch />
@@ -968,13 +971,13 @@ function contextFor(tool: EditorTool): React.ReactNode | null {
           <PropBtn title="Crop this image only (not the page)">Crop image</PropBtn>
         </>
       );
-    case "crop":
+    case "redact":
       return (
         <>
-          <span className="text-text-muted">Drag on the page to set the crop rectangle · trims the page area, not images</span>
+          <span className="text-text-muted">Drag to mark text or regions for permanent redaction on export</span>
         </>
       );
-    case "comment":
+    case "note":
     case "select":
     default:
       return null;
