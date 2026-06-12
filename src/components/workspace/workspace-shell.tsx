@@ -602,6 +602,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   activeToolId={activeToolId}
                   active={editorTool}
                   onChange={setEditorTool}
+                  onUndo={() => editorDispatch({ type: "UNDO" })}
+                  onRedo={() => editorDispatch({ type: "REDO" })}
                 />
                 <ContextualBar tool={editorTool} />
               </>
