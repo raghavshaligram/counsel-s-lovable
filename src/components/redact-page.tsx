@@ -177,7 +177,12 @@ export function RedactPage({
   const isPremium = typeof premium === "boolean" ? premium : pathname === "/verifiable-redaction";
 
 
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(externalFile);
+  // Sync workspace-provided file into local state without changing existing logic.
+  useEffect(() => {
+    if (embedded) setFile(externalFile);
+  }, [embedded, externalFile]);
+
   const [pages, setPages] = useState<RenderedPage[]>([]);
   const [loading, setLoading] = useState(false);
   const [boxes, setBoxes] = useState<Box[]>([]);
