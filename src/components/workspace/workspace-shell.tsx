@@ -205,6 +205,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
   const [editorTool, setEditorToolRaw] = useState<EditorTool>("select");
+
+  // When the active tool changes, reset the floating-toolbar mode to that
+  // tool's default canvas action (redact → draw; everything else → select).
+  useEffect(() => {
+    if (activeToolId === "redact") setEditorToolRaw("redact-draw");
+    else if (editorTool.startsWith("redact-")) setEditorToolRaw("select");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeToolId]);
   const [zoom, setZoom] = useState<number>(100);
   const [viewOpen, setViewOpen] = useState(false);
   const [pageLayout, setPageLayout] = useState<"single" | "double">("single");
