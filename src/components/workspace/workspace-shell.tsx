@@ -245,15 +245,61 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback((files: FileList | null) => {
     const f = files?.[0];
-    if (f) setFile(f);
+    if (f) {
+      setFile(f);
+      setIsDirty(false);
+    }
   }, []);
 
   const loadBlank = useCallback(() => {
     setFile(new File([], "Untitled.pdf", { type: "application/pdf" }));
+    setIsDirty(false);
   }, []);
   const loadTemplate = useCallback((name: string) => {
     setFile(new File([], `${name}.pdf`, { type: "application/pdf" }));
+    setIsDirty(false);
   }, []);
+
+  const clearToStart = useCallback(() => {
+    setFile(null);
+    setIsDirty(false);
+    setEditorToolRaw("select");
+    setInspectorOpen(false);
+    setActiveToolId(null);
+  }, []);
+
+  // Guarded "go to Start". If the doc has unsaved edits, ask first.
+  const goHome = useCallback(() => {
+    if (file && isDirty) {
+      setConfirmClearOpen(true);
+      return;
+    }
+    clearToStart();
+  }, [file, isDirty, clearToStart]);
+
+  const handleSaveAndClear = useCallback(() => {
+    // Export flow placeholder — real export lives in the feature panels.
+    // eslint-disable-next-line no-console
+    console.log("[workspace] save before leaving", file?.name);
+    setConfirmClearOpen(false);
+    clearToStart();
+  }, [file, clearToStart]);
+
+  const handleDiscardAndClear = useCallback(() => {
+    setConfirmClearOpen(false);
+    clearToStart();
+  }, [clearToStart]);
+
+  // Warn on page unload too, so a stray refresh doesn't lose edits.
+  useEffect(() => {
+    if (!isDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
 
   // Shortcuts
   useEffect(() => {
