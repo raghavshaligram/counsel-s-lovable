@@ -201,13 +201,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
   );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
-  const [editorTool, setEditorToolRaw] = useState<EditorTool>("select");
+  // Shared editor state (reducer ported from /editor route).
+  const [editorState, editorDispatch] = useReducer(reducer, initialState);
+  const editorTool = editorState.tool;
 
-  // When the active tool changes, reset the floating-toolbar mode to that
-  // tool's default canvas action (redact → draw; everything else → select).
+  // When the active rail tool is "redact", default the canvas mode to redact.
+  // When leaving redact, fall back to select. The floating toolbar shows the
+  // contextual redact set during this window; logic stays in the single store.
   useEffect(() => {
-    if (activeToolId === "redact") setEditorToolRaw("redact-draw");
-    else if (editorTool.startsWith("redact-")) setEditorToolRaw("select");
+    if (activeToolId === "redact") editorDispatch({ type: "SET_TOOL", t: "redact" });
+    else if (editorState.tool === "redact") editorDispatch({ type: "SET_TOOL", t: "select" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeToolId]);
   const [zoom, setZoom] = useState<number>(100);
