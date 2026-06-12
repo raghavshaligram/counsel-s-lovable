@@ -532,7 +532,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             {/* Floating toolbar + view popover anchor */}
             {file && (
               <>
-                <FloatingToolbar active={editorTool} onChange={setEditorTool} />
+                <FloatingToolbar
+                  activeToolId={activeToolId}
+                  active={editorTool}
+                  onChange={setEditorTool}
+                />
                 <ContextualBar tool={editorTool} />
               </>
             )}
