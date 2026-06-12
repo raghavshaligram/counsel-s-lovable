@@ -6,6 +6,16 @@
       "name": "tanstack_start_ts",
       "dependencies": {
         "@cantoo/pdf-lib": "^2.7.1",
+        "@expo-google-fonts/arimo": "^0.4.3",
+        "@expo-google-fonts/caladea": "^0.4.1",
+        "@expo-google-fonts/carlito": "^0.4.1",
+        "@expo-google-fonts/cousine": "^0.4.2",
+        "@expo-google-fonts/tinos": "^0.4.2",
+        "@fontsource/arimo": "^5.2.8",
+        "@fontsource/caladea": "^5.2.8",
+        "@fontsource/carlito": "^5.2.8",
+        "@fontsource/cousine": "^5.2.7",
+        "@fontsource/tinos": "^5.2.7",
         "@hookform/resolvers": "^5.2.2",
         "@noble/curves": "^2.2.0",
         "@pdf-lib/fontkit": "^1.1.1",
@@ -225,6 +235,16 @@
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.4.1", "", { "dependencies": { "@eslint/core": "^0.17.0", "levn": "^0.4.1" } }, "sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA=="],
 
+    "@expo-google-fonts/arimo": ["@expo-google-fonts/arimo@0.4.3", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@expo-google-fonts/arimo/-/arimo-0.4.3.tgz", {}, "sha512-kXMUJ303nJgKjJFr8yuiAY9dgIoAoj9HccKkaSw0J63/T4MSdxFejzfDUVLzUz+ohpQWinifV99QOAUQLcGKDg=="],
+
+    "@expo-google-fonts/caladea": ["@expo-google-fonts/caladea@0.4.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@expo-google-fonts/caladea/-/caladea-0.4.1.tgz", {}, "sha512-VGti5nfQW7fANySeMqsQlSgIseF/nTJ7JWlPY/l/9I3dsPcZUiWb08/6kqFm1ZUPFURUtCud2+iKEY66EgCs2g=="],
+
+    "@expo-google-fonts/carlito": ["@expo-google-fonts/carlito@0.4.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@expo-google-fonts/carlito/-/carlito-0.4.1.tgz", {}, "sha512-S4vhxWiS1mKp6AAx44VvNt7edQhnoXJU3obKcBZRjMkvQn0MJlm+Sz3O2bhcXy3h01CMi/soREOjDcZYFDzL/Q=="],
+
+    "@expo-google-fonts/cousine": ["@expo-google-fonts/cousine@0.4.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@expo-google-fonts/cousine/-/cousine-0.4.2.tgz", {}, "sha512-IkZDgYL6EGYdzicfQwTvYLA8e9JK3lm4WKZBn0Cm8E1ULQZixqYVezm6S+sZXKrok8L/uqLW1x4+enY13Dy3Nw=="],
+
+    "@expo-google-fonts/tinos": ["@expo-google-fonts/tinos@0.4.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@expo-google-fonts/tinos/-/tinos-0.4.2.tgz", {}, "sha512-MQkfvUO1Aw7UP3jRtWLcjda+udanoL8ecrbkjbc3ZdhSI1iW/Uil4uD8O0eOiIxU2v/FeAT2XjGNiz5oYUlucg=="],
+
     "@floating-ui/core": ["@floating-ui/core@1.7.5", "", { "dependencies": { "@floating-ui/utils": "^0.2.11" } }, "sha512-1Ih4WTWyw0+lKyFMcBHGbb5U5FtuHJuujoyyr5zTaWS5EYMeT6Jb2AuDeftsCsEuchO+mM2ij5+q9crhydzLhQ=="],
 
     "@floating-ui/dom": ["@floating-ui/dom@1.7.6", "", { "dependencies": { "@floating-ui/core": "^1.7.5", "@floating-ui/utils": "^0.2.11" } }, "sha512-9gZSAI5XM36880PPMm//9dfiEngYoC6Am2izES1FF406YFsjvyBMmeJ2g4SAju3xWwtuynNRFL2s9hgxpLI5SQ=="],
@@ -232,6 +252,16 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8", "", { "dependencies": { "@floating-ui/dom": "^1.7.6" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-cC52bHwM/n/CxS87FH0yWdngEZrjdtLW/qVruo68qg+prK7ZQ4YGdut2GyDVpoGeAYe/h899rVeOVm6Oi40k2A=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
+
+    "@fontsource/arimo": ["@fontsource/arimo@5.2.8", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@fontsource/arimo/-/arimo-5.2.8.tgz", {}, "sha512-EGB/l4PhYsxJbskePrgFQKM3Ob+x3Xr+VZDuSMR2XNVQYhx8t5zIfiMxCLLbgBPkY2qeXGfbyrXeAOEGl1lOSA=="],
+
+    "@fontsource/caladea": ["@fontsource/caladea@5.2.8", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@fontsource/caladea/-/caladea-5.2.8.tgz", {}, "sha512-+gzoYzqxRdGYcO7nSkmx6btoJvtYWxNZSHM9WWTCQqS4aN498FbHpENGhOKI9SPbOeCJiFXz0RvhVUdbcKEECg=="],
+
+    "@fontsource/carlito": ["@fontsource/carlito@5.2.8", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@fontsource/carlito/-/carlito-5.2.8.tgz", {}, "sha512-EbsNaWvGUWiuSAv/9+n9lHMi2hfPabhw5rY7r+B84XDb0fvkw+3bCksrcEBE3sQDIKgAsIjDzzSbb0+GYJlvEQ=="],
+
+    "@fontsource/cousine": ["@fontsource/cousine@5.2.7", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@fontsource/cousine/-/cousine-5.2.7.tgz", {}, "sha512-2l6qNHghWeQDGqaR1QmS8iR1YWzhZczcVQpR/MJVNSKE8bELI6v2Rqe+d4pFfG+5PY9QhvZ+aKriqlbKubcR8g=="],
+
+    "@fontsource/tinos": ["@fontsource/tinos@5.2.7", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@fontsource/tinos/-/tinos-5.2.7.tgz", {}, "sha512-F+rSTz0CNDZ/nx3BlmVA+wlbfCR1gwXeJTkGxb6pwu5KjeWVyaZ6ioInm533pw2Ha7472Lwb4vLjzo1zT0RXmA=="],
 
     "@hookform/resolvers": ["@hookform/resolvers@5.2.2", "", { "dependencies": { "@standard-schema/utils": "^0.3.0" }, "peerDependencies": { "react-hook-form": "^7.55.0" } }, "sha512-A/IxlMLShx3KjV/HeTcTfaMxdwy690+L/ZADoeaTltLx+CVuzkeVIPuybK3jrRfw7YZnmdKsVVHAlEPIAEUNlA=="],
 

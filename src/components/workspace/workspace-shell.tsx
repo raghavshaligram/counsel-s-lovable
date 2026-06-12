@@ -423,7 +423,7 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   [{ id: "comment", label: "Comment", Icon: MessageSquare }],
   [
     { id: "image", label: "Insert image", Icon: ImageIcon },
-    { id: "crop", label: "Crop", Icon: Crop },
+    { id: "crop", label: "Crop page — trim the page area. With an image selected, the contextual bar shows a separate Crop image affordance.", Icon: Crop },
     { id: "shape", label: "Shapes", Icon: Square },
     { id: "pen", label: "Freehand", Icon: Pencil },
   ],
@@ -553,11 +553,16 @@ function contextFor(tool: EditorTool): React.ReactNode | null {
       return (
         <>
           <PropBtn>Position</PropBtn>
-          <PropBtn>Crop</PropBtn>
+          <PropBtn title="Crop this image only (not the page)">Crop image</PropBtn>
+        </>
+      );
+    case "crop":
+      return (
+        <>
+          <span className="text-text-muted">Drag on the page to set the crop rectangle · trims the page area, not images</span>
         </>
       );
     case "comment":
-    case "crop":
     case "select":
     default:
       return null;
@@ -578,13 +583,16 @@ function Select({ label }: { label: string }) {
 function PropBtn({
   children,
   className,
+  title,
 }: {
   children: React.ReactNode;
   className?: string;
+  title?: string;
 }) {
   return (
     <button
       type="button"
+      title={title}
       className={cn(
         "grid h-6 min-w-[24px] place-items-center rounded-md px-1.5 text-[12px] text-text-2 hover:bg-surface-2 hover:text-foreground",
         className

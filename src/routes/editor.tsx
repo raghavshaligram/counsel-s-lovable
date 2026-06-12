@@ -24,6 +24,7 @@ import { exportEditedPdf } from "@/lib/editor/export";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { CommentsPanel } from "@/components/editor/CommentsPanel";
 import { DocOpsMenu } from "@/components/editor/doc-ops-menu";
+import { FONT_META, FONT_KEYS, type FontKey, injectFontFaces, mapPdfFontToKey } from "@/lib/editor/fonts";
 import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, TextSource, WatermarkSettings } from "@/lib/editor/types";
 
 
@@ -232,6 +233,7 @@ function Editor() {
 
 
   // keyboard shortcuts
+  useEffect(() => { injectFontFaces(); }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!state.doc) return;
@@ -416,7 +418,7 @@ function Toolbar({ state, dispatch, onExport, commentsOpen, onToggleComments, on
     { id: "freehand", icon: Pen, label: "Draw" },
     { id: "note", icon: StickyNote, label: "Note" },
     { id: "image", icon: ImageIcon, label: "Image" },
-    { id: "edit-text", icon: PencilLine, label: "Edit text" },
+    { id: "edit-text", icon: PencilLine, label: "Edit text — click a line of text to replace it. Replacement is overlaid in a metric-matched font; adjust font, size, and colour in the dialog." },
     { id: "redact", icon: EyeOff, label: "Redact (D)" },
   ];
 
@@ -678,7 +680,39 @@ function Thumbnail({ op, srcBytes }: { op: PageOp; srcBytes: Uint8Array }) {
 
 // ---------- page canvas + annotation layer ----------
 
-type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; transform?: number[]; fontName?: string };
+type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; transform?: number[]; fontName?: string; fontKey: FontKey; color: RGB };
+
+// Estimate the dominant glyph colour by averaging the darkest ~25% of pixels
+// in the rendered text bbox. Far from perfect (anti-aliasing pulls towards the
+// background), but good enough to seed the colour picker so the user only has
+// to adjust when the heuristic misses.
+function sampleTextColor(ctx: CanvasRenderingContext2D | null, x: number, y: number, w: number, h: number): RGB {
+  if (!ctx || w < 1 || h < 1) return { r: 0, g: 0, b: 0 };
+  const sx = Math.max(0, Math.floor(x));
+  const sy = Math.max(0, Math.floor(y));
+  const sw = Math.max(1, Math.min(Math.floor(w), ctx.canvas.width - sx));
+  const sh = Math.max(1, Math.min(Math.floor(h), ctx.canvas.height - sy));
+  try {
+    const data = ctx.getImageData(sx, sy, sw, sh).data;
+    type Px = { r: number; g: number; b: number; lum: number };
+    const pixels: Px[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+      if (a < 128) continue;
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (lum > 230) continue; // background
+      pixels.push({ r, g, b, lum });
+    }
+    if (pixels.length < 4) return { r: 0, g: 0, b: 0 };
+    pixels.sort((p, q) => p.lum - q.lum);
+    const take = Math.max(2, Math.floor(pixels.length * 0.25));
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < take; i++) { r += pixels[i].r; g += pixels[i].g; b += pixels[i].b; }
+    return { r: (r / take) / 255, g: (g / take) / 255, b: (b / take) / 255 };
+  } catch {
+    return { r: 0, g: 0, b: 0 };
+  }
+}
 
 function PageCanvas({
   op, srcBytes, annos, state, dispatch,
@@ -738,7 +772,10 @@ function PageCanvas({
           "sans";
         const bold = /bold|black|heavy|semibold|demibold/.test(ffl);
         const italic = /italic|oblique/.test(ffl);
-        return [{ x: m[4], y: m[5] - fh, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName }];
+        const fontKey = mapPdfFontToKey(it.fontName ?? ff, family);
+        const x = m[4], y = m[5] - fh;
+        const color = sampleTextColor(ctx, x * displayScale, y * displayScale, it.width * displayScale, fh * displayScale);
+        return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color }];
       });
       setTextItems(items);
     })();
@@ -935,7 +972,7 @@ function PageCanvas({
 
   // Commit a new or updated text-edit annotation from the modal.
   const commitTextEdit = (
-    payload: { text: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB },
+    payload: { text: string; family: "sans" | "serif" | "mono"; fontKey: FontKey; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB },
   ) => {
     if (!textEditTarget) return;
     if (textEditTarget.kind === "new") {
@@ -956,6 +993,7 @@ function PageCanvas({
         fontSize: payload.fontSize,
         bg: payload.bg,
         family: payload.family,
+        fontKey: payload.fontKey,
         bold: payload.bold,
         italic: payload.italic,
         textOffsetY: padTop,
@@ -966,6 +1004,7 @@ function PageCanvas({
       dispatch({ type: "UPDATE_ANNO", id: textEditTarget.annoId, patch: {
         text: payload.text,
         family: payload.family,
+        fontKey: payload.fontKey,
         bold: payload.bold,
         italic: payload.italic,
         fontSize: payload.fontSize,
@@ -1153,11 +1192,14 @@ function PageCanvas({
       case "text-edit": {
         const isEditing = editingId === a.id;
         const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
-        const fam = a.kind === "text-edit"
-          ? (a.family === "serif" ? `'Times New Roman', Times, serif`
-            : a.family === "mono" ? `'Courier New', Courier, monospace`
-            : `Helvetica, Arial, sans-serif`)
-          : `Helvetica, Arial, sans-serif`;
+        const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
+        const fam = editFontKey && FONT_META[editFontKey]
+          ? FONT_META[editFontKey].cssFamily
+          : a.kind === "text-edit"
+            ? (a.family === "serif" ? `'Times New Roman', Times, serif`
+              : a.family === "mono" ? `'Courier New', Courier, monospace`
+              : `Helvetica, Arial, sans-serif`)
+            : `Helvetica, Arial, sans-serif`;
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * displayScale : 0;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
@@ -1813,11 +1855,6 @@ function ProtectDialog({
 
 // ---------- Edit Text dialog ----------
 
-const FAMILY_OPTIONS: { value: "sans" | "serif" | "mono"; label: string; css: string }[] = [
-  { value: "sans", label: "Sans (Helvetica)", css: "Helvetica, Arial, sans-serif" },
-  { value: "serif", label: "Serif (Times)", css: "'Times New Roman', Times, serif" },
-  { value: "mono", label: "Mono (Courier)", css: "'Courier New', Courier, monospace" },
-];
 
 function rgbToHex(c: RGB): string {
   const h = (n: number) => Math.round(n * 255).toString(16).padStart(2, "0");
@@ -1839,7 +1876,7 @@ function TextEditDialog({
     | null;
   annos: Anno[];
   onClose: () => void;
-  onCommit: (p: { text: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB }) => void;
+  onCommit: (p: { text: string; family: "sans" | "serif" | "mono"; fontKey: FontKey; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB }) => void;
 }) {
   const existing = target?.kind === "existing"
     ? (annos.find((a) => a.id === target.annoId) as Anno | undefined)
@@ -1851,29 +1888,33 @@ function TextEditDialog({
       return {
         text: it.str,
         family: it.family,
+        fontKey: it.fontKey,
         bold: it.bold,
         italic: it.italic,
         fontSize: +(it.h * 0.95).toFixed(2),
-        color: { r: 0, g: 0, b: 0 } as RGB,
+        color: it.color,
         bg: { r: 1, g: 1, b: 1 } as RGB,
+        detectedFontName: it.fontName,
       };
     }
     if (existing && existing.kind === "text-edit") {
       return {
         text: existing.text,
         family: existing.family ?? "sans",
+        fontKey: (existing.fontKey as FontKey | undefined) ?? "arimo",
         bold: !!existing.bold,
         italic: !!existing.italic,
         fontSize: existing.fontSize,
         color: existing.color,
         bg: existing.bg,
+        detectedFontName: existing.source?.fontName,
       };
     }
     return null;
   })();
 
   const [text, setText] = useState("");
-  const [family, setFamily] = useState<"sans" | "serif" | "mono">("sans");
+  const [fontKey, setFontKey] = useState<FontKey>("arimo");
   const [bold, setBold] = useState(false);
   const [italic, setItalic] = useState(false);
   const [fontSize, setFontSize] = useState(14);
@@ -1884,7 +1925,7 @@ function TextEditDialog({
   useEffect(() => {
     if (!seed) return;
     setText(seed.text);
-    setFamily(seed.family);
+    setFontKey(seed.fontKey);
     setBold(seed.bold);
     setItalic(seed.italic);
     setFontSize(seed.fontSize);
@@ -1896,11 +1937,14 @@ function TextEditDialog({
   const open = target !== null;
   const isNew = target?.kind === "new";
   const originalText = target?.kind === "new" ? target.item.str : undefined;
+  const detectedFontName = seed?.detectedFontName;
 
   const handleSave = () => {
+    const km = FONT_META[fontKey];
     onCommit({
       text,
-      family,
+      family: km?.kind ?? "sans",
+      fontKey,
       bold,
       italic,
       fontSize,
@@ -1919,6 +1963,9 @@ function TextEditDialog({
           {isNew && originalText && (
             <div className="text-xs text-muted-foreground">
               Replacing: <span className="font-mono text-foreground/80">&ldquo;{originalText}&rdquo;</span>
+              {detectedFontName && (
+                <> · detected font <span className="font-mono text-foreground/80">{detectedFontName}</span></>
+              )}
             </div>
           )}
           <textarea
@@ -1928,7 +1975,7 @@ function TextEditDialog({
             rows={3}
             className="w-full rounded-md border border-input bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-vault/40"
             style={{
-              fontFamily: FAMILY_OPTIONS.find((f) => f.value === family)?.css,
+              fontFamily: FONT_META[fontKey]?.cssFamily,
               fontWeight: bold ? 700 : 400,
               fontStyle: italic ? "italic" : "normal",
             }}
@@ -1936,14 +1983,14 @@ function TextEditDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1 text-xs">
-              <span className="text-muted-foreground">Font</span>
+              <span className="text-muted-foreground">Font (metric-matched)</span>
               <select
-                value={family}
-                onChange={(e) => setFamily(e.target.value as "sans" | "serif" | "mono")}
+                value={fontKey}
+                onChange={(e) => setFontKey(e.target.value as FontKey)}
                 className="w-full rounded-md border border-input bg-background p-1.5 text-sm"
               >
-                {FAMILY_OPTIONS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
+                {FONT_KEYS.map((k) => (
+                  <option key={k} value={k}>{FONT_META[k].label} — ≈ {FONT_META[k].matches}</option>
                 ))}
               </select>
             </label>
@@ -1981,7 +2028,7 @@ function TextEditDialog({
           </div>
 
           <p className="text-[11px] leading-snug text-muted-foreground">
-            VaultPDF covers the original glyphs with a matched background fill and redraws your replacement on top — the visual edit applies cleanly across all viewers. Underlying text-extraction may still return the original characters until we ship destructive content-stream rewrite (coming next).
+            Edit replaces the original glyphs with a white-out fill and redraws your text on top using a bundled metric-compatible open font ({FONT_META[fontKey].label} ≈ {FONT_META[fontKey].matches}). Exact font matching across arbitrary PDFs is impossible — adjust the font, size, weight, or colour above if the guess looks off.
           </p>
         </div>
         <DialogFooter>

@@ -8,14 +8,17 @@
 // call converts: pdfY = pageHeight - (y + h).
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
+import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
 export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
   const srcDoc = await PDFDocument.load(doc.srcBytes);
   const out = await PDFDocument.create();
+  out.registerFontkit(fontkit);
   const fonts = {
     sans: await out.embedFont(StandardFonts.Helvetica),
     sansBold: await out.embedFont(StandardFonts.HelveticaBold),
@@ -31,6 +34,29 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     monoBoldItalic: await out.embedFont(StandardFonts.CourierBoldOblique),
   };
   const font = fonts.sans;
+
+  // Lazy-embed any bundled metric-compatible open fonts referenced by
+  // text-edit annotations. Keyed by `${fontKey}|b|i` to dedupe per variant.
+  const bundledFonts = new Map<string, import("pdf-lib").PDFFont>();
+  const ensureBundled = async (key: FontKey, bold: boolean, italic: boolean) => {
+    if (!FONT_META[key]) return undefined;
+    const cacheKey = `${key}|${bold ? 1 : 0}|${italic ? 1 : 0}`;
+    let f = bundledFonts.get(cacheKey);
+    if (f) return f;
+    try {
+      const bytes = await loadFontBytes(key, bold, italic);
+      f = await out.embedFont(bytes, { subset: true });
+      bundledFonts.set(cacheKey, f);
+      return f;
+    } catch {
+      return undefined;
+    }
+  };
+  for (const a of doc.annotations) {
+    if (a.kind === "text-edit" && a.fontKey) {
+      await ensureBundled(a.fontKey as FontKey, !!a.bold, !!a.italic);
+    }
+  }
 
   // Pre-embed images once, dedupe by dataUrl
   const imageCache = new Map<string, import("pdf-lib").PDFImage>();
@@ -62,7 +88,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
 
     const { width: pw, height: ph } = outPage.getSize();
     const annos = doc.annotations.filter((a) => a.page === i);
-    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts);
+    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
 
     // Watermark (drawn on top of annotations so it is visible)
     if (settings?.watermark && settings.watermark.text.trim()) {
@@ -157,6 +183,7 @@ function drawAnno(
   ph: number,
   imgs: Map<string, import("pdf-lib").PDFImage>,
   fonts: FontSet,
+  bundled?: Map<string, import("pdf-lib").PDFFont>,
 ) {
   // Convert top-left bbox to bottom-left for pdf-lib
   const yFlip = (y: number, h: number) => ph - (y + h);
@@ -325,12 +352,14 @@ function drawAnno(
         height: a.h,
         color: col(a.bg),
       });
+      const bundledKey = a.fontKey ? `${a.fontKey}|${a.bold ? 1 : 0}|${a.italic ? 1 : 0}` : "";
+      const useFont = (bundledKey && bundled?.get(bundledKey)) || pickFont(fonts, a.family ?? "sans", a.bold, a.italic);
       page.drawText(a.text, {
         x: a.x,
         // Baseline: top of bbox + textOffsetY (skip whiteout padding) + ascent
         y: yFlip(a.y, a.h) + a.h - (a.textOffsetY ?? 0) - a.fontSize * 0.85,
         size: a.fontSize,
-        font: pickFont(fonts, a.family ?? "sans", a.bold, a.italic),
+        font: useFont,
         color: col(a.color),
         maxWidth: a.w,
         lineHeight: a.fontSize * 1.15,
