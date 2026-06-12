@@ -304,8 +304,38 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     if (f) {
       setFile(f);
       setIsDirty(false);
+      void (async () => {
+        const meta = await addRecent(f);
+        if (meta) {
+          const list = await listRecents();
+          setRecents(list);
+        }
+      })();
     }
   }, []);
+
+  const resumeRecent = useCallback(async (id: string) => {
+    const rec = await getRecent(id);
+    if (!rec) return;
+    const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
+    const f = new File([blob], rec.name, { type: "application/pdf" });
+    setFile(f);
+    setIsDirty(false);
+    // Bump addedAt so newest sits first next time.
+    await addRecent(f);
+    setRecents(await listRecents());
+  }, []);
+
+  const dismissRecent = useCallback(async (id: string) => {
+    await removeRecent(id);
+    setRecents(await listRecents());
+  }, []);
+
+  const clearAllRecents = useCallback(async () => {
+    await clearRecents();
+    setRecents([]);
+  }, []);
+
 
   const loadBlank = useCallback(() => {
     setFile(new File([], "Untitled.pdf", { type: "application/pdf" }));
