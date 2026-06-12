@@ -198,3 +198,26 @@ async function evict(conn: IDBPDatabase): Promise<void> {
     if (!keepSet.has(m.key)) await conn.delete(DOC_STORE, m.key);
   }
 }
+
+// One-shot dedupe of stored recents: collapse any entries sharing (name+size)
+// to a single record — the newest addedAt wins; older duplicates are deleted.
+async function dedupe(conn: IDBPDatabase): Promise<void> {
+  const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
+  const byKey = new Map<string, { key: string; addedAt: number }>();
+  const toDelete: string[] = [];
+  for (const k of keys) {
+    const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+    if (!v) continue;
+    const ident = identityKey(v.name, v.size);
+    const prev = byKey.get(ident);
+    if (!prev) {
+      byKey.set(ident, { key: k, addedAt: v.addedAt });
+    } else if (v.addedAt > prev.addedAt) {
+      toDelete.push(prev.key);
+      byKey.set(ident, { key: k, addedAt: v.addedAt });
+    } else {
+      toDelete.push(k);
+    }
+  }
+  for (const k of toDelete) await conn.delete(DOC_STORE, k);
+}
