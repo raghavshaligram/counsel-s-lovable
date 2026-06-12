@@ -681,6 +681,38 @@ function Thumbnail({ op, srcBytes }: { op: PageOp; srcBytes: Uint8Array }) {
 
 type TextItem = { x: number; y: number; w: number; h: number; str: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; transform?: number[]; fontName?: string; fontKey: FontKey; color: RGB };
 
+// Estimate the dominant glyph colour by averaging the darkest ~25% of pixels
+// in the rendered text bbox. Far from perfect (anti-aliasing pulls towards the
+// background), but good enough to seed the colour picker so the user only has
+// to adjust when the heuristic misses.
+function sampleTextColor(ctx: CanvasRenderingContext2D | null, x: number, y: number, w: number, h: number): RGB {
+  if (!ctx || w < 1 || h < 1) return { r: 0, g: 0, b: 0 };
+  const sx = Math.max(0, Math.floor(x));
+  const sy = Math.max(0, Math.floor(y));
+  const sw = Math.max(1, Math.min(Math.floor(w), ctx.canvas.width - sx));
+  const sh = Math.max(1, Math.min(Math.floor(h), ctx.canvas.height - sy));
+  try {
+    const data = ctx.getImageData(sx, sy, sw, sh).data;
+    type Px = { r: number; g: number; b: number; lum: number };
+    const pixels: Px[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+      if (a < 128) continue;
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (lum > 230) continue; // background
+      pixels.push({ r, g, b, lum });
+    }
+    if (pixels.length < 4) return { r: 0, g: 0, b: 0 };
+    pixels.sort((p, q) => p.lum - q.lum);
+    const take = Math.max(2, Math.floor(pixels.length * 0.25));
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < take; i++) { r += pixels[i].r; g += pixels[i].g; b += pixels[i].b; }
+    return { r: (r / take) / 255, g: (g / take) / 255, b: (b / take) / 255 };
+  } catch {
+    return { r: 0, g: 0, b: 0 };
+  }
+}
+
 function PageCanvas({
   op, srcBytes, annos, state, dispatch,
 }: {
