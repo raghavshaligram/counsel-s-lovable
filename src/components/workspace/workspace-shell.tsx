@@ -656,13 +656,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     gap={showGaps ? 18 : 0}
                   />
                 ) : (
-                  <PagesPlaceholder
-                    file={file}
-                    zoom={zoom}
-                    layout={pageLayout}
-                    gap={showGaps ? 18 : 0}
-                    continuous={continuous}
-                  />
+                  <div className="grid h-full place-items-center text-[12.5px] text-text-muted">
+                    {file.size === 0 ? "Empty document" : "Loading document…"}
+                  </div>
                 )
               ) : (
                 <EmptyStart
