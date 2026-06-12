@@ -41,15 +41,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { RedactPage } from "@/components/redact-page";
 
-type ToolId =
-  | "pages"
-  | "redact"
-  | "sign"
-  | "convert"
-  | "secure"
-  | "layout"
-  | "legal"
-  | "ai";
+type ToolId = "pages" | "redact" | "sign" | "convert" | "secure" | "layout" | "legal" | "ai";
 
 type RailItem = {
   id: ToolId;
@@ -149,11 +141,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, [openFile]);
 
   // Drag-drop anywhere
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    onFiles(e.dataTransfer.files);
-  }, [onFiles]);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      onFiles(e.dataTransfer.files);
+    },
+    [onFiles],
+  );
 
   const submitAi = useCallback(() => {
     if (!aiText.trim()) return;
@@ -200,9 +195,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault"
-          >
+          <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault">
             <Lock className="h-3 w-3" strokeWidth={2.5} />
             100% in your browser
           </span>
@@ -280,55 +273,51 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 </>
               )}
 
-            {/* Scroll area */}
-            <div className="relative flex-1 overflow-auto">
-              {/* Theme tint overlay (view-only) */}
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 transition-colors"
-                style={{ backgroundColor: THEME_TINT[theme] }}
-              />
-              {file ? (
-                <PagesPlaceholder
-                  file={file}
-                  zoom={zoom}
-                  layout={pageLayout}
-                  gap={showGaps ? 18 : 0}
-                  continuous={continuous}
+              {/* Scroll area */}
+              <div className="relative flex-1 overflow-auto">
+                {/* Theme tint overlay (view-only) */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 transition-colors"
+                  style={{ backgroundColor: THEME_TINT[theme] }}
                 />
-              ) : (
-                <EmptyStart
-                  onOpen={openFile}
-                  onBlank={loadBlank}
-                  onTemplate={loadTemplate}
-                />
-              )}
-            </div>
+                {file ? (
+                  <PagesPlaceholder
+                    file={file}
+                    zoom={zoom}
+                    layout={pageLayout}
+                    gap={showGaps ? 18 : 0}
+                    continuous={continuous}
+                  />
+                ) : (
+                  <EmptyStart onOpen={openFile} onBlank={loadBlank} onTemplate={loadTemplate} />
+                )}
+              </div>
 
-            {/* AI command bar */}
-            <div className="flex h-[56px] shrink-0 items-center justify-center px-3">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  submitAi();
-                }}
-                className="flex w-full max-w-[520px] items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
-                style={{ boxShadow: "var(--shadow-float)" }}
-              >
-                <Sparkles className="h-4 w-4 text-vault shrink-0" />
-                <input
-                  ref={aiRef}
-                  value={aiText}
-                  onChange={(e) => setAiText(e.target.value)}
-                  placeholder='Tell VaultPDF what to do — "redact every phone number"'
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-                />
-                <KeyChip>⌘K</KeyChip>
-              </form>
-            </div>
+              {/* AI command bar */}
+              <div className="flex h-[56px] shrink-0 items-center justify-center px-3">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitAi();
+                  }}
+                  className="flex w-full max-w-[520px] items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
+                  style={{ boxShadow: "var(--shadow-float)" }}
+                >
+                  <Sparkles className="h-4 w-4 text-vault shrink-0" />
+                  <input
+                    ref={aiRef}
+                    value={aiText}
+                    onChange={(e) => setAiText(e.target.value)}
+                    placeholder='Tell VaultPDF what to do — "redact every phone number"'
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                  <KeyChip>⌘K</KeyChip>
+                </form>
+              </div>
             </main>
 
-          {/* INSPECTOR slide-over */}
+            {/* INSPECTOR slide-over */}
             <Inspector
               open={inspectorOpen}
               group={activeGroup}
@@ -400,7 +389,7 @@ function RailButton({
       className={cn(
         "group relative grid h-9 w-9 place-items-center text-text-2 transition-colors",
         "hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active && "bg-accent-soft text-vault"
+        active && "bg-accent-soft text-vault",
       )}
       style={{ borderRadius: 9 }}
     >
@@ -414,7 +403,9 @@ function RailButton({
 
 /* ------------------------ Floating toolbar --------------------------- */
 
-const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.ComponentType<{ className?: string }> }>> = [
+const EDITOR_GROUPS: Array<
+  Array<{ id: EditorTool; label: string; Icon: React.ComponentType<{ className?: string }> }>
+> = [
   [{ id: "select", label: "Select", Icon: MousePointer2 }],
   [
     { id: "text", label: "Add text", Icon: Type },
@@ -428,7 +419,12 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   [{ id: "comment", label: "Comment", Icon: MessageSquare }],
   [
     { id: "image", label: "Insert image", Icon: ImageIcon },
-    { id: "crop", label: "Crop page — trim the page area. With an image selected, the contextual bar shows a separate Crop image affordance.", Icon: Crop },
+    {
+      id: "crop",
+      label:
+        "Crop page — trim the page area. With an image selected, the contextual bar shows a separate Crop image affordance.",
+      Icon: Crop,
+    },
     { id: "shape", label: "Shapes", Icon: Square },
     { id: "pen", label: "Freehand", Icon: Pencil },
   ],
@@ -452,12 +448,7 @@ function FloatingToolbar({
         <div key={gi} className="flex items-center gap-0.5">
           {gi > 0 && <span className="mx-1 h-5 w-px bg-border" />}
           {group.map(({ id, label, Icon }) => (
-            <ToolbarBtn
-              key={id}
-              label={label}
-              active={active === id}
-              onClick={() => onChange(id)}
-            >
+            <ToolbarBtn key={id} label={label} active={active === id} onClick={() => onChange(id)}>
               <Icon className="h-[15px] w-[15px]" />
             </ToolbarBtn>
           ))}
@@ -496,7 +487,7 @@ function ToolbarBtn({
         "grid h-7 w-7 place-items-center rounded-md text-text-2 transition-colors",
         "hover:text-foreground hover:bg-surface-2",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground"
+        active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground",
       )}
     >
       {children}
@@ -564,7 +555,9 @@ function contextFor(tool: EditorTool): React.ReactNode | null {
     case "crop":
       return (
         <>
-          <span className="text-text-muted">Drag on the page to set the crop rectangle · trims the page area, not images</span>
+          <span className="text-text-muted">
+            Drag on the page to set the crop rectangle · trims the page area, not images
+          </span>
         </>
       );
     case "comment":
@@ -600,7 +593,7 @@ function PropBtn({
       title={title}
       className={cn(
         "grid h-6 min-w-[24px] place-items-center rounded-md px-1.5 text-[12px] text-text-2 hover:bg-surface-2 hover:text-foreground",
-        className
+        className,
       )}
     >
       {children}
@@ -639,7 +632,7 @@ function CanvasIconButton({
       className={cn(
         "grid h-7 w-7 place-items-center rounded-md border border-border bg-surface-2 text-text-2",
         "hover:text-foreground transition-colors",
-        active && "text-vault bg-accent-soft border-vault/30"
+        active && "text-vault bg-accent-soft border-vault/30",
       )}
     >
       {children}
@@ -722,7 +715,7 @@ function ViewPopover({
               aria-label={s.id}
               className={cn(
                 "h-7 rounded-md border transition-all",
-                theme === s.id ? "border-vault" : "border-border"
+                theme === s.id ? "border-vault" : "border-border",
               )}
               style={{ background: s.color }}
             />
@@ -764,7 +757,7 @@ function LayoutCard({
       onClick={onClick}
       className={cn(
         "flex flex-col items-center gap-1.5 rounded-md border bg-surface-2 px-2 py-2.5 transition-colors",
-        active ? "border-vault" : "border-border hover:border-text-muted/40"
+        active ? "border-vault" : "border-border hover:border-text-muted/40",
       )}
     >
       {children}
@@ -782,13 +775,13 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
       onClick={() => onChange(!on)}
       className={cn(
         "relative inline-flex h-[18px] w-[30px] items-center rounded-full transition-colors",
-        on ? "bg-vault" : "bg-surface-3"
+        on ? "bg-vault" : "bg-surface-3",
       )}
     >
       <span
         className={cn(
           "inline-block h-[14px] w-[14px] rounded-full bg-background transition-transform",
-          on ? "translate-x-[14px]" : "translate-x-[2px]"
+          on ? "translate-x-[14px]" : "translate-x-[2px]",
         )}
       />
     </button>
@@ -871,13 +864,8 @@ function PagesPlaceholder({
   const sheets = Math.max(pageCount, isBlank ? 1 : 0) || (file ? 1 : 0);
 
   return (
-    <div
-      className="mx-auto flex flex-col items-center py-8"
-      style={{ gap, width: `${widthPct}%` }}
-    >
-      {loading && (
-        <div className="text-[12px] text-text-muted">Loading document…</div>
-      )}
+    <div className="mx-auto flex flex-col items-center py-8" style={{ gap, width: `${widthPct}%` }}>
+      {loading && <div className="text-[12px] text-text-muted">Loading document…</div>}
       {error && <div className="text-[12px] text-destructive">{error}</div>}
       {Array.from({ length: sheets || 1 }).map((_, i) => {
         const meta = docState?.pages[i];
@@ -900,12 +888,7 @@ function PagesPlaceholder({
                 boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
               }}
             >
-              {docState && (
-                <PageCanvas
-                  index={i}
-                  render={docState.render}
-                />
-              )}
+              {docState && <PageCanvas index={i} render={docState.render} />}
             </div>
           </div>
         );
@@ -1075,7 +1058,7 @@ function StartCard({
       className={cn(
         "group flex flex-col items-center justify-center gap-2.5 border border-border/70 bg-surface-2 px-5 py-7 text-center",
         "transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface-3",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
       style={{
         borderRadius: 11,
@@ -1086,7 +1069,7 @@ function StartCard({
       <span
         className={cn(
           "grid h-10 w-10 place-items-center",
-          amber ? "bg-accent-soft text-vault" : "bg-surface-1 text-text-2"
+          amber ? "bg-accent-soft text-vault" : "bg-surface-1 text-text-2",
         )}
         style={{ borderRadius: 9 }}
       >
@@ -1114,7 +1097,7 @@ function ShortcutChip({
       className={cn(
         "group inline-flex items-center gap-2 border border-border/70 bg-surface-1 px-3 py-2 text-[12px] text-text-2",
         "transition-colors hover:bg-surface-2 hover:text-foreground",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
       style={{ borderRadius: 9, borderWidth: 0.5 }}
     >
@@ -1153,9 +1136,7 @@ function Inspector({
         <div className="flex h-full w-[224px] flex-col">
           <header className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault"
-              >
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault">
                 <meta.icon className="h-[15px] w-[15px]" />
               </span>
               <div className="min-w-0">
@@ -1191,13 +1172,7 @@ function Inspector({
 
 /* ----------------------------- Bits ---------------------------------- */
 
-function ZoomButton({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
+function ZoomButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -1209,18 +1184,12 @@ function ZoomButton({
   );
 }
 
-function KeyChip({
-  children,
-  inline,
-}: {
-  children: React.ReactNode;
-  inline?: boolean;
-}) {
+function KeyChip({ children, inline }: { children: React.ReactNode; inline?: boolean }) {
   return (
     <kbd
       className={cn(
         "font-mono rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-text-2",
-        inline && "align-middle"
+        inline && "align-middle",
       )}
     >
       {children}
