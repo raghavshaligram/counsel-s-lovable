@@ -52,6 +52,16 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import {
+  loadUIState,
+  saveUIStateDebounced,
+  listRecents,
+  addRecent,
+  getRecent,
+  removeRecent,
+  clearRecents,
+  type RecentMeta,
+} from "@/lib/workspace/persistence";
 
 
 type ToolId =
