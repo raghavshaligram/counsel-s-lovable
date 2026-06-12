@@ -971,7 +971,7 @@ function PageCanvas({
 
   // Commit a new or updated text-edit annotation from the modal.
   const commitTextEdit = (
-    payload: { text: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB },
+    payload: { text: string; family: "sans" | "serif" | "mono"; fontKey: FontKey; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB },
   ) => {
     if (!textEditTarget) return;
     if (textEditTarget.kind === "new") {
@@ -992,6 +992,7 @@ function PageCanvas({
         fontSize: payload.fontSize,
         bg: payload.bg,
         family: payload.family,
+        fontKey: payload.fontKey,
         bold: payload.bold,
         italic: payload.italic,
         textOffsetY: padTop,
@@ -1002,6 +1003,7 @@ function PageCanvas({
       dispatch({ type: "UPDATE_ANNO", id: textEditTarget.annoId, patch: {
         text: payload.text,
         family: payload.family,
+        fontKey: payload.fontKey,
         bold: payload.bold,
         italic: payload.italic,
         fontSize: payload.fontSize,
