@@ -798,19 +798,19 @@ function PagesPlaceholder({
   continuous: boolean;
 }) {
   const widthPct = layout === "double" ? 84 : 72;
-  const [pages, setPages] = useState<string[]>([]);
+  const [pageCount, setPageCount] = useState(0);
+  const [docState, setDocState] = useState<{
+    pages: Array<{ width: number; height: number }>;
+    render: (idx: number, canvas: HTMLCanvasElement) => Promise<void>;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isBlank = file?.size === 0;
 
   useEffect(() => {
-    if (!file) {
-      setPages([]);
-      return;
-    }
-    // Blank / template (synthetic empty file) → show a single blank A4 sheet
-    if (file.size === 0) {
-      setPages([""]);
-      setError(null);
+    if (!file || file.size === 0) {
+      setDocState(null);
+      setPageCount(file?.size === 0 ? 1 : 0);
       return;
     }
     let cancelled = false;
@@ -822,21 +822,28 @@ function PagesPlaceholder({
         const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await file.arrayBuffer());
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
-        const urls: string[] = [];
-        const count = continuous ? doc.numPages : Math.min(1, doc.numPages);
-        for (let i = 1; i <= count; i++) {
+        if (cancelled) return;
+        const n = continuous ? doc.numPages : Math.min(1, doc.numPages);
+        const sizes: Array<{ width: number; height: number }> = [];
+        for (let i = 1; i <= n; i++) {
           const page = await doc.getPage(i);
-          const viewport = page.getViewport({ scale: 1.5 });
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) continue;
-          await page.render({ canvas, canvasContext: ctx, viewport }).promise;
-          urls.push(canvas.toDataURL("image/png"));
-          if (cancelled) return;
+          const vp = page.getViewport({ scale: 1 });
+          sizes.push({ width: vp.width, height: vp.height });
         }
-        if (!cancelled) setPages(urls);
+        if (cancelled) return;
+        setPageCount(n);
+        setDocState({
+          pages: sizes,
+          render: async (idx, canvas) => {
+            const page = await doc.getPage(idx + 1);
+            const viewport = page.getViewport({ scale: 1.5 });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+            await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+          },
+        });
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load PDF");
       } finally {
@@ -848,7 +855,7 @@ function PagesPlaceholder({
     };
   }, [file, continuous]);
 
-  const sheets = pages.length > 0 ? pages : [""];
+  const sheets = Math.max(pageCount, isBlank ? 1 : 0) || (file ? 1 : 0);
 
   return (
     <div
@@ -858,41 +865,61 @@ function PagesPlaceholder({
       {loading && (
         <div className="text-[12px] text-text-muted">Loading document…</div>
       )}
-      {error && (
-        <div className="text-[12px] text-destructive">{error}</div>
-      )}
-      {sheets.map((src, i) => (
-        <div
-          key={i}
-          className={cn("w-full", layout === "double" && "grid grid-cols-2")}
-          style={{ gap: layout === "double" ? gap : undefined }}
-        >
-          {Array.from({ length: layout === "double" ? 2 : 1 }).map((_, j) => (
+      {error && <div className="text-[12px] text-destructive">{error}</div>}
+      {Array.from({ length: sheets || 1 }).map((_, i) => {
+        const meta = docState?.pages[i];
+        const aspect = meta ? `${meta.width} / ${meta.height}` : "1 / 1.414";
+        return (
+          <div
+            key={i}
+            className="w-full"
+            style={{
+              transform: `scale(${zoom / 100})`,
+              transformOrigin: "top center",
+            }}
+          >
             <div
-              key={j}
-              className="aspect-[1/1.414] w-full overflow-hidden"
+              className="mx-auto w-full overflow-hidden"
               style={{
+                aspectRatio: aspect,
                 background: "var(--paper)",
                 borderRadius: 6,
                 boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-                transform: `scale(${zoom / 100})`,
-                transformOrigin: "top center",
               }}
             >
-              {src && (
-                <img
-                  src={src}
-                  alt={`Page ${i + 1}`}
-                  className="h-full w-full object-contain"
-                  draggable={false}
+              {docState && (
+                <PageCanvas
+                  index={i}
+                  render={docState.render}
                 />
               )}
             </div>
-          ))}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+function PageCanvas({
+  index,
+  render,
+}: {
+  index: number;
+  render: (idx: number, canvas: HTMLCanvasElement) => Promise<void>;
+}) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    let cancelled = false;
+    render(index, c).catch(() => {});
+    return () => {
+      cancelled = true;
+      void cancelled;
+    };
+  }, [index, render]);
+  return <canvas ref={ref} className="block h-full w-full object-contain" />;
 }
 
 /* -------------------------- Empty start ------------------------------ */
