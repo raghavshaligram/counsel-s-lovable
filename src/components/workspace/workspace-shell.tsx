@@ -184,7 +184,9 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [file, setFile] = useState<File | null>(null);
   const [, setActiveGroup] = useState<ToolId | null>(initialTool ?? null);
-  const [activeToolId, setActiveToolId] = useState<string | null>(null);
+  const [activeToolId, setActiveToolId] = useState<string | null>(
+    initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
+  );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
   const [editorTool, setEditorTool] = useState<EditorTool>("select");
   const [zoom, setZoom] = useState<number>(100);
