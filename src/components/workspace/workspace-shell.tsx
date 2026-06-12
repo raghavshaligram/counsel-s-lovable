@@ -184,12 +184,14 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [file, setFile] = useState<File | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [, setActiveGroup] = useState<ToolId | null>(initialTool ?? null);
   const [activeToolId, setActiveToolId] = useState<string | null>(
     initialTool ? TOOLS.find((t) => t.group === initialTool)?.id ?? null : null,
   );
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(Boolean(initialTool));
-  const [editorTool, setEditorTool] = useState<EditorTool>("select");
+  const [editorTool, setEditorToolRaw] = useState<EditorTool>("select");
   const [zoom, setZoom] = useState<number>(100);
   const [viewOpen, setViewOpen] = useState(false);
   const [pageLayout, setPageLayout] = useState<"single" | "double">("single");
@@ -202,6 +204,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [usage, setUsage] = useState<Record<string, number>>(() => loadUsage());
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Mark the document dirty when the user picks a mutating editor tool.
+  const setEditorTool = useCallback((t: EditorTool) => {
+    setEditorToolRaw(t);
+    if (t !== "select" && t !== "comment") setIsDirty(true);
+  }, []);
 
   const pins = useMemo(() => computePins(usage), [usage]);
   const pinnedTools = useMemo(
@@ -237,15 +245,61 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback((files: FileList | null) => {
     const f = files?.[0];
-    if (f) setFile(f);
+    if (f) {
+      setFile(f);
+      setIsDirty(false);
+    }
   }, []);
 
   const loadBlank = useCallback(() => {
     setFile(new File([], "Untitled.pdf", { type: "application/pdf" }));
+    setIsDirty(false);
   }, []);
   const loadTemplate = useCallback((name: string) => {
     setFile(new File([], `${name}.pdf`, { type: "application/pdf" }));
+    setIsDirty(false);
   }, []);
+
+  const clearToStart = useCallback(() => {
+    setFile(null);
+    setIsDirty(false);
+    setEditorToolRaw("select");
+    setInspectorOpen(false);
+    setActiveToolId(null);
+  }, []);
+
+  // Guarded "go to Start". If the doc has unsaved edits, ask first.
+  const goHome = useCallback(() => {
+    if (file && isDirty) {
+      setConfirmClearOpen(true);
+      return;
+    }
+    clearToStart();
+  }, [file, isDirty, clearToStart]);
+
+  const handleSaveAndClear = useCallback(() => {
+    // Export flow placeholder — real export lives in the feature panels.
+    // eslint-disable-next-line no-console
+    console.log("[workspace] save before leaving", file?.name);
+    setConfirmClearOpen(false);
+    clearToStart();
+  }, [file, clearToStart]);
+
+  const handleDiscardAndClear = useCallback(() => {
+    setConfirmClearOpen(false);
+    clearToStart();
+  }, [clearToStart]);
+
+  // Warn on page unload too, so a stray refresh doesn't lose edits.
+  useEffect(() => {
+    if (!isDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
 
   // Shortcuts
   useEffect(() => {
@@ -307,17 +361,36 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       {/* TOP BAR */}
       <header className="flex h-[46px] shrink-0 items-center justify-between border-b border-border bg-surface-1 px-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className="grid h-6 w-6 place-items-center bg-vault text-vault-foreground"
-            style={{ borderRadius: 7 }}
-            aria-label="VaultPDF"
+          <button
+            type="button"
+            onClick={goHome}
+            title="Start screen"
+            aria-label="Go to Start"
+            className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-0.5 hover:bg-surface-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-          </div>
-          <span className="font-display text-[15px] leading-none">VaultPDF</span>
+            <span
+              className="grid h-6 w-6 place-items-center bg-vault text-vault-foreground"
+              style={{ borderRadius: 7 }}
+            >
+              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+            </span>
+            <span className="font-display text-[15px] leading-none">VaultPDF</span>
+          </button>
+          <button
+            type="button"
+            onClick={goHome}
+            title="New (return to Start)"
+            aria-label="New"
+            className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors"
+          >
+            <FilePlus2 className="h-[15px] w-[15px]" />
+          </button>
           <span className="mx-1 h-4 w-px bg-border" />
           <span className="truncate text-[13px] text-text-2">
             {file?.name ?? "Untitled document"}
+            {isDirty && file && (
+              <span className="ml-1.5 text-vault" aria-label="Unsaved changes" title="Unsaved changes">•</span>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -510,6 +583,83 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </div>
         </div>
       )}
+
+      {/* Unsaved-changes guard */}
+      {confirmClearOpen && (
+        <UnsavedChangesDialog
+          filename={file?.name}
+          onSave={handleSaveAndClear}
+          onDiscard={handleDiscardAndClear}
+          onCancel={() => setConfirmClearOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* -------------------- Unsaved changes dialog ------------------------ */
+
+function UnsavedChangesDialog({
+  filename,
+  onSave,
+  onDiscard,
+  onCancel,
+}: {
+  filename?: string;
+  onSave: () => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Unsaved changes"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[min(420px,92vw)] border border-border bg-surface-1 p-5"
+        style={{ borderRadius: 14, boxShadow: "var(--shadow-float)" }}
+      >
+        <div className="font-display text-[18px] leading-tight">Save your changes?</div>
+        <p className="mt-1.5 text-[12.5px] text-text-2 leading-snug">
+          {filename ? `“${filename}”` : "This document"} has edits that aren't saved.
+          Leaving will lose them.
+        </p>
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-3 py-1.5 text-[12.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90"
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Save
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
