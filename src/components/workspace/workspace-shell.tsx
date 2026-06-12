@@ -460,11 +460,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           return { srcPage: i, rotation: 0, width, height };
         });
         if (cancelled) return;
+        console.log("[workspace] loaded PDF", { name: file.name, size: file.size, pages: pages.length });
         editorDispatch({
           type: "LOAD",
           doc: { fileName: file.name, srcBytes: bytes, pages, annotations: [] },
         });
       } catch (err) {
+        console.error("[workspace] PDFDocument.load failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
       }
     })();
