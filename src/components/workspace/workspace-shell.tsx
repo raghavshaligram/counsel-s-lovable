@@ -50,23 +50,101 @@ type ToolId =
   | "legal"
   | "ai";
 
-type RailItem = {
-  id: ToolId;
+type ToolGroupLabel =
+  | "Pages"
+  | "Convert"
+  | "Edit"
+  | "Redact"
+  | "Secure"
+  | "Layout"
+  | "Legal"
+  | "AI";
+
+type Tool = {
+  id: string;
   label: string;
-  subtitle: string;
   icon: React.ComponentType<{ className?: string }>;
+  group: ToolId;
+  groupLabel: ToolGroupLabel;
 };
 
-const RAIL: RailItem[] = [
-  { id: "pages", label: "Pages", subtitle: "Organize, split, merge, rotate", icon: Files },
-  { id: "redact", label: "Redact", subtitle: "Permanently remove sensitive content", icon: Shield },
-  { id: "sign", label: "Sign", subtitle: "Sign and request signatures", icon: PenLine },
-  { id: "convert", label: "Convert", subtitle: "To/from Word, Excel, images", icon: RefreshCw },
-  { id: "secure", label: "Secure", subtitle: "Encrypt, unlock, watermark", icon: KeyRound },
-  { id: "layout", label: "Layout", subtitle: "Crop, headers, page numbers", icon: Layout },
-  { id: "legal", label: "Legal", subtitle: "Bates, privilege, compare", icon: Scale },
-  { id: "ai", label: "AI", subtitle: "Ask, summarize, extract", icon: Sparkles },
+const TOOLS: Tool[] = [
+  // Pages
+  { id: "organize", label: "Organize", icon: LayoutGrid, group: "pages", groupLabel: "Pages" },
+  { id: "merge", label: "Merge", icon: Files, group: "pages", groupLabel: "Pages" },
+  { id: "split", label: "Split", icon: Scissors, group: "pages", groupLabel: "Pages" },
+  { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Pages" },
+  { id: "extract", label: "Extract", icon: TableIcon, group: "pages", groupLabel: "Pages" },
+  { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Pages" },
+  { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
+  // Convert
+  { id: "to-word", label: "PDF → Word", icon: FileType, group: "convert", groupLabel: "Convert" },
+  { id: "word-to-pdf", label: "Word → PDF", icon: FileType, group: "convert", groupLabel: "Convert" },
+  { id: "to-images", label: "PDF → Images", icon: PhotoIcon, group: "convert", groupLabel: "Convert" },
+  { id: "images-to-pdf", label: "Images → PDF", icon: PhotoIcon, group: "convert", groupLabel: "Convert" },
+  { id: "to-excel", label: "PDF → Excel", icon: TableIcon, group: "convert", groupLabel: "Convert" },
+  { id: "ocr", label: "Make Searchable", icon: ScanText, group: "convert", groupLabel: "Convert" },
+  // Edit
+  { id: "sign", label: "Sign & Fill", icon: PenLine, group: "sign", groupLabel: "Edit" },
+  { id: "watermark", label: "Watermark", icon: Stamp, group: "secure", groupLabel: "Edit" },
+  { id: "compress", label: "Compress", icon: PackageOpen, group: "secure", groupLabel: "Edit" },
+  // Redact
+  { id: "redact", label: "Redact", icon: Shield, group: "redact", groupLabel: "Redact" },
+  // Secure
+  { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
+  { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
+  { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
+  // Layout
+  { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
+  { id: "page-numbers", label: "Page Numbers", icon: Hash, group: "layout", groupLabel: "Layout" },
+  { id: "header-footer", label: "Header & Footer", icon: Layout, group: "layout", groupLabel: "Layout" },
+  { id: "flatten", label: "Flatten", icon: Layers, group: "layout", groupLabel: "Layout" },
+  // Legal
+  { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
+  { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal" },
+  { id: "privilege-scan", label: "Privilege Scan", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  // AI
+  { id: "chat", label: "Search Inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
 ];
+
+const GROUP_ORDER: ToolGroupLabel[] = [
+  "Pages", "Convert", "Edit", "Redact", "Secure", "Layout", "Legal", "AI",
+];
+
+const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
+const PIN_CAP = 5;
+const USAGE_KEY = "vaultpdf:tool-usage";
+
+function loadUsage(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(USAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function computePins(counts: Record<string, number>): string[] {
+  // Tools must be used 2+ times to "earn" a pinned slot.
+  const earned = Object.entries(counts)
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id);
+  const result: string[] = [];
+  for (const id of earned) {
+    if (result.length >= PIN_CAP) break;
+    if (TOOLS.some((t) => t.id === id)) result.push(id);
+  }
+  for (const id of DEFAULT_PINS) {
+    if (result.length >= PIN_CAP) break;
+    if (!result.includes(id) && TOOLS.some((t) => t.id === id)) result.push(id);
+  }
+  return result.slice(0, PIN_CAP);
+}
+
+function toolById(id: string): Tool | undefined {
+  return TOOLS.find((t) => t.id === id);
+}
 
 type EditorTool =
   | "select"
