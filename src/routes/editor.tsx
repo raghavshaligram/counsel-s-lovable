@@ -1880,7 +1880,7 @@ function TextEditDialog({
     | null;
   annos: Anno[];
   onClose: () => void;
-  onCommit: (p: { text: string; family: "sans" | "serif" | "mono"; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB }) => void;
+  onCommit: (p: { text: string; family: "sans" | "serif" | "mono"; fontKey: FontKey; bold: boolean; italic: boolean; fontSize: number; color: RGB; bg: RGB }) => void;
 }) {
   const existing = target?.kind === "existing"
     ? (annos.find((a) => a.id === target.annoId) as Anno | undefined)
@@ -1892,29 +1892,33 @@ function TextEditDialog({
       return {
         text: it.str,
         family: it.family,
+        fontKey: it.fontKey,
         bold: it.bold,
         italic: it.italic,
         fontSize: +(it.h * 0.95).toFixed(2),
-        color: { r: 0, g: 0, b: 0 } as RGB,
+        color: it.color,
         bg: { r: 1, g: 1, b: 1 } as RGB,
+        detectedFontName: it.fontName,
       };
     }
     if (existing && existing.kind === "text-edit") {
       return {
         text: existing.text,
         family: existing.family ?? "sans",
+        fontKey: (existing.fontKey as FontKey | undefined) ?? "arimo",
         bold: !!existing.bold,
         italic: !!existing.italic,
         fontSize: existing.fontSize,
         color: existing.color,
         bg: existing.bg,
+        detectedFontName: existing.source?.fontName,
       };
     }
     return null;
   })();
 
   const [text, setText] = useState("");
-  const [family, setFamily] = useState<"sans" | "serif" | "mono">("sans");
+  const [fontKey, setFontKey] = useState<FontKey>("arimo");
   const [bold, setBold] = useState(false);
   const [italic, setItalic] = useState(false);
   const [fontSize, setFontSize] = useState(14);
@@ -1925,7 +1929,7 @@ function TextEditDialog({
   useEffect(() => {
     if (!seed) return;
     setText(seed.text);
-    setFamily(seed.family);
+    setFontKey(seed.fontKey);
     setBold(seed.bold);
     setItalic(seed.italic);
     setFontSize(seed.fontSize);
@@ -1937,11 +1941,14 @@ function TextEditDialog({
   const open = target !== null;
   const isNew = target?.kind === "new";
   const originalText = target?.kind === "new" ? target.item.str : undefined;
+  const detectedFontName = seed?.detectedFontName;
 
   const handleSave = () => {
+    const km = FONT_META[fontKey];
     onCommit({
       text,
-      family,
+      family: km?.kind ?? "sans",
+      fontKey,
       bold,
       italic,
       fontSize,
@@ -1960,6 +1967,9 @@ function TextEditDialog({
           {isNew && originalText && (
             <div className="text-xs text-muted-foreground">
               Replacing: <span className="font-mono text-foreground/80">&ldquo;{originalText}&rdquo;</span>
+              {detectedFontName && (
+                <> · detected font <span className="font-mono text-foreground/80">{detectedFontName}</span></>
+              )}
             </div>
           )}
           <textarea
@@ -1969,7 +1979,7 @@ function TextEditDialog({
             rows={3}
             className="w-full rounded-md border border-input bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-vault/40"
             style={{
-              fontFamily: FAMILY_OPTIONS.find((f) => f.value === family)?.css,
+              fontFamily: FONT_META[fontKey]?.cssFamily,
               fontWeight: bold ? 700 : 400,
               fontStyle: italic ? "italic" : "normal",
             }}
@@ -1977,14 +1987,14 @@ function TextEditDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1 text-xs">
-              <span className="text-muted-foreground">Font</span>
+              <span className="text-muted-foreground">Font (metric-matched)</span>
               <select
-                value={family}
-                onChange={(e) => setFamily(e.target.value as "sans" | "serif" | "mono")}
+                value={fontKey}
+                onChange={(e) => setFontKey(e.target.value as FontKey)}
                 className="w-full rounded-md border border-input bg-background p-1.5 text-sm"
               >
-                {FAMILY_OPTIONS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
+                {FONT_KEYS.map((k) => (
+                  <option key={k} value={k}>{FONT_META[k].label} — ≈ {FONT_META[k].matches}</option>
                 ))}
               </select>
             </label>
@@ -2022,7 +2032,7 @@ function TextEditDialog({
           </div>
 
           <p className="text-[11px] leading-snug text-muted-foreground">
-            VaultPDF covers the original glyphs with a matched background fill and redraws your replacement on top — the visual edit applies cleanly across all viewers. Underlying text-extraction may still return the original characters until we ship destructive content-stream rewrite (coming next).
+            Edit replaces the original glyphs with a white-out fill and redraws your text on top using a bundled metric-compatible open font ({FONT_META[fontKey].label} ≈ {FONT_META[fontKey].matches}). Exact font matching across arbitrary PDFs is impossible — adjust the font, size, weight, or colour above if the guess looks off.
           </p>
         </div>
         <DialogFooter>
