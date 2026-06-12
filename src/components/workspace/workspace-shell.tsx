@@ -182,7 +182,9 @@ type EditorTool =
   | "image"
   | "crop"
   | "shape"
-  | "pen";
+  | "pen"
+  | "redact-select"
+  | "redact-draw";
 
 type ReadingTheme = "dark" | "sepia" | "soft" | "white";
 
