@@ -24,6 +24,7 @@ import { exportEditedPdf } from "@/lib/editor/export";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { CommentsPanel } from "@/components/editor/CommentsPanel";
 import { DocOpsMenu } from "@/components/editor/doc-ops-menu";
+import { FONT_META, FONT_KEYS, type FontKey, injectFontFaces, mapPdfFontToKey } from "@/lib/editor/fonts";
 import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Tool, TextSource, WatermarkSettings } from "@/lib/editor/types";
 
 
