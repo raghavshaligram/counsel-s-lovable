@@ -817,21 +817,38 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   ],
 ];
 
+// Per-tool contextual canvas actions. When a tool is active and listed here,
+// the floating toolbar SWAPS to its actions — never opens a second rail.
+const CONTEXTUAL_GROUPS: Record<
+  string,
+  Array<Array<{ id: EditorTool; label: string; Icon: React.ComponentType<{ className?: string }> }>>
+> = {
+  redact: [
+    [{ id: "redact-select", label: "Select", Icon: MousePointer2 }],
+    [{ id: "redact-draw", label: "Draw redaction box", Icon: Square }],
+  ],
+};
+
 function FloatingToolbar({
+  activeToolId,
   active,
   onChange,
 }: {
+  activeToolId: string | null;
   active: EditorTool;
   onChange: (t: EditorTool) => void;
 }) {
+  const contextual = activeToolId ? CONTEXTUAL_GROUPS[activeToolId] : null;
+  const groups = contextual ?? EDITOR_GROUPS;
+  const label = contextual ? `${activeToolId} tools` : "Editor tools";
   return (
     <div
       className="absolute left-1/2 top-2.5 z-30 flex -translate-x-1/2 items-center gap-1 border border-border bg-surface-3 px-1.5 py-1"
       style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
       role="toolbar"
-      aria-label="Editor tools"
+      aria-label={label}
     >
-      {EDITOR_GROUPS.map((group, gi) => (
+      {groups.map((group, gi) => (
         <div key={gi} className="flex items-center gap-0.5">
           {gi > 0 && <span className="mx-1 h-5 w-px bg-border" />}
           {group.map(({ id, label, Icon }) => (
