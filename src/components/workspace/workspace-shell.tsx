@@ -51,8 +51,11 @@ import {
   Search,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { PDFDocument } from "pdf-lib";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
+import { EditorCanvas } from "./editor-canvas";
 import {
   loadUIState,
   saveUIStateDebounced,
@@ -63,6 +66,10 @@ import {
   clearRecents,
   type RecentMeta,
 } from "@/lib/workspace/persistence";
+import { reducer, initialState, PALETTE } from "@/lib/editor/state";
+import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
+import { exportEditedPdf } from "@/lib/editor/export";
+import { injectFontFaces } from "@/lib/editor/fonts";
 
 
 type ToolId =
