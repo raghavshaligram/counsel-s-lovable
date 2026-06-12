@@ -1248,14 +1248,13 @@ function ShortcutChip({
 
 function Inspector({
   open,
-  group,
+  activeTool,
   onClose,
 }: {
   open: boolean;
-  group: ToolId | null;
+  activeTool: Tool | null;
   onClose: () => void;
 }) {
-  const meta = group ? RAIL.find((r) => r.id === group) : null;
   return (
     <aside
       aria-label="Inspector"
@@ -1264,22 +1263,20 @@ function Inspector({
         "transition-[width] duration-200",
       )}
       style={{
-        width: open && meta ? 224 : 0,
+        width: open && activeTool ? 240 : 0,
         transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
       }}
     >
-      {meta && (
-        <div className="flex h-full w-[224px] flex-col">
+      {activeTool && (
+        <div className="flex h-full w-[240px] flex-col">
           <header className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault"
-              >
-                <meta.icon className="h-[15px] w-[15px]" />
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault">
+                <activeTool.icon className="h-[15px] w-[15px]" />
               </span>
               <div className="min-w-0">
-                <div className="text-[13px] font-medium leading-tight">{meta.label}</div>
-                <div className="truncate text-[11px] text-text-muted">{meta.subtitle}</div>
+                <div className="text-[13px] font-medium leading-tight">{activeTool.label}</div>
+                <div className="truncate text-[11px] text-text-muted">{activeTool.groupLabel}</div>
               </div>
             </div>
             <button
@@ -1293,10 +1290,10 @@ function Inspector({
           </header>
           <div className="flex-1 overflow-auto px-3 py-4">
             <div
-              data-mount-slot={meta.id}
+              data-mount-slot={activeTool.id}
               className="grid place-items-center rounded-lg border border-dashed border-border bg-surface-2 px-3 py-10 text-center text-[12px] text-text-muted"
             >
-              {meta.label} controls
+              {activeTool.label} controls
               <span className="mt-1 text-[10.5px] text-text-muted/70">
                 Mount slot — feature panel loads here
               </span>
@@ -1307,6 +1304,119 @@ function Inspector({
     </aside>
   );
 }
+
+/* --------------------------- Tool modal ------------------------------ */
+
+function ToolModal({
+  onSelect,
+  onClose,
+  activeToolId,
+}: {
+  onSelect: (id: string) => void;
+  onClose: () => void;
+  activeToolId: string | null;
+}) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? TOOLS.filter((t) => t.label.toLowerCase().includes(q))
+    : TOOLS;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[min(520px,92vw)] max-h-[80vh] flex flex-col border border-border bg-surface-1 overflow-hidden"
+        style={{ borderRadius: 14, boxShadow: "var(--shadow-float)" }}
+        role="dialog"
+        aria-label="All tools"
+      >
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+          <Search className="h-4 w-4 text-text-muted shrink-0" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search tools…"
+            className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto px-3 py-3 space-y-4">
+          {GROUP_ORDER.map((groupLabel) => {
+            const items = filtered.filter((t) => t.groupLabel === groupLabel);
+            if (items.length === 0) return null;
+            return (
+              <div key={groupLabel}>
+                <div className="mb-1.5 px-1 text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
+                  {groupLabel}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {items.map((tool) => (
+                    <button
+                      key={tool.id}
+                      type="button"
+                      onClick={() => onSelect(tool.id)}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-md border border-transparent bg-surface-2 px-2.5 py-2 text-left transition-colors",
+                        "hover:bg-surface-3 hover:border-border",
+                        activeToolId === tool.id && "border-vault/40 bg-accent-soft",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "grid h-7 w-7 place-items-center rounded-md bg-surface-1 text-text-2",
+                          activeToolId === tool.id && "bg-vault/15 text-vault",
+                        )}
+                      >
+                        <tool.icon className="h-[15px] w-[15px]" />
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[12.5px] text-foreground truncate",
+                          activeToolId === tool.id && "text-vault font-medium",
+                        )}
+                      >
+                        {tool.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="grid place-items-center py-8 text-[12px] text-text-muted">
+              No tools match "{query}"
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 /* ----------------------------- Bits ---------------------------------- */
 
