@@ -233,6 +233,7 @@ function Editor() {
 
 
   // keyboard shortcuts
+  useEffect(() => { injectFontFaces(); }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!state.doc) return;
