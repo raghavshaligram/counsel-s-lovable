@@ -583,6 +583,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </div>
         </div>
       )}
+
+      {/* Unsaved-changes guard */}
+      {confirmClearOpen && (
+        <UnsavedChangesDialog
+          filename={file?.name}
+          onSave={handleSaveAndClear}
+          onDiscard={handleDiscardAndClear}
+          onCancel={() => setConfirmClearOpen(false)}
+        />
+      )}
     </div>
   );
 }
