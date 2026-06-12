@@ -1343,7 +1343,7 @@ export function RedactPage({
         </div>
         </TooltipProvider>
       )}
-    </AppShell>
+    </Shell>
   );
 }
 
