@@ -583,6 +583,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   onOpen={openFile}
                   onBlank={loadBlank}
                   onTemplate={loadTemplate}
+                  recents={recents}
+                  onResume={resumeRecent}
+                  onDismissRecent={dismissRecent}
+                  onClearRecents={clearAllRecents}
                 />
               )}
             </div>
