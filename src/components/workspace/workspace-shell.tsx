@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { RedactPage } from "@/components/redact-page";
 
 type ToolId =
   | "pages"
