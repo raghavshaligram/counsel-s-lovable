@@ -360,7 +360,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const clearToStart = useCallback(() => {
     setFile(null);
     setIsDirty(false);
-    setEditorToolRaw("select");
+    editorDispatch({ type: "SET_TOOL", t: "select" });
     setInspectorOpen(false);
     setActiveToolId(null);
   }, []);
