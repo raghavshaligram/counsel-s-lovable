@@ -597,6 +597,73 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   );
 }
 
+/* -------------------- Unsaved changes dialog ------------------------ */
+
+function UnsavedChangesDialog({
+  filename,
+  onSave,
+  onDiscard,
+  onCancel,
+}: {
+  filename?: string;
+  onSave: () => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Unsaved changes"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[min(420px,92vw)] border border-border bg-surface-1 p-5"
+        style={{ borderRadius: 14, boxShadow: "var(--shadow-float)" }}
+      >
+        <div className="font-display text-[18px] leading-tight">Save your changes?</div>
+        <p className="mt-1.5 text-[12.5px] text-text-2 leading-snug">
+          {filename ? `“${filename}”` : "This document"} has edits that aren't saved.
+          Leaving will lose them.
+        </p>
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-3 py-1.5 text-[12.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90"
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------------- Rail ---------------------------------- */
 
 function RailButton({
