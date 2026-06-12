@@ -274,8 +274,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   // Mark the document dirty when the user picks a mutating editor tool.
   const setEditorTool = useCallback((t: EditorTool) => {
-    setEditorToolRaw(t);
-    if (t !== "select" && t !== "comment") setIsDirty(true);
+    editorDispatch({ type: "SET_TOOL", t });
+    if (t !== "select" && t !== "note") setIsDirty(true);
   }, []);
 
   const pins = useMemo(() => computePins(usage), [usage]);
