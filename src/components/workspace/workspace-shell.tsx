@@ -163,6 +163,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, [aiText]);
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
+  const redactMode = Boolean(file && activeGroup === "redact" && inspectorOpen);
 
   return (
     <div
@@ -238,6 +239,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         </nav>
 
         {/* CANVAS + INSPECTOR */}
+        {redactMode && file ? (
+          <div className="relative min-w-0 flex-1 overflow-hidden bg-background">
+            <RedactPage embedded externalFile={file} premium={false} />
+          </div>
+        ) : (
         <div className="relative flex min-w-0 flex-1">
           {/* CANVAS */}
           <main className="relative flex min-w-0 flex-1 flex-col bg-background">
@@ -286,19 +292,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
               {file ? (
-                activeGroup === "redact" && inspectorOpen ? (
-                  <div className="absolute inset-0">
-                    <RedactPage embedded externalFile={file} premium={false} />
-                  </div>
-                ) : (
-                  <PagesPlaceholder
-                    file={file}
-                    zoom={zoom}
-                    layout={pageLayout}
-                    gap={showGaps ? 18 : 0}
-                    continuous={continuous}
-                  />
-                )
+                <PagesPlaceholder
+                  file={file}
+                  zoom={zoom}
+                  layout={pageLayout}
+                  gap={showGaps ? 18 : 0}
+                  continuous={continuous}
+                />
               ) : (
                 <EmptyStart
                   onOpen={openFile}
@@ -338,6 +338,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             onClose={() => setInspectorOpen(false)}
           />
         </div>
+        )}
       </div>
 
       {/* BOTTOM BAR */}
