@@ -286,6 +286,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               />
               {file ? (
                 <PagesPlaceholder
+                  file={file}
                   zoom={zoom}
                   layout={pageLayout}
                   gap={showGaps ? 18 : 0}
