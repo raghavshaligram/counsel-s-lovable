@@ -352,12 +352,14 @@ function drawAnno(
         height: a.h,
         color: col(a.bg),
       });
+      const bundledKey = a.fontKey ? `${a.fontKey}|${a.bold ? 1 : 0}|${a.italic ? 1 : 0}` : "";
+      const useFont = (bundledKey && bundled?.get(bundledKey)) || pickFont(fonts, a.family ?? "sans", a.bold, a.italic);
       page.drawText(a.text, {
         x: a.x,
         // Baseline: top of bbox + textOffsetY (skip whiteout padding) + ascent
         y: yFlip(a.y, a.h) + a.h - (a.textOffsetY ?? 0) - a.fontSize * 0.85,
         size: a.fontSize,
-        font: pickFont(fonts, a.family ?? "sans", a.bold, a.italic),
+        font: useFont,
         color: col(a.color),
         maxWidth: a.w,
         lineHeight: a.fontSize * 1.15,
