@@ -118,6 +118,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     if (f) setFile(f);
   }, []);
 
+  const loadBlank = useCallback(() => {
+    setFile(new File([], "Untitled.pdf", { type: "application/pdf" }));
+  }, []);
+  const loadTemplate = useCallback((name: string) => {
+    setFile(new File([], `${name}.pdf`, { type: "application/pdf" }));
+  }, []);
+
   // Shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
