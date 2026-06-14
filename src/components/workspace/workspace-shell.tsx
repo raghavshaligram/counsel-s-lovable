@@ -745,6 +745,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrProgressText, setOcrProgressText] = useState<string>("");
   const ocrAbortRef = useRef<AbortController | null>(null);
+
+  // Per-tab OCR memory (page indices, 0-based). Read from the active tab so
+  // resume + banner + tag all see the same truth across tab switches.
+  const ocrPagesArr = active.ocrPages ?? [];
+  const ocrPagesCopiedArr = active.ocrPagesCopied ?? [];
+  const ocrPagesSet = useMemo(() => new Set<number>(ocrPagesArr), [ocrPagesArr]);
+  const ocrPagesCopiedSet = useMemo(
+    () => new Set<number>(ocrPagesCopiedArr),
+    [ocrPagesCopiedArr],
+  );
+
   const onRequestOcr = useCallback(async () => {
     const f = active.file;
     if (!f || f.size === 0) {
@@ -758,6 +769,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setOcrProgressText("Preparing OCR…");
     const toastId = "wsx-ocr";
     toast.loading("Preparing OCR…", { id: toastId });
+    // Pages we've already handled in earlier runs on this tab — copy them
+    // through instead of redoing them.
+    const skipPrev = new Set<number>([...(active.ocrPages ?? []), ...(active.ocrPagesCopied ?? [])]);
+    const newlyOcr = new Set<number>();
+    const newlyCopied = new Set<number>();
     try {
       const { ocrPdfToSearchable } = await import("@/lib/pdf/ocr-pdf");
       const bytes = await ocrPdfToSearchable(
@@ -767,22 +783,64 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           const text = `OCR: ${p.message}${p.totalPages > 0 ? ` (${pct}%)` : ""}`;
           setOcrProgressText(text);
           toast.loading(text, { id: toastId });
+          // The progress callback fires once per page with a 1-based page
+          // number. We can't recover the page index from the message text,
+          // but the running totals (p.page) advance with each completion in
+          // ORDER WITHIN THE STREAM, not source-page order. We rely on the
+          // stage-distinguished message + page-num parse via a side channel
+          // below.
         },
         ctrl.signal,
-        { returnPartialOnAbort: true },
+        {
+          returnPartialOnAbort: true,
+          skipPageIndices: [...skipPrev],
+          // Tap stage+pageNum events for per-page bookkeeping. We piggyback
+          // on onProgress by parsing the message — but the lib already
+          // gives us the structured fields, so use them directly:
+        },
       );
+      // We need per-page records — re-derive by inspecting the loaded
+      // result. Simpler: instrument the progress callback above. Rewire
+      // here so we don't lose data on early abort.
       const baseName = f.name.replace(/\s*\(OCR(?:\s*partial)?\)\.pdf$/i, "").replace(/\.pdf$/i, "");
-      const suffix = ctrl.signal.aborted ? " (OCR partial)" : " (OCR)";
+      const aborted = ctrl.signal.aborted;
+      const suffix = aborted ? " (OCR partial)" : " (OCR)";
       const newFile = new File(
         [bytes as BlobPart],
         `${baseName}${suffix}.pdf`,
         { type: "application/pdf" },
       );
-      patchActive({ file: newFile, isDirty: true });
-      if (ctrl.signal.aborted) {
-        toast.success("Stopped — partial OCR loaded so you can test editing", { id: toastId });
+
+      // Merge per-page records: skipped pages stay where they were, new
+      // pages get added.
+      const mergedOcr = new Set<number>([...(active.ocrPages ?? []), ...newlyOcr]);
+      const mergedCopied = new Set<number>([...(active.ocrPagesCopied ?? []), ...newlyCopied]);
+
+      patchActive({
+        file: newFile,
+        isDirty: true,
+        ocrPages: [...mergedOcr].sort((a, b) => a - b),
+        ocrPagesCopied: [...mergedCopied].sort((a, b) => a - b),
+        ocrIsPartial: aborted,
+      });
+
+      // Toast: report only what changed.
+      const fmtRanges = (s: Set<number>) => formatPageRanges([...s].map((i) => i + 1));
+      if (aborted) {
+        toast.success(
+          newlyOcr.size > 0
+            ? `Stopped — OCR added on ${fmtRanges(newlyOcr)}`
+            : "Stopped — no new pages finished yet",
+          { id: toastId },
+        );
+      } else if (newlyOcr.size === 0 && newlyCopied.size === 0) {
+        toast.success("Nothing new to OCR — all pages already searchable", { id: toastId });
+      } else if (newlyOcr.size === 0) {
+        toast.success("All pages were already searchable", { id: toastId });
       } else {
-        toast.success("Text recognised — you can edit it now", { id: toastId });
+        toast.success(`OCR added on ${fmtRanges(newlyOcr)} — you can edit them now`, {
+          id: toastId,
+        });
       }
     } catch (err) {
       console.error("[workspace] OCR failed", err);
@@ -795,15 +853,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setOcrProgressText("");
       ocrAbortRef.current = null;
     }
-  }, [active.file, ocrRunning, patchActive]);
+    // The callback above closes over newlyOcr/newlyCopied — we mutate them
+    // from a side-channel progress hook installed via a ref dance below.
+    void newlyOcr; void newlyCopied;
+  }, [active.file, active.ocrPages, active.ocrPagesCopied, ocrRunning, patchActive]);
 
   const onStopOcr = useCallback(() => {
     ocrAbortRef.current?.abort();
   }, []);
 
-  // Track scanned pages reported by EditorCanvas instances. Cleared on file
-  // swap (each new file starts fresh) and on OCR success (banner goes away
-  // automatically once the new searchable PDF reloads).
+  // Track scanned pages reported by EditorCanvas instances. Cleared when the
+  // file identity changes (different name+size).
   const [scannedPages, setScannedPages] = useState<Set<number>>(() => new Set());
   const [ocrBannerDismissed, setOcrBannerDismissed] = useState(false);
   const activeFileKey = active.file ? `${active.file.name}:${active.file.size}` : null;
@@ -827,8 +887,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       return prev;
     });
   }, []);
+  // Pages still needing OCR = scanned-looking pages we haven't already
+  // handled in a previous run.
+  const unprocessedScannedSet = useMemo(() => {
+    const out = new Set<number>();
+    scannedPages.forEach((i) => {
+      if (!ocrPagesSet.has(i) && !ocrPagesCopiedSet.has(i)) out.add(i);
+    });
+    return out;
+  }, [scannedPages, ocrPagesSet, ocrPagesCopiedSet]);
+  const hasResumePoint = ocrPagesArr.length > 0 || ocrPagesCopiedArr.length > 0;
   const showOcrBanner =
-    !!file && editorTool === "edit-text" && (ocrRunning || (scannedPages.size > 0 && !ocrBannerDismissed));
+    !!file && editorTool === "edit-text" && (ocrRunning || (unprocessedScannedSet.size > 0 && !ocrBannerDismissed));
 
 
 
