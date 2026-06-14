@@ -602,7 +602,8 @@ export function EditorCanvas({
     select: "default", text: "text", highlight: "crosshair",
     underline: "crosshair", strikethrough: "crosshair",
     rect: "crosshair", ellipse: "crosshair", line: "crosshair", arrow: "crosshair",
-    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer", redact: "crosshair",
+    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
+    "page-crop": "crosshair", redact: "crosshair",
   };
 
   const screenW = canvasRef.current?.width ?? Math.ceil(op.width * scale);
