@@ -988,7 +988,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     gap={showGaps ? 18 : 0}
                     onRequestOcr={onRequestOcr}
                     ocrRunning={ocrRunning}
+                    onScannedChange={onScannedChange}
                   />
+
 
                 ) : (
                   <div className="grid h-full place-items-center text-[12.5px] text-text-muted">
