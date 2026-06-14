@@ -134,15 +134,27 @@ export interface EditorCanvasProps {
   scale: number;
   /** Shared pdf.js document (avoids re-parsing per page). */
   pdfDoc?: any;
+  /** Called when the user clicks "Run OCR" in the scanned-page banner.
+   * Owner runs OCR on the whole document and replaces the tab file. */
+  onRequestOcr?: () => void;
+  /** When true, the banner shows a "Running OCR…" disabled state. */
+  ocrRunning?: boolean;
 }
 
 export function EditorCanvas({
   pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
+  onRequestOcr, ocrRunning,
 }: EditorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [textItems, setTextItems] = useState<TextItem[]>([]);
+  // Tracks whether pdf.js getTextContent has resolved for this page. Until
+  // it has, we don't know if the page is scanned, so the banner stays hidden
+  // (avoids a flash on every page mount).
+  const [textLoaded, setTextLoaded] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
   const [drawing, setDrawing] = useState<
     | null
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
