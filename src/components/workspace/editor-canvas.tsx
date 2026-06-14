@@ -1013,6 +1013,10 @@ function TextMiniToolbar({
     (a.family === "serif" ? "tinos" : a.family === "mono" ? "cousine" : "arimo");
 
   const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); };
+  // Buttons in the toolbar must NOT steal focus from the active textarea —
+  // otherwise the textarea blurs, fires onBlur, and (for an empty new text
+  // box) auto-deletes itself. preventDefault on mousedown keeps focus put.
+  const keepFocus = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); };
 
   return (
     <div
