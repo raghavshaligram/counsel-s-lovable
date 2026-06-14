@@ -46,6 +46,10 @@ export interface OcrOptions {
   // OCR'd + embedded instead of throwing. Useful for "stop & try editing"
   // so the user can sanity-check partial output before letting the rest run.
   returnPartialOnAbort?: boolean;
+  // Page indices (0-based) to skip entirely — copy them through from the
+  // source PDF without rendering or OCR. Used to resume after a partial
+  // OCR run: we already processed these pages, don't redo them.
+  skipPageIndices?: number[];
 }
 
 interface OcrWord {
