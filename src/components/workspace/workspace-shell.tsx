@@ -745,6 +745,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrProgressText, setOcrProgressText] = useState<string>("");
   const ocrAbortRef = useRef<AbortController | null>(null);
+
+  // Per-tab OCR memory (page indices, 0-based). Read from the active tab so
+  // resume + banner + tag all see the same truth across tab switches.
+  const ocrPagesArr = active.ocrPages ?? [];
+  const ocrPagesCopiedArr = active.ocrPagesCopied ?? [];
+  const ocrPagesSet = useMemo(() => new Set<number>(ocrPagesArr), [ocrPagesArr]);
+  const ocrPagesCopiedSet = useMemo(
+    () => new Set<number>(ocrPagesCopiedArr),
+    [ocrPagesCopiedArr],
+  );
+
   const onRequestOcr = useCallback(async () => {
     const f = active.file;
     if (!f || f.size === 0) {
@@ -758,6 +769,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setOcrProgressText("Preparing OCR…");
     const toastId = "wsx-ocr";
     toast.loading("Preparing OCR…", { id: toastId });
+    // Pages we've already handled in earlier runs on this tab — copy them
+    // through instead of redoing them.
+    const skipPrev = new Set<number>([...(active.ocrPages ?? []), ...(active.ocrPagesCopied ?? [])]);
+    const newlyOcr = new Set<number>();
+    const newlyCopied = new Set<number>();
     try {
       const { ocrPdfToSearchable } = await import("@/lib/pdf/ocr-pdf");
       const bytes = await ocrPdfToSearchable(
@@ -767,22 +783,65 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           const text = `OCR: ${p.message}${p.totalPages > 0 ? ` (${pct}%)` : ""}`;
           setOcrProgressText(text);
           toast.loading(text, { id: toastId });
+          // Per-page bookkeeping: only record pages we actually touched in
+          // this run (skipPrev pages also come back as "copied" but we
+          // already know about those — don't double-count).
+          if (typeof p.sourcePage === "number") {
+            const idx = p.sourcePage - 1;
+            if (!skipPrev.has(idx)) {
+              if (p.stage === "ocr") newlyOcr.add(idx);
+              else if (p.stage === "copied" || p.stage === "skipped") newlyCopied.add(idx);
+            }
+          }
         },
         ctrl.signal,
-        { returnPartialOnAbort: true },
+        {
+          returnPartialOnAbort: true,
+          skipPageIndices: [...skipPrev],
+        },
       );
+      // We need per-page records — re-derive by inspecting the loaded
+      // result. Simpler: instrument the progress callback above. Rewire
+      // here so we don't lose data on early abort.
       const baseName = f.name.replace(/\s*\(OCR(?:\s*partial)?\)\.pdf$/i, "").replace(/\.pdf$/i, "");
-      const suffix = ctrl.signal.aborted ? " (OCR partial)" : " (OCR)";
+      const aborted = ctrl.signal.aborted;
+      const suffix = aborted ? " (OCR partial)" : " (OCR)";
       const newFile = new File(
         [bytes as BlobPart],
         `${baseName}${suffix}.pdf`,
         { type: "application/pdf" },
       );
-      patchActive({ file: newFile, isDirty: true });
-      if (ctrl.signal.aborted) {
-        toast.success("Stopped — partial OCR loaded so you can test editing", { id: toastId });
+
+      // Merge per-page records: skipped pages stay where they were, new
+      // pages get added.
+      const mergedOcr = new Set<number>([...(active.ocrPages ?? []), ...newlyOcr]);
+      const mergedCopied = new Set<number>([...(active.ocrPagesCopied ?? []), ...newlyCopied]);
+
+      patchActive({
+        file: newFile,
+        isDirty: true,
+        ocrPages: [...mergedOcr].sort((a, b) => a - b),
+        ocrPagesCopied: [...mergedCopied].sort((a, b) => a - b),
+        ocrIsPartial: aborted,
+      });
+
+      // Toast: report only what changed.
+      const fmtRanges = (s: Set<number>) => formatPageRanges([...s].map((i) => i + 1));
+      if (aborted) {
+        toast.success(
+          newlyOcr.size > 0
+            ? `Stopped — OCR added on ${fmtRanges(newlyOcr)}`
+            : "Stopped — no new pages finished yet",
+          { id: toastId },
+        );
+      } else if (newlyOcr.size === 0 && newlyCopied.size === 0) {
+        toast.success("Nothing new to OCR — all pages already searchable", { id: toastId });
+      } else if (newlyOcr.size === 0) {
+        toast.success("All pages were already searchable", { id: toastId });
       } else {
-        toast.success("Text recognised — you can edit it now", { id: toastId });
+        toast.success(`OCR added on ${fmtRanges(newlyOcr)} — you can edit them now`, {
+          id: toastId,
+        });
       }
     } catch (err) {
       console.error("[workspace] OCR failed", err);
@@ -795,15 +854,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setOcrProgressText("");
       ocrAbortRef.current = null;
     }
-  }, [active.file, ocrRunning, patchActive]);
+  }, [active.file, active.ocrPages, active.ocrPagesCopied, ocrRunning, patchActive]);
 
   const onStopOcr = useCallback(() => {
     ocrAbortRef.current?.abort();
   }, []);
 
-  // Track scanned pages reported by EditorCanvas instances. Cleared on file
-  // swap (each new file starts fresh) and on OCR success (banner goes away
-  // automatically once the new searchable PDF reloads).
+  // Track scanned pages reported by EditorCanvas instances. Cleared when the
+  // file identity changes (different name+size).
   const [scannedPages, setScannedPages] = useState<Set<number>>(() => new Set());
   const [ocrBannerDismissed, setOcrBannerDismissed] = useState(false);
   const activeFileKey = active.file ? `${active.file.name}:${active.file.size}` : null;
@@ -827,8 +885,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       return prev;
     });
   }, []);
+  // Pages still needing OCR = scanned-looking pages we haven't already
+  // handled in a previous run.
+  const unprocessedScannedSet = useMemo(() => {
+    const out = new Set<number>();
+    scannedPages.forEach((i) => {
+      if (!ocrPagesSet.has(i) && !ocrPagesCopiedSet.has(i)) out.add(i);
+    });
+    return out;
+  }, [scannedPages, ocrPagesSet, ocrPagesCopiedSet]);
+  const hasResumePoint = ocrPagesArr.length > 0 || ocrPagesCopiedArr.length > 0;
   const showOcrBanner =
-    !!file && editorTool === "edit-text" && (ocrRunning || (scannedPages.size > 0 && !ocrBannerDismissed));
+    !!file && editorTool === "edit-text" && (ocrRunning || (unprocessedScannedSet.size > 0 && !ocrBannerDismissed));
 
 
 
@@ -1006,12 +1074,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     ) : (
                       <>
                         <div className="text-[12.5px] leading-snug text-foreground">
-                          This looks like a scanned document — there's no editable
-                          text layer.
+                          {hasResumePoint ? (
+                            <>
+                              {unprocessedScannedSet.size === 1
+                                ? `Page ${[...unprocessedScannedSet][0] + 1} still looks scanned.`
+                                : `${unprocessedScannedSet.size} more pages still look scanned (${formatPageRanges([...unprocessedScannedSet].map((i) => i + 1))}).`}
+                            </>
+                          ) : (
+                            <>This looks like a scanned document — there's no editable text layer.</>
+                          )}
                         </div>
                         <div className="mt-0.5 text-[11px] leading-snug text-text-muted">
-                          Run OCR (on-device) to recognise the text. Accuracy
-                          depends on scan quality; edited text is reconstructed.
+                          {hasResumePoint
+                            ? "Resume OCR on just the remaining pages — already-processed pages are skipped."
+                            : "Run OCR (on-device) to recognise the text. Accuracy depends on scan quality; edited text is reconstructed."}
                         </div>
                         <div className="mt-2 flex items-center gap-1.5">
                           <button
@@ -1019,7 +1095,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                             onClick={onRequestOcr}
                             className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
                           >
-                            Run OCR
+                            {hasResumePoint
+                              ? `Resume OCR (${formatPageRanges([...unprocessedScannedSet].map((i) => i + 1))})`
+                              : "Run OCR"}
                           </button>
                           <button
                             type="button"
@@ -1079,6 +1157,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onRequestOcr={onRequestOcr}
                     ocrRunning={ocrRunning}
                     onScannedChange={onScannedChange}
+                    ocrPages={ocrPagesSet}
+                    ocrPagesCopied={ocrPagesCopiedSet}
+                    showOcrTags={editorTool === "edit-text"}
                   />
 
 
@@ -2623,6 +2704,25 @@ function prettyBytes(n: number) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Compact a list of 1-based page numbers into ranges. e.g. [1,2,3,5,7,8] →
+// "1–3, 5, 7–8". Returns "—" for empty.
+function formatPageRanges(pagesInput: number[]): string {
+  if (pagesInput.length === 0) return "—";
+  const pages = [...pagesInput].sort((a, b) => a - b);
+  const out: string[] = [];
+  let start = pages[0];
+  let prev = start;
+  for (let i = 1; i <= pages.length; i++) {
+    const cur = pages[i];
+    if (cur !== prev + 1) {
+      out.push(start === prev ? `${start}` : `${start}\u2013${prev}`);
+      start = cur;
+    }
+    prev = cur;
+  }
+  return out.join(", ");
+}
+
 function relTime(ts: number) {
   const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
   if (s < 60) return `${s}s ago`;
@@ -2649,6 +2749,7 @@ const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
+  ocrPages, ocrPagesCopied, showOcrTags,
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
@@ -2657,6 +2758,9 @@ function EditorPages({
   onRequestOcr?: () => void;
   ocrRunning?: boolean;
   onScannedChange?: (pageIndex: number, isScanned: boolean) => void;
+  ocrPages?: Set<number>;
+  ocrPagesCopied?: Set<number>;
+  showOcrTags?: boolean;
 }) {
 
 
@@ -2772,6 +2876,9 @@ function EditorPages({
         const h = Math.ceil(meta.height * scale);
         const inView = visible.has(i);
         const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
+        const isOcrPage = !!ocrPages?.has(i);
+        const isCopiedPage = !isOcrPage && !!ocrPagesCopied?.has(i);
+        const showTag = showOcrTags && (isOcrPage || isCopiedPage);
         return (
           <div
             key={`${i}-${op.srcPage}-${op.rotation}-${op.blank ? 1 : 0}`}
@@ -2793,6 +2900,7 @@ function EditorPages({
                 onRequestOcr={onRequestOcr}
                 ocrRunning={ocrRunning}
                 onScannedChange={onScannedChange}
+                isOcrPage={isOcrPage}
               />
 
             ) : (
@@ -2801,6 +2909,28 @@ function EditorPages({
                 className="rounded-sm bg-[var(--paper)] opacity-60"
                 aria-hidden
               />
+            )}
+            {showTag && (
+              <div
+                className="pointer-events-none absolute right-2 top-2 z-10"
+                aria-hidden
+              >
+                <span
+                  className={cn(
+                    "rounded-md border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide backdrop-blur-sm",
+                    isOcrPage
+                      ? "border-vault/40 bg-vault/15 text-vault"
+                      : "border-border bg-surface-1/80 text-text-muted",
+                  )}
+                  title={
+                    isOcrPage
+                      ? "Text recognised on-device — edit with the Text tool."
+                      : "Already had a text layer — copied through unchanged."
+                  }
+                >
+                  {isOcrPage ? "OCR" : "Searchable"}
+                </span>
+              </div>
             )}
           </div>
         );

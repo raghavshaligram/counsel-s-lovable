@@ -16,7 +16,7 @@ import { loadPdfjs } from "@/lib/pdf/worker";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, mapPdfFontToKey, type FontKey } from "@/lib/editor/fonts";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
-import type { Anno, PageOp, RGB, TextSource } from "@/lib/editor/types";
+import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 
 interface TextItem {
   x: number;
@@ -141,11 +141,14 @@ export interface EditorCanvasProps {
   /** Reports whether this page has no real text layer. Shell shows the
    * single floating OCR offer when at least one visible page is scanned. */
   onScannedChange?: (pageIndex: number, isScanned: boolean) => void;
+  /** This page has had on-device OCR applied. Used to default new text /
+   * text-edit boxes to a serif (Tinos), matching the visible scan. */
+  isOcrPage?: boolean;
 }
 
 export function EditorCanvas({
   pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
-  onRequestOcr, ocrRunning, onScannedChange,
+  onRequestOcr, ocrRunning, onScannedChange, isOcrPage,
 }: EditorCanvasProps) {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -274,6 +277,10 @@ export function EditorCanvas({
         id, kind: "text", page: pageIndex,
         x: px, y: py, w, h: state.fontSize * 1.4,
         color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
+        // On OCR'd pages default to serif so new text matches the scan
+        // aesthetic (most book/document scans are serif). User can change
+        // via the Font picker in the inspector.
+        ...(isOcrPage ? { family: "serif" as const } : {}),
       } });
       setEditingId(id);
       dispatch({ type: "SET_TOOL", t: "select" });
@@ -703,6 +710,12 @@ export function EditorCanvas({
     const padTop = Math.max(2, it.h * 0.35);
     const padBottom = Math.max(2, it.h * 0.45);
     const id = uid();
+    // On OCR'd pages the invisible text layer carries a Helvetica run-font
+    // (older builds) or TimesRoman (new builds). Force the replacement to
+    // a serif so it matches the visible scan instead of swapping to sans
+    // on first edit. User can change via the Font picker.
+    const fontKey = isOcrPage ? "tinos" : it.fontKey;
+    const family: TextAnno["family"] = isOcrPage ? "serif" : it.family;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       x: it.x - padX, y: it.y - padTop,
@@ -711,8 +724,8 @@ export function EditorCanvas({
       text: it.str,
       fontSize: it.h,
       bg: it.bg,
-      family: it.family,
-      fontKey: it.fontKey,
+      family,
+      fontKey,
       bold: it.bold, italic: it.italic,
       textOffsetY: padTop,
       cover,

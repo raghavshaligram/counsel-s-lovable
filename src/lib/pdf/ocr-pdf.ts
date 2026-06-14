@@ -28,10 +28,16 @@ const JPEG_QUALITY = 0.78;
 const MIN_TEXT_ITEMS_TO_SKIP_OCR = 12;
 
 export interface OcrProgress {
+  // 1-based count of pages completed so far (any stage).
   page: number;
   totalPages: number;
   stage: "rendering" | "ocr" | "embedding" | "skipped" | "copied" | "loading-language";
   message: string;
+  // 1-based source-PDF page number this event is for (when applicable).
+  // Omitted for "loading-language". Use this for per-page bookkeeping;
+  // `page` is just a progress counter and does not correspond to a
+  // specific source page.
+  sourcePage?: number;
 }
 
 export interface OcrOptions {
@@ -46,6 +52,10 @@ export interface OcrOptions {
   // OCR'd + embedded instead of throwing. Useful for "stop & try editing"
   // so the user can sanity-check partial output before letting the rest run.
   returnPartialOnAbort?: boolean;
+  // Page indices (0-based) to skip entirely — copy them through from the
+  // source PDF without rendering or OCR. Used to resume after a partial
+  // OCR run: we already processed these pages, don't redo them.
+  skipPageIndices?: number[];
 }
 
 interface OcrWord {
@@ -171,7 +181,11 @@ export async function ocrPdfToSearchable(
   const totalPages = srcDoc.numPages;
 
   const outPdf = await PDFDocument.create();
-  const font = await outPdf.embedFont(StandardFonts.Helvetica);
+  // TimesRoman (not Helvetica) so the run-font that edit-text later reads
+  // off the invisible OCR layer maps to a serif — matching the typical
+  // scanned-document aesthetic instead of swapping to sans on first edit.
+  const font = await outPdf.embedFont(StandardFonts.TimesRoman);
+  const skipSet = new Set<number>((options.skipPageIndices ?? []).map((i) => i + 1));
 
   // Load the source via pdf-lib once so we can copy native pages through
   // without rasterising them. Lazy: only initialised if we hit a native page.
@@ -240,6 +254,7 @@ export async function ocrPdfToSearchable(
       page: completed,
       totalPages,
       stage,
+      sourcePage: pageNum,
       message:
         stage === "copied"
           ? `Page ${pageNum} already searchable — copied through (${completed}/${totalPages})`
@@ -283,6 +298,16 @@ export async function ocrPdfToSearchable(
 
   const processPage = async (pageNum: number): Promise<void> => {
     if (signal?.aborted) throw new Error("Cancelled");
+
+    // Caller has already OCR'd this page in an earlier run — just copy it
+    // through (the source PDF passed in is the OCR'd one, so the existing
+    // text layer is preserved). Skips render + OCR entirely.
+    if (skipSet.has(pageNum)) {
+      pending.set(pageNum - 1, { kind: "copy", index: pageNum - 1, pageNum });
+      report(pageNum, "copied");
+      flushEmbeds();
+      return;
+    }
 
     // Cheap probe FIRST: check for a text layer before doing any raster work.
     // If the page is native (Word-export style), skip the canvas + JPEG +
