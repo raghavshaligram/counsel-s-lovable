@@ -190,14 +190,14 @@ export function EditorCanvas({
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
           const ff = (it.fontName && styles[it.fontName]?.fontFamily) || it.fontName || "";
-          const ffl = ff.toLowerCase();
+          const ffl = `${(it.fontName ?? "").toLowerCase()} ${ff.toLowerCase()}`;
           const family: "sans" | "serif" | "mono" =
             /mono|courier|consol|typewriter/.test(ffl) ? "mono" :
-            /serif|times|roman|garamond|georgia|cambria|book/.test(ffl) ? "serif" :
+            /serif|times|roman|garamond|georgia|cambria|book|caslon|didot|bodoni|minion|baskerville/.test(ffl) ? "serif" :
             "sans";
-          const bold = /bold|black|heavy|semibold|demibold/.test(ffl);
+          const bold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold|800|900/.test(ffl);
           const italic = /italic|oblique/.test(ffl);
-          const fontKey = mapPdfFontToKey(it.fontName ?? ff, family);
+          const fontKey = mapPdfFontToKey(it.fontName ?? ff, family, ff);
           const x = m[4], y = m[5] - fh;
           const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
