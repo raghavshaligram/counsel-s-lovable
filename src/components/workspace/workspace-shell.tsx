@@ -2752,6 +2752,7 @@ const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
+  ocrPages, ocrPagesCopied, showOcrTags,
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
@@ -2760,6 +2761,9 @@ function EditorPages({
   onRequestOcr?: () => void;
   ocrRunning?: boolean;
   onScannedChange?: (pageIndex: number, isScanned: boolean) => void;
+  ocrPages?: Set<number>;
+  ocrPagesCopied?: Set<number>;
+  showOcrTags?: boolean;
 }) {
 
 
