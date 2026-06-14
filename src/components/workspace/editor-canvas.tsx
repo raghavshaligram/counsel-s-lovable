@@ -141,11 +141,14 @@ export interface EditorCanvasProps {
   /** Reports whether this page has no real text layer. Shell shows the
    * single floating OCR offer when at least one visible page is scanned. */
   onScannedChange?: (pageIndex: number, isScanned: boolean) => void;
+  /** This page has had on-device OCR applied. Used to default new text /
+   * text-edit boxes to a serif (Tinos), matching the visible scan. */
+  isOcrPage?: boolean;
 }
 
 export function EditorCanvas({
   pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
-  onRequestOcr, ocrRunning, onScannedChange,
+  onRequestOcr, ocrRunning, onScannedChange, isOcrPage,
 }: EditorCanvasProps) {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
