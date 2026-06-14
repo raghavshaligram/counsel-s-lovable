@@ -94,6 +94,18 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     if (settings?.watermark && settings.watermark.text.trim()) {
       drawWatermark(outPage, settings.watermark, font, pw, ph);
     }
+
+    // Page crop — convert top-left rect to PDF bottom-left, set CropBox + MediaBox.
+    if (op.cropBox && !op.blank) {
+      const r = op.cropBox;
+      const x = Math.max(0, Math.min(r.x, pw));
+      const w = Math.max(1, Math.min(r.w, pw - x));
+      const yTop = Math.max(0, Math.min(r.y, ph));
+      const h = Math.max(1, Math.min(r.h, ph - yTop));
+      const y = ph - (yTop + h);
+      outPage.setCropBox(x, y, w, h);
+      outPage.setMediaBox(x, y, w, h);
+    }
   }
 
   // Best-effort destructive text rewrite: erase content-stream Tj operands
