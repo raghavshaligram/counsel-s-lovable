@@ -1077,12 +1077,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     ) : (
                       <>
                         <div className="text-[12.5px] leading-snug text-foreground">
-                          This looks like a scanned document — there's no editable
-                          text layer.
+                          {hasResumePoint ? (
+                            <>
+                              {unprocessedScannedSet.size === 1
+                                ? `Page ${[...unprocessedScannedSet][0] + 1} still looks scanned.`
+                                : `${unprocessedScannedSet.size} more pages still look scanned (${formatPageRanges([...unprocessedScannedSet].map((i) => i + 1))}).`}
+                            </>
+                          ) : (
+                            <>This looks like a scanned document — there's no editable text layer.</>
+                          )}
                         </div>
                         <div className="mt-0.5 text-[11px] leading-snug text-text-muted">
-                          Run OCR (on-device) to recognise the text. Accuracy
-                          depends on scan quality; edited text is reconstructed.
+                          {hasResumePoint
+                            ? "Resume OCR on just the remaining pages — already-processed pages are skipped."
+                            : "Run OCR (on-device) to recognise the text. Accuracy depends on scan quality; edited text is reconstructed."}
                         </div>
                         <div className="mt-2 flex items-center gap-1.5">
                           <button
@@ -1090,7 +1098,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                             onClick={onRequestOcr}
                             className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
                           >
-                            Run OCR
+                            {hasResumePoint
+                              ? `Resume OCR (${formatPageRanges([...unprocessedScannedSet].map((i) => i + 1))})`
+                              : "Run OCR"}
                           </button>
                           <button
                             type="button"
