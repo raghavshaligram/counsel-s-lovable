@@ -155,6 +155,13 @@ export function reducer(s: State, a: Action): State {
       );
       return commit(s, { ...s.doc, pages });
     }
+    case "SET_PAGE_CROP": {
+      if (!s.doc) return s;
+      const pages = s.doc.pages.map((p, i) =>
+        i === a.n ? { ...p, cropBox: a.rect ?? undefined } : p,
+      );
+      return commit(s, { ...s.doc, pages });
+    }
     case "UNDO": {
       if (!s.past.length || !s.doc) return s;
       const prev = s.past[s.past.length - 1];
