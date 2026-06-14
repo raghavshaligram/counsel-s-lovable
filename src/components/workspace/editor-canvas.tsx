@@ -585,7 +585,13 @@ export function EditorCanvas({
             autoFocus
             value={a.text}
             onChange={(e) => onTextChange(e.target.value)}
-            onBlur={() => {
+            onBlur={(e) => {
+              // If focus is moving to the floating mini-toolbar (or anything
+              // inside the same page wrapper), keep editing alive — the user
+              // is just nudging a control. Only collapse / auto-delete when
+              // focus truly leaves the text box context.
+              const next = e.relatedTarget as HTMLElement | null;
+              if (next && next.closest('[data-text-toolbar="1"]')) return;
               if (!a.text.trim() && a.kind === "text") dispatch({ type: "DELETE_ANNO", id: a.id });
               setEditingId(null);
             }}
