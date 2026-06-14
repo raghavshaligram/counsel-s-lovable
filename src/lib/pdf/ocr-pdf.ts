@@ -175,7 +175,11 @@ export async function ocrPdfToSearchable(
   const totalPages = srcDoc.numPages;
 
   const outPdf = await PDFDocument.create();
-  const font = await outPdf.embedFont(StandardFonts.Helvetica);
+  // TimesRoman (not Helvetica) so the run-font that edit-text later reads
+  // off the invisible OCR layer maps to a serif — matching the typical
+  // scanned-document aesthetic instead of swapping to sans on first edit.
+  const font = await outPdf.embedFont(StandardFonts.TimesRoman);
+  const skipSet = new Set<number>((options.skipPageIndices ?? []).map((i) => i + 1));
 
   // Load the source via pdf-lib once so we can copy native pages through
   // without rasterising them. Lazy: only initialised if we hit a native page.
