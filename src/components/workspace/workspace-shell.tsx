@@ -341,7 +341,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const id = active.id;
     if (active.activeToolId === "redact" && active.editor.tool !== "redact") {
       dispatchEditorFor(id, { type: "SET_TOOL", t: "redact" });
-    } else if (active.activeToolId !== "redact" && active.editor.tool === "redact") {
+    } else if (active.activeToolId === "page-crop" && active.editor.tool !== "page-crop") {
+      dispatchEditorFor(id, { type: "SET_TOOL", t: "page-crop" });
+    } else if (
+      active.activeToolId !== "redact" &&
+      active.activeToolId !== "page-crop" &&
+      (active.editor.tool === "redact" || active.editor.tool === "page-crop")
+    ) {
       dispatchEditorFor(id, { type: "SET_TOOL", t: "select" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1101,6 +1107,10 @@ const CONTEXTUAL_GROUPS: Record<
     [{ id: "select", label: "Select", Icon: MousePointer2 }],
     [{ id: "redact", label: "Draw redaction box", Icon: Square }],
   ],
+  "page-crop": [
+    [{ id: "select", label: "Select", Icon: MousePointer2 }],
+    [{ id: "page-crop", label: "Draw crop box", Icon: Crop }],
+  ],
 };
 
 function FloatingToolbar({
@@ -1389,6 +1399,8 @@ function contextStub(tool: EditorTool): React.ReactNode | null {
       return <span className="text-text-muted">Click the page to place the image. Select it to crop.</span>;
     case "redact":
       return <span className="text-text-muted">Drag to mark text or regions for permanent redaction on export.</span>;
+    case "page-crop":
+      return <span className="text-text-muted">Drag a box over the page to crop. Drag again to replace, or × to clear. Applied per page on export.</span>;
     case "note":
     case "select":
     default:

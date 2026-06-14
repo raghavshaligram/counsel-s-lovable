@@ -1325,7 +1325,7 @@ function PageCanvas({
     underline: "crosshair", strikethrough: "crosshair",
     rect: "crosshair", ellipse: "crosshair",
     line: "crosshair", arrow: "crosshair",
-    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer", redact: "crosshair",
+    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer", "page-crop": "crosshair", redact: "crosshair",
   };
 
   const wrapRef = useRef<HTMLDivElement>(null);

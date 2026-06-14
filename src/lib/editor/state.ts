@@ -51,6 +51,7 @@ export type Action =
   | { type: "DELETE_PAGE"; n: number }
   | { type: "INSERT_BLANK"; after: number; width: number; height: number }
   | { type: "ROTATE_PAGE"; n: number }
+  | { type: "SET_PAGE_CROP"; n: number; rect: { x: number; y: number; w: number; h: number } | null }
   | { type: "SET_PENDING_IMAGE"; img: State["pendingImage"] }
   | { type: "SET_WATERMARK"; w: WatermarkSettings | null }
   | { type: "SET_PROTECT"; p: ProtectSettings | null }
@@ -151,6 +152,13 @@ export function reducer(s: State, a: Action): State {
       if (!s.doc) return s;
       const pages = s.doc.pages.map((p, i) =>
         i === a.n ? { ...p, rotation: (((p.rotation + 90) % 360) as PageOp["rotation"]) } : p,
+      );
+      return commit(s, { ...s.doc, pages });
+    }
+    case "SET_PAGE_CROP": {
+      if (!s.doc) return s;
+      const pages = s.doc.pages.map((p, i) =>
+        i === a.n ? { ...p, cropBox: a.rect ?? undefined } : p,
       );
       return commit(s, { ...s.doc, pages });
     }

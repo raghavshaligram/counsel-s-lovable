@@ -284,6 +284,13 @@ export function EditorCanvas({
         }
       }
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: pageIndex, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });
+    } else if (state.tool === "page-crop") {
+      // Clamp to page bounds (PDF points, top-left origin).
+      const cx = Math.max(0, Math.min(a.x, op.width));
+      const cy = Math.max(0, Math.min(a.y, op.height));
+      const cw = Math.max(8, Math.min(w, op.width - cx));
+      const ch = Math.max(8, Math.min(h, op.height - cy));
+      dispatch({ type: "SET_PAGE_CROP", n: pageIndex, rect: { x: cx, y: cy, w: cw, h: ch } });
     }
   };
 
@@ -595,7 +602,8 @@ export function EditorCanvas({
     select: "default", text: "text", highlight: "crosshair",
     underline: "crosshair", strikethrough: "crosshair",
     rect: "crosshair", ellipse: "crosshair", line: "crosshair", arrow: "crosshair",
-    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer", redact: "crosshair",
+    freehand: "crosshair", note: "copy", image: "copy", "edit-text": "pointer",
+    "page-crop": "crosshair", redact: "crosshair",
   };
 
   const screenW = canvasRef.current?.width ?? Math.ceil(op.width * scale);
@@ -632,6 +640,31 @@ export function EditorCanvas({
             />
           );
         })}
+        {op.cropBox && (() => {
+          const tl = toScreen(op.cropBox.x, op.cropBox.y);
+          const br = toScreen(op.cropBox.x + op.cropBox.w, op.cropBox.y + op.cropBox.h);
+          const cw = br.x - tl.x, ch = br.y - tl.y;
+          const showHandles = state.tool === "page-crop";
+          return (
+            <>
+              {/* dim outside the crop */}
+              <div style={{ position: "absolute", left: 0, top: 0, right: 0, height: tl.y, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: br.y, right: 0, bottom: 0, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: tl.y, width: tl.x, height: ch, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: br.x, top: tl.y, right: 0, height: ch, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              {/* crop rect outline */}
+              <div style={{ position: "absolute", left: tl.x, top: tl.y, width: cw, height: ch, border: "1.5px dashed var(--vault)", boxShadow: "0 0 0 1px rgba(0,0,0,0.4) inset", pointerEvents: "none" }} />
+              {showHandles && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "SET_PAGE_CROP", n: pageIndex, rect: null }); }}
+                  title="Clear crop on this page"
+                  style={{ position: "absolute", left: br.x - 12, top: tl.y - 12, width: 22, height: 22, borderRadius: 999, background: "#dc2626", color: "white", border: "2px solid white", fontSize: 12, lineHeight: 1, display: "grid", placeItems: "center", cursor: "pointer", zIndex: 2 }}
+                >×</button>
+              )}
+            </>
+          );
+        })()}
         {drawing && state.tool !== "select" && (
           <DrawingPreview drawing={drawing} state={state} />
         )}
@@ -663,6 +696,7 @@ function DrawingPreview({
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "redact") return <div style={{ ...style, background: "#000" }} />;
+  if (state.tool === "page-crop") return <div style={{ ...style, border: "1.5px dashed var(--vault)", background: "rgba(245, 158, 11, 0.08)" }} />;
   if (state.tool === "line" || state.tool === "arrow") {
     return (
       <svg style={{ position: "absolute", inset: 0, pointerEvents: "none" }} width="100%" height="100%">

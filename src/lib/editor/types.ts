@@ -15,6 +15,7 @@ export type Tool =
   | "note"
   | "image"
   | "edit-text"
+  | "page-crop"
   | "redact";
 
 export interface WatermarkSettings {
@@ -209,6 +210,10 @@ export interface PageOp {
   // original page size in PDF points (taken from source page)
   width: number;
   height: number;
+  // Optional per-page crop rectangle in PDF points (top-left origin, matching
+  // the editor canvas convention). When set, export trims the page to this
+  // rect via /CropBox + /MediaBox. Cleared by setting to undefined.
+  cropBox?: { x: number; y: number; w: number; h: number };
 }
 
 export interface EditorDoc {
