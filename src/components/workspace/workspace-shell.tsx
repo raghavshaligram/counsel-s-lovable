@@ -2935,12 +2935,6 @@ function EditorPages({
                 </span>
               </div>
             )}
-              <div
-                style={{ width: w, height: h }}
-                className="rounded-sm bg-[var(--paper)] opacity-60"
-                aria-hidden
-              />
-            )}
           </div>
         );
       })}
