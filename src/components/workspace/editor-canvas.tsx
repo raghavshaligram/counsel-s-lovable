@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { computeQuads } from "@/lib/editor/quad-capture";
-import { FONT_META, mapPdfFontToKey, type FontKey } from "@/lib/editor/fonts";
+import { FONT_KEYS, FONT_META, mapPdfFontToKey, type FontKey } from "@/lib/editor/fonts";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextSource } from "@/lib/editor/types";
 
