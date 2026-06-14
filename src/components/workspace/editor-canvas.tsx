@@ -277,6 +277,10 @@ export function EditorCanvas({
         id, kind: "text", page: pageIndex,
         x: px, y: py, w, h: state.fontSize * 1.4,
         color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
+        // On OCR'd pages default to serif so new text matches the scan
+        // aesthetic (most book/document scans are serif). User can change
+        // via the Font picker in the inspector.
+        ...(isOcrPage ? { family: "serif" as const } : {}),
       } });
       setEditingId(id);
       dispatch({ type: "SET_TOOL", t: "select" });
