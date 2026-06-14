@@ -28,10 +28,16 @@ const JPEG_QUALITY = 0.78;
 const MIN_TEXT_ITEMS_TO_SKIP_OCR = 12;
 
 export interface OcrProgress {
+  // 1-based count of pages completed so far (any stage).
   page: number;
   totalPages: number;
   stage: "rendering" | "ocr" | "embedding" | "skipped" | "copied" | "loading-language";
   message: string;
+  // 1-based source-PDF page number this event is for (when applicable).
+  // Omitted for "loading-language". Use this for per-page bookkeeping;
+  // `page` is just a progress counter and does not correspond to a
+  // specific source page.
+  sourcePage?: number;
 }
 
 export interface OcrOptions {
