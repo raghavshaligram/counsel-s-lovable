@@ -2669,6 +2669,7 @@ function EditorPages({
                 pdfDoc={pdfDoc}
                 onRequestOcr={onRequestOcr}
                 ocrRunning={ocrRunning}
+                onScannedChange={onScannedChange}
               />
 
             ) : (
