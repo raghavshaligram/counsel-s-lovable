@@ -2615,7 +2615,10 @@ function EditorPages({
                 dispatch={dispatch}
                 scale={scale}
                 pdfDoc={pdfDoc}
+                onRequestOcr={onRequestOcr}
+                ocrRunning={ocrRunning}
               />
+
             ) : (
               <div
                 style={{ width: w, height: h }}
