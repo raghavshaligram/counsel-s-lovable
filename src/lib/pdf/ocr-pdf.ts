@@ -254,6 +254,7 @@ export async function ocrPdfToSearchable(
       page: completed,
       totalPages,
       stage,
+      sourcePage: pageNum,
       message:
         stage === "copied"
           ? `Page ${pageNum} already searchable — copied through (${completed}/${totalPages})`
