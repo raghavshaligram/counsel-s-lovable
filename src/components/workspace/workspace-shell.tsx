@@ -2694,6 +2694,25 @@ function prettyBytes(n: number) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Compact a list of 1-based page numbers into ranges. e.g. [1,2,3,5,7,8] →
+// "1–3, 5, 7–8". Returns "—" for empty.
+function formatPageRanges(pagesInput: number[]): string {
+  if (pagesInput.length === 0) return "—";
+  const pages = [...pagesInput].sort((a, b) => a - b);
+  const out: string[] = [];
+  let start = pages[0];
+  let prev = start;
+  for (let i = 1; i <= pages.length; i++) {
+    const cur = pages[i];
+    if (cur !== prev + 1) {
+      out.push(start === prev ? `${start}` : `${start}\u2013${prev}`);
+      start = cur;
+    }
+    prev = cur;
+  }
+  return out.join(", ");
+}
+
 function relTime(ts: number) {
   const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
   if (s < 60) return `${s}s ago`;
