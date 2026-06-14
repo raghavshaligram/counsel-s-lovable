@@ -141,6 +141,7 @@ export function EditorCanvas({
 }: EditorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
   const [textItems, setTextItems] = useState<TextItem[]>([]);
   const [drawing, setDrawing] = useState<
     | null
