@@ -22,6 +22,15 @@ export type TabState = {
   continuous: boolean;
   showGaps: boolean;
   theme: ReadingTheme;
+  // OCR memory. Page indices (0-based) where on-device OCR has been applied
+  // in this tab, separated from pages that already had a usable text layer
+  // (copied through). Used to (a) suppress the "scanned" banner on done
+  // pages, (b) render a per-page tag, (c) resume OCR on remaining pages,
+  // and (d) default the edit-text font to a serif on OCR'd pages.
+  ocrPages?: number[];
+  ocrPagesCopied?: number[];
+  // True when the last OCR run was stopped before completion.
+  ocrIsPartial?: boolean;
 };
 
 export const TAB_CAP = 10;
