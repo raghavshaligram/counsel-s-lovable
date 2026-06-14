@@ -1107,6 +1107,10 @@ const CONTEXTUAL_GROUPS: Record<
     [{ id: "select", label: "Select", Icon: MousePointer2 }],
     [{ id: "redact", label: "Draw redaction box", Icon: Square }],
   ],
+  "page-crop": [
+    [{ id: "select", label: "Select", Icon: MousePointer2 }],
+    [{ id: "page-crop", label: "Draw crop box", Icon: Crop }],
+  ],
 };
 
 function FloatingToolbar({
