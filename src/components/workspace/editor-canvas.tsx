@@ -774,57 +774,22 @@ export function EditorCanvas({
     }
   }, [activeText, scale, dispatch]);
 
-  // Scanned-page detection: edit-text tool is engaged, text content has
-  // resolved, but pdf.js found essentially no real glyphs. Threshold is
-  // intentionally generous (a few stamp glyphs shouldn't trip it).
-  const looksScanned =
-    state.tool === "edit-text" &&
-    textLoaded &&
-    !op.blank &&
-    textItems.length < 3;
-  const showOcrBanner = looksScanned && !bannerDismissed;
+  // Scanned-page detection: text content has resolved but pdf.js found
+  // essentially no real glyphs. Independent of the active tool — the shell
+  // decides when to actually show the OCR offer (only in edit-text mode).
+  const looksScanned = textLoaded && !op.blank && textItems.length < 3;
+  useEffect(() => {
+    onScannedChange?.(pageIndex, looksScanned);
+    return () => { onScannedChange?.(pageIndex, false); };
+  }, [pageIndex, looksScanned, onScannedChange]);
+  void bannerDismissed; // legacy — now owned by the shell-level banner
+  void ocrRunning;
+  void onRequestOcr;
 
   return (
     <div className="relative inline-block" style={{ background: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
-      {showOcrBanner && (
-        <div
-          className="absolute left-1/2 top-3 z-20 -translate-x-1/2"
-          style={{ pointerEvents: "auto" }}
-        >
-          <div className="flex max-w-[460px] flex-col gap-2 rounded-lg border border-vault/40 bg-[rgba(20,16,12,0.92)] px-3.5 py-2.5 text-[12.5px] text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur">
-            <div className="flex items-start gap-2.5">
-              <span aria-hidden className="mt-[2px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vault" />
-              <div className="leading-snug">
-                This looks like a scanned page — there's no editable text layer.
-                Run OCR to recognise the text and make it editable.
-              </div>
-            </div>
-            <div className="text-[11px] leading-snug text-text-muted">
-              OCR runs on-device. Accuracy depends on scan quality, and edited
-              text is reconstructed, not the original glyphs.
-            </div>
-            <div className="flex justify-end gap-1.5 pt-0.5">
-              <button
-                type="button"
-                onClick={() => setBannerDismissed(true)}
-                disabled={ocrRunning}
-                className="rounded-md px-2.5 py-1 text-[11.5px] text-text-2 hover:bg-surface-3 hover:text-foreground disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => onRequestOcr?.()}
-                disabled={ocrRunning || !onRequestOcr}
-                className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90 disabled:opacity-60"
-              >
-                {ocrRunning ? "Running OCR…" : "Run OCR"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       <div
         ref={overlayRef}
