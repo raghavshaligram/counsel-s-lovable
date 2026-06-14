@@ -939,10 +939,13 @@ function TextMiniToolbar({
           const kind = FONT_META[key]?.kind ?? "sans";
           update({ fontKey: key, family: kind } as Partial<Anno>);
         }}
-        style={{ ...btn, background: "rgba(255,255,255,0.06)", padding: "0 4px" }}
+        title="Font"
+        style={{ ...btn, background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 110 }}
       >
         {TOOLBAR_FONTS.map((f) => (
-          <option key={f.key} value={f.key}>{f.label}</option>
+          <option key={f.key} value={f.key} style={{ background: "#1a1a1c", color: "#fff" }}>
+            {f.label}
+          </option>
         ))}
       </select>
       <input
