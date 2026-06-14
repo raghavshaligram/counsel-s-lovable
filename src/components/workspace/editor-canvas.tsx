@@ -1065,13 +1065,13 @@ function TextMiniToolbar({
         style={{ ...btn, width: 48, background: "rgba(255,255,255,0.06)", textAlign: "center" }}
       />
       <span style={sep} />
-      <button type="button" title="Bold"      style={a.bold ? activeBtn : btn}      onClick={() => update({ bold: !a.bold } as Partial<Anno>)}><strong>B</strong></button>
-      <button type="button" title="Italic"    style={a.italic ? activeBtn : btn}    onClick={() => update({ italic: !a.italic } as Partial<Anno>)}><em>I</em></button>
-      <button type="button" title="Underline" style={a.underline ? activeBtn : btn} onClick={() => update({ underline: !a.underline } as Partial<Anno>)}><span style={{ textDecoration: "underline" }}>U</span></button>
+      <button type="button" title="Bold"      onMouseDown={keepFocus} style={a.bold ? activeBtn : btn}      onClick={() => update({ bold: !a.bold } as Partial<Anno>)}><strong>B</strong></button>
+      <button type="button" title="Italic"    onMouseDown={keepFocus} style={a.italic ? activeBtn : btn}    onClick={() => update({ italic: !a.italic } as Partial<Anno>)}><em>I</em></button>
+      <button type="button" title="Underline" onMouseDown={keepFocus} style={a.underline ? activeBtn : btn} onClick={() => update({ underline: !a.underline } as Partial<Anno>)}><span style={{ textDecoration: "underline" }}>U</span></button>
       <span style={sep} />
-      <button type="button" title="Align left"   style={(a.align ?? "left") === "left" ? activeBtn : btn} onClick={() => update({ align: "left" } as Partial<Anno>)}>⯇</button>
-      <button type="button" title="Align center" style={a.align === "center" ? activeBtn : btn}           onClick={() => update({ align: "center" } as Partial<Anno>)}>≡</button>
-      <button type="button" title="Align right"  style={a.align === "right" ? activeBtn : btn}            onClick={() => update({ align: "right" } as Partial<Anno>)}>⯈</button>
+      <button type="button" title="Align left"   onMouseDown={keepFocus} style={(a.align ?? "left") === "left" ? activeBtn : btn} onClick={() => update({ align: "left" } as Partial<Anno>)}>⯇</button>
+      <button type="button" title="Align center" onMouseDown={keepFocus} style={a.align === "center" ? activeBtn : btn}           onClick={() => update({ align: "center" } as Partial<Anno>)}>≡</button>
+      <button type="button" title="Align right"  onMouseDown={keepFocus} style={a.align === "right" ? activeBtn : btn}            onClick={() => update({ align: "right" } as Partial<Anno>)}>⯈</button>
       <span style={sep} />
       {TOOLBAR_COLORS.map((c, i) => {
         const isActive = Math.abs(c.r - a.color.r) < 0.02 && Math.abs(c.g - a.color.g) < 0.02 && Math.abs(c.b - a.color.b) < 0.02;
