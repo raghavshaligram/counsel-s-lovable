@@ -1292,30 +1292,33 @@ function FloatingToolbar({
 function ToolbarBtn({
   children,
   label,
+  kbd,
   active,
   onClick,
 }: {
   children: React.ReactNode;
   label: string;
+  kbd?: string;
   active?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      className={cn(
-        "grid h-7 w-7 place-items-center rounded-md text-text-2 transition-colors",
-        "hover:text-foreground hover:bg-surface-2",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground"
-      )}
-    >
-      {children}
-    </button>
+    <Tip label={label} kbd={kbd} placement="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        aria-pressed={active}
+        className={cn(
+          "grid h-7 w-7 place-items-center rounded-md text-text-2 transition-colors",
+          "hover:text-foreground hover:bg-surface-2",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground",
+        )}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -1547,19 +1550,20 @@ function CanvasIconButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "grid h-7 w-7 place-items-center rounded-md border border-border bg-surface-2 text-text-2",
-        "hover:text-foreground transition-colors",
-        active && "text-vault bg-accent-soft border-vault/30"
-      )}
-    >
-      {children}
-    </button>
+    <Tip label={label} placement="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={cn(
+          "grid h-7 w-7 place-items-center rounded-md border border-border bg-surface-2 text-text-2",
+          "hover:text-foreground transition-colors",
+          active && "text-vault bg-accent-soft border-vault/30",
+        )}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -2329,17 +2333,17 @@ function ZoomButton({
   onClick: () => void;
   label?: string;
 }) {
-  return (
+  const btn = (
     <button
       type="button"
       onClick={onClick}
-      title={label}
       aria-label={label}
       className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
     >
       {children}
     </button>
   );
+  return label ? <Tip label={label} placement="top">{btn}</Tip> : btn;
 }
 
 function KeyChip({
