@@ -783,20 +783,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           const text = `OCR: ${p.message}${p.totalPages > 0 ? ` (${pct}%)` : ""}`;
           setOcrProgressText(text);
           toast.loading(text, { id: toastId });
-          // The progress callback fires once per page with a 1-based page
-          // number. We can't recover the page index from the message text,
-          // but the running totals (p.page) advance with each completion in
-          // ORDER WITHIN THE STREAM, not source-page order. We rely on the
-          // stage-distinguished message + page-num parse via a side channel
-          // below.
+          // Per-page bookkeeping: only record pages we actually touched in
+          // this run (skipPrev pages also come back as "copied" but we
+          // already know about those — don't double-count).
+          if (typeof p.sourcePage === "number") {
+            const idx = p.sourcePage - 1;
+            if (!skipPrev.has(idx)) {
+              if (p.stage === "ocr") newlyOcr.add(idx);
+              else if (p.stage === "copied" || p.stage === "skipped") newlyCopied.add(idx);
+            }
+          }
         },
         ctrl.signal,
         {
           returnPartialOnAbort: true,
           skipPageIndices: [...skipPrev],
-          // Tap stage+pageNum events for per-page bookkeeping. We piggyback
-          // on onProgress by parsing the message — but the lib already
-          // gives us the structured fields, so use them directly:
         },
       );
       // We need per-page records — re-derive by inspecting the loaded
