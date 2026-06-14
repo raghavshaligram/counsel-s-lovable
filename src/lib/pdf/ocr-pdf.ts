@@ -368,12 +368,23 @@ export async function ocrPdfToSearchable(
   };
 
   try {
-    await Promise.all(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    if (partial) {
+      // Let cancelled/failing pages settle so the embed chain still drains
+      // the pages that DID finish before abort.
+      await Promise.allSettled(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    } else {
+      await Promise.all(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    }
     await embedChain;
   } finally {
     await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
   }
 
-  if (signal?.aborted) throw new Error("Cancelled");
+  if (signal?.aborted && !partial) throw new Error("Cancelled");
+  // Partial mode: if literally zero pages embedded, still throw so the
+  // caller doesn't try to load an empty PDF.
+  if (signal?.aborted && partial && outPdf.getPageCount() === 0) {
+    throw new Error("Cancelled before any page finished");
+  }
   return outPdf.save();
 }
