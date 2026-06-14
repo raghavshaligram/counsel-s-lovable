@@ -1160,6 +1160,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onRequestOcr={onRequestOcr}
                     ocrRunning={ocrRunning}
                     onScannedChange={onScannedChange}
+                    ocrPages={ocrPagesSet}
+                    ocrPagesCopied={ocrPagesCopiedSet}
+                    showOcrTags={editorTool === "edit-text"}
                   />
 
 
