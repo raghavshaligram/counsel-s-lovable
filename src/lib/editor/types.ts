@@ -15,6 +15,7 @@ export type Tool =
   | "note"
   | "image"
   | "edit-text"
+  | "page-crop"
   | "redact";
 
 export interface WatermarkSettings {
