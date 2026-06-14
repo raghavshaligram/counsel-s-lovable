@@ -783,6 +783,37 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }
   }, [active.file, ocrRunning, patchActive]);
 
+  // Track scanned pages reported by EditorCanvas instances. Cleared on file
+  // swap (each new file starts fresh) and on OCR success (banner goes away
+  // automatically once the new searchable PDF reloads).
+  const [scannedPages, setScannedPages] = useState<Set<number>>(() => new Set());
+  const [ocrBannerDismissed, setOcrBannerDismissed] = useState(false);
+  const activeFileKey = active.file ? `${active.file.name}:${active.file.size}` : null;
+  useEffect(() => {
+    setScannedPages(new Set());
+    setOcrBannerDismissed(false);
+  }, [activeFileKey]);
+  const onScannedChange = useCallback((pageIndex: number, isScanned: boolean) => {
+    setScannedPages((prev) => {
+      const has = prev.has(pageIndex);
+      if (isScanned && !has) {
+        const next = new Set(prev);
+        next.add(pageIndex);
+        return next;
+      }
+      if (!isScanned && has) {
+        const next = new Set(prev);
+        next.delete(pageIndex);
+        return next;
+      }
+      return prev;
+    });
+  }, []);
+  const showOcrBanner =
+    !!file && editorTool === "edit-text" && scannedPages.size > 0 && !ocrBannerDismissed;
+
+
+
 
   // Unused placeholder to keep TS happy if referenced elsewhere
   void pendingHomeClose;
