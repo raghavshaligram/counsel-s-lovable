@@ -695,6 +695,7 @@ function DrawingPreview({
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "redact") return <div style={{ ...style, background: "#000" }} />;
+  if (state.tool === "page-crop") return <div style={{ ...style, border: "1.5px dashed var(--vault)", background: "rgba(245, 158, 11, 0.08)" }} />;
   if (state.tool === "line" || state.tool === "arrow") {
     return (
       <svg style={{ position: "absolute", inset: 0, pointerEvents: "none" }} width="100%" height="100%">
