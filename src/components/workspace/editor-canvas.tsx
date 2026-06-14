@@ -141,6 +141,7 @@ export function EditorCanvas({
 }: EditorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
   const [textItems, setTextItems] = useState<TextItem[]>([]);
   const [drawing, setDrawing] = useState<
     | null
@@ -524,25 +525,33 @@ export function EditorCanvas({
         const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
         const fam = editFontKey && FONT_META[editFontKey]
           ? FONT_META[editFontKey].cssFamily
-          : a.kind === "text-edit"
-            ? (a.family === "serif" ? `'Times New Roman', Times, serif`
-              : a.family === "mono" ? `'Courier New', Courier, monospace`
-              : `Helvetica, Arial, sans-serif`)
-            : `Helvetica, Arial, sans-serif`;
+          : (a.family === "serif" ? `'Times New Roman', Times, serif`
+            : a.family === "mono" ? `'Courier New', Courier, monospace`
+            : `Helvetica, Arial, sans-serif`);
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
+        const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) * scale : 0;
+        const align = a.align ?? "left";
+        const isBold = !!a.bold;
+        const isItalic = !!a.italic;
+        const isUnderline = !!a.underline;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: bg,
           color: rgbCss(a.color, a.opacity),
           fontSize: a.fontSize * scale,
           fontFamily: fam,
-          fontWeight: a.kind === "text-edit" && a.bold ? 700 : 400,
-          fontStyle: a.kind === "text-edit" && a.italic ? "italic" : "normal",
+          fontWeight: isBold ? 700 : 400,
+          fontStyle: isItalic ? "italic" : "normal",
+          textDecoration: isUnderline ? "underline" : "none",
+          textAlign: align,
           lineHeight: 1.15,
           whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
           overflow: "hidden",
           padding: 0,
           paddingTop: padTop,
+          paddingLeft: padX,
+          paddingRight: padX,
           boxSizing: "border-box",
           margin: 0,
           border: "none", outline: "none", resize: "none",
@@ -685,6 +694,49 @@ export function EditorCanvas({
   const screenW = canvasRef.current?.width ?? Math.ceil(op.width * scale);
   const screenH = canvasRef.current?.height ?? Math.ceil(op.height * scale);
 
+  // The currently active text box (editing OR selected). Used to drive the
+  // floating mini-toolbar and the auto-grow measurement loop.
+  const activeText = annos.find(
+    (a) =>
+      (a.id === editingId || a.id === state.selectedAnnoId) &&
+      (a.kind === "text" || a.kind === "text-edit"),
+  ) as (typeof annos[number] & { kind: "text" | "text-edit" }) | undefined;
+
+  // Auto-grow the active text box to fit its content. Position stays locked
+  // at (a.x, a.y); only width/height grow from the anchored origin.
+  useEffect(() => {
+    if (!activeText) return;
+    const el = measureRef.current;
+    if (!el) return;
+    const a = activeText;
+    const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
+    const fam = editFontKey && FONT_META[editFontKey]
+      ? FONT_META[editFontKey].cssFamily
+      : (a.family === "serif" ? `'Times New Roman', Times, serif`
+        : a.family === "mono" ? `'Courier New', Courier, monospace`
+        : `Helvetica, Arial, sans-serif`);
+    const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+    const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) : 0;
+    const padBottom = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.35) : 0;
+    el.style.fontSize = `${a.fontSize * scale}px`;
+    el.style.fontFamily = fam;
+    el.style.fontWeight = a.bold ? "700" : "400";
+    el.style.fontStyle = a.italic ? "italic" : "normal";
+    el.style.lineHeight = "1.15";
+    el.style.whiteSpace = "pre";
+    el.textContent = a.text && a.text.length > 0 ? a.text : " ";
+    // Measure widest line + total height; convert px → PDF points.
+    const measuredW = el.offsetWidth / scale + padX * 2 + 1;
+    const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
+    const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
+    const minH = a.fontSize * 1.15 + padTop + padBottom;
+    const newW = Math.max(minW, measuredW);
+    const newH = Math.max(minH, measuredH);
+    if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
+      dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
+    }
+  }, [activeText, scale, dispatch]);
+
   return (
     <div className="relative inline-block" style={{ background: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
@@ -744,7 +796,26 @@ export function EditorCanvas({
         {drawing && state.tool !== "select" && (
           <DrawingPreview drawing={drawing} state={state} />
         )}
+        {activeText && (
+          <TextMiniToolbar
+            anno={activeText}
+            scale={scale}
+            pageW={screenW}
+            pageH={screenH}
+            dispatch={dispatch}
+          />
+        )}
       </div>
+      {/* Off-screen measurement node for auto-grow. Positioned far off-canvas
+          and read via offsetWidth/offsetHeight to size the active text box. */}
+      <div
+        ref={measureRef}
+        aria-hidden
+        style={{
+          position: "absolute", left: -99999, top: -99999, visibility: "hidden",
+          whiteSpace: "pre", display: "inline-block", padding: 0, margin: 0,
+        }}
+      />
     </div>
   );
 }
@@ -781,4 +852,136 @@ function DrawingPreview({
     );
   }
   return null;
+}
+
+/* ---------------- Floating mini-toolbar for active text boxes ---------------- */
+
+const TOOLBAR_COLORS: RGB[] = [
+  { r: 0,    g: 0,    b: 0    },
+  { r: 1,    g: 1,    b: 1    },
+  { r: 0.95, g: 0.2,  b: 0.2  },
+  { r: 0.95, g: 0.65, b: 0.1  },
+  { r: 0.15, g: 0.55, b: 0.95 },
+  { r: 0.15, g: 0.65, b: 0.35 },
+];
+
+const TOOLBAR_FONTS: { key: FontKey; label: string }[] = [
+  { key: "arimo",   label: "Sans" },
+  { key: "tinos",   label: "Serif" },
+  { key: "cousine", label: "Mono" },
+  { key: "carlito", label: "Carlito" },
+  { key: "caladea", label: "Caladea" },
+];
+
+function TextMiniToolbar({
+  anno, scale, pageW, pageH, dispatch,
+}: {
+  anno: Anno & { kind: "text" | "text-edit" };
+  scale: number;
+  pageW: number;
+  pageH: number;
+  dispatch: React.Dispatch<Action>;
+}) {
+  const update = (patch: Partial<Anno>) =>
+    dispatch({ type: "UPDATE_ANNO", id: anno.id, patch });
+  const a = anno;
+  const tbH = 38;
+  const margin = 8;
+  const screenLeft = a.x * scale;
+  const screenTop = a.y * scale;
+  const screenW = a.w * scale;
+  let top = screenTop - tbH - margin;
+  if (top < 4) top = screenTop + a.h * scale + margin;
+  const tbApproxW = 460;
+  let left = screenLeft + screenW / 2 - tbApproxW / 2;
+  left = Math.max(4, Math.min(left, pageW - tbApproxW - 4));
+  if (top + tbH > pageH - 4) top = pageH - tbH - 4;
+
+  const btn: React.CSSProperties = {
+    height: 26, minWidth: 26, padding: "0 6px",
+    background: "transparent", color: "#fff",
+    border: "none", borderRadius: 4, cursor: "pointer",
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    fontSize: 12, fontFamily: "Helvetica, Arial, sans-serif",
+  };
+  const activeBtn: React.CSSProperties = { ...btn, background: "rgba(245,158,11,0.25)", color: "#fbbf24" };
+  const sep: React.CSSProperties = { width: 1, height: 18, background: "rgba(255,255,255,0.12)", margin: "0 4px" };
+
+  const currentFontKey: FontKey =
+    (a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined) ??
+    (a.family === "serif" ? "tinos" : a.family === "mono" ? "cousine" : "arimo");
+
+  const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); };
+
+  return (
+    <div
+      onMouseDown={stop}
+      onPointerDown={stop}
+      onClick={stop}
+      style={{
+        position: "absolute", left, top, height: tbH,
+        display: "inline-flex", alignItems: "center", gap: 2,
+        padding: "0 8px",
+        background: "rgba(20,20,22,0.96)",
+        color: "#fff",
+        borderRadius: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        zIndex: 50,
+        backdropFilter: "blur(6px)",
+        fontFamily: "Helvetica, Arial, sans-serif",
+      }}
+    >
+      <select
+        value={currentFontKey}
+        onChange={(e) => {
+          const key = e.target.value as FontKey;
+          const kind = FONT_META[key]?.kind ?? "sans";
+          update({ fontKey: key, family: kind } as Partial<Anno>);
+        }}
+        style={{ ...btn, background: "rgba(255,255,255,0.06)", padding: "0 4px" }}
+      >
+        {TOOLBAR_FONTS.map((f) => (
+          <option key={f.key} value={f.key}>{f.label}</option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min={6}
+        max={144}
+        value={Math.round(a.fontSize)}
+        onChange={(e) => {
+          const v = Math.max(6, Math.min(144, Number(e.target.value) || a.fontSize));
+          update({ fontSize: v } as Partial<Anno>);
+        }}
+        style={{ ...btn, width: 48, background: "rgba(255,255,255,0.06)", textAlign: "center" }}
+      />
+      <span style={sep} />
+      <button type="button" title="Bold"      style={a.bold ? activeBtn : btn}      onClick={() => update({ bold: !a.bold } as Partial<Anno>)}><strong>B</strong></button>
+      <button type="button" title="Italic"    style={a.italic ? activeBtn : btn}    onClick={() => update({ italic: !a.italic } as Partial<Anno>)}><em>I</em></button>
+      <button type="button" title="Underline" style={a.underline ? activeBtn : btn} onClick={() => update({ underline: !a.underline } as Partial<Anno>)}><span style={{ textDecoration: "underline" }}>U</span></button>
+      <span style={sep} />
+      <button type="button" title="Align left"   style={(a.align ?? "left") === "left" ? activeBtn : btn} onClick={() => update({ align: "left" } as Partial<Anno>)}>⯇</button>
+      <button type="button" title="Align center" style={a.align === "center" ? activeBtn : btn}           onClick={() => update({ align: "center" } as Partial<Anno>)}>≡</button>
+      <button type="button" title="Align right"  style={a.align === "right" ? activeBtn : btn}            onClick={() => update({ align: "right" } as Partial<Anno>)}>⯈</button>
+      <span style={sep} />
+      {TOOLBAR_COLORS.map((c, i) => {
+        const isActive = Math.abs(c.r - a.color.r) < 0.02 && Math.abs(c.g - a.color.g) < 0.02 && Math.abs(c.b - a.color.b) < 0.02;
+        return (
+          <button
+            key={i}
+            type="button"
+            title="Text color"
+            onClick={() => update({ color: c } as Partial<Anno>)}
+            style={{
+              width: 18, height: 18, borderRadius: 999, padding: 0, margin: "0 2px",
+              background: rgbCss(c, 1),
+              border: isActive ? "2px solid #fbbf24" : "1px solid rgba(255,255,255,0.25)",
+              cursor: "pointer",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
 }
