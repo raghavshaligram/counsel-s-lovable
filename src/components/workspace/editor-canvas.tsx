@@ -408,11 +408,13 @@ export function EditorCanvas({
       window.addEventListener("mouseup", up);
     };
 
+    const isLocked = a.kind === "text-edit";
     const baseStyle: React.CSSProperties = {
       position: "absolute", left: minX, top: minY, width: w, height: h,
       pointerEvents: interactive ? "auto" : "none",
-      cursor: isEditingThis ? "text" : interactive ? "move" : "default",
+      cursor: isEditingThis ? "text" : isLocked ? "text" : interactive ? "move" : "default",
     };
+
 
     let inner: React.ReactNode = null;
     switch (a.kind) {
