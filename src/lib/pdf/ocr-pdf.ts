@@ -42,6 +42,10 @@ export interface OcrOptions {
   // English. Combining languages costs accuracy and memory, so keep the
   // list tight — usually just the document's primary language.
   languages?: string[];
+  // When set, an abort on `signal` returns whatever pages have already been
+  // OCR'd + embedded instead of throwing. Useful for "stop & try editing"
+  // so the user can sanity-check partial output before letting the rest run.
+  returnPartialOnAbort?: boolean;
 }
 
 interface OcrWord {
@@ -158,6 +162,7 @@ export async function ocrPdfToSearchable(
   const renderScale = options.highAccuracy ? RENDER_SCALE_HIGH : RENDER_SCALE_DEFAULT;
   const langs = options.languages && options.languages.length > 0 ? options.languages : ["eng"];
   const langArg = toTesseractLang(langs);
+  const partial = !!options.returnPartialOnAbort;
   const pdfjs = await loadPdfjs();
   const tess = await import("tesseract.js");
 
@@ -257,7 +262,7 @@ export async function ocrPdfToSearchable(
   const flushEmbeds = () => {
     embedChain = embedChain.then(async () => {
       while (pending.has(nextToEmbed)) {
-        if (signal?.aborted) return;
+        if (signal?.aborted && !partial) return;
         const job = pending.get(nextToEmbed)!;
         pending.delete(nextToEmbed);
         if (job.kind === "copy") {
@@ -363,12 +368,23 @@ export async function ocrPdfToSearchable(
   };
 
   try {
-    await Promise.all(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    if (partial) {
+      // Let cancelled/failing pages settle so the embed chain still drains
+      // the pages that DID finish before abort.
+      await Promise.allSettled(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    } else {
+      await Promise.all(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    }
     await embedChain;
   } finally {
     await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
   }
 
-  if (signal?.aborted) throw new Error("Cancelled");
+  if (signal?.aborted && !partial) throw new Error("Cancelled");
+  // Partial mode: if literally zero pages embedded, still throw so the
+  // caller doesn't try to load an empty PDF.
+  if (signal?.aborted && partial && outPdf.getPageCount() === 0) {
+    throw new Error("Cancelled before any page finished");
+  }
   return outPdf.save();
 }
