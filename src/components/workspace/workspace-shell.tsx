@@ -974,7 +974,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           activeToolId={activeToolId}
           onSelect={(id) => openTool(id)}
           onClose={() => setToolModalOpen(false)}
+          manualPinSet={manualPinSet}
+          onTogglePin={togglePin}
+          railCount={pinnedTools.length}
+          manualPinCount={manualPins.length}
         />
+
       )}
 
       {/* BOTTOM BAR */}
