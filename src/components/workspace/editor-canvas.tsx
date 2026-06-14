@@ -1080,6 +1080,7 @@ function TextMiniToolbar({
             key={i}
             type="button"
             title="Text color"
+            onMouseDown={keepFocus}
             onClick={() => update({ color: c } as Partial<Anno>)}
             style={{
               width: 18, height: 18, borderRadius: 999, padding: 0, margin: "0 2px",
