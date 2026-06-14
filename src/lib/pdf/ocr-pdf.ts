@@ -162,6 +162,7 @@ export async function ocrPdfToSearchable(
   const renderScale = options.highAccuracy ? RENDER_SCALE_HIGH : RENDER_SCALE_DEFAULT;
   const langs = options.languages && options.languages.length > 0 ? options.languages : ["eng"];
   const langArg = toTesseractLang(langs);
+  const partial = !!options.returnPartialOnAbort;
   const pdfjs = await loadPdfjs();
   const tess = await import("tesseract.js");
 
