@@ -88,13 +88,17 @@ export function injectFontFaces() {
 export function mapPdfFontToKey(
   fontName: string | undefined,
   family: "sans" | "serif" | "mono",
+  fontFamilyCss?: string,
 ): FontKey {
-  const n = (fontName ?? "").toLowerCase().replace(/^[a-z0-9]{1,8}\+/, "");
-  if (/calibri|carlito/.test(n)) return "carlito";
-  if (/arial|helvet|liberation\s*sans|nimbus\s*sans|swiss|arimo/.test(n)) return "arimo";
-  if (/times|tnr|roman|liberation\s*serif|nimbus\s*rom|tinos/.test(n)) return "tinos";
-  if (/cambria|caladea/.test(n)) return "caladea";
-  if (/courier|cousine|consol|mono|typewriter/.test(n)) return "cousine";
+  const strip = (s: string) => s.toLowerCase().replace(/^[a-z0-9]{1,8}\+/, "");
+  const n = strip(fontName ?? "");
+  const ff = strip(fontFamilyCss ?? "");
+  const hay = `${n} ${ff}`;
+  if (/calibri|carlito/.test(hay)) return "carlito";
+  if (/arial|helvet|liberation\s*sans|nimbus\s*sans|swiss|arimo/.test(hay)) return "arimo";
+  if (/times|tnr|\broman\b|liberation\s*serif|nimbus\s*rom|tinos|garamond|georgia|baskerville|caslon|didot|bodoni|minion|book|serif/.test(hay)) return "tinos";
+  if (/cambria|caladea/.test(hay)) return "caladea";
+  if (/courier|cousine|consol|mono|typewriter/.test(hay)) return "cousine";
   // Fallback by serif/sans/mono kind
   if (family === "serif") return "tinos";
   if (family === "mono") return "cousine";
