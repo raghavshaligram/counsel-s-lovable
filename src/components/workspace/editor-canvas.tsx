@@ -1026,6 +1026,7 @@ function TextMiniToolbar({
 
   return (
     <div
+      data-text-toolbar="1"
       onMouseDown={stop}
       onPointerDown={stop}
       onClick={stop}
