@@ -743,6 +743,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // the new text layer. Filename is bumped with " (OCR)" so the editor's
   // load effect (which dedupes by fileName) re-parses.
   const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrProgressText, setOcrProgressText] = useState<string>("");
+  const ocrAbortRef = useRef<AbortController | null>(null);
   const onRequestOcr = useCallback(async () => {
     const f = active.file;
     if (!f || f.size === 0) {
@@ -750,7 +752,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       return;
     }
     if (ocrRunning) return;
+    const ctrl = new AbortController();
+    ocrAbortRef.current = ctrl;
     setOcrRunning(true);
+    setOcrProgressText("Preparing OCR…");
     const toastId = "wsx-ocr";
     toast.loading("Preparing OCR…", { id: toastId });
     try {
@@ -759,19 +764,26 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         f,
         (p) => {
           const pct = p.totalPages > 0 ? Math.round((p.page / p.totalPages) * 100) : 0;
-          toast.loading(`OCR: ${p.message}${p.totalPages > 0 ? ` (${pct}%)` : ""}`, {
-            id: toastId,
-          });
+          const text = `OCR: ${p.message}${p.totalPages > 0 ? ` (${pct}%)` : ""}`;
+          setOcrProgressText(text);
+          toast.loading(text, { id: toastId });
         },
+        ctrl.signal,
+        { returnPartialOnAbort: true },
       );
-      const baseName = f.name.replace(/\s*\(OCR\)\.pdf$/i, "").replace(/\.pdf$/i, "");
+      const baseName = f.name.replace(/\s*\(OCR(?:\s*partial)?\)\.pdf$/i, "").replace(/\.pdf$/i, "");
+      const suffix = ctrl.signal.aborted ? " (OCR partial)" : " (OCR)";
       const newFile = new File(
         [bytes as BlobPart],
-        `${baseName} (OCR).pdf`,
+        `${baseName}${suffix}.pdf`,
         { type: "application/pdf" },
       );
       patchActive({ file: newFile, isDirty: true });
-      toast.success("Text recognised — you can edit it now", { id: toastId });
+      if (ctrl.signal.aborted) {
+        toast.success("Stopped — partial OCR loaded so you can test editing", { id: toastId });
+      } else {
+        toast.success("Text recognised — you can edit it now", { id: toastId });
+      }
     } catch (err) {
       console.error("[workspace] OCR failed", err);
       toast.error("OCR failed", {
@@ -780,8 +792,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       });
     } finally {
       setOcrRunning(false);
+      setOcrProgressText("");
+      ocrAbortRef.current = null;
     }
   }, [active.file, ocrRunning, patchActive]);
+
+  const onStopOcr = useCallback(() => {
+    ocrAbortRef.current?.abort();
+  }, []);
 
   // Track scanned pages reported by EditorCanvas instances. Cleared on file
   // swap (each new file starts fresh) and on OCR success (banner goes away
