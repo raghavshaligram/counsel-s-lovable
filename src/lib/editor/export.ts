@@ -291,19 +291,30 @@ function drawAnno(
         borderOpacity: a.opacity,
       });
       break;
-    case "text":
-      page.drawText(a.text, {
-        x: a.x,
-        // pdf-lib draws text from baseline; nudge so the bbox top aligns visually
-        y: yFlip(a.y, a.h) + a.h - a.fontSize * 0.85,
-        size: a.fontSize,
-        font,
-        color: col(a.color),
-        opacity: a.opacity,
-        maxWidth: a.w,
-        lineHeight: a.fontSize * 1.15,
+    case "text": {
+      const tFont = pickFont(fonts, a.family ?? "sans", a.bold, a.italic);
+      const align = a.align ?? "left";
+      const baselineY = yFlip(a.y, a.h) + a.h - a.fontSize * 0.85;
+      const lines = (a.text || "").split("\n");
+      const lineH = a.fontSize * 1.15;
+      lines.forEach((line, i) => {
+        const tw = tFont.widthOfTextAtSize(line, a.fontSize);
+        let x = a.x;
+        if (align === "center") x = a.x + (a.w - tw) / 2;
+        else if (align === "right") x = a.x + (a.w - tw);
+        const y = baselineY - i * lineH;
+        page.drawText(line, { x, y, size: a.fontSize, font: tFont, color: col(a.color), opacity: a.opacity });
+        if (a.underline) {
+          page.drawLine({
+            start: { x, y: y - a.fontSize * 0.12 },
+            end: { x: x + tw, y: y - a.fontSize * 0.12 },
+            thickness: Math.max(0.5, a.fontSize * 0.06),
+            color: col(a.color), opacity: a.opacity,
+          });
+        }
       });
       break;
+    }
     case "freehand": {
       const cmds: string[] = [];
       a.points.forEach((p, i) => {
