@@ -51,6 +51,7 @@ export type Action =
   | { type: "DELETE_PAGE"; n: number }
   | { type: "INSERT_BLANK"; after: number; width: number; height: number }
   | { type: "ROTATE_PAGE"; n: number }
+  | { type: "SET_PAGE_CROP"; n: number; rect: { x: number; y: number; w: number; h: number } | null }
   | { type: "SET_PENDING_IMAGE"; img: State["pendingImage"] }
   | { type: "SET_WATERMARK"; w: WatermarkSettings | null }
   | { type: "SET_PROTECT"; p: ProtectSettings | null }
