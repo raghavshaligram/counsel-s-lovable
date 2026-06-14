@@ -1111,37 +1111,95 @@ function UnsavedChangesDialog({
   );
 }
 
+/* ----------------------- Floating tooltip ---------------------------- */
+
+// Lightweight hover tooltip. Quick (75ms fade), absolutely positioned so it
+// never sits on top of its trigger, and hidden on touch / no-hover devices
+// where a hover tooltip makes no sense.
+function Tip({
+  label,
+  kbd,
+  placement = "right",
+  children,
+  className,
+}: {
+  label: string;
+  kbd?: string;
+  placement?: "right" | "left" | "top" | "bottom";
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const pos =
+    placement === "right"
+      ? "left-[calc(100%+6px)] top-1/2 -translate-y-1/2"
+      : placement === "left"
+        ? "right-[calc(100%+6px)] top-1/2 -translate-y-1/2"
+        : placement === "top"
+          ? "bottom-[calc(100%+6px)] left-1/2 -translate-x-1/2"
+          : "top-[calc(100%+6px)] left-1/2 -translate-x-1/2";
+  return (
+    <span className={cn("group/tip relative inline-flex", className)}>
+      {children}
+      <span
+        role="tooltip"
+        className={cn(
+          "pointer-events-none absolute z-50 inline-flex items-center whitespace-nowrap rounded-md border border-border bg-surface-3 px-2 py-1 text-[11px] leading-none text-foreground shadow-[var(--shadow-card)]",
+          "opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100",
+          "[@media(hover:none)]:hidden",
+          pos,
+        )}
+      >
+        {label}
+        {kbd && (
+          <span className="ml-1.5 rounded bg-surface-1 px-1 py-[1px] font-mono text-[10px] text-text-muted">
+            {kbd}
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
 /* ----------------------------- Rail ---------------------------------- */
 
 function RailButton({
   children,
   label,
+  kbd,
   active,
+  pinned,
   onClick,
 }: {
   children: React.ReactNode;
   label: string;
+  kbd?: string;
   active?: boolean;
+  pinned?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={cn(
-        "group relative grid h-9 w-9 place-items-center text-text-2 transition-colors",
-        "hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active && "bg-accent-soft text-vault"
-      )}
-      style={{ borderRadius: 9 }}
-    >
-      {children}
-      <span className="pointer-events-none absolute left-[110%] top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded-md bg-surface-3 px-2 py-1 text-[11px] text-foreground opacity-0 shadow-[var(--shadow-card)] group-hover:opacity-100 transition-opacity">
-        {label}
-      </span>
-    </button>
+    <Tip label={label} kbd={kbd} placement="right">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={cn(
+          "relative grid h-9 w-9 place-items-center text-text-2 transition-colors",
+          "hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          active && "bg-accent-soft text-vault",
+        )}
+        style={{ borderRadius: 9 }}
+      >
+        {children}
+        {pinned && (
+          <span
+            aria-hidden
+            title="Pinned"
+            className="absolute -right-[2px] -top-[2px] h-1.5 w-1.5 rounded-full bg-vault"
+          />
+        )}
+      </button>
+    </Tip>
   );
 }
 
