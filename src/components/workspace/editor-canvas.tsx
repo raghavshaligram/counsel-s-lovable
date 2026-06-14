@@ -764,6 +764,27 @@ export function EditorCanvas({
         }}
         style={{ position: "absolute", inset: 0, width: screenW, height: screenH, cursor: cursorByTool[state.tool] ?? "default" }}
       >
+        {/* Fixed cover rectangles for text-edit annotations — drawn FIRST so
+            they sit beneath the editable text box but always hide the
+            original glyphs at their captured bounds (independent of the
+            auto-grown text box size). */}
+        {annos.map((a) => {
+          if (a.kind !== "text-edit" || !a.cover) return null;
+          const tl = toScreen(a.cover.x, a.cover.y);
+          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
+          return (
+            <div
+              key={`cover-${a.id}`}
+              style={{
+                position: "absolute",
+                left: tl.x, top: tl.y,
+                width: br.x - tl.x, height: br.y - tl.y,
+                background: rgbCss(a.bg),
+                pointerEvents: "none",
+              }}
+            />
+          );
+        })}
         {annos.map(renderAnno)}
         {editTextOverlays.map((it, i) => {
           const tl = toScreen(it.x, it.y);
