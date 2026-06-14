@@ -853,3 +853,135 @@ function DrawingPreview({
   }
   return null;
 }
+
+/* ---------------- Floating mini-toolbar for active text boxes ---------------- */
+
+const TOOLBAR_COLORS: RGB[] = [
+  { r: 0,    g: 0,    b: 0    },
+  { r: 1,    g: 1,    b: 1    },
+  { r: 0.95, g: 0.2,  b: 0.2  },
+  { r: 0.95, g: 0.65, b: 0.1  },
+  { r: 0.15, g: 0.55, b: 0.95 },
+  { r: 0.15, g: 0.65, b: 0.35 },
+];
+
+const TOOLBAR_FONTS: { key: FontKey; label: string }[] = [
+  { key: "arimo",   label: "Sans" },
+  { key: "tinos",   label: "Serif" },
+  { key: "cousine", label: "Mono" },
+  { key: "carlito", label: "Carlito" },
+  { key: "caladea", label: "Caladea" },
+];
+
+function TextMiniToolbar({
+  anno, scale, pageW, pageH, dispatch,
+}: {
+  anno: Anno & { kind: "text" | "text-edit" };
+  scale: number;
+  pageW: number;
+  pageH: number;
+  dispatch: React.Dispatch<Action>;
+}) {
+  const update = (patch: Partial<Anno>) =>
+    dispatch({ type: "UPDATE_ANNO", id: anno.id, patch });
+  const a = anno;
+  const tbH = 38;
+  const margin = 8;
+  const screenLeft = a.x * scale;
+  const screenTop = a.y * scale;
+  const screenW = a.w * scale;
+  let top = screenTop - tbH - margin;
+  if (top < 4) top = screenTop + a.h * scale + margin;
+  const tbApproxW = 460;
+  let left = screenLeft + screenW / 2 - tbApproxW / 2;
+  left = Math.max(4, Math.min(left, pageW - tbApproxW - 4));
+  if (top + tbH > pageH - 4) top = pageH - tbH - 4;
+
+  const btn: React.CSSProperties = {
+    height: 26, minWidth: 26, padding: "0 6px",
+    background: "transparent", color: "#fff",
+    border: "none", borderRadius: 4, cursor: "pointer",
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    fontSize: 12, fontFamily: "Helvetica, Arial, sans-serif",
+  };
+  const activeBtn: React.CSSProperties = { ...btn, background: "rgba(245,158,11,0.25)", color: "#fbbf24" };
+  const sep: React.CSSProperties = { width: 1, height: 18, background: "rgba(255,255,255,0.12)", margin: "0 4px" };
+
+  const currentFontKey: FontKey =
+    (a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined) ??
+    (a.family === "serif" ? "tinos" : a.family === "mono" ? "cousine" : "arimo");
+
+  const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); };
+
+  return (
+    <div
+      onMouseDown={stop}
+      onPointerDown={stop}
+      onClick={stop}
+      style={{
+        position: "absolute", left, top, height: tbH,
+        display: "inline-flex", alignItems: "center", gap: 2,
+        padding: "0 8px",
+        background: "rgba(20,20,22,0.96)",
+        color: "#fff",
+        borderRadius: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        zIndex: 50,
+        backdropFilter: "blur(6px)",
+        fontFamily: "Helvetica, Arial, sans-serif",
+      }}
+    >
+      <select
+        value={currentFontKey}
+        onChange={(e) => {
+          const key = e.target.value as FontKey;
+          const kind = FONT_META[key]?.kind ?? "sans";
+          update({ fontKey: key, family: kind } as Partial<Anno>);
+        }}
+        style={{ ...btn, background: "rgba(255,255,255,0.06)", padding: "0 4px" }}
+      >
+        {TOOLBAR_FONTS.map((f) => (
+          <option key={f.key} value={f.key}>{f.label}</option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min={6}
+        max={144}
+        value={Math.round(a.fontSize)}
+        onChange={(e) => {
+          const v = Math.max(6, Math.min(144, Number(e.target.value) || a.fontSize));
+          update({ fontSize: v } as Partial<Anno>);
+        }}
+        style={{ ...btn, width: 48, background: "rgba(255,255,255,0.06)", textAlign: "center" }}
+      />
+      <span style={sep} />
+      <button type="button" title="Bold"      style={a.bold ? activeBtn : btn}      onClick={() => update({ bold: !a.bold } as Partial<Anno>)}><strong>B</strong></button>
+      <button type="button" title="Italic"    style={a.italic ? activeBtn : btn}    onClick={() => update({ italic: !a.italic } as Partial<Anno>)}><em>I</em></button>
+      <button type="button" title="Underline" style={a.underline ? activeBtn : btn} onClick={() => update({ underline: !a.underline } as Partial<Anno>)}><span style={{ textDecoration: "underline" }}>U</span></button>
+      <span style={sep} />
+      <button type="button" title="Align left"   style={(a.align ?? "left") === "left" ? activeBtn : btn} onClick={() => update({ align: "left" } as Partial<Anno>)}>⯇</button>
+      <button type="button" title="Align center" style={a.align === "center" ? activeBtn : btn}           onClick={() => update({ align: "center" } as Partial<Anno>)}>≡</button>
+      <button type="button" title="Align right"  style={a.align === "right" ? activeBtn : btn}            onClick={() => update({ align: "right" } as Partial<Anno>)}>⯈</button>
+      <span style={sep} />
+      {TOOLBAR_COLORS.map((c, i) => {
+        const isActive = Math.abs(c.r - a.color.r) < 0.02 && Math.abs(c.g - a.color.g) < 0.02 && Math.abs(c.b - a.color.b) < 0.02;
+        return (
+          <button
+            key={i}
+            type="button"
+            title="Text color"
+            onClick={() => update({ color: c } as Partial<Anno>)}
+            style={{
+              width: 18, height: 18, borderRadius: 999, padding: 0, margin: "0 2px",
+              background: rgbCss(c, 1),
+              border: isActive ? "2px solid #fbbf24" : "1px solid rgba(255,255,255,0.25)",
+              cursor: "pointer",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
