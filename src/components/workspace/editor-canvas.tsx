@@ -639,6 +639,31 @@ export function EditorCanvas({
             />
           );
         })}
+        {op.cropBox && (() => {
+          const tl = toScreen(op.cropBox.x, op.cropBox.y);
+          const br = toScreen(op.cropBox.x + op.cropBox.w, op.cropBox.y + op.cropBox.h);
+          const cw = br.x - tl.x, ch = br.y - tl.y;
+          const showHandles = state.tool === "page-crop";
+          return (
+            <>
+              {/* dim outside the crop */}
+              <div style={{ position: "absolute", left: 0, top: 0, right: 0, height: tl.y, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: br.y, right: 0, bottom: 0, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: tl.y, width: tl.x, height: ch, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: br.x, top: tl.y, right: 0, height: ch, background: "rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+              {/* crop rect outline */}
+              <div style={{ position: "absolute", left: tl.x, top: tl.y, width: cw, height: ch, border: "1.5px dashed var(--vault)", boxShadow: "0 0 0 1px rgba(0,0,0,0.4) inset", pointerEvents: "none" }} />
+              {showHandles && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: "SET_PAGE_CROP", n: pageIndex, rect: null }); }}
+                  title="Clear crop on this page"
+                  style={{ position: "absolute", left: br.x - 12, top: tl.y - 12, width: 22, height: 22, borderRadius: 999, background: "#dc2626", color: "white", border: "2px solid white", fontSize: 12, lineHeight: 1, display: "grid", placeItems: "center", cursor: "pointer", zIndex: 2 }}
+                >×</button>
+              )}
+            </>
+          );
+        })()}
         {drawing && state.tool !== "select" && (
           <DrawingPreview drawing={drawing} state={state} />
         )}
