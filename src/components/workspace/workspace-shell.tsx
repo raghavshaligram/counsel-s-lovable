@@ -955,7 +955,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     dispatch={editorDispatch}
                     zoom={zoom}
                     gap={showGaps ? 18 : 0}
+                    onRequestOcr={onRequestOcr}
+                    ocrRunning={ocrRunning}
                   />
+
                 ) : (
                   <div className="grid h-full place-items-center text-[12.5px] text-text-muted">
                     {file.size === 0 ? "Empty document" : "Loading document…"}
