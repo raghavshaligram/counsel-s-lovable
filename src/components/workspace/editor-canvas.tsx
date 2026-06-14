@@ -360,6 +360,20 @@ export function EditorCanvas({
       if (isEditingThis) return;
       e.stopPropagation();
       dispatch({ type: "SELECT_ANNO", id: a.id });
+      // text-edit replacements are LOCKED to the original glyph position —
+      // they replace existing text in place and must never drift. Click only
+      // selects / enters edit mode; no drag.
+      if (a.kind === "text-edit") {
+        const downX = e.clientX, downY = e.clientY;
+        const up = (ev: MouseEvent) => {
+          window.removeEventListener("mouseup", up);
+          if (Math.hypot(ev.clientX - downX, ev.clientY - downY) < 3 && selected) {
+            setEditingId(a.id);
+          }
+        };
+        window.addEventListener("mouseup", up);
+        return;
+      }
       const startX = e.clientX, startY = e.clientY;
       const origX = a.x, origY = a.y;
       let moved = false;
@@ -377,6 +391,7 @@ export function EditorCanvas({
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", up);
     };
+
     const onResize = (e: React.MouseEvent) => {
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
@@ -393,11 +408,13 @@ export function EditorCanvas({
       window.addEventListener("mouseup", up);
     };
 
+    const isLocked = a.kind === "text-edit";
     const baseStyle: React.CSSProperties = {
       position: "absolute", left: minX, top: minY, width: w, height: h,
       pointerEvents: interactive ? "auto" : "none",
-      cursor: isEditingThis ? "text" : interactive ? "move" : "default",
+      cursor: isEditingThis ? "text" : isLocked ? "text" : interactive ? "move" : "default",
     };
+
 
     let inner: React.ReactNode = null;
     switch (a.kind) {
@@ -602,7 +619,7 @@ export function EditorCanvas({
         {selected && (
           <>
             <div style={{ position: "absolute", inset: -2, border: "1.5px dashed var(--vault)", pointerEvents: "none" }} />
-            <div onMouseDown={onResize} style={{ position: "absolute", right: -6, bottom: -6, width: 12, height: 12, background: "var(--vault)", border: "2px solid white", borderRadius: 2, cursor: "nwse-resize" }} />
+            {!isLocked && <div onMouseDown={onResize} style={{ position: "absolute", right: -6, bottom: -6, width: 12, height: 12, background: "var(--vault)", border: "2px solid white", borderRadius: 2, cursor: "nwse-resize" }} />}
             <button
               onClick={(e) => { e.stopPropagation(); dispatch({ type: "DELETE_ANNO", id: a.id }); }}
               style={{ position: "absolute", top: -10, right: -10, background: "#dc2626", color: "white", borderRadius: 999, width: 18, height: 18, fontSize: 10, lineHeight: 1, display: "grid", placeItems: "center", border: "none", cursor: "pointer" }}
