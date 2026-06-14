@@ -74,7 +74,7 @@ import {
 import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/lib/editor/state";
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { exportEditedPdf } from "@/lib/editor/export";
-import { injectFontFaces } from "@/lib/editor/fonts";
+import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 
 
