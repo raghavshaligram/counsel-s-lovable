@@ -976,35 +976,61 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 <div className="pointer-events-auto flex max-w-[480px] items-start gap-3 rounded-lg border border-vault/40 bg-surface-1/95 px-3.5 py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md">
                   <span
                     aria-hidden
-                    className="mt-[5px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vault"
+                    className={cn(
+                      "mt-[5px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vault",
+                      ocrRunning && "animate-pulse",
+                    )}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] leading-snug text-foreground">
-                      This looks like a scanned document — there's no editable
-                      text layer.
-                    </div>
-                    <div className="mt-0.5 text-[11px] leading-snug text-text-muted">
-                      Run OCR (on-device) to recognise the text. Accuracy
-                      depends on scan quality; edited text is reconstructed.
-                    </div>
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={onRequestOcr}
-                        disabled={ocrRunning}
-                        className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90 disabled:opacity-60"
-                      >
-                        {ocrRunning ? "Running OCR…" : "Run OCR"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setOcrBannerDismissed(true)}
-                        disabled={ocrRunning}
-                        className="rounded-md px-2.5 py-1 text-[11.5px] text-text-2 hover:bg-surface-3 hover:text-foreground disabled:opacity-50"
-                      >
-                        Not now
-                      </button>
-                    </div>
+                    {ocrRunning ? (
+                      <>
+                        <div className="text-[12.5px] leading-snug text-foreground">
+                          Recognising text on-device…
+                        </div>
+                        <div className="mt-0.5 truncate text-[11px] leading-snug text-text-muted">
+                          {ocrProgressText || "Starting…"}
+                        </div>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={onStopOcr}
+                            className="rounded-md border border-vault/40 bg-surface-2 px-2.5 py-1 text-[11.5px] font-medium text-foreground hover:bg-surface-3"
+                          >
+                            Stop &amp; try editing
+                          </button>
+                          <span className="text-[10.5px] text-text-muted">
+                            Loads whatever finished so far.
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-[12.5px] leading-snug text-foreground">
+                          This looks like a scanned document — there's no editable
+                          text layer.
+                        </div>
+                        <div className="mt-0.5 text-[11px] leading-snug text-text-muted">
+                          Run OCR (on-device) to recognise the text. Accuracy
+                          depends on scan quality; edited text is reconstructed.
+                        </div>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={onRequestOcr}
+                            className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
+                          >
+                            Run OCR
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOcrBannerDismissed(true)}
+                            className="rounded-md px-2.5 py-1 text-[11.5px] text-text-2 hover:bg-surface-3 hover:text-foreground"
+                          >
+                            Not now
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
