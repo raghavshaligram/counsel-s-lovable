@@ -854,9 +854,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setOcrProgressText("");
       ocrAbortRef.current = null;
     }
-    // The callback above closes over newlyOcr/newlyCopied — we mutate them
-    // from a side-channel progress hook installed via a ref dance below.
-    void newlyOcr; void newlyCopied;
   }, [active.file, active.ocrPages, active.ocrPagesCopied, ocrRunning, patchActive]);
 
   const onStopOcr = useCallback(() => {
