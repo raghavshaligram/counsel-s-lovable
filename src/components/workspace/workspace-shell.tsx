@@ -783,7 +783,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   onUndo={() => editorDispatch({ type: "UNDO" })}
                   onRedo={() => editorDispatch({ type: "REDO" })}
                 />
-                <ContextualBar tool={editorTool} />
+                <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
               </>
             )}
             <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
