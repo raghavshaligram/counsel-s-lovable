@@ -796,7 +796,26 @@ export function EditorCanvas({
         {drawing && state.tool !== "select" && (
           <DrawingPreview drawing={drawing} state={state} />
         )}
+        {activeText && (
+          <TextMiniToolbar
+            anno={activeText}
+            scale={scale}
+            pageW={screenW}
+            pageH={screenH}
+            dispatch={dispatch}
+          />
+        )}
       </div>
+      {/* Off-screen measurement node for auto-grow. Positioned far off-canvas
+          and read via offsetWidth/offsetHeight to size the active text box. */}
+      <div
+        ref={measureRef}
+        aria-hidden
+        style={{
+          position: "absolute", left: -99999, top: -99999, visibility: "hidden",
+          whiteSpace: "pre", display: "inline-block", padding: 0, margin: 0,
+        }}
+      />
     </div>
   );
 }
