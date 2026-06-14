@@ -190,14 +190,14 @@ export function EditorCanvas({
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
           const ff = (it.fontName && styles[it.fontName]?.fontFamily) || it.fontName || "";
-          const ffl = ff.toLowerCase();
+          const ffl = `${(it.fontName ?? "").toLowerCase()} ${ff.toLowerCase()}`;
           const family: "sans" | "serif" | "mono" =
             /mono|courier|consol|typewriter/.test(ffl) ? "mono" :
-            /serif|times|roman|garamond|georgia|cambria|book/.test(ffl) ? "serif" :
+            /serif|times|roman|garamond|georgia|cambria|book|caslon|didot|bodoni|minion|baskerville/.test(ffl) ? "serif" :
             "sans";
-          const bold = /bold|black|heavy|semibold|demibold/.test(ffl);
+          const bold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold|800|900/.test(ffl);
           const italic = /italic|oblique/.test(ffl);
-          const fontKey = mapPdfFontToKey(it.fontName ?? ff, family);
+          const fontKey = mapPdfFontToKey(it.fontName ?? ff, family, ff);
           const x = m[4], y = m[5] - fh;
           const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
@@ -521,7 +521,10 @@ export function EditorCanvas({
       case "text":
       case "text-edit": {
         const isEditing = editingId === a.id;
-        const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
+        // Cover is rendered as a separate fixed-position layer (see below);
+        // the text box itself stays transparent so it can grow without
+        // changing the cover area.
+        const bg = "transparent";
         const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
         const fam = editFontKey && FONT_META[editFontKey]
           ? FONT_META[editFontKey].cssFamily
@@ -660,6 +663,15 @@ export function EditorCanvas({
   const onClickEditHit = (it: TextItem) => {
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
+    // Cover bbox: expand by a fraction of glyph height (more for bold/heavy
+    // originals) so anti-aliased thick strokes don't leak through.
+    const coverPad = Math.max(1, it.h * (it.bold ? 0.18 : 0.1));
+    const cover = {
+      x: it.x - coverPad,
+      y: it.y - coverPad,
+      w: it.w + coverPad * 2,
+      h: it.h + coverPad * 2,
+    };
     const padX = Math.max(2, it.h * 0.15);
     const padTop = Math.max(2, it.h * 0.35);
     const padBottom = Math.max(2, it.h * 0.45);
@@ -676,6 +688,7 @@ export function EditorCanvas({
       fontKey: it.fontKey,
       bold: it.bold, italic: it.italic,
       textOffsetY: padTop,
+      cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName },
     } });
     dispatch({ type: "SELECT_ANNO", id });
@@ -751,6 +764,27 @@ export function EditorCanvas({
         }}
         style={{ position: "absolute", inset: 0, width: screenW, height: screenH, cursor: cursorByTool[state.tool] ?? "default" }}
       >
+        {/* Fixed cover rectangles for text-edit annotations — drawn FIRST so
+            they sit beneath the editable text box but always hide the
+            original glyphs at their captured bounds (independent of the
+            auto-grown text box size). */}
+        {annos.map((a) => {
+          if (a.kind !== "text-edit" || !a.cover) return null;
+          const tl = toScreen(a.cover.x, a.cover.y);
+          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
+          return (
+            <div
+              key={`cover-${a.id}`}
+              style={{
+                position: "absolute",
+                left: tl.x, top: tl.y,
+                width: br.x - tl.x, height: br.y - tl.y,
+                background: rgbCss(a.bg),
+                pointerEvents: "none",
+              }}
+            />
+          );
+        })}
         {annos.map(renderAnno)}
         {editTextOverlays.map((it, i) => {
           const tl = toScreen(it.x, it.y);

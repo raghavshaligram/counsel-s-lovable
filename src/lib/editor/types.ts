@@ -183,6 +183,11 @@ export interface TextEditAnno extends BaseAnno {
   align?: TextAlign;
   // top offset (in PDF points) inside the bbox where the text should start.
   textOffsetY?: number;
+  // ORIGINAL glyph bbox (PDF points, top-left origin). The cover rectangle
+  // is drawn at this fixed rect — independent of the auto-grown text box —
+  // so the underlying text always stays hidden even when the replacement
+  // shrinks below the original size.
+  cover?: { x: number; y: number; w: number; h: number };
   source?: TextSource;
 }
 
