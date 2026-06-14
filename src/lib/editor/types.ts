@@ -86,10 +86,17 @@ export interface BaseAnno {
   resolved?: boolean;
 }
 
+export type TextAlign = "left" | "center" | "right";
+
 export interface TextAnno extends BaseAnno {
   kind: "text";
   text: string;
   fontSize: number;
+  family?: "sans" | "serif" | "mono";
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: TextAlign;
 }
 
 export interface HighlightAnno extends BaseAnno {
