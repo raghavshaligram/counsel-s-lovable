@@ -49,6 +49,8 @@ import {
   ScanSearch,
   Grid3x3,
   Search,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { PDFDocument } from "pdf-lib";
@@ -150,8 +152,16 @@ const GROUP_ORDER: ToolGroupLabel[] = [
 ];
 
 const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
-const PIN_CAP = 5;
+// Hard cap on the left rail. Manual pins are sticky; the remainder is
+// auto-filled by most-used tools. Never exceed this, period.
+const PIN_CAP_TOTAL = 10;
 const USAGE_KEY = "vaultpdf:tool-usage";
+const PINS_KEY = "vaultpdf:tool-pins";
+
+// Optional keyboard shortcuts shown in tooltips. Only list tools whose
+// shortcut is actually wired elsewhere — never advertise a binding that
+// doesn't work.
+const SHORTCUTS: Record<string, string> = {};
 
 function loadUsage(): Record<string, number> {
   if (typeof window === "undefined") return {};
@@ -162,22 +172,47 @@ function loadUsage(): Record<string, number> {
   }
 }
 
-function computePins(counts: Record<string, number>): string[] {
-  // Tools must be used 2+ times to "earn" a pinned slot.
-  const earned = Object.entries(counts)
-    .filter(([, n]) => n >= 2)
-    .sort((a, b) => b[1] - a[1])
-    .map(([id]) => id);
+function loadManualPins(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const v = JSON.parse(window.localStorage.getItem(PINS_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+// Resolve the final rail (max PIN_CAP_TOTAL slots):
+//   1. Manual pins, in user-defined order, always come first.
+//   2. Remaining slots fill from earned (used ≥2) most-used tools.
+//   3. Then default pins, to bootstrap a brand-new user.
+function computePins(
+  counts: Record<string, number>,
+  manualPins: string[],
+): string[] {
+  const valid = new Set(TOOLS.map((t) => t.id));
   const result: string[] = [];
-  for (const id of earned) {
-    if (result.length >= PIN_CAP) break;
-    if (TOOLS.some((t) => t.id === id)) result.push(id);
+  for (const id of manualPins) {
+    if (result.length >= PIN_CAP_TOTAL) break;
+    if (valid.has(id) && !result.includes(id)) result.push(id);
   }
-  for (const id of DEFAULT_PINS) {
-    if (result.length >= PIN_CAP) break;
-    if (!result.includes(id) && TOOLS.some((t) => t.id === id)) result.push(id);
+  if (result.length < PIN_CAP_TOTAL) {
+    const earned = Object.entries(counts)
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id);
+    for (const id of earned) {
+      if (result.length >= PIN_CAP_TOTAL) break;
+      if (valid.has(id) && !result.includes(id)) result.push(id);
+    }
   }
-  return result.slice(0, PIN_CAP);
+  if (result.length < PIN_CAP_TOTAL) {
+    for (const id of DEFAULT_PINS) {
+      if (result.length >= PIN_CAP_TOTAL) break;
+      if (valid.has(id) && !result.includes(id)) result.push(id);
+    }
+  }
+  return result.slice(0, PIN_CAP_TOTAL);
 }
 
 function toolById(id: string): RailTool | undefined {
@@ -262,6 +297,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [aiText, setAiText] = useState("");
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [usage, setUsage] = useState<Record<string, number>>({});
+  const [manualPins, setManualPins] = useState<string[]>([]);
+  const manualPinSet = useMemo(() => new Set(manualPins), [manualPins]);
   const [recents, setRecents] = useState<RecentMeta[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
@@ -277,6 +314,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch {
       /* ignore */
     }
+    setManualPins(loadManualPins());
     (async () => {
       const [ui, recentsList, openTabs] = await Promise.all([
         loadUIState(),
@@ -361,11 +399,35 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [editorDispatch, patchActive],
   );
 
-  const pins = useMemo(() => computePins(usage), [usage]);
+  const pins = useMemo(() => computePins(usage, manualPins), [usage, manualPins]);
   const pinnedTools = useMemo(
     () => pins.map((id) => toolById(id)).filter((t): t is RailTool => Boolean(t)),
     [pins],
   );
+
+  // Pin / unpin a tool manually. Hard cap is PIN_CAP_TOTAL — block the 11th
+  // with a clear toast so the user knows nothing got silently dropped.
+  const togglePin = useCallback((id: string) => {
+    if (!TOOLS.some((t) => t.id === id)) return;
+    setManualPins((prev) => {
+      let next: string[];
+      if (prev.includes(id)) {
+        next = prev.filter((x) => x !== id);
+      } else {
+        if (prev.length >= PIN_CAP_TOTAL) {
+          toast.error(`Rail is full (${PIN_CAP_TOTAL} max). Unpin a tool first.`);
+          return prev;
+        }
+        next = [...prev, id];
+      }
+      try {
+        window.localStorage.setItem(PINS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   const bumpUsage = useCallback((id: string) => {
     setUsage((prev) => {
@@ -760,6 +822,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 <RailButton
                   active={activeToolId === tool.id && inspectorOpen}
                   label={tool.label}
+                  kbd={SHORTCUTS[tool.id]}
+                  pinned={manualPinSet.has(tool.id)}
                   onClick={() => openTool(tool.id)}
                 >
                   <tool.icon className="h-[18px] w-[18px]" />
@@ -910,7 +974,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           activeToolId={activeToolId}
           onSelect={(id) => openTool(id)}
           onClose={() => setToolModalOpen(false)}
+          manualPinSet={manualPinSet}
+          onTogglePin={togglePin}
+          railCount={pinnedTools.length}
+          manualPinCount={manualPins.length}
         />
+
       )}
 
       {/* BOTTOM BAR */}
@@ -1042,37 +1111,95 @@ function UnsavedChangesDialog({
   );
 }
 
+/* ----------------------- Floating tooltip ---------------------------- */
+
+// Lightweight hover tooltip. Quick (75ms fade), absolutely positioned so it
+// never sits on top of its trigger, and hidden on touch / no-hover devices
+// where a hover tooltip makes no sense.
+function Tip({
+  label,
+  kbd,
+  placement = "right",
+  children,
+  className,
+}: {
+  label: string;
+  kbd?: string;
+  placement?: "right" | "left" | "top" | "bottom";
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const pos =
+    placement === "right"
+      ? "left-[calc(100%+6px)] top-1/2 -translate-y-1/2"
+      : placement === "left"
+        ? "right-[calc(100%+6px)] top-1/2 -translate-y-1/2"
+        : placement === "top"
+          ? "bottom-[calc(100%+6px)] left-1/2 -translate-x-1/2"
+          : "top-[calc(100%+6px)] left-1/2 -translate-x-1/2";
+  return (
+    <span className={cn("group/tip relative inline-flex", className)}>
+      {children}
+      <span
+        role="tooltip"
+        className={cn(
+          "pointer-events-none absolute z-50 inline-flex items-center whitespace-nowrap rounded-md border border-border bg-surface-3 px-2 py-1 text-[11px] leading-none text-foreground shadow-[var(--shadow-card)]",
+          "opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100",
+          "[@media(hover:none)]:hidden",
+          pos,
+        )}
+      >
+        {label}
+        {kbd && (
+          <span className="ml-1.5 rounded bg-surface-1 px-1 py-[1px] font-mono text-[10px] text-text-muted">
+            {kbd}
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
 /* ----------------------------- Rail ---------------------------------- */
 
 function RailButton({
   children,
   label,
+  kbd,
   active,
+  pinned,
   onClick,
 }: {
   children: React.ReactNode;
   label: string;
+  kbd?: string;
   active?: boolean;
+  pinned?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={cn(
-        "group relative grid h-9 w-9 place-items-center text-text-2 transition-colors",
-        "hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active && "bg-accent-soft text-vault"
-      )}
-      style={{ borderRadius: 9 }}
-    >
-      {children}
-      <span className="pointer-events-none absolute left-[110%] top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded-md bg-surface-3 px-2 py-1 text-[11px] text-foreground opacity-0 shadow-[var(--shadow-card)] group-hover:opacity-100 transition-opacity">
-        {label}
-      </span>
-    </button>
+    <Tip label={label} kbd={kbd} placement="right">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={cn(
+          "relative grid h-9 w-9 place-items-center text-text-2 transition-colors",
+          "hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          active && "bg-accent-soft text-vault",
+        )}
+        style={{ borderRadius: 9 }}
+      >
+        {children}
+        {pinned && (
+          <span
+            aria-hidden
+            title="Pinned"
+            className="absolute -right-[2px] -top-[2px] h-1.5 w-1.5 rounded-full bg-vault"
+          />
+        )}
+      </button>
+    </Tip>
   );
 }
 
@@ -1165,30 +1292,33 @@ function FloatingToolbar({
 function ToolbarBtn({
   children,
   label,
+  kbd,
   active,
   onClick,
 }: {
   children: React.ReactNode;
   label: string;
+  kbd?: string;
   active?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      className={cn(
-        "grid h-7 w-7 place-items-center rounded-md text-text-2 transition-colors",
-        "hover:text-foreground hover:bg-surface-2",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground"
-      )}
-    >
-      {children}
-    </button>
+    <Tip label={label} kbd={kbd} placement="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        aria-pressed={active}
+        className={cn(
+          "grid h-7 w-7 place-items-center rounded-md text-text-2 transition-colors",
+          "hover:text-foreground hover:bg-surface-2",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground",
+        )}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -1420,19 +1550,20 @@ function CanvasIconButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "grid h-7 w-7 place-items-center rounded-md border border-border bg-surface-2 text-text-2",
-        "hover:text-foreground transition-colors",
-        active && "text-vault bg-accent-soft border-vault/30"
-      )}
-    >
-      {children}
-    </button>
+    <Tip label={label} placement="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={cn(
+          "grid h-7 w-7 place-items-center rounded-md border border-border bg-surface-2 text-text-2",
+          "hover:text-foreground transition-colors",
+          active && "text-vault bg-accent-soft border-vault/30",
+        )}
+      >
+        {children}
+      </button>
+    </Tip>
   );
 }
 
@@ -2084,10 +2215,18 @@ function ToolModal({
   onSelect,
   onClose,
   activeToolId,
+  manualPinSet,
+  onTogglePin,
+  railCount,
+  manualPinCount,
 }: {
   onSelect: (id: string) => void;
   onClose: () => void;
   activeToolId: string | null;
+  manualPinSet: Set<string>;
+  onTogglePin: (id: string) => void;
+  railCount: number;
+  manualPinCount: number;
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -2127,6 +2266,12 @@ function ToolModal({
             placeholder="Search tools…"
             className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
+          <span
+            className="font-mono text-[10.5px] text-text-muted"
+            title={`Manual pins: ${manualPinCount}/${PIN_CAP_TOTAL}. Rail uses ${railCount}/${PIN_CAP_TOTAL} slots; the rest auto-fill from your most-used tools.`}
+          >
+            Rail {railCount}/{PIN_CAP_TOTAL}
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -2146,35 +2291,79 @@ function ToolModal({
                   {groupLabel}
                 </div>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {items.map((tool) => (
-                    <button
-                      key={tool.id}
-                      type="button"
-                      onClick={() => onSelect(tool.id)}
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-md border border-transparent bg-surface-2 px-2.5 py-2 text-left transition-colors",
-                        "hover:bg-surface-3 hover:border-border",
-                        activeToolId === tool.id && "border-vault/40 bg-accent-soft",
-                      )}
-                    >
-                      <span
+                  {items.map((tool) => {
+                    const isPinned = manualPinSet.has(tool.id);
+                    const railFull = manualPinCount >= PIN_CAP_TOTAL && !isPinned;
+                    return (
+                      <div
+                        key={tool.id}
                         className={cn(
-                          "grid h-7 w-7 place-items-center rounded-md bg-surface-1 text-text-2",
-                          activeToolId === tool.id && "bg-vault/15 text-vault",
+                          "relative flex items-center rounded-md border border-transparent bg-surface-2 transition-colors",
+                          "hover:bg-surface-3 hover:border-border",
+                          activeToolId === tool.id && "border-vault/40 bg-accent-soft",
                         )}
                       >
-                        <tool.icon className="h-[15px] w-[15px]" />
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[12.5px] text-foreground truncate",
-                          activeToolId === tool.id && "text-vault font-medium",
-                        )}
-                      >
-                        {tool.label}
-                      </span>
-                    </button>
-                  ))}
+                        <button
+                          type="button"
+                          onClick={() => onSelect(tool.id)}
+                          title={tool.label + (SHORTCUTS[tool.id] ? `  ${SHORTCUTS[tool.id]}` : "")}
+                          className="flex flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left min-w-0"
+                        >
+                          <span
+                            className={cn(
+                              "grid h-7 w-7 shrink-0 place-items-center rounded-md bg-surface-1 text-text-2",
+                              activeToolId === tool.id && "bg-vault/15 text-vault",
+                            )}
+                          >
+                            <tool.icon className="h-[15px] w-[15px]" />
+                          </span>
+                          <span
+                            className={cn(
+                              "text-[12.5px] text-foreground truncate",
+                              activeToolId === tool.id && "text-vault font-medium",
+                            )}
+                          >
+                            {tool.label}
+                          </span>
+                          {isPinned && (
+                            <span
+                              aria-hidden
+                              className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-vault"
+                              title="Pinned to rail"
+                            />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onTogglePin(tool.id);
+                          }}
+                          disabled={railFull}
+                          aria-label={isPinned ? "Unpin from rail" : "Pin to rail"}
+                          title={
+                            isPinned
+                              ? "Unpin from rail"
+                              : railFull
+                                ? `Rail is full (${PIN_CAP_TOTAL} max). Unpin a tool first.`
+                                : "Pin to rail"
+                          }
+                          className={cn(
+                            "mr-1.5 grid h-6 w-6 shrink-0 place-items-center rounded text-text-muted transition-colors",
+                            "hover:bg-surface-1 hover:text-foreground",
+                            isPinned && "text-vault hover:text-vault",
+                            railFull && "opacity-30 cursor-not-allowed hover:bg-transparent hover:text-text-muted",
+                          )}
+                        >
+                          {isPinned ? (
+                            <PinOff className="h-[13px] w-[13px]" />
+                          ) : (
+                            <Pin className="h-[13px] w-[13px]" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -2184,6 +2373,9 @@ function ToolModal({
               No tools match "{query}"
             </div>
           )}
+        </div>
+        <div className="border-t border-border px-3 py-2 text-[10.5px] leading-snug text-text-muted">
+          Manual pins (dot) stay locked. Remaining slots auto-fill with your most-used tools. Max {PIN_CAP_TOTAL} in the rail.
         </div>
       </div>
     </div>
@@ -2202,17 +2394,17 @@ function ZoomButton({
   onClick: () => void;
   label?: string;
 }) {
-  return (
+  const btn = (
     <button
       type="button"
       onClick={onClick}
-      title={label}
       aria-label={label}
       className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
     >
       {children}
     </button>
   );
+  return label ? <Tip label={label} placement="top">{btn}</Tip> : btn;
 }
 
 function KeyChip({
