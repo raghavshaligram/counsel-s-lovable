@@ -521,7 +521,10 @@ export function EditorCanvas({
       case "text":
       case "text-edit": {
         const isEditing = editingId === a.id;
-        const bg = a.kind === "text-edit" ? rgbCss(a.bg) : "transparent";
+        // Cover is rendered as a separate fixed-position layer (see below);
+        // the text box itself stays transparent so it can grow without
+        // changing the cover area.
+        const bg = "transparent";
         const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
         const fam = editFontKey && FONT_META[editFontKey]
           ? FONT_META[editFontKey].cssFamily
