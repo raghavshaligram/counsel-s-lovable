@@ -372,6 +372,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     void saveOpenTabs(meta);
   }, [hydrated, tabs]);
 
+  // Persist manual pins whenever they change post-hydration. Belt + braces:
+  // togglePin already writes inline, but a dedicated effect guarantees the
+  // latest array is mirrored to localStorage even across StrictMode replays.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(PINS_KEY, JSON.stringify(manualPins));
+    } catch {
+      /* ignore */
+    }
+  }, [hydrated, manualPins]);
+
   // ----------------- Tool selection (per-active-tab) ------------------
   // When the active rail tool flips to "redact" on this tab, default its
   // editor canvas mode to redact. Leaving redact reverts to select.
