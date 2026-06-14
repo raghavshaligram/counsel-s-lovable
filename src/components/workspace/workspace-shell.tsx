@@ -2879,6 +2879,9 @@ function EditorPages({
         const h = Math.ceil(meta.height * scale);
         const inView = visible.has(i);
         const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
+        const isOcrPage = !!ocrPages?.has(i);
+        const isCopiedPage = !isOcrPage && !!ocrPagesCopied?.has(i);
+        const showTag = showOcrTags && (isOcrPage || isCopiedPage);
         return (
           <div
             key={`${i}-${op.srcPage}-${op.rotation}-${op.blank ? 1 : 0}`}
@@ -2900,9 +2903,38 @@ function EditorPages({
                 onRequestOcr={onRequestOcr}
                 ocrRunning={ocrRunning}
                 onScannedChange={onScannedChange}
+                isOcrPage={isOcrPage}
               />
 
             ) : (
+              <div
+                style={{ width: w, height: h }}
+                className="rounded-sm bg-[var(--paper)] opacity-60"
+                aria-hidden
+              />
+            )}
+            {showTag && (
+              <div
+                className="pointer-events-none absolute right-2 top-2 z-10"
+                aria-hidden
+              >
+                <span
+                  className={cn(
+                    "rounded-md border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide backdrop-blur-sm",
+                    isOcrPage
+                      ? "border-vault/40 bg-vault/15 text-vault"
+                      : "border-border bg-surface-1/80 text-text-muted",
+                  )}
+                  title={
+                    isOcrPage
+                      ? "Text recognised on-device — edit with the Text tool."
+                      : "Already had a text layer — copied through unchanged."
+                  }
+                >
+                  {isOcrPage ? "OCR" : "Searchable"}
+                </span>
+              </div>
+            )}
               <div
                 style={{ width: w, height: h }}
                 className="rounded-sm bg-[var(--paper)] opacity-60"
