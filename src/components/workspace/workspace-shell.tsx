@@ -1399,6 +1399,8 @@ function contextStub(tool: EditorTool): React.ReactNode | null {
       return <span className="text-text-muted">Click the page to place the image. Select it to crop.</span>;
     case "redact":
       return <span className="text-text-muted">Drag to mark text or regions for permanent redaction on export.</span>;
+    case "page-crop":
+      return <span className="text-text-muted">Drag a box over the page to crop. Drag again to replace, or × to clear. Applied per page on export.</span>;
     case "note":
     case "select":
     default:
