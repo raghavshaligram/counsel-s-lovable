@@ -341,7 +341,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const id = active.id;
     if (active.activeToolId === "redact" && active.editor.tool !== "redact") {
       dispatchEditorFor(id, { type: "SET_TOOL", t: "redact" });
-    } else if (active.activeToolId !== "redact" && active.editor.tool === "redact") {
+    } else if (active.activeToolId === "page-crop" && active.editor.tool !== "page-crop") {
+      dispatchEditorFor(id, { type: "SET_TOOL", t: "page-crop" });
+    } else if (
+      active.activeToolId !== "redact" &&
+      active.activeToolId !== "page-crop" &&
+      (active.editor.tool === "redact" || active.editor.tool === "page-crop")
+    ) {
       dispatchEditorFor(id, { type: "SET_TOOL", t: "select" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
