@@ -660,6 +660,15 @@ export function EditorCanvas({
   const onClickEditHit = (it: TextItem) => {
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
+    // Cover bbox: expand by a fraction of glyph height (more for bold/heavy
+    // originals) so anti-aliased thick strokes don't leak through.
+    const coverPad = Math.max(1, it.h * (it.bold ? 0.18 : 0.1));
+    const cover = {
+      x: it.x - coverPad,
+      y: it.y - coverPad,
+      w: it.w + coverPad * 2,
+      h: it.h + coverPad * 2,
+    };
     const padX = Math.max(2, it.h * 0.15);
     const padTop = Math.max(2, it.h * 0.35);
     const padBottom = Math.max(2, it.h * 0.45);
@@ -676,6 +685,7 @@ export function EditorCanvas({
       fontKey: it.fontKey,
       bold: it.bold, italic: it.italic,
       textOffsetY: padTop,
+      cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName },
     } });
     dispatch({ type: "SELECT_ANNO", id });
