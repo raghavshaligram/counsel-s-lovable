@@ -31,6 +31,7 @@ interface TextItem {
   fontName?: string;
   fontKey?: FontKey;
   color: RGB;
+  bg: RGB;
 }
 
 function sampleTextColor(
