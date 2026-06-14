@@ -74,10 +74,12 @@ export interface EditorCanvasProps {
   dispatch: React.Dispatch<Action>;
   /** Display scale relative to PDF points. 1 = 100%. */
   scale: number;
+  /** Shared pdf.js document (avoids re-parsing per page). */
+  pdfDoc?: any;
 }
 
 export function EditorCanvas({
-  pageIndex, op, srcBytes, annos, state, dispatch, scale,
+  pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
 }: EditorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -88,7 +90,8 @@ export function EditorCanvas({
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Render the page (no rotation logic in the workspace surface — kept simple).
+  // Render this page. Reuses a shared pdf.js doc when provided so we don't
+  // re-parse the file per page. DPR capped at 2 to limit memory.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -103,16 +106,24 @@ export function EditorCanvas({
       }
       try {
         const pdfjs = await loadPdfjs();
-        const doc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
+        const doc = pdfDoc ?? (await pdfjs.getDocument({ data: srcBytes.slice() }).promise);
         if (cancelled) return;
         const page = await doc.getPage(op.srcPage + 1);
-        const vp = page.getViewport({ scale, rotation: op.rotation });
-        canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+        if (cancelled) return;
+        const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2);
+        const vp = page.getViewport({ scale: scale * dpr, rotation: op.rotation });
+        const cssVp = page.getViewport({ scale, rotation: op.rotation });
+        canvas.width = Math.ceil(vp.width);
+        canvas.height = Math.ceil(vp.height);
+        canvas.style.width = `${Math.ceil(cssVp.width)}px`;
+        canvas.style.height = `${Math.ceil(cssVp.height)}px`;
         const ctx = canvas.getContext("2d"); if (!ctx) return;
         await page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]).promise;
+        if (cancelled) return;
 
         const baseVp = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
+        if (cancelled) return;
         const styles = (content as unknown as { styles: Record<string, { fontFamily?: string }> }).styles ?? {};
         type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
         const items: TextItem[] = (content.items as Raw[]).flatMap((it) => {
@@ -129,7 +140,7 @@ export function EditorCanvas({
           const italic = /italic|oblique/.test(ffl);
           const fontKey = mapPdfFontToKey(it.fontName ?? ff, family);
           const x = m[4], y = m[5] - fh;
-          const color = sampleTextColor(ctx, x * scale, y * scale, it.width * scale, fh * scale);
+          const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color }];
         });
         setTextItems(items);
@@ -137,8 +148,13 @@ export function EditorCanvas({
         console.error("[workspace EditorCanvas] page render failed", err);
       }
     })();
-    return () => { cancelled = true; };
-  }, [op, srcBytes, scale]);
+    return () => {
+      cancelled = true;
+      // Free the canvas backing store on unmount (virtualization tear-down).
+      const c = canvasRef.current;
+      if (c) { c.width = 0; c.height = 0; }
+    };
+  }, [op, srcBytes, scale, pdfDoc]);
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
   const toPdf = useCallback((sx: number, sy: number) => ({ x: sx / scale, y: sy / scale }), [scale]);
