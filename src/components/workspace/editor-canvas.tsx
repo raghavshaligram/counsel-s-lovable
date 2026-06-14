@@ -165,6 +165,8 @@ export function EditorCanvas({
   // re-parse the file per page. DPR capped at 2 to limit memory.
   useEffect(() => {
     let cancelled = false;
+    setTextLoaded(false);
+    setBannerDismissed(false);
     (async () => {
       const canvas = canvasRef.current; if (!canvas) return;
       if (op.blank) {
@@ -173,6 +175,7 @@ export function EditorCanvas({
         const ctx = canvas.getContext("2d"); if (!ctx) return;
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
         setTextItems([]);
+        setTextLoaded(true);
         return;
       }
       try {
@@ -216,8 +219,10 @@ export function EditorCanvas({
           return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color, bg }];
         });
         setTextItems(items);
+        setTextLoaded(true);
       } catch (err) {
         console.error("[workspace EditorCanvas] page render failed", err);
+        setTextLoaded(true);
       }
     })();
     return () => {
@@ -227,6 +232,7 @@ export function EditorCanvas({
       if (c) { c.width = 0; c.height = 0; }
     };
   }, [op, srcBytes, scale, pdfDoc]);
+
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
   const toPdf = useCallback((sx: number, sy: number) => ({ x: sx / scale, y: sy / scale }), [scale]);
