@@ -134,15 +134,27 @@ export interface EditorCanvasProps {
   scale: number;
   /** Shared pdf.js document (avoids re-parsing per page). */
   pdfDoc?: any;
+  /** Called when the user clicks "Run OCR" in the scanned-page banner.
+   * Owner runs OCR on the whole document and replaces the tab file. */
+  onRequestOcr?: () => void;
+  /** When true, the banner shows a "Running OCR…" disabled state. */
+  ocrRunning?: boolean;
 }
 
 export function EditorCanvas({
   pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
+  onRequestOcr, ocrRunning,
 }: EditorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [textItems, setTextItems] = useState<TextItem[]>([]);
+  // Tracks whether pdf.js getTextContent has resolved for this page. Until
+  // it has, we don't know if the page is scanned, so the banner stays hidden
+  // (avoids a flash on every page mount).
+  const [textLoaded, setTextLoaded] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
   const [drawing, setDrawing] = useState<
     | null
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
@@ -153,6 +165,8 @@ export function EditorCanvas({
   // re-parse the file per page. DPR capped at 2 to limit memory.
   useEffect(() => {
     let cancelled = false;
+    setTextLoaded(false);
+    setBannerDismissed(false);
     (async () => {
       const canvas = canvasRef.current; if (!canvas) return;
       if (op.blank) {
@@ -161,6 +175,7 @@ export function EditorCanvas({
         const ctx = canvas.getContext("2d"); if (!ctx) return;
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
         setTextItems([]);
+        setTextLoaded(true);
         return;
       }
       try {
@@ -204,8 +219,10 @@ export function EditorCanvas({
           return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color, bg }];
         });
         setTextItems(items);
+        setTextLoaded(true);
       } catch (err) {
         console.error("[workspace EditorCanvas] page render failed", err);
+        setTextLoaded(true);
       }
     })();
     return () => {
@@ -215,6 +232,7 @@ export function EditorCanvas({
       if (c) { c.width = 0; c.height = 0; }
     };
   }, [op, srcBytes, scale, pdfDoc]);
+
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
   const toPdf = useCallback((sx: number, sy: number) => ({ x: sx / scale, y: sy / scale }), [scale]);
@@ -750,9 +768,58 @@ export function EditorCanvas({
     }
   }, [activeText, scale, dispatch]);
 
+  // Scanned-page detection: edit-text tool is engaged, text content has
+  // resolved, but pdf.js found essentially no real glyphs. Threshold is
+  // intentionally generous (a few stamp glyphs shouldn't trip it).
+  const looksScanned =
+    state.tool === "edit-text" &&
+    textLoaded &&
+    !op.blank &&
+    textItems.length < 3;
+  const showOcrBanner = looksScanned && !bannerDismissed;
+
   return (
     <div className="relative inline-block" style={{ background: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
+      {showOcrBanner && (
+        <div
+          className="absolute left-1/2 top-3 z-20 -translate-x-1/2"
+          style={{ pointerEvents: "auto" }}
+        >
+          <div className="flex max-w-[460px] flex-col gap-2 rounded-lg border border-vault/40 bg-[rgba(20,16,12,0.92)] px-3.5 py-2.5 text-[12.5px] text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur">
+            <div className="flex items-start gap-2.5">
+              <span aria-hidden className="mt-[2px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vault" />
+              <div className="leading-snug">
+                This looks like a scanned page — there's no editable text layer.
+                Run OCR to recognise the text and make it editable.
+              </div>
+            </div>
+            <div className="text-[11px] leading-snug text-text-muted">
+              OCR runs on-device. Accuracy depends on scan quality, and edited
+              text is reconstructed, not the original glyphs.
+            </div>
+            <div className="flex justify-end gap-1.5 pt-0.5">
+              <button
+                type="button"
+                onClick={() => setBannerDismissed(true)}
+                disabled={ocrRunning}
+                className="rounded-md px-2.5 py-1 text-[11.5px] text-text-2 hover:bg-surface-3 hover:text-foreground disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => onRequestOcr?.()}
+                disabled={ocrRunning || !onRequestOcr}
+                className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90 disabled:opacity-60"
+              >
+                {ocrRunning ? "Running OCR…" : "Run OCR"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         ref={overlayRef}
         onPointerDown={onPointerDown}
