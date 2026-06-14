@@ -783,6 +783,37 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }
   }, [active.file, ocrRunning, patchActive]);
 
+  // Track scanned pages reported by EditorCanvas instances. Cleared on file
+  // swap (each new file starts fresh) and on OCR success (banner goes away
+  // automatically once the new searchable PDF reloads).
+  const [scannedPages, setScannedPages] = useState<Set<number>>(() => new Set());
+  const [ocrBannerDismissed, setOcrBannerDismissed] = useState(false);
+  const activeFileKey = active.file ? `${active.file.name}:${active.file.size}` : null;
+  useEffect(() => {
+    setScannedPages(new Set());
+    setOcrBannerDismissed(false);
+  }, [activeFileKey]);
+  const onScannedChange = useCallback((pageIndex: number, isScanned: boolean) => {
+    setScannedPages((prev) => {
+      const has = prev.has(pageIndex);
+      if (isScanned && !has) {
+        const next = new Set(prev);
+        next.add(pageIndex);
+        return next;
+      }
+      if (!isScanned && has) {
+        const next = new Set(prev);
+        next.delete(pageIndex);
+        return next;
+      }
+      return prev;
+    });
+  }, []);
+  const showOcrBanner =
+    !!file && editorTool === "edit-text" && scannedPages.size > 0 && !ocrBannerDismissed;
+
+
+
 
   // Unused placeholder to keep TS happy if referenced elsewhere
   void pendingHomeClose;
@@ -915,6 +946,52 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
               </>
             )}
+
+            {/* OCR offer — single chip pinned below the floating toolbar so
+                it never hides behind it. Appears only when Edit text is the
+                active tool AND at least one visible page has no text layer. */}
+            {showOcrBanner && (
+              <div
+                className="pointer-events-none absolute left-1/2 top-[102px] z-40 -translate-x-1/2"
+                role="status"
+              >
+                <div className="pointer-events-auto flex max-w-[480px] items-start gap-3 rounded-lg border border-vault/40 bg-surface-1/95 px-3.5 py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md">
+                  <span
+                    aria-hidden
+                    className="mt-[5px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vault"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12.5px] leading-snug text-foreground">
+                      This looks like a scanned document — there's no editable
+                      text layer.
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-snug text-text-muted">
+                      Run OCR (on-device) to recognise the text. Accuracy
+                      depends on scan quality; edited text is reconstructed.
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={onRequestOcr}
+                        disabled={ocrRunning}
+                        className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90 disabled:opacity-60"
+                      >
+                        {ocrRunning ? "Running OCR…" : "Run OCR"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOcrBannerDismissed(true)}
+                        disabled={ocrRunning}
+                        className="rounded-md px-2.5 py-1 text-[11.5px] text-text-2 hover:bg-surface-3 hover:text-foreground disabled:opacity-50"
+                      >
+                        Not now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
               <CanvasIconButton label="Thumbnails" onClick={() => openTool("organize")}>
                 <LayoutGrid className="h-[15px] w-[15px]" />
@@ -957,7 +1034,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     gap={showGaps ? 18 : 0}
                     onRequestOcr={onRequestOcr}
                     ocrRunning={ocrRunning}
+                    onScannedChange={onScannedChange}
                   />
+
 
                 ) : (
                   <div className="grid h-full place-items-center text-[12.5px] text-text-muted">
@@ -2525,7 +2604,7 @@ import { loadPdfjs } from "@/lib/pdf/worker";
 const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 
 function EditorPages({
-  state, dispatch, zoom, gap, onRequestOcr, ocrRunning,
+  state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
@@ -2533,7 +2612,9 @@ function EditorPages({
   gap: number;
   onRequestOcr?: () => void;
   ocrRunning?: boolean;
+  onScannedChange?: (pageIndex: number, isScanned: boolean) => void;
 }) {
+
 
   const scale = (zoom / 100) * 1.3;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -2667,6 +2748,7 @@ function EditorPages({
                 pdfDoc={pdfDoc}
                 onRequestOcr={onRequestOcr}
                 ocrRunning={ocrRunning}
+                onScannedChange={onScannedChange}
               />
 
             ) : (
