@@ -368,14 +368,17 @@ function drawAnno(
     }
     case "text-edit": {
       // Cover the ORIGINAL glyph area with the sampled local background.
-      // Expand by 1pt on all sides so anti-aliased edges of the original
-      // glyphs do not leak through as a 1px seam.
-      const pad = 1;
+      // Prefer the captured `cover` bbox (fixed at capture time) over the
+      // editable text box so a shrinking replacement still hides the
+      // original glyphs. Expand more for bold/heavy originals so thick
+      // anti-aliased strokes don't leak through.
+      const c = a.cover ?? { x: a.x, y: a.y, w: a.w, h: a.h };
+      const pad = a.bold ? 2 : 1;
       page.drawRectangle({
-        x: a.x - pad,
-        y: yFlip(a.y, a.h) - pad,
-        width: a.w + pad * 2,
-        height: a.h + pad * 2,
+        x: c.x - pad,
+        y: yFlip(c.y, c.h) - pad,
+        width: c.w + pad * 2,
+        height: c.h + pad * 2,
         color: col(a.bg),
       });
       const bundledKey = a.fontKey ? `${a.fontKey}|${a.bold ? 1 : 0}|${a.italic ? 1 : 0}` : "";
