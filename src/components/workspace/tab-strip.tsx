@@ -3,9 +3,11 @@ import { cn } from "@/lib/utils";
 import type { TabState } from "@/lib/workspace/tabs";
 
 /**
- * Single tab strip below the top bar. One row, scrolls horizontally past
- * the cap. Tabs switch the active document — they never spawn extra
- * rails or panels.
+ * Document tab strip. Tabs represent OPEN documents only — the Start
+ * screen is never a tab. When no document is open, the strip renders
+ * nothing and the Start screen fills the canvas. The "+" button opens a
+ * fresh Start tab so the user can pick another document; existing tabs
+ * stay put.
  */
 export function TabStrip({
   tabs,
@@ -20,15 +22,18 @@ export function TabStrip({
   onClose: (id: string) => void;
   onNew: () => void;
 }) {
+  const docTabs = tabs.filter((t) => t.file !== null);
+  if (docTabs.length === 0) return null;
+
   return (
     <div
       role="tablist"
       aria-label="Open documents"
-      className="flex h-[34px] shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-surface-1 px-2"
+      className="flex h-[32px] shrink-0 items-center gap-px overflow-x-auto border-b border-border bg-surface-1 px-2"
     >
-      {tabs.map((t) => {
+      {docTabs.map((t) => {
         const active = t.id === activeId;
-        const label = t.file?.name ?? "Start";
+        const label = t.file?.name ?? "";
         return (
           <div
             key={t.id}
@@ -44,10 +49,10 @@ export function TabStrip({
             }}
             title={label}
             className={cn(
-              "group flex h-[26px] min-w-[120px] max-w-[200px] shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-[12px] transition-colors",
+              "group relative flex h-[32px] min-w-[120px] max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[12px] transition-colors",
               active
-                ? "border-vault/40 bg-accent-soft text-vault"
-                : "border-transparent text-text-2 hover:bg-surface-2 hover:text-foreground",
+                ? "text-vault"
+                : "text-text-2 hover:bg-surface-2 hover:text-foreground",
             )}
           >
             <span className="truncate flex-1">{label}</span>
@@ -56,23 +61,27 @@ export function TabStrip({
                 •
               </span>
             )}
-            {tabs.length > 1 && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClose(t.id);
-                }}
-                className={cn(
-                  "grid h-4 w-4 place-items-center rounded text-text-muted transition-opacity",
-                  "hover:bg-surface-3 hover:text-foreground",
-                  active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                )}
-                aria-label={`Close ${label}`}
-                title="Close tab"
-              >
-                <X className="h-3 w-3" />
-              </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose(t.id);
+              }}
+              className={cn(
+                "grid h-4 w-4 place-items-center rounded text-text-muted transition-opacity",
+                "hover:bg-surface-3 hover:text-foreground",
+                active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+              )}
+              aria-label={`Close ${label}`}
+              title="Close tab"
+            >
+              <X className="h-3 w-3" />
+            </button>
+            {active && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-vault"
+              />
             )}
           </div>
         );
@@ -80,7 +89,7 @@ export function TabStrip({
       <button
         type="button"
         onClick={onNew}
-        className="ml-1 grid h-[26px] w-[26px] shrink-0 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
+        className="ml-1 grid h-[24px] w-[24px] shrink-0 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
         title="New tab"
         aria-label="New tab"
       >
