@@ -66,9 +66,12 @@ function sampleTextColor(
   }
 }
 
-// Sample the page background (the lightest pixels in a thin band around the
-// glyph bbox). This is what the white-out rectangle should be filled with —
-// hard-coding white leaves a visible white box on tinted pages.
+// Sample the page background by reading a thin RING immediately outside the
+// glyph bbox (top + bottom strips, plus left + right strips). We deliberately
+// avoid sampling pixels inside the bbox (those are the glyphs themselves) and
+// we do NOT filter by luminance — that lets the cover match any background
+// color (light, dark, tinted, gradient sampled locally) instead of falling
+// back to white on non-white pages.
 function samplePageBg(
   ctx: CanvasRenderingContext2D,
   sx: number,
@@ -77,32 +80,44 @@ function samplePageBg(
   sh: number,
 ): RGB {
   try {
-    const pad = Math.max(2, Math.floor(sh * 0.4));
-    const x = Math.max(0, Math.floor(sx - pad));
-    const y = Math.max(0, Math.floor(sy - pad));
-    const w = Math.max(1, Math.floor(sw + pad * 2));
-    const h = Math.max(1, Math.floor(sh + pad * 2));
     const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    const cx = Math.min(x, cw - 1), cy = Math.min(y, ch - 1);
-    const cwClamp = Math.max(1, Math.min(w, cw - cx));
-    const chClamp = Math.max(1, Math.min(h, ch - cy));
-    const data = ctx.getImageData(cx, cy, cwClamp, chClamp).data;
-    const samples: { r: number; g: number; b: number; lum: number }[] = [];
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-      if (a < 128) continue;
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      // ignore dark pixels (the glyphs themselves)
-      if (lum < 200) continue;
-      samples.push({ r, g, b, lum });
+    const band = Math.max(2, Math.floor(sh * 0.45));
+    const bx = Math.max(0, Math.floor(sx));
+    const by = Math.max(0, Math.floor(sy));
+    const bw = Math.max(1, Math.floor(sw));
+    const bh = Math.max(1, Math.floor(sh));
+
+    const strips: ImageData[] = [];
+    const read = (x: number, y: number, w: number, h: number) => {
+      const cx = Math.max(0, Math.min(x, cw - 1));
+      const cy = Math.max(0, Math.min(y, ch - 1));
+      const ww = Math.max(1, Math.min(w, cw - cx));
+      const hh = Math.max(1, Math.min(h, ch - cy));
+      if (ww < 1 || hh < 1) return;
+      strips.push(ctx.getImageData(cx, cy, ww, hh));
+    };
+    // top + bottom strips outside glyph rows
+    read(bx, by - band, bw, band);
+    read(bx, by + bh, bw, band);
+    // left + right strips (smaller — kerning extents)
+    read(bx - band, by, band, bh);
+    read(bx + bw, by, band, bh);
+
+    const rs: number[] = [], gs: number[] = [], bs: number[] = [];
+    for (const img of strips) {
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]);
+      }
     }
-    if (samples.length < 4) return { r: 1, g: 1, b: 1 };
-    // take the top quartile (brightest = background)
-    samples.sort((p, q) => q.lum - p.lum);
-    const take = Math.max(2, Math.floor(samples.length * 0.25));
-    let r = 0, g = 0, b = 0;
-    for (let i = 0; i < take; i++) { r += samples[i].r; g += samples[i].g; b += samples[i].b; }
-    return { r: r / take / 255, g: g / take / 255, b: b / take / 255 };
+    if (rs.length < 4) return { r: 1, g: 1, b: 1 };
+    // Median per channel — robust to occasional outliers (descenders, rules).
+    const med = (arr: number[]) => {
+      arr.sort((a, b) => a - b);
+      return arr[arr.length >> 1];
+    };
+    return { r: med(rs) / 255, g: med(gs) / 255, b: med(bs) / 255 };
   } catch {
     return { r: 1, g: 1, b: 1 };
   }
