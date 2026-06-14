@@ -292,6 +292,16 @@ export async function ocrPdfToSearchable(
   const processPage = async (pageNum: number): Promise<void> => {
     if (signal?.aborted) throw new Error("Cancelled");
 
+    // Caller has already OCR'd this page in an earlier run — just copy it
+    // through (the source PDF passed in is the OCR'd one, so the existing
+    // text layer is preserved). Skips render + OCR entirely.
+    if (skipSet.has(pageNum)) {
+      pending.set(pageNum - 1, { kind: "copy", index: pageNum - 1, pageNum });
+      report(pageNum, "copied");
+      flushEmbeds();
+      return;
+    }
+
     // Cheap probe FIRST: check for a text layer before doing any raster work.
     // If the page is native (Word-export style), skip the canvas + JPEG +
     // OCR entirely and just copy the original page through. Massive win on
