@@ -179,6 +179,8 @@ export interface TextEditAnno extends BaseAnno {
   fontKey?: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  align?: TextAlign;
   // top offset (in PDF points) inside the bbox where the text should start.
   textOffsetY?: number;
   source?: TextSource;
