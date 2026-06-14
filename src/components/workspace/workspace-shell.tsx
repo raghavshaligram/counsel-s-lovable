@@ -2145,11 +2145,16 @@ function relTime(ts: number) {
 
 
 /* ---------------------- Editor pages list (native) -------------------- */
-// Renders every page of the loaded EditorDoc using the ported EditorCanvas.
-// Reuses the shared reducer; the workspace's floating toolbar drives state.
+// Virtualized renderer: loads pdf.js doc ONCE, measures every page, then
+// mounts EditorCanvas only for pages near the viewport. Off-screen pages
+// render as sized placeholders so the scrollbar stays accurate while
+// memory stays bounded. pdf.js parsing runs in its Web Worker.
 
 import type { Dispatch as ReactDispatch } from "react";
 import type { State as EditorState } from "@/lib/editor/state";
+import { loadPdfjs } from "@/lib/pdf/worker";
+
+const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 
 function EditorPages({
   state, dispatch, zoom, gap,
@@ -2159,26 +2164,145 @@ function EditorPages({
   zoom: number;
   gap: number;
 }) {
-  if (!state.doc) return null;
   const scale = (zoom / 100) * 1.3;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [sizes, setSizes] = useState<Array<{ width: number; height: number }>>([]);
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
+
+  const srcBytes = state.doc?.srcBytes;
+  const pages = state.doc?.pages;
+
+  // Load doc once per srcBytes.
+  useEffect(() => {
+    if (!srcBytes) { setPdfDoc(null); setSizes([]); return; }
+    let cancelled = false;
+    setProgress({ loaded: 0, total: 0 });
+    (async () => {
+      try {
+        const pdfjs = await loadPdfjs();
+        const task = pdfjs.getDocument({ data: srcBytes.slice() });
+        task.onProgress = (p: { loaded: number; total: number }) => {
+          if (!cancelled) setProgress({ loaded: p.loaded, total: p.total });
+        };
+        const doc = await task.promise;
+        if (cancelled) return;
+        // Measure all pages (cheap — getPage doesn't render).
+        const measured: Array<{ width: number; height: number }> = [];
+        for (let i = 1; i <= doc.numPages; i++) {
+          const page = await doc.getPage(i);
+          if (cancelled) return;
+          const vp = page.getViewport({ scale: 1 });
+          measured.push({ width: vp.width, height: vp.height });
+        }
+        if (cancelled) return;
+        setSizes(measured);
+        setPdfDoc(doc);
+        setProgress(null);
+      } catch (err) {
+        console.error("[EditorPages] doc load failed", err);
+        setProgress(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [srcBytes]);
+
+  // Recompute which pages are within viewport+buffer.
+  const recompute = useCallback(() => {
+    const root = containerRef.current?.parentElement; // the scrollable area
+    if (!root || !pages) return;
+    const rootRect = root.getBoundingClientRect();
+    const next = new Set<number>();
+    for (let i = 0; i < pageRefs.current.length; i++) {
+      const el = pageRefs.current[i];
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      const above = rootRect.top - r.bottom;
+      const below = r.top - rootRect.bottom;
+      if (above <= VIRT_BUFFER_PX && below <= VIRT_BUFFER_PX) next.add(i);
+    }
+    if (next.size === 0 && pages.length > 0) next.add(0);
+    setVisible((prev) => {
+      if (prev.size === next.size) {
+        let same = true;
+        for (const v of next) if (!prev.has(v)) { same = false; break; }
+        if (same) return prev;
+      }
+      return next;
+    });
+  }, [pages]);
+
+  useEffect(() => {
+    const root = containerRef.current?.parentElement;
+    if (!root) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; recompute(); });
+    };
+    recompute();
+    root.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [recompute, sizes.length, zoom]);
+
+  if (!state.doc) return null;
+
   return (
     <div
+      ref={containerRef}
       className="mx-auto flex flex-col items-center py-6 px-4"
       style={{ gap }}
     >
-      {state.doc.pages.map((op, i) => {
+      {progress && (
+        <div className="text-[12px] text-text-muted">
+          {progress.total > 0
+            ? `Loading document… ${Math.round((progress.loaded / progress.total) * 100)}%`
+            : "Loading document…"}
+          {sizes.length === 0 && srcBytes && srcBytes.byteLength > 20_000_000 && (
+            <span className="ml-2 opacity-70">Large file — optimizing…</span>
+          )}
+        </div>
+      )}
+      {pages!.map((op, i) => {
+        const meta = sizes[op.srcPage] ?? { width: op.width || 612, height: op.height || 792 };
+        const w = Math.ceil(meta.width * scale);
+        const h = Math.ceil(meta.height * scale);
+        const inView = visible.has(i);
         const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
         return (
-          <EditorCanvas
+          <div
             key={`${i}-${op.srcPage}-${op.rotation}-${op.blank ? 1 : 0}`}
-            pageIndex={i}
-            op={op}
-            srcBytes={state.doc!.srcBytes}
-            annos={annosForPage}
-            state={state}
-            dispatch={dispatch}
-            scale={scale}
-          />
+            ref={(el) => { pageRefs.current[i] = el; }}
+            data-page-index={i}
+            style={{ width: w, minHeight: h }}
+            className="relative"
+          >
+            {inView && (pdfDoc || op.blank) ? (
+              <EditorCanvas
+                pageIndex={i}
+                op={op}
+                srcBytes={state.doc!.srcBytes}
+                annos={annosForPage}
+                state={state}
+                dispatch={dispatch}
+                scale={scale}
+                pdfDoc={pdfDoc}
+              />
+            ) : (
+              <div
+                style={{ width: w, height: h }}
+                className="rounded-sm bg-[var(--paper)] opacity-60"
+                aria-hidden
+              />
+            )}
+          </div>
         );
       })}
     </div>
