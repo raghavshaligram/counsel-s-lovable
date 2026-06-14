@@ -134,17 +134,20 @@ export interface EditorCanvasProps {
   scale: number;
   /** Shared pdf.js document (avoids re-parsing per page). */
   pdfDoc?: any;
-  /** Called when the user clicks "Run OCR" in the scanned-page banner.
-   * Owner runs OCR on the whole document and replaces the tab file. */
+  /** Owner runs OCR on the whole document and replaces the tab file. */
   onRequestOcr?: () => void;
-  /** When true, the banner shows a "Running OCR…" disabled state. */
+  /** When true, the OCR offer renders a "Running OCR…" disabled state. */
   ocrRunning?: boolean;
+  /** Reports whether this page has no real text layer. Shell shows the
+   * single floating OCR offer when at least one visible page is scanned. */
+  onScannedChange?: (pageIndex: number, isScanned: boolean) => void;
 }
 
 export function EditorCanvas({
   pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
-  onRequestOcr, ocrRunning,
+  onRequestOcr, ocrRunning, onScannedChange,
 }: EditorCanvasProps) {
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
