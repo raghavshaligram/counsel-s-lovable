@@ -372,6 +372,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     void saveOpenTabs(meta);
   }, [hydrated, tabs]);
 
+  // Persist manual pins whenever they change post-hydration. Belt + braces:
+  // togglePin already writes inline, but a dedicated effect guarantees the
+  // latest array is mirrored to localStorage even across StrictMode replays.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(PINS_KEY, JSON.stringify(manualPins));
+    } catch {
+      /* ignore */
+    }
+  }, [hydrated, manualPins]);
+
   // ----------------- Tool selection (per-active-tab) ------------------
   // When the active rail tool flips to "redact" on this tab, default its
   // editor canvas mode to redact. Leaving redact reverts to select.
@@ -2337,9 +2349,15 @@ function ToolModal({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (railFull) {
+                              toast.error(
+                                `Rail is full (${PIN_CAP_TOTAL} max). Unpin a tool first.`,
+                              );
+                              return;
+                            }
                             onTogglePin(tool.id);
                           }}
-                          disabled={railFull}
+                          aria-disabled={railFull}
                           aria-label={isPinned ? "Unpin from rail" : "Pin to rail"}
                           title={
                             isPinned
@@ -2352,7 +2370,7 @@ function ToolModal({
                             "mr-1.5 grid h-6 w-6 shrink-0 place-items-center rounded text-text-muted transition-colors",
                             "hover:bg-surface-1 hover:text-foreground",
                             isPinned && "text-vault hover:text-vault",
-                            railFull && "opacity-30 cursor-not-allowed hover:bg-transparent hover:text-text-muted",
+                            railFull && "opacity-40",
                           )}
                         >
                           {isPinned ? (
