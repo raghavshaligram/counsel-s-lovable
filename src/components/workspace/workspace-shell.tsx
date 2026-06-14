@@ -1184,104 +1184,145 @@ function ToolbarBtn({
 
 /* --------------------- Contextual properties bar -------------------- */
 
-function ContextualBar({ tool }: { tool: EditorTool }) {
-  const props = contextFor(tool);
-  if (!props) return null;
+function ContextualBar({
+  tool,
+  state,
+  dispatch,
+}: {
+  tool: EditorTool;
+  state: ReturnType<typeof reducer> extends infer S ? S : never;
+  dispatch: React.Dispatch<EditorAction>;
+}) {
+  // Find the currently selected annotation, if any.
+  const sel = state.doc?.annotations.find((a) => a.id === state.selectedAnnoId) ?? null;
+  const isTextLike =
+    (tool === "edit-text" || tool === "text") &&
+    sel &&
+    (sel.kind === "text-edit" || sel.kind === "text");
+
+  // Render either the wired text-edit bar OR the generic stub for other tools.
+  const inner = isTextLike
+    ? <TextEditPropsBar anno={sel as Extract<typeof sel, { kind: "text-edit" | "text" }>} dispatch={dispatch} />
+    : (tool === "edit-text" || tool === "text")
+      ? <span className="text-text-muted">{tool === "edit-text"
+          ? "Click any text on the page to edit — font is auto-detected."
+          : "Click on the page to add a text box."}</span>
+      : contextStub(tool);
+  if (!inner) return null;
   return (
     <div
       className="absolute left-1/2 top-[58px] z-20 flex -translate-x-1/2 items-center gap-2 border border-border bg-surface-3 px-2.5 py-1.5 text-[12px] text-text-2"
       style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
     >
-      {props}
+      {inner}
     </div>
   );
 }
 
-function contextFor(tool: EditorTool): React.ReactNode | null {
-  switch (tool) {
-    case "text":
-    case "edit-text":
-      return (
-        <>
-          <Select label="Inter" />
-          <Select label="14" />
-          <span className="h-4 w-px bg-border" />
-          <PropBtn>B</PropBtn>
-          <PropBtn className="italic">I</PropBtn>
-          <PropBtn className="underline">U</PropBtn>
-          <span className="h-4 w-px bg-border" />
-          <ColorSwatch />
-          <Select label="Left" />
-        </>
-      );
-    case "highlight":
-    case "underline":
-    case "strikethrough":
-      return (
-        <>
-          <ColorSwatch />
-          <span className="text-text-muted">Color</span>
-        </>
-      );
-    case "rect":
-    case "ellipse":
-    case "line":
-    case "arrow":
-    case "freehand":
-      return (
-        <>
-          <ColorSwatch />
-          <span className="h-4 w-px bg-border" />
-          <Select label="2 px" />
-        </>
-      );
-    case "image":
-      return (
-        <>
-          <PropBtn>Position</PropBtn>
-          <PropBtn title="Crop this image only (not the page)">Crop image</PropBtn>
-        </>
-      );
-    case "redact":
-      return (
-        <>
-          <span className="text-text-muted">Drag to mark text or regions for permanent redaction on export</span>
-        </>
-      );
-    case "note":
-    case "select":
-    default:
-      return null;
-  }
-}
-
-function Select({ label }: { label: string }) {
+// Functional properties bar for a selected text/text-edit annotation.
+function TextEditPropsBar({
+  anno,
+  dispatch,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  anno: any;
+  dispatch: React.Dispatch<EditorAction>;
+}) {
+  const isEdit = anno.kind === "text-edit";
+  const patch = (p: Record<string, unknown>) =>
+    dispatch({ type: "UPDATE_ANNO", id: anno.id, patch: p as never });
+  const fontKey: string = anno.fontKey ?? "arimo";
+  const fontMeta = FONT_META[fontKey as FontKey] ?? FONT_META.arimo;
   return (
-    <button
-      type="button"
-      className="rounded-md bg-surface-2 px-2 py-0.5 text-text-2 hover:text-foreground"
-    >
-      {label}
-    </button>
+    <>
+      <select
+        aria-label="Font"
+        value={fontKey}
+        onChange={(e) => patch({ fontKey: e.target.value })}
+        className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
+        title={`Metric-compatible: matches ${fontMeta.matches}`}
+      >
+        {Object.values(FONT_META).map((m) => (
+          <option key={m.key} value={m.key}>{m.label}</option>
+        ))}
+      </select>
+      <input
+        aria-label="Size"
+        type="number"
+        min={4}
+        max={144}
+        step={0.5}
+        value={Math.round(anno.fontSize * 10) / 10}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (Number.isFinite(v) && v > 0) patch({ fontSize: v });
+        }}
+        className="w-14 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
+      />
+      <span className="h-4 w-px bg-border" />
+      <PropToggle
+        active={!!anno.bold}
+        onClick={() => patch({ bold: !anno.bold })}
+        title="Bold"
+      >
+        <span className="font-bold">B</span>
+      </PropToggle>
+      <PropToggle
+        active={!!anno.italic}
+        onClick={() => patch({ italic: !anno.italic })}
+        title="Italic"
+      >
+        <span className="italic">I</span>
+      </PropToggle>
+      <span className="h-4 w-px bg-border" />
+      <ColorPicker
+        value={anno.color}
+        onChange={(c) => patch({ color: c })}
+      />
+      <input
+        aria-label="Text color"
+        type="color"
+        value={rgbToHex(anno.color)}
+        onChange={(e) => patch({ color: hexToRgb(e.target.value) })}
+        className="h-5 w-5 cursor-pointer rounded-sm border border-border bg-transparent p-0"
+        title="Custom color"
+      />
+      {isEdit && (
+        <>
+          <span className="h-4 w-px bg-border" />
+          <span
+            className="text-text-muted"
+            title="Edit replaces text as an overlay and matches the font as closely as possible — adjust it here if needed."
+            aria-label="Help"
+          >
+            ⓘ
+          </span>
+        </>
+      )}
+    </>
   );
 }
 
-function PropBtn({
+function PropToggle({
   children,
-  className,
+  active,
+  onClick,
   title,
 }: {
   children: React.ReactNode;
-  className?: string;
+  active?: boolean;
+  onClick: () => void;
   title?: string;
 }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       title={title}
+      aria-pressed={active}
       className={cn(
         "grid h-6 min-w-[24px] place-items-center rounded-md px-1.5 text-[12px] text-text-2 hover:bg-surface-2 hover:text-foreground",
-        className
+        active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground",
       )}
     >
       {children}
@@ -1289,15 +1330,70 @@ function PropBtn({
   );
 }
 
-function ColorSwatch() {
+function ColorPicker({
+  value,
+  onChange,
+}: {
+  value: RGB;
+  onChange: (c: RGB) => void;
+}) {
   return (
-    <button
-      type="button"
-      aria-label="Color"
-      className="h-4 w-4 rounded-full ring-1 ring-border"
-      style={{ background: "var(--vault)" }}
-    />
+    <div className="flex items-center gap-0.5">
+      {PALETTE.map((c, i) => {
+        const isActive =
+          Math.abs(c.r - value.r) < 0.02 &&
+          Math.abs(c.g - value.g) < 0.02 &&
+          Math.abs(c.b - value.b) < 0.02;
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onChange(c)}
+            aria-label="Color"
+            className={cn(
+              "h-4 w-4 rounded-full ring-1 ring-border",
+              isActive && "ring-2 ring-vault",
+            )}
+            style={{ background: `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})` }}
+          />
+        );
+      })}
+    </div>
   );
+}
+
+function rgbToHex(c: RGB): string {
+  const h = (n: number) => Math.round(n * 255).toString(16).padStart(2, "0");
+  return `#${h(c.r)}${h(c.g)}${h(c.b)}`;
+}
+function hexToRgb(hex: string): RGB {
+  const s = hex.replace("#", "");
+  const n = parseInt(s.length === 3 ? s.split("").map((x) => x + x).join("") : s, 16);
+  return { r: ((n >> 16) & 0xff) / 255, g: ((n >> 8) & 0xff) / 255, b: (n & 0xff) / 255 };
+}
+
+// Stub bars for non-text tools (unchanged from previous behaviour).
+function contextStub(tool: EditorTool): React.ReactNode | null {
+  switch (tool) {
+    case "highlight":
+    case "underline":
+    case "strikethrough":
+      return <span className="text-text-muted">Drag across text to mark.</span>;
+    case "rect":
+    case "ellipse":
+    case "line":
+    case "arrow":
+    case "freehand":
+      return <span className="text-text-muted">Drag on the page to draw.</span>;
+    case "image":
+      return <span className="text-text-muted">Click the page to place the image. Select it to crop.</span>;
+    case "redact":
+      return <span className="text-text-muted">Drag to mark text or regions for permanent redaction on export.</span>;
+    case "note":
+    case "select":
+    default:
+      return null;
+  }
 }
 
 function CanvasIconButton({
