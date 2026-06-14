@@ -42,6 +42,10 @@ export interface OcrOptions {
   // English. Combining languages costs accuracy and memory, so keep the
   // list tight — usually just the document's primary language.
   languages?: string[];
+  // When set, an abort on `signal` returns whatever pages have already been
+  // OCR'd + embedded instead of throwing. Useful for "stop & try editing"
+  // so the user can sanity-check partial output before letting the rest run.
+  returnPartialOnAbort?: boolean;
 }
 
 interface OcrWord {
