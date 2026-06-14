@@ -822,6 +822,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 <RailButton
                   active={activeToolId === tool.id && inspectorOpen}
                   label={tool.label}
+                  kbd={SHORTCUTS[tool.id]}
+                  pinned={manualPinSet.has(tool.id)}
                   onClick={() => openTool(tool.id)}
                 >
                   <tool.icon className="h-[18px] w-[18px]" />
