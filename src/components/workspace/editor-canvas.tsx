@@ -694,6 +694,49 @@ export function EditorCanvas({
   const screenW = canvasRef.current?.width ?? Math.ceil(op.width * scale);
   const screenH = canvasRef.current?.height ?? Math.ceil(op.height * scale);
 
+  // The currently active text box (editing OR selected). Used to drive the
+  // floating mini-toolbar and the auto-grow measurement loop.
+  const activeText = annos.find(
+    (a) =>
+      (a.id === editingId || a.id === state.selectedAnnoId) &&
+      (a.kind === "text" || a.kind === "text-edit"),
+  ) as (typeof annos[number] & { kind: "text" | "text-edit" }) | undefined;
+
+  // Auto-grow the active text box to fit its content. Position stays locked
+  // at (a.x, a.y); only width/height grow from the anchored origin.
+  useEffect(() => {
+    if (!activeText) return;
+    const el = measureRef.current;
+    if (!el) return;
+    const a = activeText;
+    const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
+    const fam = editFontKey && FONT_META[editFontKey]
+      ? FONT_META[editFontKey].cssFamily
+      : (a.family === "serif" ? `'Times New Roman', Times, serif`
+        : a.family === "mono" ? `'Courier New', Courier, monospace`
+        : `Helvetica, Arial, sans-serif`);
+    const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+    const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) : 0;
+    const padBottom = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.35) : 0;
+    el.style.fontSize = `${a.fontSize * scale}px`;
+    el.style.fontFamily = fam;
+    el.style.fontWeight = a.bold ? "700" : "400";
+    el.style.fontStyle = a.italic ? "italic" : "normal";
+    el.style.lineHeight = "1.15";
+    el.style.whiteSpace = "pre";
+    el.textContent = a.text && a.text.length > 0 ? a.text : " ";
+    // Measure widest line + total height; convert px → PDF points.
+    const measuredW = el.offsetWidth / scale + padX * 2 + 1;
+    const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
+    const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
+    const minH = a.fontSize * 1.15 + padTop + padBottom;
+    const newW = Math.max(minW, measuredW);
+    const newH = Math.max(minH, measuredH);
+    if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
+      dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
+    }
+  }, [activeText, scale, dispatch]);
+
   return (
     <div className="relative inline-block" style={{ background: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
