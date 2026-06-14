@@ -360,6 +360,20 @@ export function EditorCanvas({
       if (isEditingThis) return;
       e.stopPropagation();
       dispatch({ type: "SELECT_ANNO", id: a.id });
+      // text-edit replacements are LOCKED to the original glyph position —
+      // they replace existing text in place and must never drift. Click only
+      // selects / enters edit mode; no drag.
+      if (a.kind === "text-edit") {
+        const downX = e.clientX, downY = e.clientY;
+        const up = (ev: MouseEvent) => {
+          window.removeEventListener("mouseup", up);
+          if (Math.hypot(ev.clientX - downX, ev.clientY - downY) < 3 && selected) {
+            setEditingId(a.id);
+          }
+        };
+        window.addEventListener("mouseup", up);
+        return;
+      }
       const startX = e.clientX, startY = e.clientY;
       const origX = a.x, origY = a.y;
       let moved = false;
@@ -377,6 +391,7 @@ export function EditorCanvas({
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", up);
     };
+
     const onResize = (e: React.MouseEvent) => {
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
