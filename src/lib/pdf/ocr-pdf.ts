@@ -262,7 +262,7 @@ export async function ocrPdfToSearchable(
   const flushEmbeds = () => {
     embedChain = embedChain.then(async () => {
       while (pending.has(nextToEmbed)) {
-        if (signal?.aborted) return;
+        if (signal?.aborted && !partial) return;
         const job = pending.get(nextToEmbed)!;
         pending.delete(nextToEmbed);
         if (job.kind === "copy") {
