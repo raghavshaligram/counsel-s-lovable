@@ -828,7 +828,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     });
   }, []);
   const showOcrBanner =
-    !!file && editorTool === "edit-text" && scannedPages.size > 0 && !ocrBannerDismissed;
+    !!file && editorTool === "edit-text" && (ocrRunning || (scannedPages.size > 0 && !ocrBannerDismissed));
 
 
 
