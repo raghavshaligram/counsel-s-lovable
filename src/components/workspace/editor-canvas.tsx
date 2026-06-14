@@ -31,6 +31,7 @@ interface TextItem {
   fontName?: string;
   fontKey?: FontKey;
   color: RGB;
+  bg: RGB;
 }
 
 function sampleTextColor(
@@ -62,6 +63,48 @@ function sampleTextColor(
     return { r: r / take / 255, g: g / take / 255, b: b / take / 255 };
   } catch {
     return { r: 0, g: 0, b: 0 };
+  }
+}
+
+// Sample the page background (the lightest pixels in a thin band around the
+// glyph bbox). This is what the white-out rectangle should be filled with —
+// hard-coding white leaves a visible white box on tinted pages.
+function samplePageBg(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+): RGB {
+  try {
+    const pad = Math.max(2, Math.floor(sh * 0.4));
+    const x = Math.max(0, Math.floor(sx - pad));
+    const y = Math.max(0, Math.floor(sy - pad));
+    const w = Math.max(1, Math.floor(sw + pad * 2));
+    const h = Math.max(1, Math.floor(sh + pad * 2));
+    const cw = ctx.canvas.width, ch = ctx.canvas.height;
+    const cx = Math.min(x, cw - 1), cy = Math.min(y, ch - 1);
+    const cwClamp = Math.max(1, Math.min(w, cw - cx));
+    const chClamp = Math.max(1, Math.min(h, ch - cy));
+    const data = ctx.getImageData(cx, cy, cwClamp, chClamp).data;
+    const samples: { r: number; g: number; b: number; lum: number }[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+      if (a < 128) continue;
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      // ignore dark pixels (the glyphs themselves)
+      if (lum < 200) continue;
+      samples.push({ r, g, b, lum });
+    }
+    if (samples.length < 4) return { r: 1, g: 1, b: 1 };
+    // take the top quartile (brightest = background)
+    samples.sort((p, q) => q.lum - p.lum);
+    const take = Math.max(2, Math.floor(samples.length * 0.25));
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < take; i++) { r += samples[i].r; g += samples[i].g; b += samples[i].b; }
+    return { r: r / take / 255, g: g / take / 255, b: b / take / 255 };
+  } catch {
+    return { r: 1, g: 1, b: 1 };
   }
 }
 
@@ -141,7 +184,8 @@ export function EditorCanvas({
           const fontKey = mapPdfFontToKey(it.fontName ?? ff, family);
           const x = m[4], y = m[5] - fh;
           const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
-          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color }];
+          const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
+          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color, bg }];
         });
         setTextItems(items);
       } catch (err) {
@@ -586,7 +630,7 @@ export function EditorCanvas({
       color: it.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
-      bg: { r: 1, g: 1, b: 1 },
+      bg: it.bg,
       family: it.family,
       fontKey: it.fontKey,
       bold: it.bold, italic: it.italic,
