@@ -865,13 +865,13 @@ const TOOLBAR_COLORS: RGB[] = [
   { r: 0.15, g: 0.65, b: 0.35 },
 ];
 
-const TOOLBAR_FONTS: { key: FontKey; label: string }[] = [
-  { key: "arimo",   label: "Sans" },
-  { key: "tinos",   label: "Serif" },
-  { key: "cousine", label: "Mono" },
-  { key: "carlito", label: "Carlito" },
-  { key: "caladea", label: "Caladea" },
-];
+// All bundled metric-compatible open fonts. These are the only families we
+// can embed into the exported PDF, so the toolbar lists every one of them
+// with both its name and the proprietary face it stands in for.
+const TOOLBAR_FONTS: { key: FontKey; label: string }[] = FONT_KEYS.map((k) => ({
+  key: k,
+  label: `${FONT_META[k].label} — ${FONT_META[k].matches}`,
+}));
 
 function TextMiniToolbar({
   anno, scale, pageW, pageH, dispatch,
