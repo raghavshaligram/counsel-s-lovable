@@ -2475,13 +2475,16 @@ import { loadPdfjs } from "@/lib/pdf/worker";
 const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 
 function EditorPages({
-  state, dispatch, zoom, gap,
+  state, dispatch, zoom, gap, onRequestOcr, ocrRunning,
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
   zoom: number;
   gap: number;
+  onRequestOcr?: () => void;
+  ocrRunning?: boolean;
 }) {
+
   const scale = (zoom / 100) * 1.3;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
