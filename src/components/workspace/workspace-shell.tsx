@@ -737,6 +737,53 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }
   }, [editorState.doc]);
 
+  // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
+  // Runs the existing on-device OCR pipeline on the active tab's file and
+  // swaps the file in place so the edit-text tool can immediately work on
+  // the new text layer. Filename is bumped with " (OCR)" so the editor's
+  // load effect (which dedupes by fileName) re-parses.
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const onRequestOcr = useCallback(async () => {
+    const f = active.file;
+    if (!f || f.size === 0) {
+      toast.error("No document to OCR");
+      return;
+    }
+    if (ocrRunning) return;
+    setOcrRunning(true);
+    const toastId = "wsx-ocr";
+    toast.loading("Preparing OCR…", { id: toastId });
+    try {
+      const { ocrPdfToSearchable } = await import("@/lib/pdf/ocr-pdf");
+      const bytes = await ocrPdfToSearchable(
+        f,
+        (p) => {
+          const pct = p.totalPages > 0 ? Math.round((p.page / p.totalPages) * 100) : 0;
+          toast.loading(`OCR: ${p.message}${p.totalPages > 0 ? ` (${pct}%)` : ""}`, {
+            id: toastId,
+          });
+        },
+      );
+      const baseName = f.name.replace(/\s*\(OCR\)\.pdf$/i, "").replace(/\.pdf$/i, "");
+      const newFile = new File(
+        [bytes as BlobPart],
+        `${baseName} (OCR).pdf`,
+        { type: "application/pdf" },
+      );
+      patchActive({ file: newFile, isDirty: true });
+      toast.success("Text recognised — you can edit it now", { id: toastId });
+    } catch (err) {
+      console.error("[workspace] OCR failed", err);
+      toast.error("OCR failed", {
+        id: toastId,
+        description: (err as Error).message,
+      });
+    } finally {
+      setOcrRunning(false);
+    }
+  }, [active.file, ocrRunning, patchActive]);
+
+
   // Unused placeholder to keep TS happy if referenced elsewhere
   void pendingHomeClose;
 
