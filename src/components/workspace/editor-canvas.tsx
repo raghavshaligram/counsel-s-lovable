@@ -524,25 +524,33 @@ export function EditorCanvas({
         const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
         const fam = editFontKey && FONT_META[editFontKey]
           ? FONT_META[editFontKey].cssFamily
-          : a.kind === "text-edit"
-            ? (a.family === "serif" ? `'Times New Roman', Times, serif`
-              : a.family === "mono" ? `'Courier New', Courier, monospace`
-              : `Helvetica, Arial, sans-serif`)
-            : `Helvetica, Arial, sans-serif`;
+          : (a.family === "serif" ? `'Times New Roman', Times, serif`
+            : a.family === "mono" ? `'Courier New', Courier, monospace`
+            : `Helvetica, Arial, sans-serif`);
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
+        const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) * scale : 0;
+        const align = a.align ?? "left";
+        const isBold = !!a.bold;
+        const isItalic = !!a.italic;
+        const isUnderline = !!a.underline;
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: bg,
           color: rgbCss(a.color, a.opacity),
           fontSize: a.fontSize * scale,
           fontFamily: fam,
-          fontWeight: a.kind === "text-edit" && a.bold ? 700 : 400,
-          fontStyle: a.kind === "text-edit" && a.italic ? "italic" : "normal",
+          fontWeight: isBold ? 700 : 400,
+          fontStyle: isItalic ? "italic" : "normal",
+          textDecoration: isUnderline ? "underline" : "none",
+          textAlign: align,
           lineHeight: 1.15,
           whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
           overflow: "hidden",
           padding: 0,
           paddingTop: padTop,
+          paddingLeft: padX,
+          paddingRight: padX,
           boxSizing: "border-box",
           margin: 0,
           border: "none", outline: "none", resize: "none",
