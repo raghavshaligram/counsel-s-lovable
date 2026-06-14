@@ -297,6 +297,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [aiText, setAiText] = useState("");
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [usage, setUsage] = useState<Record<string, number>>({});
+  const [manualPins, setManualPins] = useState<string[]>([]);
+  const manualPinSet = useMemo(() => new Set(manualPins), [manualPins]);
   const [recents, setRecents] = useState<RecentMeta[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
@@ -312,6 +314,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch {
       /* ignore */
     }
+    setManualPins(loadManualPins());
     (async () => {
       const [ui, recentsList, openTabs] = await Promise.all([
         loadUIState(),
@@ -396,11 +399,35 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [editorDispatch, patchActive],
   );
 
-  const pins = useMemo(() => computePins(usage), [usage]);
+  const pins = useMemo(() => computePins(usage, manualPins), [usage, manualPins]);
   const pinnedTools = useMemo(
     () => pins.map((id) => toolById(id)).filter((t): t is RailTool => Boolean(t)),
     [pins],
   );
+
+  // Pin / unpin a tool manually. Hard cap is PIN_CAP_TOTAL — block the 11th
+  // with a clear toast so the user knows nothing got silently dropped.
+  const togglePin = useCallback((id: string) => {
+    if (!TOOLS.some((t) => t.id === id)) return;
+    setManualPins((prev) => {
+      let next: string[];
+      if (prev.includes(id)) {
+        next = prev.filter((x) => x !== id);
+      } else {
+        if (prev.length >= PIN_CAP_TOTAL) {
+          toast.error(`Rail is full (${PIN_CAP_TOTAL} max). Unpin a tool first.`);
+          return prev;
+        }
+        next = [...prev, id];
+      }
+      try {
+        window.localStorage.setItem(PINS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   const bumpUsage = useCallback((id: string) => {
     setUsage((prev) => {
