@@ -630,7 +630,7 @@ export function EditorCanvas({
       color: it.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
-      bg: { r: 1, g: 1, b: 1 },
+      bg: it.bg,
       family: it.family,
       fontKey: it.fontKey,
       bold: it.bold, italic: it.italic,
