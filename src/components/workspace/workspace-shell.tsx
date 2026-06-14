@@ -49,6 +49,8 @@ import {
   ScanSearch,
   Grid3x3,
   Search,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { PDFDocument } from "pdf-lib";
@@ -150,8 +152,16 @@ const GROUP_ORDER: ToolGroupLabel[] = [
 ];
 
 const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
-const PIN_CAP = 5;
+// Hard cap on the left rail. Manual pins are sticky; the remainder is
+// auto-filled by most-used tools. Never exceed this, period.
+const PIN_CAP_TOTAL = 10;
 const USAGE_KEY = "vaultpdf:tool-usage";
+const PINS_KEY = "vaultpdf:tool-pins";
+
+// Optional keyboard shortcuts shown in tooltips. Only list tools whose
+// shortcut is actually wired elsewhere — never advertise a binding that
+// doesn't work.
+const SHORTCUTS: Record<string, string> = {};
 
 function loadUsage(): Record<string, number> {
   if (typeof window === "undefined") return {};
@@ -162,22 +172,47 @@ function loadUsage(): Record<string, number> {
   }
 }
 
-function computePins(counts: Record<string, number>): string[] {
-  // Tools must be used 2+ times to "earn" a pinned slot.
-  const earned = Object.entries(counts)
-    .filter(([, n]) => n >= 2)
-    .sort((a, b) => b[1] - a[1])
-    .map(([id]) => id);
+function loadManualPins(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const v = JSON.parse(window.localStorage.getItem(PINS_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+// Resolve the final rail (max PIN_CAP_TOTAL slots):
+//   1. Manual pins, in user-defined order, always come first.
+//   2. Remaining slots fill from earned (used ≥2) most-used tools.
+//   3. Then default pins, to bootstrap a brand-new user.
+function computePins(
+  counts: Record<string, number>,
+  manualPins: string[],
+): string[] {
+  const valid = new Set(TOOLS.map((t) => t.id));
   const result: string[] = [];
-  for (const id of earned) {
-    if (result.length >= PIN_CAP) break;
-    if (TOOLS.some((t) => t.id === id)) result.push(id);
+  for (const id of manualPins) {
+    if (result.length >= PIN_CAP_TOTAL) break;
+    if (valid.has(id) && !result.includes(id)) result.push(id);
   }
-  for (const id of DEFAULT_PINS) {
-    if (result.length >= PIN_CAP) break;
-    if (!result.includes(id) && TOOLS.some((t) => t.id === id)) result.push(id);
+  if (result.length < PIN_CAP_TOTAL) {
+    const earned = Object.entries(counts)
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id);
+    for (const id of earned) {
+      if (result.length >= PIN_CAP_TOTAL) break;
+      if (valid.has(id) && !result.includes(id)) result.push(id);
+    }
   }
-  return result.slice(0, PIN_CAP);
+  if (result.length < PIN_CAP_TOTAL) {
+    for (const id of DEFAULT_PINS) {
+      if (result.length >= PIN_CAP_TOTAL) break;
+      if (valid.has(id) && !result.includes(id)) result.push(id);
+    }
+  }
+  return result.slice(0, PIN_CAP_TOTAL);
 }
 
 function toolById(id: string): RailTool | undefined {
