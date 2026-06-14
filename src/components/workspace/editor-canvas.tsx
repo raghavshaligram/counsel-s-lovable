@@ -284,6 +284,13 @@ export function EditorCanvas({
         }
       }
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: pageIndex, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });
+    } else if (state.tool === "page-crop") {
+      // Clamp to page bounds (PDF points, top-left origin).
+      const cx = Math.max(0, Math.min(a.x, op.width));
+      const cy = Math.max(0, Math.min(a.y, op.height));
+      const cw = Math.max(8, Math.min(w, op.width - cx));
+      const ch = Math.max(8, Math.min(h, op.height - cy));
+      dispatch({ type: "SET_PAGE_CROP", n: pageIndex, rect: { x: cx, y: cy, w: cw, h: ch } });
     }
   };
 
