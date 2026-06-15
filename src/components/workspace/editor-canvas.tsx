@@ -723,6 +723,7 @@ export function EditorCanvas({
       bg: it.bg,
       family,
       fontKey,
+      fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
       textOffsetY: padTop,
       cover,
