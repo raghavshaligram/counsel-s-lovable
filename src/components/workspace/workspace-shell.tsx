@@ -829,14 +829,28 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       // pages get added.
       const mergedOcr = new Set<number>([...(active.ocrPages ?? []), ...newlyOcr]);
       const mergedCopied = new Set<number>([...(active.ocrPagesCopied ?? []), ...newlyCopied]);
+      const mergedOcrArr = [...mergedOcr].sort((a, b) => a - b);
+      const mergedCopiedArr = [...mergedCopied].sort((a, b) => a - b);
 
       patchActive({
         file: newFile,
         isDirty: true,
-        ocrPages: [...mergedOcr].sort((a, b) => a - b),
-        ocrPagesCopied: [...mergedCopied].sort((a, b) => a - b),
+        ocrPages: mergedOcrArr,
+        ocrPagesCopied: mergedCopiedArr,
         ocrIsPartial: aborted,
       });
+
+      // Persist the OCR'd file + per-page OCR memory on-device so reopening
+      // keeps the text layer AND the per-page OCR tags. Never uploaded.
+      void (async () => {
+        await addRecent(newFile, {
+          ocrPages: mergedOcrArr,
+          ocrPagesCopied: mergedCopiedArr,
+          ocrIsPartial: aborted,
+        });
+        setRecents(await listRecents());
+      })();
+
 
       // Toast: report only what changed.
       const fmtRanges = (s: Set<number>) => formatPageRanges([...s].map((i) => i + 1));
