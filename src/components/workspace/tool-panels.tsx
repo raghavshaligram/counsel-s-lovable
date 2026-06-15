@@ -666,7 +666,371 @@ function RedactPanel() {
   );
 }
 
+/* ================================ Merge ================================= */
+
+type MergeRow = {
+  id: string;
+  file: File;
+  pageCount: number | null;
+  range: string; // "" / "all" means all
+  rangeOpen: boolean;
+  rangeError?: string;
+  isActive?: boolean;
+};
+
+function MergePanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [rows, setRows] = useState<MergeRow[]>([]);
+  const [filename, setFilename] = useState("merged.pdf");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropId, setDropId] = useState<string | null>(null);
+  const pickRef = useRef<HTMLInputElement | null>(null);
+
+  // Seed/refresh the first row from the active document.
+  useEffect(() => {
+    setRows((prev) => {
+      const others = prev.filter((r) => !r.isActive);
+      if (!file) return others;
+      const existing = prev.find((r) => r.isActive && r.file === file);
+      if (existing) return prev;
+      const seed: MergeRow = {
+        id: `active-${Date.now()}`,
+        file,
+        pageCount: null,
+        range: "",
+        rangeOpen: false,
+        isActive: true,
+      };
+      return [seed, ...others];
+    });
+  }, [file]);
+
+  // Resolve page counts.
+  useEffect(() => {
+    const pending = rows.filter((r) => r.pageCount === null);
+    if (pending.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      for (const r of pending) {
+        try {
+          const n = await getPageCount(r.file);
+          if (cancelled) return;
+          setRows((prev) =>
+            prev.map((x) => (x.id === r.id ? { ...x, pageCount: n } : x)),
+          );
+        } catch {
+          if (cancelled) return;
+          setRows((prev) =>
+            prev.map((x) => (x.id === r.id ? { ...x, pageCount: 0 } : x)),
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rows]);
+
+  const onAddFiles = useCallback((list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const incoming: MergeRow[] = [];
+    for (const f of Array.from(list)) {
+      if (f.type && !/pdf/i.test(f.type)) continue;
+      incoming.push({
+        id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file: f,
+        pageCount: null,
+        range: "",
+        rangeOpen: false,
+      });
+    }
+    if (incoming.length === 0) return;
+    setRows((prev) => [...prev, ...incoming]);
+  }, []);
+
+  const removeRow = (id: string) =>
+    setRows((prev) => prev.filter((r) => r.id !== id));
+
+  const updateRange = (id: string, range: string) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        let err: string | undefined;
+        if (range.trim() && r.pageCount && r.pageCount > 0) {
+          const parsed = parseRange(range, r.pageCount);
+          if (parsed.length === 0) err = "no pages match";
+        }
+        return { ...r, range, rangeError: err };
+      }),
+    );
+  };
+
+  const toggleRange = (id: string) =>
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, rangeOpen: !r.rangeOpen } : r)),
+    );
+
+  // Drag reorder (HTML5).
+  const onDragStart = (id: string) => setDragId(id);
+  const onDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (id !== dropId) setDropId(id);
+  };
+  const onDrop = (targetId: string) => {
+    setRows((prev) => {
+      if (!dragId || dragId === targetId) return prev;
+      const from = prev.findIndex((r) => r.id === dragId);
+      const to = prev.findIndex((r) => r.id === targetId);
+      if (from === -1 || to === -1) return prev;
+      const next = prev.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setDragId(null);
+    setDropId(null);
+  };
+  const onDragEnd = () => {
+    setDragId(null);
+    setDropId(null);
+  };
+
+  const totalPages = useMemo(
+    () =>
+      rows.reduce((acc, r) => {
+        if (!r.pageCount) return acc;
+        const n = parseRange(r.range, r.pageCount).length;
+        return acc + n;
+      }, 0),
+    [rows],
+  );
+
+  const canCombine = rows.length >= 2 && totalPages > 0 && !busy;
+
+  const combine = useCallback(async () => {
+    if (!canCombine) return;
+    setBusy(true);
+    setProgress({ done: 0, total: rows.length });
+    try {
+      const items: MergeItem[] = rows.map((r) => ({
+        file: r.file,
+        range: r.range,
+      }));
+      const blob = await combinePdfs(items, (done, total) =>
+        setProgress({ done, total }),
+      );
+      const cleanName = filename.trim().replace(/\.pdf$/i, "") || "merged";
+      const outName = `${cleanName}.pdf`;
+      // Download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = outName;
+      a.click();
+      URL.revokeObjectURL(url);
+      // Replace the active document with the merged file.
+      const mergedFile = new File([blob], outName, { type: "application/pdf" });
+      replaceFile(mergedFile);
+      toast.success(`Combined ${rows.length} files`, {
+        description: `${totalPages} pages · saved as ${outName}. Nothing was uploaded.`,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Combine failed. Check the console for details.");
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [canCombine, rows, filename, replaceFile, totalPages]);
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section
+        title="Files to combine"
+        icon={<FilesIcon className="h-3 w-3" />}
+        right={
+          <span className="text-text-muted normal-case tracking-normal">
+            {rows.length} {rows.length === 1 ? "file" : "files"}
+          </span>
+        }
+      >
+        {rows.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11px] text-text-muted">
+            Open a PDF in the workspace to begin, then add more files below.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {rows.map((r, idx) => {
+              const isDropTarget = dropId === r.id && dragId && dragId !== r.id;
+              return (
+                <li
+                  key={r.id}
+                  draggable
+                  onDragStart={() => onDragStart(r.id)}
+                  onDragOver={(e) => onDragOver(e, r.id)}
+                  onDrop={() => onDrop(r.id)}
+                  onDragEnd={onDragEnd}
+                  className={cn(
+                    "rounded-md border bg-surface-2 transition-colors",
+                    isDropTarget ? "border-vault/60" : "border-border",
+                    dragId === r.id && "opacity-50",
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 px-1.5 py-1.5">
+                    <button
+                      type="button"
+                      className="cursor-grab text-text-muted hover:text-foreground active:cursor-grabbing"
+                      aria-label="Drag to reorder"
+                      title="Drag to reorder"
+                    >
+                      <GripVertical className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="w-4 shrink-0 text-center text-[10.5px] tabular-nums text-text-muted">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="h-3 w-3 shrink-0 text-text-muted" />
+                        <span
+                          className="truncate text-[12px] text-foreground"
+                          title={r.file.name}
+                        >
+                          {r.file.name}
+                        </span>
+                        {r.isActive && (
+                          <span className="rounded-sm bg-accent-soft px-1 py-px text-[9.5px] uppercase tracking-[0.14em] text-vault">
+                            active
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 text-[10.5px] text-text-muted">
+                        <span>
+                          {r.pageCount === null
+                            ? "…"
+                            : `${r.pageCount} ${r.pageCount === 1 ? "page" : "pages"}`}
+                        </span>
+                        {r.range.trim() && r.pageCount ? (
+                          <span className="text-vault/80">
+                            using {parseRange(r.range, r.pageCount).length}
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => toggleRange(r.id)}
+                          className="ml-auto text-text-muted underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                          {r.rangeOpen ? "Hide range" : "Pages…"}
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeRow(r.id)}
+                      aria-label="Remove file"
+                      className="rounded-sm p-1 text-text-muted hover:bg-surface-3 hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  {r.rangeOpen && (
+                    <div className="border-t border-border px-2 py-1.5">
+                      <input
+                        value={r.range}
+                        onChange={(e) => updateRange(r.id, e.target.value)}
+                        placeholder="all"
+                        className="w-full rounded-md border border-border bg-surface-1 px-2 py-1 text-[11.5px] font-mono text-foreground placeholder:text-text-muted focus:outline-none focus:border-vault/50"
+                      />
+                      <p className="mt-1 text-[10px] text-text-muted">
+                        Default: all. Examples:{" "}
+                        <span className="text-foreground">1-3</span>,{" "}
+                        <span className="text-foreground">1,4,7-9</span>.
+                        {r.rangeError && (
+                          <span className="ml-1 text-amber-400">
+                            {r.rangeError}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <input
+          ref={pickRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            onAddFiles(e.target.files);
+            if (pickRef.current) pickRef.current.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => pickRef.current?.click()}
+          className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add PDFs
+        </button>
+      </Section>
+
+      <Section title="Output filename" icon={<FileText className="h-3 w-3" />}>
+        <input
+          value={filename}
+          onChange={(e) => setFilename(e.target.value)}
+          placeholder="merged.pdf"
+          className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:outline-none focus:border-vault/50"
+        />
+      </Section>
+
+      <div className="mt-1">
+        <button
+          type="button"
+          disabled={!canCombine}
+          onClick={combine}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-2 text-[12.5px] font-medium text-vault-foreground hover:opacity-90",
+            !canCombine && "cursor-not-allowed opacity-40 hover:opacity-40",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy
+            ? progress
+              ? `Combining ${progress.done}/${progress.total}…`
+              : "Combining…"
+            : rows.length < 2
+              ? "Add at least 2 files"
+              : `Combine ${rows.length} files · ${totalPages} pages`}
+        </button>
+        {busy && progress && (
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-border">
+            <div
+              className="h-full bg-vault transition-all"
+              style={{
+                width: `${(progress.done / Math.max(progress.total, 1)) * 100}%`,
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------------- Generic ------------------------------ */
+
 
 function ComingSoonPanel({ label }: { label: string }) {
   return (
