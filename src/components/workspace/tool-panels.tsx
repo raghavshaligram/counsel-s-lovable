@@ -40,6 +40,12 @@ import {
   deleteSignature,
   type StoredSignature,
 } from "@/lib/workspace/signature-store";
+import {
+  combinePdfs,
+  getPageCount,
+  parseRange,
+  type MergeItem,
+} from "@/lib/pdf/combine";
 
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
@@ -58,6 +64,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RedactPanel />;
     case "sign":
       return <SignFillPanel ctx={ctx} />;
+    case "merge":
+      return <MergePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
