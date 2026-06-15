@@ -1396,12 +1396,14 @@ function Tip({
   placement = "right",
   children,
   className,
+  alwaysShow,
 }: {
   label: string;
   kbd?: string;
   placement?: "right" | "left" | "top" | "bottom";
   children: React.ReactNode;
   className?: string;
+  alwaysShow?: boolean;
 }) {
   const pos =
     placement === "right"
@@ -1418,6 +1420,7 @@ function Tip({
         role="tooltip"
         className={cn(
           "pointer-events-none absolute z-50 inline-flex items-center whitespace-nowrap rounded-full bg-surface-3 px-2.5 py-1 text-[11px] font-medium leading-none text-foreground shadow-[0_4px_14px_rgba(0,0,0,0.45)]",
+          alwaysShow ? "opacity-100" : "opacity-0 transition-opacity duration-100 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100",
           "[@media(hover:none)]:hidden",
           pos,
         )}
@@ -1451,7 +1454,7 @@ function RailButton({
   onClick: () => void;
 }) {
   return (
-    <Tip label={label} kbd={kbd} placement="right">
+    <Tip label={label} kbd={kbd} placement="right" alwaysShow>
       <button
         type="button"
         onClick={onClick}
