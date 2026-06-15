@@ -678,8 +678,11 @@ export function EditorCanvas({
         {inner}
         {selected && (
           <>
-            <div style={{ position: "absolute", inset: -2, border: "1.5px dashed var(--vault)", pointerEvents: "none" }} />
-            {!isLocked && <div onMouseDown={onResize} style={{ position: "absolute", right: -6, bottom: -6, width: 12, height: 12, background: "var(--vault)", border: "2px solid white", borderRadius: 2, cursor: "nwse-resize" }} />}
+            {/* Dark outer halo for contrast on any background */}
+            <div style={{ position: "absolute", inset: -4, border: "1px solid rgba(0,0,0,0.55)", borderRadius: 2, pointerEvents: "none" }} />
+            {/* Solid amber selection ring */}
+            <div style={{ position: "absolute", inset: -2, border: "2px solid var(--vault)", borderRadius: 2, boxShadow: "0 0 0 1px rgba(255,255,255,0.9)", pointerEvents: "none" }} />
+            {!isLocked && <div onMouseDown={onResize} style={{ position: "absolute", right: -7, bottom: -7, width: 14, height: 14, background: "var(--vault)", border: "2px solid white", borderRadius: 3, cursor: "nwse-resize", boxShadow: "0 1px 3px rgba(0,0,0,0.5)" }} />}
             <button
               onClick={(e) => { e.stopPropagation(); dispatch({ type: "DELETE_ANNO", id: a.id }); }}
               style={{ position: "absolute", top: -10, right: -10, background: "#dc2626", color: "white", borderRadius: 999, width: 18, height: 18, fontSize: 10, lineHeight: 1, display: "grid", placeItems: "center", border: "none", cursor: "pointer" }}
