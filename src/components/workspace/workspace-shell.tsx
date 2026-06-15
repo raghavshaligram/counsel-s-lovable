@@ -859,7 +859,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const onStopOcr = useCallback(() => {
     ocrAbortRef.current?.abort();
-  }, []);
+    // The user clicked "Stop & try editing" — drop them straight into the
+    // edit-text tool so the pages OCR'd so far are immediately editable.
+    openTool("edit-text");
+    setEditorTool("edit-text");
+  }, [openTool, setEditorTool]);
 
   // Track scanned pages reported by EditorCanvas instances. Cleared when the
   // file identity changes (different name+size).
