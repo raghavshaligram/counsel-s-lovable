@@ -397,6 +397,18 @@ export async function ocrPdfToSearchable(
       // Let cancelled/failing pages settle so the embed chain still drains
       // the pages that DID finish before abort.
       await Promise.allSettled(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+      // Abort path: ensure EVERY source page lands in the output, even ones
+      // OCR never reached. Missing pages are copy-through from the original
+      // so the document keeps its full page set — OCR only ADDS a text layer
+      // to processed pages; it never removes pages.
+      if (signal?.aborted) {
+        for (let i = 0; i < totalPages; i++) {
+          if (i < nextToEmbed) continue;
+          if (pending.has(i)) continue;
+          pending.set(i, { kind: "copy", index: i, pageNum: i + 1 });
+        }
+        flushEmbeds();
+      }
     } else {
       await Promise.all(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
     }
@@ -404,6 +416,7 @@ export async function ocrPdfToSearchable(
   } finally {
     await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
   }
+
 
   if (signal?.aborted && !partial) throw new Error("Cancelled");
   // Partial mode: if literally zero pages embedded, still throw so the

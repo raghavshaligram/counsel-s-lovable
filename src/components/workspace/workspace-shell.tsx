@@ -305,6 +305,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // After a LOAD on a given tab, switch its editor tool to this value. Used
+  // by OCR pause: the file swap triggers LOAD (which resets tool to "select"),
+  // so we re-apply "edit-text" immediately after so the user lands on the
+  // text-editing tool, not Select.
+  const postLoadToolRef = useRef<Map<string, EditorTool>>(new Map());
+
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
   useEffect(() => {
@@ -530,12 +536,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (!rec) return;
       const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
       const f = new File([blob], rec.name, { type: "application/pdf" });
-      patchActive({ file: f, isDirty: false });
-      await addRecent(f);
+      patchActive({
+        file: f,
+        isDirty: false,
+        ocrPages: rec.ocrPages,
+        ocrPagesCopied: rec.ocrPagesCopied,
+        ocrIsPartial: rec.ocrIsPartial,
+      });
+      await addRecent(f, {
+        ocrPages: rec.ocrPages,
+        ocrPagesCopied: rec.ocrPagesCopied,
+        ocrIsPartial: rec.ocrIsPartial,
+      });
       setRecents(await listRecents());
     },
     [patchActive],
   );
+
 
   const dismissRecent = useCallback(async (id: string) => {
     await removeRecent(id);
@@ -562,8 +579,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (!rec) continue;
       const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
       const f = new File([blob], rec.name, { type: "application/pdf" });
-      restored.push(makeBlankTab({ file: f }));
+      restored.push(
+        makeBlankTab({
+          file: f,
+          ocrPages: rec.ocrPages,
+          ocrPagesCopied: rec.ocrPagesCopied,
+          ocrIsPartial: rec.ocrIsPartial,
+        }),
+      );
     }
+
     if (restored.length === 0) {
       toast.error("Couldn't restore — the previous files are no longer in local storage.");
       return;
@@ -706,6 +731,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
+        const pendingTool = postLoadToolRef.current.get(tabId);
+        if (pendingTool) {
+          postLoadToolRef.current.delete(tabId);
+          dispatchEditorFor(tabId, { type: "SET_TOOL", t: pendingTool });
+        }
+
       } catch (err) {
         console.error("[workspace] PDFDocument.load failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
@@ -817,14 +848,28 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       // pages get added.
       const mergedOcr = new Set<number>([...(active.ocrPages ?? []), ...newlyOcr]);
       const mergedCopied = new Set<number>([...(active.ocrPagesCopied ?? []), ...newlyCopied]);
+      const mergedOcrArr = [...mergedOcr].sort((a, b) => a - b);
+      const mergedCopiedArr = [...mergedCopied].sort((a, b) => a - b);
 
       patchActive({
         file: newFile,
         isDirty: true,
-        ocrPages: [...mergedOcr].sort((a, b) => a - b),
-        ocrPagesCopied: [...mergedCopied].sort((a, b) => a - b),
+        ocrPages: mergedOcrArr,
+        ocrPagesCopied: mergedCopiedArr,
         ocrIsPartial: aborted,
       });
+
+      // Persist the OCR'd file + per-page OCR memory on-device so reopening
+      // keeps the text layer AND the per-page OCR tags. Never uploaded.
+      void (async () => {
+        await addRecent(newFile, {
+          ocrPages: mergedOcrArr,
+          ocrPagesCopied: mergedCopiedArr,
+          ocrIsPartial: aborted,
+        });
+        setRecents(await listRecents());
+      })();
+
 
       // Toast: report only what changed.
       const fmtRanges = (s: Set<number>) => formatPageRanges([...s].map((i) => i + 1));
@@ -858,12 +903,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, [active.file, active.ocrPages, active.ocrPagesCopied, ocrRunning, patchActive]);
 
   const onStopOcr = useCallback(() => {
+    // Queue edit-text BEFORE abort: the OCR finalize will swap the file,
+    // which dispatches LOAD and resets editor.tool to "select". The LOAD
+    // effect re-applies this pending tool right after, so the user lands on
+    // the actual text-editing tool (Edit), not Select.
+    postLoadToolRef.current.set(activeIdRef.current, "edit-text");
     ocrAbortRef.current?.abort();
-    // The user clicked "Stop & try editing" — drop them straight into the
-    // edit-text tool so the pages OCR'd so far are immediately editable.
     openTool("edit-text");
-    setEditorTool("edit-text");
-  }, [openTool, setEditorTool]);
+  }, [openTool]);
+
 
   // Track scanned pages reported by EditorCanvas instances. Cleared when the
   // file identity changes (different name+size).
