@@ -296,6 +296,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [viewOpen, setViewOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
+  // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
+  const [fitNonce, setFitNonce] = useState(0);
+  // Auto-fit zoom for the active tab; cheap because EditorPages computes it.
+  const autoFit = useCallback((next: number) => {
+    patchTab(activeIdRef.current, { zoom: next });
+  }, [patchTab]);
+  // Refit whenever the active tab changes.
+  useEffect(() => { setFitNonce((n) => n + 1); }, [activeId]);
+
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [manualPins, setManualPins] = useState<string[]>([]);
