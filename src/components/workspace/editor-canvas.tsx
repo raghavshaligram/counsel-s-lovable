@@ -1006,6 +1006,11 @@ function TextMiniToolbar({
   // box) auto-deletes itself. preventDefault on mousedown keeps focus put.
   const keepFocus = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); };
 
+  const isApprox = a.kind === "text-edit" && !!(a as { fontApproximate?: boolean }).fontApproximate;
+  const [hintDismissed, setHintDismissed] = useState(false);
+  useEffect(() => { setHintDismissed(false); }, [a.id]);
+  const showHint = isApprox && !hintDismissed;
+
   return (
     <div
       data-text-toolbar="1"
@@ -1013,9 +1018,8 @@ function TextMiniToolbar({
       onPointerDown={stop}
       onClick={stop}
       style={{
-        position: "absolute", left, top, height: tbH,
-        display: "inline-flex", alignItems: "center", gap: 2,
-        padding: "0 8px",
+        position: "absolute", left, top,
+        display: "inline-flex", flexDirection: "column", alignItems: "stretch", gap: 0,
         background: "rgba(20,20,22,0.96)",
         color: "#fff",
         borderRadius: 8,
@@ -1026,15 +1030,45 @@ function TextMiniToolbar({
         fontFamily: "Helvetica, Arial, sans-serif",
       }}
     >
+      {showHint && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "6px 10px",
+            fontSize: 11, lineHeight: 1.3,
+            color: "rgba(255,255,255,0.72)",
+            background: "rgba(245,158,11,0.08)",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            borderTopLeftRadius: 8, borderTopRightRadius: 8,
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--vault)", flex: "0 0 auto" }} />
+          <span style={{ flex: 1 }}>Original font couldn't be matched exactly — pick the closest in the font menu.</span>
+          <button
+            type="button"
+            onMouseDown={keepFocus}
+            onClick={() => setHintDismissed(true)}
+            title="Dismiss"
+            style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}
+          >×</button>
+        </div>
+      )}
+      <div style={{ height: tbH, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
       <select
         value={currentFontKey}
         onChange={(e) => {
           const key = e.target.value as FontKey;
           const kind = FONT_META[key]?.kind ?? "sans";
-          update({ fontKey: key, family: kind } as Partial<Anno>);
+          update({ fontKey: key, family: kind, fontApproximate: false } as Partial<Anno>);
+          setHintDismissed(true);
         }}
-        title="Font"
-        style={{ ...btn, background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 110 }}
+        title={isApprox ? "Approximate match — pick the closest font" : "Font"}
+        style={{
+          ...btn,
+          background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 140,
+          border: showHint ? "1px solid var(--vault)" : "1px solid rgba(255,255,255,0.12)",
+          boxShadow: showHint ? "0 0 0 2px rgba(245,158,11,0.18)" : "none",
+        }}
       >
         {TOOLBAR_FONTS.map((f) => (
           <option key={f.key} value={f.key} style={{ background: "#1a1a1c", color: "#fff" }}>
