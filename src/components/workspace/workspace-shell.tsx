@@ -568,8 +568,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (!rec) continue;
       const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
       const f = new File([blob], rec.name, { type: "application/pdf" });
-      restored.push(makeBlankTab({ file: f }));
+      restored.push(
+        makeBlankTab({
+          file: f,
+          ocrPages: rec.ocrPages,
+          ocrPagesCopied: rec.ocrPagesCopied,
+          ocrIsPartial: rec.ocrIsPartial,
+        }),
+      );
     }
+
     if (restored.length === 0) {
       toast.error("Couldn't restore — the previous files are no longer in local storage.");
       return;
