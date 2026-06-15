@@ -1016,6 +1016,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             label="All tools"
             active={toolModalOpen}
             onClick={() => setToolModalOpen((v) => !v)}
+            alwaysShow
           >
             <Grid3x3 className="h-[18px] w-[18px]" />
           </RailButton>
@@ -1445,6 +1446,7 @@ function RailButton({
   active,
   pinned,
   onClick,
+  alwaysShow,
 }: {
   children: React.ReactNode;
   label: string;
@@ -1452,9 +1454,10 @@ function RailButton({
   active?: boolean;
   pinned?: boolean;
   onClick: () => void;
+  alwaysShow?: boolean;
 }) {
   return (
-    <Tip label={label} kbd={kbd} placement="right" alwaysShow>
+    <Tip label={label} kbd={kbd} placement="right" alwaysShow={alwaysShow}>
       <button
         type="button"
         onClick={onClick}
