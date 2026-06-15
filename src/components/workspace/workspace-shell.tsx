@@ -712,6 +712,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
+        const pendingTool = postLoadToolRef.current.get(tabId);
+        if (pendingTool) {
+          postLoadToolRef.current.delete(tabId);
+          dispatchEditorFor(tabId, { type: "SET_TOOL", t: pendingTool });
+        }
+
       } catch (err) {
         console.error("[workspace] PDFDocument.load failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
