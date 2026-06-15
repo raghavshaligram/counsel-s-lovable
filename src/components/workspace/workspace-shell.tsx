@@ -2875,6 +2875,67 @@ function EditorPages({
 
   if (!state.doc) return null;
 
+  const renderPage = (op: typeof pages[number], i: number) => {
+    const meta = sizes[op.srcPage] ?? { width: op.width || 612, height: op.height || 792 };
+    const w = Math.ceil(meta.width * scale);
+    const h = Math.ceil(meta.height * scale);
+    const inView = visible.has(i);
+    const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
+    const isOcrPage = !!ocrPages?.has(i);
+    const isCopiedPage = !isOcrPage && !!ocrPagesCopied?.has(i);
+    const showTag = showOcrTags && (isOcrPage || isCopiedPage);
+    return (
+      <div
+        key={`${i}-${op.srcPage}-${op.rotation}-${op.blank ? 1 : 0}`}
+        ref={(el) => { pageRefs.current[i] = el; }}
+        data-page-index={i}
+        style={{ width: w, minHeight: h }}
+        className="relative"
+      >
+        {inView && (pdfDoc || op.blank) ? (
+          <EditorCanvas
+            pageIndex={i}
+            op={op}
+            srcBytes={state.doc!.srcBytes}
+            annos={annosForPage}
+            state={state}
+            dispatch={dispatch}
+            scale={scale}
+            pdfDoc={pdfDoc}
+            onRequestOcr={onRequestOcr}
+            ocrRunning={ocrRunning}
+            onScannedChange={onScannedChange}
+            isOcrPage={isOcrPage}
+          />
+        ) : (
+          <div
+            style={{ width: w, height: h }}
+            className="rounded-sm bg-[var(--paper)] opacity-60"
+            aria-hidden
+          />
+        )}
+        {showTag && (
+          <div className="pointer-events-none absolute right-3 top-3 z-10">
+            <span
+              className="pointer-events-auto inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-text-muted/70 hover:text-text-muted transition-colors"
+              title={
+                isOcrPage
+                  ? "Text recognised on-device — edit with the Text tool."
+                  : "Already had a text layer — copied through unchanged."
+              }
+              aria-label={isOcrPage ? "OCR applied to this page" : "Page is already searchable"}
+            >
+              <FileCheck2 className="h-2.5 w-2.5" aria-hidden />
+              OCR
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const rowGap = Math.max(8, Math.floor(gap / 2));
+
   return (
     <div
       ref={containerRef}
@@ -2891,67 +2952,26 @@ function EditorPages({
           )}
         </div>
       )}
-      {pages!.map((op, i) => {
-        const meta = sizes[op.srcPage] ?? { width: op.width || 612, height: op.height || 792 };
-        const w = Math.ceil(meta.width * scale);
-        const h = Math.ceil(meta.height * scale);
-        const inView = visible.has(i);
-        const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
-        const isOcrPage = !!ocrPages?.has(i);
-        const isCopiedPage = !isOcrPage && !!ocrPagesCopied?.has(i);
-        const showTag = showOcrTags && (isOcrPage || isCopiedPage);
-        return (
-          <div
-            key={`${i}-${op.srcPage}-${op.rotation}-${op.blank ? 1 : 0}`}
-            ref={(el) => { pageRefs.current[i] = el; }}
-            data-page-index={i}
-            style={{ width: w, minHeight: h }}
-            className="relative"
-          >
-            {inView && (pdfDoc || op.blank) ? (
-              <EditorCanvas
-                pageIndex={i}
-                op={op}
-                srcBytes={state.doc!.srcBytes}
-                annos={annosForPage}
-                state={state}
-                dispatch={dispatch}
-                scale={scale}
-                pdfDoc={pdfDoc}
-                onRequestOcr={onRequestOcr}
-                ocrRunning={ocrRunning}
-                onScannedChange={onScannedChange}
-                isOcrPage={isOcrPage}
-              />
-
-            ) : (
-              <div
-                style={{ width: w, height: h }}
-                className="rounded-sm bg-[var(--paper)] opacity-60"
-                aria-hidden
-              />
-            )}
-            {showTag && (
-              <div
-                className="pointer-events-none absolute right-3 top-3 z-10"
-              >
-                <span
-                  className="pointer-events-auto inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-text-muted/70 hover:text-text-muted transition-colors"
-                  title={
-                    isOcrPage
-                      ? "Text recognised on-device — edit with the Text tool."
-                      : "Already had a text layer — copied through unchanged."
-                  }
-                  aria-label={isOcrPage ? "OCR applied to this page" : "Page is already searchable"}
+      {pageLayout === "double"
+        ? (() => {
+            const rows: React.ReactNode[] = [];
+            for (let i = 0; i < pages!.length; i += 2) {
+              const left = pages![i];
+              const right = pages![i + 1];
+              rows.push(
+                <div
+                  key={`row-${i}`}
+                  className="flex items-start justify-center"
+                  style={{ gap: rowGap }}
                 >
-                  <FileCheck2 className="h-2.5 w-2.5" aria-hidden />
-                  OCR
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      })}
+                  {renderPage(left, i)}
+                  {right ? renderPage(right, i + 1) : null}
+                </div>
+              );
+            }
+            return rows;
+          })()
+        : pages!.map((op, i) => renderPage(op, i))}
     </div>
   );
 }
