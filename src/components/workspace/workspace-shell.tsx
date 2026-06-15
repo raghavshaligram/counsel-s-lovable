@@ -1454,7 +1454,7 @@ function RailButton({
   onClick: () => void;
 }) {
   return (
-    <Tip label={label} kbd={kbd} placement="right">
+    <Tip label={label} kbd={kbd} placement="right" alwaysShow>
       <button
         type="button"
         onClick={onClick}
