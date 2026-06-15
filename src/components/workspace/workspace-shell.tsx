@@ -2818,6 +2818,7 @@ const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
   ocrPages, ocrPagesCopied, showOcrTags, pageLayout = "single",
+  onAutoFit, fitNonce,
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
@@ -2830,6 +2831,8 @@ function EditorPages({
   ocrPagesCopied?: Set<number>;
   showOcrTags?: boolean;
   pageLayout?: "single" | "double";
+  onAutoFit?: (zoom: number) => void;
+  fitNonce?: number;
 }) {
 
 
@@ -2840,9 +2843,40 @@ function EditorPages({
   const [sizes, setSizes] = useState<Array<{ width: number; height: number }>>([]);
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
+  const [containerWidth, setContainerWidth] = useState(0);
 
   const srcBytes = state.doc?.srcBytes;
   const pages = state.doc?.pages;
+
+  // Observe the scroll-area width so we can auto-fit on resize.
+  useEffect(() => {
+    const root = containerRef.current?.parentElement;
+    if (!root) return;
+    setContainerWidth(root.clientWidth);
+    const ro = new ResizeObserver(() => setContainerWidth(root.clientWidth));
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, []);
+
+  // Auto-fit zoom: triggers on layout change, document open/switch (sizes/srcBytes),
+  // window resize (containerWidth), or explicit Fit-width request (fitNonce).
+  // Does NOT depend on `zoom`, so user's manual zoom is never overridden.
+  useEffect(() => {
+    if (!onAutoFit) return;
+    if (sizes.length === 0 || containerWidth <= 0) return;
+    const first = sizes[0];
+    const second = sizes[1] ?? first;
+    const horizontalPadding = 48; // px-4 container + scrollbar slack
+    const avail = Math.max(100, containerWidth - horizontalPadding);
+    const rowGap = Math.max(8, Math.floor(gap / 2));
+    const naturalWidth = pageLayout === "double"
+      ? (first.width + second.width) * 1.3 + rowGap
+      : first.width * 1.3;
+    const next = Math.max(25, Math.min(400, Math.round((avail / naturalWidth) * 100)));
+    onAutoFit(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLayout, sizes, srcBytes, containerWidth, fitNonce]);
+
 
   // Load doc once per srcBytes.
   useEffect(() => {
