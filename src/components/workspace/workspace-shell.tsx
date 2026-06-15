@@ -1224,7 +1224,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     ocrPagesCopied={ocrPagesCopiedSet}
                     showOcrTags={editorTool === "edit-text"}
                     pageLayout={pageLayout}
+                    onAutoFit={autoFit}
+                    fitNonce={fitNonce}
                   />
+
 
 
                 ) : (
