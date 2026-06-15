@@ -1345,9 +1345,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Plus className="h-3.5 w-3.5" />
           </ZoomButton>
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <ZoomButton onClick={() => patchActive({ zoom: 100 })} label="Fit width">
+          <ZoomButton onClick={() => setFitNonce((n) => n + 1)} label="Fit width">
             <StretchHorizontal className="h-3.5 w-3.5" />
           </ZoomButton>
+
         </div>
         <div className="flex items-center gap-1.5 text-text-muted">
           <Lock className="h-3 w-3 text-vault" strokeWidth={2.5} />
