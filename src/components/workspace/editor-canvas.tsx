@@ -274,11 +274,11 @@ export function EditorCanvas({
 
     if (state.tool === "text") {
       const { x: px, y: py } = toPdf(x, y);
-      const w = Math.max(120, state.fontSize * 8);
+      const w = Math.max(160, state.fontSize * 10);
       const id = uid();
       dispatch({ type: "ADD_ANNO", a: {
         id, kind: "text", page: pageIndex,
-        x: px, y: py, w, h: state.fontSize * 1.4,
+        x: px, y: py, w, h: Math.max(state.fontSize * 1.6, 22),
         color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
       } });
       setEditingId(id);
