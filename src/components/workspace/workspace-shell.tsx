@@ -884,12 +884,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, [active.file, active.ocrPages, active.ocrPagesCopied, ocrRunning, patchActive]);
 
   const onStopOcr = useCallback(() => {
+    // Queue edit-text BEFORE abort: the OCR finalize will swap the file,
+    // which dispatches LOAD and resets editor.tool to "select". The LOAD
+    // effect re-applies this pending tool right after, so the user lands on
+    // the actual text-editing tool (Edit), not Select.
+    postLoadToolRef.current.set(activeIdRef.current, "edit-text");
     ocrAbortRef.current?.abort();
-    // The user clicked "Stop & try editing" — drop them straight into the
-    // edit-text tool so the pages OCR'd so far are immediately editable.
     openTool("edit-text");
-    setEditorTool("edit-text");
-  }, [openTool, setEditorTool]);
+  }, [openTool]);
+
 
   // Track scanned pages reported by EditorCanvas instances. Cleared when the
   // file identity changes (different name+size).
