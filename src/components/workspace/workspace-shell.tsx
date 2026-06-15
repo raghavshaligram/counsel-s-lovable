@@ -305,6 +305,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // After a LOAD on a given tab, switch its editor tool to this value. Used
+  // by OCR pause: the file swap triggers LOAD (which resets tool to "select"),
+  // so we re-apply "edit-text" immediately after so the user lands on the
+  // text-editing tool, not Select.
+  const postLoadToolRef = useRef<Map<string, EditorTool>>(new Map());
+
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
   useEffect(() => {
