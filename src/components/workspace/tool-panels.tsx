@@ -3,7 +3,7 @@
  * single Inspector container at any time. No outer card/wrapper here: the
  * Inspector already provides the header, border, and scroll area.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Sparkles,
   Search,
@@ -15,8 +15,12 @@ import {
   Download,
   RefreshCw,
   Trash2,
+  Upload,
+  Table as TableIcon,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
+import JSZip from "jszip";
 import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
 import type { Action as EditorAction } from "@/lib/editor/state";
@@ -25,6 +29,13 @@ import {
   applyFormFill,
   type FormFieldInfo,
 } from "@/lib/pdf/sign-fill";
+import { parseCsv, generateBatch, type CsvData } from "@/lib/pdf/csv-fill";
+import {
+  listSignatures,
+  saveSignature,
+  deleteSignature,
+  type StoredSignature,
+} from "@/lib/workspace/signature-store";
 
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
