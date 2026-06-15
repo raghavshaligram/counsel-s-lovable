@@ -2875,7 +2875,7 @@ function EditorPages({
 
   if (!state.doc) return null;
 
-  const renderPage = (op: typeof pages[number], i: number) => {
+  const renderPage = (op: NonNullable<typeof pages>[number], i: number) => {
     const meta = sizes[op.srcPage] ?? { width: op.width || 612, height: op.height || 792 };
     const w = Math.ceil(meta.width * scale);
     const h = Math.ceil(meta.height * scale);
