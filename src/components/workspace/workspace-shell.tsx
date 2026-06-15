@@ -51,6 +51,7 @@ import {
   Search,
   Pin,
   PinOff,
+  FileCheck2,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { PDFDocument } from "pdf-lib";
