@@ -18,6 +18,10 @@ import {
   Upload,
   Table as TableIcon,
   Lock,
+  Plus,
+  GripVertical,
+  X,
+  Files as FilesIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
