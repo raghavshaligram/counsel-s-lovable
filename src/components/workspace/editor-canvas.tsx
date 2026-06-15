@@ -274,11 +274,11 @@ export function EditorCanvas({
 
     if (state.tool === "text") {
       const { x: px, y: py } = toPdf(x, y);
-      const w = Math.max(120, state.fontSize * 8);
+      const w = Math.max(160, state.fontSize * 10);
       const id = uid();
       dispatch({ type: "ADD_ANNO", a: {
         id, kind: "text", page: pageIndex,
-        x: px, y: py, w, h: state.fontSize * 1.4,
+        x: px, y: py, w, h: Math.max(state.fontSize * 1.6, 22),
         color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
       } });
       setEditingId(id);
@@ -564,9 +564,13 @@ export function EditorCanvas({
         const isBold = !!a.bold;
         const isItalic = !!a.italic;
         const isUnderline = !!a.underline;
+        // While editing a freshly-added text box, give it visible chrome so the
+        // user can see where they're typing. text-edit (replacing existing PDF
+        // text) keeps the transparent skin so it blends with surrounding glyphs.
+        const showEditChrome = isEditing && a.kind === "text";
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
-          background: bg,
+          background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
           color: rgbCss(a.color, a.opacity),
           fontSize: a.fontSize * scale,
           fontFamily: fam,
@@ -584,7 +588,11 @@ export function EditorCanvas({
           paddingRight: padX,
           boxSizing: "border-box",
           margin: 0,
-          border: "none", outline: "none", resize: "none",
+          border: showEditChrome ? "1.5px solid var(--vault)" : "none",
+          outline: "none",
+          resize: "none",
+          borderRadius: showEditChrome ? 3 : 0,
+          boxShadow: showEditChrome ? "0 0 0 3px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.25)" : "none",
           caretColor: rgbCss(a.color),
         };
         const onTextChange = (text: string) =>
@@ -593,6 +601,7 @@ export function EditorCanvas({
           <textarea
             autoFocus
             value={a.text}
+            placeholder={a.kind === "text" ? "Type here…" : ""}
             onChange={(e) => onTextChange(e.target.value)}
             onBlur={(e) => {
               // If focus is moving to the floating mini-toolbar (or anything
@@ -601,7 +610,15 @@ export function EditorCanvas({
               // focus truly leaves the text box context.
               const next = e.relatedTarget as HTMLElement | null;
               if (next && next.closest('[data-text-toolbar="1"]')) return;
-              if (!a.text.trim() && a.kind === "text") dispatch({ type: "DELETE_ANNO", id: a.id });
+              // Read the textarea's value directly to avoid a stale closure on
+              // `a.text` when blur fires before React flushes the last keystroke.
+              const finalText = e.currentTarget.value;
+              if (finalText !== a.text) {
+                dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
+              }
+              if (!finalText.trim() && a.kind === "text") {
+                dispatch({ type: "DELETE_ANNO", id: a.id });
+              }
               setEditingId(null);
             }}
             onKeyDown={(e) => {
