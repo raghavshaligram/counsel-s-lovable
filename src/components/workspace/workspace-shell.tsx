@@ -1016,6 +1016,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             label="All tools"
             active={toolModalOpen}
             onClick={() => setToolModalOpen((v) => !v)}
+            alwaysShow
           >
             <Grid3x3 className="h-[18px] w-[18px]" />
           </RailButton>
