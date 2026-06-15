@@ -51,6 +51,7 @@ import {
   Search,
   Pin,
   PinOff,
+  FileCheck2,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { PDFDocument } from "pdf-lib";
@@ -2912,23 +2913,19 @@ function EditorPages({
             )}
             {showTag && (
               <div
-                className="pointer-events-none absolute right-2 top-2 z-10"
-                aria-hidden
+                className="pointer-events-none absolute right-3 top-3 z-10"
               >
                 <span
-                  className={cn(
-                    "rounded-md border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide backdrop-blur-sm",
-                    isOcrPage
-                      ? "border-vault/40 bg-vault/15 text-vault"
-                      : "border-border bg-surface-1/80 text-text-muted",
-                  )}
+                  className="pointer-events-auto inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-text-muted/70 hover:text-text-muted transition-colors"
                   title={
                     isOcrPage
                       ? "Text recognised on-device — edit with the Text tool."
                       : "Already had a text layer — copied through unchanged."
                   }
+                  aria-label={isOcrPage ? "OCR applied to this page" : "Page is already searchable"}
                 >
-                  {isOcrPage ? "OCR" : "Searchable"}
+                  <FileCheck2 className="h-2.5 w-2.5" aria-hidden />
+                  OCR
                 </span>
               </div>
             )}
