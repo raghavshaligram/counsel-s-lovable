@@ -177,7 +177,7 @@ export async function ocrPdfToSearchable(
   const tess = await import("tesseract.js");
 
   const srcBytes = new Uint8Array(await file.arrayBuffer());
-  const srcDoc = await pdfjs.getDocument({ data: srcBytes }).promise;
+  const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
   const totalPages = srcDoc.numPages;
 
   const outPdf = await PDFDocument.create();
