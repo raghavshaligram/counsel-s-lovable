@@ -1417,8 +1417,8 @@ function Tip({
       <span
         role="tooltip"
         className={cn(
-          "pointer-events-none absolute z-50 inline-flex items-center whitespace-nowrap rounded-md border border-border bg-surface-3 px-2 py-1 text-[11px] leading-none text-foreground shadow-[var(--shadow-card)]",
-          "opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100",
+          "pointer-events-none absolute z-50 inline-flex items-center whitespace-nowrap rounded-full bg-surface-3 px-2.5 py-1 text-[11px] font-medium leading-none text-foreground shadow-[0_4px_14px_rgba(0,0,0,0.45)]",
+          "opacity-0 transition-opacity duration-100 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100",
           "[@media(hover:none)]:hidden",
           pos,
         )}
