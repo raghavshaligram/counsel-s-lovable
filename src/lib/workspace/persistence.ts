@@ -139,7 +139,16 @@ export async function listRecents(): Promise<RecentMeta[]> {
     const out: RecentMeta[] = [];
     for (const k of keys) {
       const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
-      if (v) out.push({ id: v.id, name: v.name, size: v.size, addedAt: v.addedAt });
+      if (v)
+        out.push({
+          id: v.id,
+          name: v.name,
+          size: v.size,
+          addedAt: v.addedAt,
+          ocrPages: v.ocrPages,
+          ocrPagesCopied: v.ocrPagesCopied,
+          ocrIsPartial: v.ocrIsPartial,
+        });
     }
     return out.sort((a, b) => b.addedAt - a.addedAt);
   } catch {
@@ -157,7 +166,16 @@ export async function getRecent(id: string): Promise<RecentDoc | null> {
   }
 }
 
-export async function addRecent(file: File): Promise<RecentMeta | null> {
+export type AddRecentOptions = {
+  ocrPages?: number[];
+  ocrPagesCopied?: number[];
+  ocrIsPartial?: boolean;
+};
+
+export async function addRecent(
+  file: File,
+  options: AddRecentOptions = {},
+): Promise<RecentMeta | null> {
   const d = db();
   if (!d) return null;
   if (file.size === 0 || file.size > MAX_RECENT_SIZE) return null;
@@ -169,14 +187,19 @@ export async function addRecent(file: File): Promise<RecentMeta | null> {
     // Find existing entry with same identity (any number of duplicates).
     const allKeys = (await conn.getAllKeys(DOC_STORE)) as string[];
     let reuseId: string | null = null;
+    let prevOcrPages: number[] | undefined;
+    let prevOcrPagesCopied: number[] | undefined;
+    let prevOcrIsPartial: boolean | undefined;
     for (const k of allKeys) {
       const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
       if (!v) continue;
       if (identityKey(v.name, v.size) === key) {
         if (!reuseId) {
           reuseId = v.id;
+          prevOcrPages = v.ocrPages;
+          prevOcrPagesCopied = v.ocrPagesCopied;
+          prevOcrIsPartial = v.ocrIsPartial;
         } else {
-          // Collapse any extra duplicates.
           await conn.delete(DOC_STORE, k);
         }
       }
@@ -189,10 +212,21 @@ export async function addRecent(file: File): Promise<RecentMeta | null> {
       size: file.size,
       addedAt: Date.now(),
       bytes,
+      ocrPages: options.ocrPages ?? prevOcrPages,
+      ocrPagesCopied: options.ocrPagesCopied ?? prevOcrPagesCopied,
+      ocrIsPartial: options.ocrIsPartial ?? prevOcrIsPartial,
     };
     await conn.put(DOC_STORE, rec, id);
     await evict(conn);
-    return { id, name: rec.name, size: rec.size, addedAt: rec.addedAt };
+    return {
+      id,
+      name: rec.name,
+      size: rec.size,
+      addedAt: rec.addedAt,
+      ocrPages: rec.ocrPages,
+      ocrPagesCopied: rec.ocrPagesCopied,
+      ocrIsPartial: rec.ocrIsPartial,
+    };
   } catch {
     return null;
   }
