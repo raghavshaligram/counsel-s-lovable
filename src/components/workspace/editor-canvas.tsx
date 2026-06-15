@@ -902,16 +902,18 @@ export function EditorCanvas({
         {drawing && state.tool !== "select" && (
           <DrawingPreview drawing={drawing} state={state} />
         )}
-        {activeText && (
-          <TextMiniToolbar
-            anno={activeText}
-            scale={scale}
-            pageW={screenW}
-            pageH={screenH}
-            dispatch={dispatch}
-          />
-        )}
       </div>
+      {/* Floating mini-toolbar rendered OUTSIDE the overlay so it never
+          blocks pointer events on the text box beneath it. */}
+      {activeText && (
+        <TextMiniToolbar
+          anno={activeText}
+          scale={scale}
+          pageW={screenW}
+          pageH={screenH}
+          dispatch={dispatch}
+        />
+      )}
       {/* Off-screen measurement node for auto-grow. Positioned far off-canvas
           and read via offsetWidth/offsetHeight to size the active text box. */}
       <div
