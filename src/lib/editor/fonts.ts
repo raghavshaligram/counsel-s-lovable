@@ -90,19 +90,34 @@ export function mapPdfFontToKey(
   family: "sans" | "serif" | "mono",
   fontFamilyCss?: string,
 ): FontKey {
+  return detectFontKey(fontName, family, fontFamilyCss).key;
+}
+
+// Like mapPdfFontToKey but also reports whether the result is an exact
+// metric-compatible match (Calibri→Carlito, Arial→Arimo, etc.) or only an
+// approximate fallback based on serif/sans/mono kind. Consumers use the
+// `approximate` flag to show a subtle "closest match" hint in the UI.
+export function detectFontKey(
+  fontName: string | undefined,
+  family: "sans" | "serif" | "mono",
+  fontFamilyCss?: string,
+): { key: FontKey; approximate: boolean } {
   const strip = (s: string) => s.toLowerCase().replace(/^[a-z0-9]{1,8}\+/, "");
   const n = strip(fontName ?? "");
   const ff = strip(fontFamilyCss ?? "");
-  const hay = `${n} ${ff}`;
-  if (/calibri|carlito/.test(hay)) return "carlito";
-  if (/arial|helvet|liberation\s*sans|nimbus\s*sans|swiss|arimo/.test(hay)) return "arimo";
-  if (/times|tnr|\broman\b|liberation\s*serif|nimbus\s*rom|tinos|garamond|georgia|baskerville|caslon|didot|bodoni|minion|book|serif/.test(hay)) return "tinos";
-  if (/cambria|caladea/.test(hay)) return "caladea";
-  if (/courier|cousine|consol|mono|typewriter/.test(hay)) return "cousine";
-  // Fallback by serif/sans/mono kind
-  if (family === "serif") return "tinos";
-  if (family === "mono") return "cousine";
-  return "arimo";
+  const hay = `${n} ${ff}`.trim();
+  if (/calibri|carlito/.test(hay)) return { key: "carlito", approximate: false };
+  if (/arial|helvet|liberation\s*sans|nimbus\s*sans|swiss|arimo/.test(hay)) return { key: "arimo", approximate: false };
+  if (/times|tnr|\broman\b|liberation\s*serif|nimbus\s*rom|tinos/.test(hay)) return { key: "tinos", approximate: false };
+  if (/cambria|caladea/.test(hay)) return { key: "caladea", approximate: false };
+  if (/courier|cousine|consol/.test(hay)) return { key: "cousine", approximate: false };
+  // Recognised serif/mono families with no exact metric twin.
+  if (/garamond|georgia|baskerville|caslon|didot|bodoni|minion|book|serif/.test(hay)) return { key: "tinos", approximate: true };
+  if (/mono|typewriter/.test(hay)) return { key: "cousine", approximate: true };
+  // Pure fallback by kind — definitely approximate.
+  if (family === "serif") return { key: "tinos", approximate: true };
+  if (family === "mono") return { key: "cousine", approximate: true };
+  return { key: "arimo", approximate: true };
 }
 
 export async function loadFontBytes(
