@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { computeQuads } from "@/lib/editor/quad-capture";
-import { FONT_KEYS, FONT_META, mapPdfFontToKey, type FontKey } from "@/lib/editor/fonts";
+import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 
@@ -30,6 +30,7 @@ interface TextItem {
   transform: number[];
   fontName?: string;
   fontKey?: FontKey;
+  fontApprox?: boolean;
   color: RGB;
   bg: RGB;
 }
@@ -218,11 +219,13 @@ export function EditorCanvas({
             "sans";
           const bold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold|800|900/.test(ffl);
           const italic = /italic|oblique/.test(ffl);
-          const fontKey = mapPdfFontToKey(it.fontName ?? ff, family, ff);
+          const det = detectFontKey(it.fontName ?? ff, family, ff);
+          const fontKey = det.key;
+          const fontApprox = det.approximate;
           const x = m[4], y = m[5] - fh;
           const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
-          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, color, bg }];
+          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, fontApprox, color, bg }];
         });
         setTextItems(items);
         setTextLoaded(true);
@@ -675,8 +678,11 @@ export function EditorCanvas({
         {inner}
         {selected && (
           <>
-            <div style={{ position: "absolute", inset: -2, border: "1.5px dashed var(--vault)", pointerEvents: "none" }} />
-            {!isLocked && <div onMouseDown={onResize} style={{ position: "absolute", right: -6, bottom: -6, width: 12, height: 12, background: "var(--vault)", border: "2px solid white", borderRadius: 2, cursor: "nwse-resize" }} />}
+            {/* Dark outer halo for contrast on any background */}
+            <div style={{ position: "absolute", inset: -4, border: "1px solid rgba(0,0,0,0.55)", borderRadius: 2, pointerEvents: "none" }} />
+            {/* Solid amber selection ring */}
+            <div style={{ position: "absolute", inset: -2, border: "2px solid var(--vault)", borderRadius: 2, boxShadow: "0 0 0 1px rgba(255,255,255,0.9)", pointerEvents: "none" }} />
+            {!isLocked && <div onMouseDown={onResize} style={{ position: "absolute", right: -7, bottom: -7, width: 14, height: 14, background: "var(--vault)", border: "2px solid white", borderRadius: 3, cursor: "nwse-resize", boxShadow: "0 1px 3px rgba(0,0,0,0.5)" }} />}
             <button
               onClick={(e) => { e.stopPropagation(); dispatch({ type: "DELETE_ANNO", id: a.id }); }}
               style={{ position: "absolute", top: -10, right: -10, background: "#dc2626", color: "white", borderRadius: 999, width: 18, height: 18, fontSize: 10, lineHeight: 1, display: "grid", placeItems: "center", border: "none", cursor: "pointer" }}
@@ -720,6 +726,7 @@ export function EditorCanvas({
       bg: it.bg,
       family,
       fontKey,
+      fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
       textOffsetY: padTop,
       cover,
@@ -999,6 +1006,11 @@ function TextMiniToolbar({
   // box) auto-deletes itself. preventDefault on mousedown keeps focus put.
   const keepFocus = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); };
 
+  const isApprox = a.kind === "text-edit" && !!(a as { fontApproximate?: boolean }).fontApproximate;
+  const [hintDismissed, setHintDismissed] = useState(false);
+  useEffect(() => { setHintDismissed(false); }, [a.id]);
+  const showHint = isApprox && !hintDismissed;
+
   return (
     <div
       data-text-toolbar="1"
@@ -1006,9 +1018,8 @@ function TextMiniToolbar({
       onPointerDown={stop}
       onClick={stop}
       style={{
-        position: "absolute", left, top, height: tbH,
-        display: "inline-flex", alignItems: "center", gap: 2,
-        padding: "0 8px",
+        position: "absolute", left, top,
+        display: "inline-flex", flexDirection: "column", alignItems: "stretch", gap: 0,
         background: "rgba(20,20,22,0.96)",
         color: "#fff",
         borderRadius: 8,
@@ -1019,15 +1030,45 @@ function TextMiniToolbar({
         fontFamily: "Helvetica, Arial, sans-serif",
       }}
     >
+      {showHint && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "6px 10px",
+            fontSize: 11, lineHeight: 1.3,
+            color: "rgba(255,255,255,0.72)",
+            background: "rgba(245,158,11,0.08)",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            borderTopLeftRadius: 8, borderTopRightRadius: 8,
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--vault)", flex: "0 0 auto" }} />
+          <span style={{ flex: 1 }}>Original font couldn't be matched exactly — pick the closest in the font menu.</span>
+          <button
+            type="button"
+            onMouseDown={keepFocus}
+            onClick={() => setHintDismissed(true)}
+            title="Dismiss"
+            style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}
+          >×</button>
+        </div>
+      )}
+      <div style={{ height: tbH, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
       <select
         value={currentFontKey}
         onChange={(e) => {
           const key = e.target.value as FontKey;
           const kind = FONT_META[key]?.kind ?? "sans";
-          update({ fontKey: key, family: kind } as Partial<Anno>);
+          update({ fontKey: key, family: kind, fontApproximate: false } as Partial<Anno>);
+          setHintDismissed(true);
         }}
-        title="Font"
-        style={{ ...btn, background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 110 }}
+        title={isApprox ? "Approximate match — pick the closest font" : "Font"}
+        style={{
+          ...btn,
+          background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 140,
+          border: showHint ? "1px solid var(--vault)" : "1px solid rgba(255,255,255,0.12)",
+          boxShadow: showHint ? "0 0 0 2px rgba(245,158,11,0.18)" : "none",
+        }}
       >
         {TOOLBAR_FONTS.map((f) => (
           <option key={f.key} value={f.key} style={{ background: "#1a1a1c", color: "#fff" }}>
@@ -1073,6 +1114,7 @@ function TextMiniToolbar({
           />
         );
       })}
+      </div>
     </div>
   );
 }
