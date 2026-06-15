@@ -37,9 +37,17 @@ export type RecentDoc = {
   size: number;
   addedAt: number;
   bytes: Uint8Array;
+  // On-device OCR memory persisted alongside the file. Mirrors TabState's
+  // per-page OCR records so reopening a document keeps its searchable text
+  // layer marked as such (tag + editability), never re-OCR'ing pages we've
+  // already done. Never uploaded.
+  ocrPages?: number[];
+  ocrPagesCopied?: number[];
+  ocrIsPartial?: boolean;
 };
 
 export type RecentMeta = Omit<RecentDoc, "bytes">;
+
 
 let dbp: Promise<IDBPDatabase> | null = null;
 function db() {
