@@ -536,12 +536,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (!rec) return;
       const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
       const f = new File([blob], rec.name, { type: "application/pdf" });
-      patchActive({ file: f, isDirty: false });
-      await addRecent(f);
+      patchActive({
+        file: f,
+        isDirty: false,
+        ocrPages: rec.ocrPages,
+        ocrPagesCopied: rec.ocrPagesCopied,
+        ocrIsPartial: rec.ocrIsPartial,
+      });
+      await addRecent(f, {
+        ocrPages: rec.ocrPages,
+        ocrPagesCopied: rec.ocrPagesCopied,
+        ocrIsPartial: rec.ocrIsPartial,
+      });
       setRecents(await listRecents());
     },
     [patchActive],
   );
+
 
   const dismissRecent = useCallback(async (id: string) => {
     await removeRecent(id);
