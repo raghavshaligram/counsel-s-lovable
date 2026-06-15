@@ -1235,6 +1235,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             open={inspectorOpen}
             activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
             onClose={() => patchActive({ inspectorOpen: false })}
+            file={active.file}
+            replaceFile={(f) => patchActive({ file: f, isDirty: true })}
+            editorDispatch={editorDispatch}
           />
         </div>
       </div>
