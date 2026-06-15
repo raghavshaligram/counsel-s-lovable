@@ -1114,6 +1114,7 @@ function TextMiniToolbar({
           />
         );
       })}
+      </div>
     </div>
   );
 }
