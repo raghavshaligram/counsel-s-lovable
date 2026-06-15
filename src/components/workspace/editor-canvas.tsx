@@ -30,6 +30,7 @@ interface TextItem {
   transform: number[];
   fontName?: string;
   fontKey?: FontKey;
+  fontApprox?: boolean;
   color: RGB;
   bg: RGB;
 }
