@@ -2430,10 +2430,16 @@ function Inspector({
   open,
   activeTool,
   onClose,
+  file,
+  replaceFile,
+  editorDispatch,
 }: {
   open: boolean;
   activeTool: RailTool | null;
   onClose: () => void;
+  file: File | null;
+  replaceFile: (f: File) => void;
+  editorDispatch: React.Dispatch<EditorAction>;
 }) {
   return (
     <aside
