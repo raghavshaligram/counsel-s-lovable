@@ -177,6 +177,10 @@ export interface TextEditAnno extends BaseAnno {
   // Bundled metric-compatible open font: "carlito" | "arimo" | "tinos" | "caladea" | "cousine".
   // When present, overrides `family` for both on-screen overlay and PDF embed.
   fontKey?: string;
+  // True when the original PDF font had no exact metric-compatible bundled
+  // twin and `fontKey` is a best-guess fallback. Drives a subtle in-editor
+  // hint so the user knows to confirm the choice in the font picker.
+  fontApproximate?: boolean;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
