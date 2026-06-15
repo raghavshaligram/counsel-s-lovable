@@ -1235,6 +1235,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             open={inspectorOpen}
             activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
             onClose={() => patchActive({ inspectorOpen: false })}
+            file={active.file}
+            replaceFile={(f) => patchActive({ file: f, isDirty: true })}
+            editorDispatch={editorDispatch}
           />
         </div>
       </div>
@@ -2427,10 +2430,16 @@ function Inspector({
   open,
   activeTool,
   onClose,
+  file,
+  replaceFile,
+  editorDispatch,
 }: {
   open: boolean;
   activeTool: RailTool | null;
   onClose: () => void;
+  file: File | null;
+  replaceFile: (f: File) => void;
+  editorDispatch: React.Dispatch<EditorAction>;
 }) {
   return (
     <aside
@@ -2466,7 +2475,7 @@ function Inspector({
             </button>
           </header>
           <div className="flex-1 overflow-auto px-3 py-3">
-            <ToolPanel toolId={activeTool.id} />
+            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch }} />
           </div>
         </div>
       ) : (
