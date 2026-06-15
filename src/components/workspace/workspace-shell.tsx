@@ -1166,6 +1166,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     ocrPages={ocrPagesSet}
                     ocrPagesCopied={ocrPagesCopiedSet}
                     showOcrTags={editorTool === "edit-text"}
+                    pageLayout={pageLayout}
                   />
 
 
