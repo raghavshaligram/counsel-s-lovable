@@ -1532,6 +1532,8 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const sources = useOrganize((s) => s.sources);
   const selectAll = useOrganize((s) => s.selectAll);
   const clearSelection = useOrganize((s) => s.clearSelection);
+  const selectRange = useOrganize((s) => s.selectRange);
+  const requestJump = useOrganize((s) => s.requestJump);
   const rotateSelected = useOrganize((s) => s.rotateSelected);
   const deleteSelected = useOrganize((s) => s.deleteSelected);
   const addTrayEntry = useOrganize((s) => s.addTrayEntry);
@@ -1541,6 +1543,9 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const trayEntries = useTray((s) => s.entries);
 
   const [building, setBuilding] = useState(false);
+  const [jumpVal, setJumpVal] = useState("");
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
 
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -1575,14 +1580,55 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   const sourceEntries = Object.entries(sources);
 
+  const total = cells.length;
+  const doJump = () => {
+    const n = parseInt(jumpVal, 10);
+    if (!Number.isFinite(n) || total === 0) return;
+    const idx = Math.min(total, Math.max(1, n)) - 1;
+    requestJump(idx);
+  };
+  const doSelectRange = (additive: boolean) => {
+    const a = parseInt(rangeFrom, 10);
+    const b = parseInt(rangeTo, 10);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || total === 0) return;
+    selectRange(a - 1, b - 1, additive);
+    requestJump(Math.min(a, b) - 1);
+  };
+
   return (
     <div className="flex flex-col gap-4">
+      <Section title="Find page" icon={<Search className="h-3 w-3" />}>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            min={1}
+            max={total || undefined}
+            value={jumpVal}
+            onChange={(e) => setJumpVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") doJump();
+            }}
+            placeholder={total ? `1–${total}` : "Page #"}
+            disabled={total === 0}
+            className="min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-[11.5px] tabular-nums text-foreground placeholder:text-text-muted focus:border-vault focus:outline-none disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={doJump}
+            disabled={total === 0 || !jumpVal}
+            className="rounded-md bg-vault px-2.5 py-1.5 text-[11.5px] font-medium text-vault-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Go
+          </button>
+        </div>
+      </Section>
+
       <Section title="Selection" icon={<LayoutGrid className="h-3 w-3" />}>
         <div className="grid grid-cols-2 gap-1.5">
           <button
             type="button"
             onClick={selectAll}
-            disabled={cells.length === 0}
+            disabled={total === 0}
             className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Select all
@@ -1596,10 +1642,55 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
             Clear
           </button>
         </div>
+        <div className="mt-2 flex items-center gap-1.5">
+          <input
+            type="number"
+            min={1}
+            max={total || undefined}
+            value={rangeFrom}
+            onChange={(e) => setRangeFrom(e.target.value)}
+            placeholder="From"
+            disabled={total === 0}
+            className="w-0 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-[11.5px] tabular-nums text-foreground placeholder:text-text-muted focus:border-vault focus:outline-none disabled:opacity-50"
+          />
+          <span className="text-[11px] text-text-muted">to</span>
+          <input
+            type="number"
+            min={1}
+            max={total || undefined}
+            value={rangeTo}
+            onChange={(e) => setRangeTo(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") doSelectRange(e.shiftKey);
+            }}
+            placeholder="To"
+            disabled={total === 0}
+            className="w-0 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-[11.5px] tabular-nums text-foreground placeholder:text-text-muted focus:border-vault focus:outline-none disabled:opacity-50"
+          />
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={() => doSelectRange(false)}
+            disabled={total === 0 || !rangeFrom || !rangeTo}
+            className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Select range
+          </button>
+          <button
+            type="button"
+            onClick={() => doSelectRange(true)}
+            disabled={total === 0 || !rangeFrom || !rangeTo}
+            className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Add range
+          </button>
+        </div>
         <p className="mt-1.5 text-[10.5px] text-text-muted">
-          Shift-click to select a range. Drag any tile to reorder.
+          Shift-click a tile to extend the selection. Drag any tile to reorder.
         </p>
       </Section>
+
 
       <Section title="Edit pages" icon={<Wand2 className="h-3 w-3" />}>
         <div className="grid grid-cols-2 gap-1.5">

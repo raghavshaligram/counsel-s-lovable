@@ -1,19 +1,38 @@
 /**
- * Organize canvas surface — page-thumbnail grid with drag-reorder.
+ * Organize canvas surface — virtualized page-thumbnail grid with
+ * drag-reorder. Built for 400+ page documents: only rows in/near the
+ * viewport mount, thumbnails render lazily per-cell, and the inspector
+ * can scroll-to-index via the organize-store `requestJump` signal.
  *
- * Renders inside the workspace's CANVAS zone when the active tool is
- * "organize". Reads/writes the shared organize-store. Calls the
- * extracted renderPageThumb (src/lib/pdf/organize.ts) — does NOT
- * duplicate that logic.
- *
- * The right inspector (OrganizePanel) drives all actions; this surface
- * only handles select/drag/click. No second toolbar, no extra rail.
+ * Reuses the extracted renderPageThumb (src/lib/pdf/organize.ts). The
+ * right inspector (OrganizePanel) drives all actions; this surface
+ * only handles select / drag / click / scroll.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GripVertical, FilePlus2 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import { useOrganize } from "@/lib/workspace/organize-store";
 import { openPdfjsDoc, renderPageThumb } from "@/lib/pdf/organize";
+import type { PageCell } from "@/lib/pdf/organize";
+
+type PdfDoc = Awaited<ReturnType<typeof openPdfjsDoc>>;
+
+const GAP = 12; // gap-3
+const PAD_X = 20; // px-5
+const PAD_Y = 24; // py-6
+const LABEL_H = 26; // footer row inside each tile
+const HEADER_H = 28; // top counts row
+
+/** Pick a column count from container width (matches the prior
+ *  responsive grid breakpoints: sm/md/lg/xl). */
+function colsForWidth(w: number) {
+  if (w >= 1280) return 6;
+  if (w >= 1024) return 5;
+  if (w >= 768) return 4;
+  if (w >= 640) return 3;
+  return 2;
+}
 
 export function OrganizeGrid({
   activeTabId,
@@ -29,6 +48,8 @@ export function OrganizeGrid({
   const dragId = useOrganize((s) => s.dragId);
   const seededFor = useOrganize((s) => s.seededFor);
   const sources = useOrganize((s) => s.sources);
+  const jumpIdx = useOrganize((s) => s.jumpIdx);
+  const jumpTick = useOrganize((s) => s.jumpTick);
 
   const seedFromActiveFile = useOrganize((s) => s.seedFromActiveFile);
   const reset = useOrganize((s) => s.reset);
@@ -39,14 +60,9 @@ export function OrganizeGrid({
   const colorFor = useOrganize((s) => s.colorFor);
 
   const [seeding, setSeeding] = useState(false);
-  const [thumbing, setThumbing] = useState(false);
-  // Live insertion indicator: { cellId, side } means "drop here, on this
-  // side of the target". Cleared on dragend / drop / leaving the grid.
   const [dropTarget, setDropTarget] = useState<{ cellId: string; side: "before" | "after" } | null>(null);
 
-  // Auto-seed from the active tab's file whenever organize becomes active
-  // for a new tab (or the file identity changes). Cross-doc additions are
-  // appended manually via the inspector and survive reseeds for the same tab.
+  // Seed from the active tab's file when it changes.
   const fileKey = activeFile ? `${activeFile.name}:${activeFile.size}:${activeFile.lastModified}` : "";
   const seededKey = useRef<string>("");
   useEffect(() => {
@@ -62,37 +78,55 @@ export function OrganizeGrid({
     void seedFromActiveFile(activeTabId, activeFile).finally(() => setSeeding(false));
   }, [activeTabId, activeFile, fileKey, seedFromActiveFile, reset, seededFor]);
 
-  // Progressive thumbnails — same approach as the legacy route, but
-  // delegated to renderPageThumb() in the lib.
+  // Per-source pdfjs doc cache. Cleared when sources identity changes
+  // (e.g. seed / reset). Promises so concurrent cells share one open.
+  const docCacheRef = useRef<Map<string, Promise<PdfDoc>>>(new Map());
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const missing = cells.filter((c) => !c.thumb);
-      if (missing.length === 0) return;
-      setThumbing(true);
-      try {
-        const docs = new Map<string, Promise<Awaited<ReturnType<typeof openPdfjsDoc>>>>();
-        for (const c of missing) {
-          if (cancelled) break;
-          const src = sources[c.source];
-          if (!src) continue;
-          if (!docs.has(c.source)) docs.set(c.source, openPdfjsDoc(src.bytes));
-          const doc = await docs.get(c.source)!;
-          if (cancelled) break;
-          const thumb = await renderPageThumb(doc, c.pageIndex);
-          if (cancelled) return;
-          if (thumb) setThumb(c.cellId, thumb);
-        }
-      } catch (err) {
-        console.error("[organize-grid] thumb render failed", err);
-      } finally {
-        if (!cancelled) setThumbing(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [cells, sources, setThumb]);
+    docCacheRef.current = new Map();
+  }, [sources]);
+
+  // --- Virtualized grid layout -------------------------------------------
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
+  useLayoutEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const measure = () => setContainerW(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const cols = useMemo(() => colsForWidth(Math.max(0, containerW - PAD_X * 2)), [containerW]);
+  const tileW = useMemo(() => {
+    const usable = Math.max(0, containerW - PAD_X * 2 - GAP * (cols - 1));
+    return Math.max(80, Math.floor(usable / cols));
+  }, [containerW, cols]);
+  // 3/4 thumb + label
+  const tileH = Math.round(tileW * (4 / 3)) + LABEL_H;
+  const rowH = tileH + GAP;
+  const rowCount = Math.ceil(cells.length / cols);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => rowH,
+    overscan: 4,
+  });
+
+  // Re-measure when row height changes (column count change etc.)
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowH, rowVirtualizer]);
+
+  // Imperative jump-to-index from inspector.
+  useEffect(() => {
+    if (jumpIdx == null) return;
+    if (rowCount === 0) return;
+    const row = Math.min(rowCount - 1, Math.max(0, Math.floor(jumpIdx / cols)));
+    rowVirtualizer.scrollToIndex(row, { align: "start" });
+  }, [jumpTick, jumpIdx, cols, rowCount, rowVirtualizer]);
 
   if (!activeFile && cells.length === 0) {
     return (
@@ -117,122 +151,227 @@ export function OrganizeGrid({
     );
   }
 
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
   return (
-    <div className="h-full overflow-auto px-5 py-6">
-      <div className="mb-3 flex items-center justify-end gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-muted">
+    <div ref={parentRef} className="h-full overflow-auto" style={{ contain: "strict" }}>
+      <div
+        className="sticky top-0 z-10 flex items-center justify-end gap-2 border-b border-border/40 bg-canvas/95 px-5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-muted backdrop-blur"
+        style={{ height: HEADER_H }}
+      >
         <span>{cells.length} page{cells.length === 1 ? "" : "s"}</span>
         <span className="text-text-muted">·</span>
         <span className={selected.size > 0 ? "text-vault" : ""}>{selected.size} selected</span>
-        {(seeding || thumbing) && <span className="ml-2 text-vault/70">rendering…</span>}
+        {seeding && <span className="ml-2 text-vault/70">rendering…</span>}
       </div>
 
       <div
-        className="grid grid-cols-2 gap-3 pb-16 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+        style={{
+          position: "relative",
+          height: rowVirtualizer.getTotalSize() + PAD_Y * 2,
+          width: "100%",
+        }}
         onDragLeave={(e) => {
-          // Only clear when the pointer actually leaves the grid, not when
-          // moving between child tiles.
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
             setDropTarget(null);
           }
         }}
       >
-        {cells.map((c, i) => {
-          const isDragged = dragId === c.cellId;
-          const showBefore = dropTarget?.cellId === c.cellId && dropTarget.side === "before";
-          const showAfter = dropTarget?.cellId === c.cellId && dropTarget.side === "after";
+        {virtualRows.map((vRow) => {
+          const start = vRow.index * cols;
+          const rowCells = cells.slice(start, start + cols);
           return (
-            <div key={c.cellId} className="relative">
-              {/* Insertion indicator — vertical accent bar on the chosen edge. */}
-              <span
-                aria-hidden
-                className={cn(
-                  "pointer-events-none absolute -left-1.5 top-0 bottom-0 w-[3px] rounded-full bg-vault transition-opacity",
-                  showBefore ? "opacity-100" : "opacity-0",
-                )}
-              />
-              <span
-                aria-hidden
-                className={cn(
-                  "pointer-events-none absolute -right-1.5 top-0 bottom-0 w-[3px] rounded-full bg-vault transition-opacity",
-                  showAfter ? "opacity-100" : "opacity-0",
-                )}
-              />
-              <div
-                draggable
-                onDragStart={(e) => {
-                  // Internal payload only — keeps "Files" out of
-                  // dataTransfer.types so the shell's file-drop overlay
-                  // stays dormant during reorder.
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("application/x-vaultpdf-cell", c.cellId);
-                  setDragId(c.cellId);
-                }}
-                onDragOver={(e) => {
-                  if (!dragId) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.dataTransfer.dropEffect = "move";
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const side: "before" | "after" =
-                    e.clientX < rect.left + rect.width / 2 ? "before" : "after";
-                  if (
-                    !dropTarget ||
-                    dropTarget.cellId !== c.cellId ||
-                    dropTarget.side !== side
-                  ) {
-                    setDropTarget({ cellId: c.cellId, side });
+            <div
+              key={vRow.key}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: `translateY(${vRow.start + PAD_Y}px)`,
+                height: rowH,
+                paddingLeft: PAD_X,
+                paddingRight: PAD_X,
+                display: "grid",
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                columnGap: GAP,
+              }}
+            >
+              {rowCells.map((c, j) => (
+                <CellTile
+                  key={c.cellId}
+                  cell={c}
+                  indexInGrid={start + j}
+                  isDragged={dragId === c.cellId}
+                  isSelected={selected.has(c.cellId)}
+                  dropSide={
+                    dropTarget?.cellId === c.cellId ? dropTarget.side : null
                   }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (dropTarget) moveTo(dropTarget.cellId, dropTarget.side);
-                  setDropTarget(null);
-                  setDragId(null);
-                }}
-                onDragEnd={() => {
-                  setDragId(null);
-                  setDropTarget(null);
-                }}
-                onClick={(e) => toggleSelect(c.cellId, e.shiftKey)}
-                className={cn(
-                  "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
-                  selected.has(c.cellId)
-                    ? "border-vault ring-2 ring-vault/50"
-                    : "border-border hover:border-vault/40",
-                  isDragged && "opacity-40",
-                )}
-              >
-                <div
-                  className="absolute left-0 top-0 bottom-0 w-[3px]"
-                  style={{ background: colorFor(c.source) }}
+                  color={colorFor(c.source)}
+                  bytes={sources[c.source]?.bytes}
+                  docCache={docCacheRef.current}
+                  setThumb={setThumb}
+                  onClick={(e) => toggleSelect(c.cellId, e.shiftKey)}
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("application/x-vaultpdf-cell", c.cellId);
+                    setDragId(c.cellId);
+                  }}
+                  onDragOver={(e) => {
+                    if (!dragId) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "move";
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const side: "before" | "after" =
+                      e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+                    if (
+                      !dropTarget ||
+                      dropTarget.cellId !== c.cellId ||
+                      dropTarget.side !== side
+                    ) {
+                      setDropTarget({ cellId: c.cellId, side });
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (dropTarget) moveTo(dropTarget.cellId, dropTarget.side);
+                    setDropTarget(null);
+                    setDragId(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setDropTarget(null);
+                  }}
                 />
-                <div className="grid aspect-[3/4] place-items-center overflow-hidden bg-canvas/60">
-                  {c.thumb ? (
-                    <img
-                      src={c.thumb}
-                      alt={`Page ${c.pageIndex + 1} of ${c.fileName}`}
-                      style={{ transform: `rotate(${c.rotation}deg)` }}
-                      className="max-h-full max-w-full transition-transform"
-                    />
-                  ) : (
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
-                  )}
-                </div>
-                <div className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 font-mono text-[10px]">
-                  <span className="tabular-nums text-text-muted">#{i + 1}</span>
-                  <span className="truncate text-text-muted" title={c.fileName}>
-                    {c.fileName}
-                  </span>
-                  <span className="tabular-nums text-text-muted">p.{c.pageIndex + 1}</span>
-                </div>
-                <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/cell:opacity-100">
-                  <GripVertical className="h-3.5 w-3.5 text-text-muted" />
-                </span>
-              </div>
+              ))}
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+
+function CellTile({
+  cell,
+  indexInGrid,
+  isDragged,
+  isSelected,
+  dropSide,
+  color,
+  bytes,
+  docCache,
+  setThumb,
+  onClick,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}: {
+  cell: PageCell;
+  indexInGrid: number;
+  isDragged: boolean;
+  isSelected: boolean;
+  dropSide: "before" | "after" | null;
+  color: string;
+  bytes: Uint8Array | undefined;
+  docCache: Map<string, Promise<PdfDoc>>;
+  setThumb: (id: string, t: string) => void;
+  onClick: (e: React.MouseEvent) => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+}) {
+  // Lazy thumb render — runs once per cell when mounted, only if missing.
+  useEffect(() => {
+    if (cell.thumb || !bytes) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        let docPromise = docCache.get(cell.source);
+        if (!docPromise) {
+          docPromise = openPdfjsDoc(bytes);
+          docCache.set(cell.source, docPromise);
+        }
+        const doc = await docPromise;
+        if (cancelled) return;
+        const thumb = await renderPageThumb(doc, cell.pageIndex);
+        if (!cancelled && thumb) setThumb(cell.cellId, thumb);
+      } catch (err) {
+        console.error("[organize-grid] thumb render failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cell.cellId, cell.thumb, bytes]);
+
+  return (
+    <div className="relative">
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute -left-1.5 top-0 bottom-0 w-[3px] rounded-full bg-vault transition-opacity",
+          dropSide === "before" ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute -right-1.5 top-0 bottom-0 w-[3px] rounded-full bg-vault transition-opacity",
+          dropSide === "after" ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <div
+        draggable
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnd={onDragEnd}
+        onClick={onClick}
+        className={cn(
+          "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
+          isSelected
+            ? "border-vault ring-2 ring-vault/50"
+            : "border-border hover:border-vault/40",
+          isDragged && "opacity-40",
+        )}
+      >
+        <div
+          className="absolute left-0 top-0 bottom-0 w-[3px]"
+          style={{ background: color }}
+        />
+        <div className="grid aspect-[3/4] place-items-center overflow-hidden bg-canvas/60">
+          {cell.thumb ? (
+            <img
+              src={cell.thumb}
+              alt={`Page ${cell.pageIndex + 1} of ${cell.fileName}`}
+              style={{ transform: `rotate(${cell.rotation}deg)` }}
+              className="max-h-full max-w-full transition-transform"
+            />
+          ) : (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
+          )}
+        </div>
+        <div
+          className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 font-mono text-[10px]"
+          style={{ height: LABEL_H }}
+        >
+          <span className="tabular-nums text-text-muted">#{indexInGrid + 1}</span>
+          <span className="truncate text-text-muted" title={cell.fileName}>
+            {cell.fileName}
+          </span>
+          <span className="tabular-nums text-text-muted">p.{cell.pageIndex + 1}</span>
+        </div>
+        <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/cell:opacity-100">
+          <GripVertical className="h-3.5 w-3.5 text-text-muted" />
+        </span>
       </div>
     </div>
   );

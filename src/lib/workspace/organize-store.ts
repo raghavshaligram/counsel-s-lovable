@@ -15,13 +15,15 @@ import { getBytes } from "@/lib/tray/blobs";
 import { useTray } from "@/lib/tray/store";
 
 interface OrganizeState {
-  /** Map of sourceKey -> source data + assigned color index. */
   sources: Record<string, OrganizeSource & { colorIdx: number }>;
   cells: PageCell[];
   selected: Set<string>;
   dragId: string | null;
-  /** Identifies the active tab the current grid was seeded from. */
   seededFor: string | null;
+
+  /** Imperative scroll-to-index signal for the grid surface. */
+  jumpIdx: number | null;
+  jumpTick: number;
 
   seedFromActiveFile: (tabId: string, file: File) => Promise<void>;
   addTrayEntry: (entryId: string) => Promise<void>;
@@ -30,6 +32,8 @@ interface OrganizeState {
   toggleSelect: (cellId: string, shift: boolean) => void;
   selectAll: () => void;
   clearSelection: () => void;
+  /** Select the inclusive 0-based index range [start..end] (clamped). */
+  selectRange: (start: number, end: number, additive?: boolean) => void;
   rotateSelected: () => void;
   deleteSelected: () => void;
 
@@ -37,6 +41,9 @@ interface OrganizeState {
   reorderOver: (overId: string) => void;
   moveTo: (targetCellId: string, side: "before" | "after") => void;
   setThumb: (cellId: string, thumb: string) => void;
+
+  /** Request the grid surface scroll to a given 0-based cell index. */
+  requestJump: (idx: number) => void;
 
   colorFor: (sourceKey: string) => string;
   resolveBytes: (sourceKey: string) => Promise<Uint8Array | null>;
@@ -51,6 +58,8 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
   selected: new Set(),
   dragId: null,
   seededFor: null,
+  jumpIdx: null,
+  jumpTick: 0,
 
   async seedFromActiveFile(tabId, file) {
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -129,6 +138,21 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
   },
   clearSelection() {
     set({ selected: new Set() });
+  },
+
+  selectRange(start, end, additive = false) {
+    set((s) => {
+      if (s.cells.length === 0) return { selected: s.selected };
+      const a = Math.max(0, Math.min(start, end));
+      const b = Math.min(s.cells.length - 1, Math.max(start, end));
+      const next = additive ? new Set(s.selected) : new Set<string>();
+      for (let i = a; i <= b; i++) next.add(s.cells[i].cellId);
+      return { selected: next };
+    });
+  },
+
+  requestJump(idx) {
+    set((s) => ({ jumpIdx: idx, jumpTick: s.jumpTick + 1 }));
   },
 
   rotateSelected() {
