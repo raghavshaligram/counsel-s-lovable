@@ -698,9 +698,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [openFile, openNewStartTab, patchActive, inspectorOpen, zoom]);
 
-  // Drag-drop anywhere → open into active tab.
+  // Drag-drop anywhere → open into active tab. Ignore non-file drags
+  // (e.g. dragging a page tile inside the Organize grid) so the global
+  // dropzone overlay doesn't flicker and we don't try to parse cell
+  // payloads as PDF bytes.
   const onDrop = useCallback(
     (e: React.DragEvent) => {
+      if (!Array.from(e.dataTransfer.types).includes("Files")) return;
       e.preventDefault();
       setDragOver(false);
       onFiles(e.dataTransfer.files);
@@ -1003,10 +1007,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     <div
       className="flex h-screen w-full flex-col bg-background text-foreground"
       onDragOver={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
         e.preventDefault();
         setDragOver(true);
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+        setDragOver(false);
+      }}
       onDrop={onDrop}
     >
       <input
