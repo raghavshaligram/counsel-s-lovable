@@ -904,14 +904,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
 
   const onStopOcr = useCallback(() => {
-    // Queue edit-text BEFORE abort: the OCR finalize will swap the file,
-    // which dispatches LOAD and resets editor.tool to "select". The LOAD
-    // effect re-applies this pending tool right after, so the user lands on
-    // the actual text-editing tool (Edit), not Select.
-    postLoadToolRef.current.set(activeIdRef.current, "edit-text");
+    // Sidecar OCR: no file swap, so just abort + switch to Edit immediately.
     ocrAbortRef.current?.abort();
     openTool("edit-text");
   }, [openTool]);
+
 
 
   // Track scanned pages reported by EditorCanvas instances. Cleared when the
