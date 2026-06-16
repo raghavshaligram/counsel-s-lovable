@@ -268,7 +268,7 @@ export function EditorCanvas({
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
     };
-  }, [op, srcBytes, scale, pdfDoc]);
+  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer]);
 
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
