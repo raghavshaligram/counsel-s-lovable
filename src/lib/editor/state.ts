@@ -8,12 +8,14 @@
 import type {
   Anno,
   EditorDoc,
+  OcrPageLayer,
   PageOp,
   ProtectSettings,
   RGB,
   Tool,
   WatermarkSettings,
 } from "./types";
+
 
 export type State = {
   doc: EditorDoc | null;
