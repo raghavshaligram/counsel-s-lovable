@@ -46,6 +46,13 @@ import {
   parseRange,
   type MergeItem,
 } from "@/lib/pdf/combine";
+import {
+  parseRanges,
+  splitPdf,
+  downloadBlob,
+  getPageCount as getSplitPageCount,
+} from "@/lib/pdf/split";
+import { Scissors } from "lucide-react";
 
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
