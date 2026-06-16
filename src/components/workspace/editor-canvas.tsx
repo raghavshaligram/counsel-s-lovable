@@ -227,8 +227,36 @@ export function EditorCanvas({
           const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, fontApprox, color, bg }];
         });
+
+        // Merge sidecar OCR tokens for this SOURCE page (top-left PDF
+        // points). These are rendered as synthetic TextItems so the
+        // Edit-text tool can target them — the underlying srcBytes is
+        // never modified.
+        const ocrPage = state.doc?.ocrLayer?.find((p) => p.srcPage === op.srcPage);
+        if (ocrPage && ocrPage.tokens.length) {
+          const det = detectFontKey("Helvetica", "sans", "Helvetica");
+          const ocrItems: TextItem[] = ocrPage.tokens.map((t) => ({
+            x: t.x,
+            y: t.y,
+            w: t.w,
+            h: t.h,
+            str: t.text,
+            family: "sans",
+            bold: false,
+            italic: false,
+            transform: [t.h, 0, 0, t.h, t.x, t.y + t.h],
+            fontName: "Helvetica",
+            fontKey: det.key,
+            fontApprox: det.approximate,
+            color: { r: 0, g: 0, b: 0 },
+            bg: { r: 1, g: 1, b: 1 },
+          }));
+          items.push(...ocrItems);
+        }
+
         setTextItems(items);
         setTextLoaded(true);
+
       } catch (err) {
         console.error("[workspace EditorCanvas] page render failed", err);
         setTextLoaded(true);
