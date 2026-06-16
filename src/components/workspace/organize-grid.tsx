@@ -18,9 +18,11 @@ import { openPdfjsDoc, renderPageThumb } from "@/lib/pdf/organize";
 export function OrganizeGrid({
   activeTabId,
   activeFile,
+  onOpenFile,
 }: {
   activeTabId: string;
   activeFile: File | null;
+  onOpenFile?: () => void;
 }) {
   const cells = useOrganize((s) => s.cells);
   const selected = useOrganize((s) => s.selected);
