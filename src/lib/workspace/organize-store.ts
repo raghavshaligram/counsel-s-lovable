@@ -140,6 +140,21 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
     set({ selected: new Set() });
   },
 
+  selectRange(start, end, additive = false) {
+    set((s) => {
+      if (s.cells.length === 0) return { selected: s.selected };
+      const a = Math.max(0, Math.min(start, end));
+      const b = Math.min(s.cells.length - 1, Math.max(start, end));
+      const next = additive ? new Set(s.selected) : new Set<string>();
+      for (let i = a; i <= b; i++) next.add(s.cells[i].cellId);
+      return { selected: next };
+    });
+  },
+
+  requestJump(idx) {
+    set((s) => ({ jumpIdx: idx, jumpTick: s.jumpTick + 1 }));
+  },
+
   rotateSelected() {
     set((s) => ({
       cells: s.cells.map((c) =>
