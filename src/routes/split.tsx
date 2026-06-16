@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Download, FileText, Lock, Scissors, X, RefreshCw } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { useHotkey, modKey } from "@/lib/use-hotkey";
+import { parseRanges, splitPdf, downloadBlob, type SplitMode } from "@/lib/pdf/split";
 
 export const Route = createFileRoute("/split")({
   head: () => ({
