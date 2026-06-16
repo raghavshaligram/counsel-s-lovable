@@ -48,6 +48,7 @@ import {
 } from "@/lib/pdf/combine";
 import {
   parseRanges,
+  parseSplitPoints,
   splitPdf,
   downloadBlob,
   getPageCount as getSplitPageCount,
@@ -1042,8 +1043,11 @@ function MergePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file } = ctx;
-  const [mode, setMode] = useState<"ranges" | "each">("ranges");
+  type SplitUiMode = "ranges" | "each" | "everyN" | "splitPoints";
+  const [mode, setMode] = useState<SplitUiMode>("ranges");
   const [ranges, setRanges] = useState("1-");
+  const [everyN, setEveryN] = useState(2);
+  const [points, setPoints] = useState("");
   const [pageCount, setPageCount] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -1071,6 +1075,17 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
   }, [file]);
 
   const parsed = useMemo(() => parseRanges(ranges, pageCount), [ranges, pageCount]);
+  const parsedPoints = useMemo(
+    () => parseSplitPoints(points, pageCount),
+    [points, pageCount],
+  );
+
+  // Preview for everyN mode.
+  const everyNPreview = useMemo(() => {
+    if (pageCount === 0 || everyN < 1) return null;
+    const count = Math.ceil(pageCount / Math.max(1, Math.floor(everyN)));
+    return count;
+  }, [pageCount, everyN]);
 
   const run = useCallback(async () => {
     if (!file) {
@@ -1079,10 +1094,15 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
     setBusy(true);
     try {
-      const result = await splitPdf(
-        file,
-        mode === "each" ? { mode: "each" } : { mode: "ranges", ranges },
-      );
+      const opts =
+        mode === "each"
+          ? ({ mode: "each" } as const)
+          : mode === "ranges"
+            ? ({ mode: "ranges", ranges } as const)
+            : mode === "everyN"
+              ? ({ mode: "everyN", n: Math.max(1, Math.floor(everyN)) } as const)
+              : ({ mode: "splitPoints", points } as const);
+      const result = await splitPdf(file, opts);
       downloadBlob(result.blob, result.filename);
       if (result.kind === "pdf") {
         toast.success(`Saved ${result.pageCount} pages`, {
@@ -1101,13 +1121,31 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setBusy(false);
     }
-  }, [file, mode, ranges]);
+  }, [file, mode, ranges, everyN, points]);
 
   const canRun =
     !!file &&
     !busy &&
     pageCount > 0 &&
-    (mode === "each" || (parsed.groups.length > 0 && !parsed.error));
+    (mode === "each" ||
+      (mode === "ranges" && parsed.groups.length > 0 && !parsed.error) ||
+      (mode === "everyN" && Math.floor(everyN) >= 1) ||
+      (mode === "splitPoints" && parsedPoints.points.length > 0 && !parsedPoints.error));
+
+  const modeBtn = (id: SplitUiMode, label: string) => (
+    <button
+      type="button"
+      onClick={() => setMode(id)}
+      className={cn(
+        "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+        mode === id
+          ? "border-vault/60 bg-accent-soft text-foreground"
+          : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="flex h-full flex-col gap-3.5">
@@ -1132,30 +1170,10 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
           <Section title="Mode" icon={<Scissors className="h-3 w-3" />}>
             <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setMode("ranges")}
-                className={cn(
-                  "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
-                  mode === "ranges"
-                    ? "border-vault/60 bg-accent-soft text-foreground"
-                    : "border-border bg-surface-2 text-text-2 hover:text-foreground",
-                )}
-              >
-                By ranges
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("each")}
-                className={cn(
-                  "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
-                  mode === "each"
-                    ? "border-vault/60 bg-accent-soft text-foreground"
-                    : "border-border bg-surface-2 text-text-2 hover:text-foreground",
-                )}
-              >
-                Every page
-              </button>
+              {modeBtn("ranges", "By ranges")}
+              {modeBtn("each", "Every page")}
+              {modeBtn("everyN", "Every N pages")}
+              {modeBtn("splitPoints", "At split points")}
             </div>
           </Section>
 
@@ -1181,6 +1199,56 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
                   `${parsed.groups.length} files in a zip (${parsed.groups
                     .map((g) => g.length)
                     .join(" + ")} pages)`
+                )}
+              </div>
+            </Section>
+          )}
+
+          {mode === "everyN" && (
+            <Section title="Chunk size">
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, pageCount)}
+                  value={everyN}
+                  onChange={(e) =>
+                    setEveryN(Math.max(1, parseInt(e.target.value || "1", 10)))
+                  }
+                  className="w-20 rounded-md border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40"
+                />
+                <span className="text-[11.5px] text-text-2">
+                  page{everyN === 1 ? "" : "s"} per file
+                </span>
+              </div>
+              <div className="mt-1.5 text-[10.5px] leading-snug text-text-muted">
+                {everyNPreview === null
+                  ? "Waiting for page count…"
+                  : everyNPreview === 1
+                    ? "One file (chunk is the whole document)"
+                    : `${everyNPreview} files in a zip`}
+              </div>
+            </Section>
+          )}
+
+          {mode === "splitPoints" && (
+            <Section title="Split points">
+              <input
+                value={points}
+                onChange={(e) => setPoints(e.target.value)}
+                placeholder="e.g. 5, 12, 18"
+                spellCheck={false}
+                className="w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40"
+              />
+              <div className="mt-1.5 text-[10.5px] leading-snug text-text-muted">
+                {parsedPoints.error ? (
+                  <span className="text-destructive">{parsedPoints.error}</span>
+                ) : pageCount === 0 ? (
+                  "Waiting for page count…"
+                ) : parsedPoints.points.length === 0 ? (
+                  `Pages where a new part starts (2–${pageCount})`
+                ) : (
+                  `${parsedPoints.points.length + 1} files in a zip · cuts before ${parsedPoints.points.join(", ")}`
                 )}
               </div>
             </Section>
