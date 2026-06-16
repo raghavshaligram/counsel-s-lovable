@@ -94,12 +94,21 @@ export function OrganizeGrid({
   if (!activeFile && cells.length === 0) {
     return (
       <div className="grid h-full place-items-center p-10">
-        <div className="max-w-md space-y-3 text-center">
+        <div className="max-w-md space-y-4 text-center">
           <FilePlus2 className="mx-auto h-8 w-8 text-text-muted" />
           <div className="font-display text-xl text-foreground">Open a document to organize.</div>
           <p className="text-[12.5px] leading-snug text-text-2">
             Or pull in pages from another open document using the inspector on the right.
           </p>
+          {onOpenFile && (
+            <button
+              type="button"
+              onClick={onOpenFile}
+              className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90"
+            >
+              <FilePlus2 className="h-3.5 w-3.5" /> Open PDF…
+            </button>
+          )}
         </div>
       </div>
     );
