@@ -193,30 +193,6 @@ function SplitPage() {
   );
 }
 
-function parseRanges(input: string, total: number): { groups: number[][]; error?: string } {
-  if (!total) return { groups: [] };
-  const parts = input
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return { groups: [] };
-  const groups: number[][] = [];
-  for (const part of parts) {
-    const m = part.match(/^(\d+)\s*(?:-\s*(\d*))?$/);
-    if (!m) return { groups: [], error: `"${part}" isn't a valid range` };
-    const start = parseInt(m[1], 10);
-    const endRaw = m[2];
-    const end = endRaw === undefined ? start : endRaw === "" ? total : parseInt(endRaw, 10);
-    if (start < 1 || end < 1 || start > total || end > total) {
-      return { groups: [], error: `"${part}" is out of bounds (1–${total})` };
-    }
-    if (end < start) return { groups: [], error: `"${part}" goes backwards` };
-    const pages: number[] = [];
-    for (let i = start; i <= end; i++) pages.push(i);
-    groups.push(pages);
-  }
-  return { groups };
-}
 
 export function ToolHeader({
   tag,
