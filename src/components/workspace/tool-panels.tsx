@@ -83,6 +83,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <MergePanel ctx={ctx} />;
     case "split":
       return <SplitPanel ctx={ctx} />;
+    case "rotate":
+      return <RotatePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
