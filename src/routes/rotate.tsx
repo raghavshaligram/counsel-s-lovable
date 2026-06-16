@@ -36,12 +36,12 @@ export const Route = createFileRoute("/rotate")({
   component: RotatePage,
 });
 
-type Scope = "all" | "odd" | "even" | "custom";
+type Scope = RotateScope;
 
 function RotatePage() {
   const [file, setFile] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState(0);
-  const [angle, setAngle] = useState<90 | 180 | 270>(90);
+  const [angle, setAngle] = useState<RotateAngle>(90);
   const [scope, setScope] = useState<Scope>("all");
   const [custom, setCustom] = useState("");
   const [busy, setBusy] = useState(false);
@@ -54,10 +54,8 @@ function RotatePage() {
     }
     (async () => {
       try {
-        const doc = await PDFDocument.load(await file.arrayBuffer(), {
-          ignoreEncryption: true,
-        });
-        if (!cancelled) setPageCount(doc.getPageCount());
+        const n = await getRotatePageCount(file);
+        if (!cancelled) setPageCount(n);
       } catch {
         if (!cancelled) {
           toast.error("Couldn't open that PDF.");
@@ -78,32 +76,21 @@ function RotatePage() {
     if (!file) return;
     setBusy(true);
     try {
-      const doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
-      const targets = resolveScope(scope, custom, doc.getPageCount());
-      if (targets.error) {
-        toast.error(targets.error);
-        return;
-      }
-      const set = new Set(targets.indices);
-      doc.getPages().forEach((p, i) => {
-        if (set.has(i)) {
-          const current = p.getRotation().angle ?? 0;
-          p.setRotation(degrees((current + angle) % 360));
-        }
-      });
-      const bytes = await doc.save();
-      const base = file.name.replace(/\.pdf$/i, "");
-      downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${base}-rotated.pdf`);
-      toast.success(`Rotated ${set.size} page${set.size === 1 ? "" : "s"}`);
+      const result = await rotatePdf(file, { angle, scope, custom });
+      downloadBlob(result.blob, result.filename);
+      toast.success(
+        `Rotated ${result.rotatedCount} page${result.rotatedCount === 1 ? "" : "s"}`,
+      );
     } catch (err) {
       console.error(err);
-      toast.error("Rotate failed");
+      toast.error(err instanceof Error ? err.message : "Rotate failed");
     } finally {
       setBusy(false);
     }
   };
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
+
 
   return (
     <AppShell>
