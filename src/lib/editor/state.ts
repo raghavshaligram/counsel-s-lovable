@@ -57,8 +57,16 @@ export type Action =
   | { type: "SET_PENDING_IMAGE"; img: State["pendingImage"] }
   | { type: "SET_WATERMARK"; w: WatermarkSettings | null }
   | { type: "SET_PROTECT"; p: ProtectSettings | null }
+  | { type: "SET_OCR_LAYER"; pages: OcrPageLayer[] }
+  | {
+      type: "LOAD_SIDECAR";
+      annotations?: Anno[];
+      pages?: PageOp[];
+      ocrLayer?: OcrPageLayer[];
+    }
   | { type: "UNDO" }
   | { type: "REDO" };
+
 
 function commit(state: State, nextDoc: EditorDoc): State {
   return {
