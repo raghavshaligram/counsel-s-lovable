@@ -111,8 +111,30 @@ export function reducer(s: State, a: Action): State {
     case "SET_PENDING_IMAGE": return { ...s, pendingImage: a.img };
     case "SET_WATERMARK": return { ...s, watermark: a.w };
     case "SET_PROTECT": return { ...s, protect: a.p };
-    case "ADD_ANNO": {
+    case "SET_OCR_LAYER": {
       if (!s.doc) return s;
+      // Merge by srcPage — new entries replace any existing layer for that
+      // source page; pages we didn't touch in this run are preserved.
+      const map = new Map<number, OcrPageLayer>();
+      for (const p of s.doc.ocrLayer ?? []) map.set(p.srcPage, p);
+      for (const p of a.pages) map.set(p.srcPage, p);
+      const next: EditorDoc = {
+        ...s.doc,
+        ocrLayer: [...map.values()].sort((x, y) => x.srcPage - y.srcPage),
+      };
+      return commit(s, next);
+    }
+    case "LOAD_SIDECAR": {
+      if (!s.doc) return s;
+      const next: EditorDoc = {
+        ...s.doc,
+        annotations: a.annotations ?? s.doc.annotations,
+        pages: a.pages && a.pages.length === s.doc.pages.length ? a.pages : s.doc.pages,
+        ocrLayer: a.ocrLayer ?? s.doc.ocrLayer,
+      };
+      return { ...s, doc: next, past: [], future: [] };
+    }
+
       return commit(s, { ...s.doc, annotations: [...s.doc.annotations, a.a] });
     }
     case "UPDATE_ANNO": {
