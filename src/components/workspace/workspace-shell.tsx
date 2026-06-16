@@ -59,6 +59,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
 import { EditorCanvas } from "./editor-canvas";
+import { OrganizeGrid } from "./organize-grid";
 import { TabStrip } from "./tab-strip";
 import {
   loadUIState,
@@ -1242,7 +1243,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 className="pointer-events-none absolute inset-0 transition-colors"
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
-              {file ? (
+              {activeToolId === "organize" ? (
+                <OrganizeGrid activeTabId={active.id} activeFile={file} />
+              ) : file ? (
                 editorState.doc && editorState.doc.pages.length > 0 ? (
                   <EditorPages
                     state={editorState}
