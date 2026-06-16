@@ -7,18 +7,24 @@
  *           and total size; oldest evicted first.
  */
 import { openDB, type IDBPDatabase } from "idb";
+import type { Anno, OcrPageLayer, PageOp } from "@/lib/editor/types";
 
 const DB_NAME = "vaultpdf-workspace";
 const UI_STORE = "ui";
 const DOC_STORE = "docs";
+const SIDECAR_STORE = "sidecars";
 
 export const MAX_RECENT_COUNT = 10;
 export const MAX_RECENT_SIZE = 25 * 1024 * 1024; // 25 MB per doc
 export const MAX_TOTAL_SIZE = 120 * 1024 * 1024; // 120 MB total
 
-function identityKey(name: string, size: number) {
+export function sidecarKey(name: string, size: number) {
   return `${name}::${size}`;
 }
+function identityKey(name: string, size: number) {
+  return sidecarKey(name, size);
+}
+
 
 export type WorkspaceUIState = {
   activeToolId: string | null;
