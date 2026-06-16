@@ -53,7 +53,14 @@ import {
   downloadBlob,
   getPageCount as getSplitPageCount,
 } from "@/lib/pdf/split";
-import { Scissors } from "lucide-react";
+import { Scissors, RotateCw, RotateCcw } from "lucide-react";
+import {
+  getRotatePageCount,
+  resolveRotateScope,
+  rotatePdf,
+  type RotateAngle,
+  type RotateScope,
+} from "@/lib/pdf/rotate";
 
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
