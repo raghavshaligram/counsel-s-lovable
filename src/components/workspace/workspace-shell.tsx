@@ -744,6 +744,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
+        // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
+        // for this file identity, if any.
+        const side = await loadSidecar(f.name, f.size);
+        if (!cancelled && side) {
+          dispatchEditorFor(tabId, {
+            type: "LOAD_SIDECAR",
+            annotations: side.annotations,
+            pages: side.pages,
+            ocrLayer: side.ocrLayer,
+          });
+        }
         const pendingTool = postLoadToolRef.current.get(tabId);
         if (pendingTool) {
           postLoadToolRef.current.delete(tabId);
@@ -754,6 +765,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         console.error("[workspace] PDFDocument.load failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
       }
+
     })();
     return () => {
       cancelled = true;
