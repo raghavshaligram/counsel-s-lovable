@@ -7,18 +7,24 @@
  *           and total size; oldest evicted first.
  */
 import { openDB, type IDBPDatabase } from "idb";
+import type { Anno, OcrPageLayer, PageOp } from "@/lib/editor/types";
 
 const DB_NAME = "vaultpdf-workspace";
 const UI_STORE = "ui";
 const DOC_STORE = "docs";
+const SIDECAR_STORE = "sidecars";
 
 export const MAX_RECENT_COUNT = 10;
 export const MAX_RECENT_SIZE = 25 * 1024 * 1024; // 25 MB per doc
 export const MAX_TOTAL_SIZE = 120 * 1024 * 1024; // 120 MB total
 
-function identityKey(name: string, size: number) {
+export function sidecarKey(name: string, size: number) {
   return `${name}::${size}`;
 }
+function identityKey(name: string, size: number) {
+  return sidecarKey(name, size);
+}
+
 
 export type WorkspaceUIState = {
   activeToolId: string | null;
@@ -53,15 +59,19 @@ let dbp: Promise<IDBPDatabase> | null = null;
 function db() {
   if (typeof indexedDB === "undefined") return null;
   if (!dbp) {
-    dbp = openDB(DB_NAME, 1, {
-      upgrade(d) {
+    dbp = openDB(DB_NAME, 2, {
+      upgrade(d, oldVersion) {
         if (!d.objectStoreNames.contains(UI_STORE)) d.createObjectStore(UI_STORE);
         if (!d.objectStoreNames.contains(DOC_STORE)) d.createObjectStore(DOC_STORE);
+        if (oldVersion < 2 && !d.objectStoreNames.contains(SIDECAR_STORE)) {
+          d.createObjectStore(SIDECAR_STORE);
+        }
       },
     });
   }
   return dbp;
 }
+
 
 /* ----------------------------- UI state ----------------------------- */
 
@@ -296,4 +306,57 @@ async function dedupe(conn: IDBPDatabase): Promise<void> {
     }
   }
   for (const k of toDelete) await conn.delete(DOC_STORE, k);
+}
+
+/* ----------------------------- Sidecars ----------------------------- */
+// Per-document sidecar: annotations, page-ops, ocr layer. Keyed by
+// `${name}::${size}` so it survives a tab close + re-open. On-device only.
+
+export type SidecarRecord = {
+  fileName: string;
+  size: number;
+  savedAt: number;
+  annotations: Anno[];
+  pages: PageOp[];
+  ocrLayer?: OcrPageLayer[];
+};
+
+export async function loadSidecar(name: string, size: number): Promise<SidecarRecord | null> {
+  const d = db();
+  if (!d) return null;
+  try {
+    return ((await (await d).get(SIDECAR_STORE, sidecarKey(name, size))) as SidecarRecord) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const sidecarTimers = new Map<string, ReturnType<typeof setTimeout>>();
+export function saveSidecarDebounced(name: string, size: number, rec: Omit<SidecarRecord, "savedAt">) {
+  const d = db();
+  if (!d) return;
+  const key = sidecarKey(name, size);
+  const t = sidecarTimers.get(key);
+  if (t) clearTimeout(t);
+  sidecarTimers.set(
+    key,
+    setTimeout(async () => {
+      try {
+        const full: SidecarRecord = { ...rec, savedAt: Date.now() };
+        (await d).put(SIDECAR_STORE, full, key);
+      } catch {
+        /* ignore */
+      }
+    }, 400),
+  );
+}
+
+export async function deleteSidecar(name: string, size: number): Promise<void> {
+  const d = db();
+  if (!d) return;
+  try {
+    (await d).delete(SIDECAR_STORE, sidecarKey(name, size));
+  } catch {
+    /* ignore */
+  }
 }

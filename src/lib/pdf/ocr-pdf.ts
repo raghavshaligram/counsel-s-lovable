@@ -426,3 +426,181 @@ export async function ocrPdfToSearchable(
   }
   return outPdf.save();
 }
+
+/* --------------------------------------------------------------------
+ * ocrPdfToTokens — sidecar variant of ocrPdfToSearchable.
+ *
+ * Runs the exact same render + Tesseract pipeline, but instead of
+ * rebuilding the PDF it returns per-source-page token data in PDF points
+ * (top-left origin). The caller stores this on EditorDoc.ocrLayer; the
+ * canvas composites it live and exportEditedPdf bakes it as invisible
+ * text. The base PDF (srcBytes) is never modified.
+ * -------------------------------------------------------------------- */
+
+import type { OcrPageLayer, OcrToken } from "@/lib/editor/types";
+
+export async function ocrPdfToTokens(
+  file: File,
+  onProgress?: (p: OcrProgress) => void,
+  signal?: AbortSignal,
+  options: OcrOptions = {},
+): Promise<{ pages: OcrPageLayer[] }> {
+  const renderScale = options.highAccuracy ? RENDER_SCALE_HIGH : RENDER_SCALE_DEFAULT;
+  const langs = options.languages && options.languages.length > 0 ? options.languages : ["eng"];
+  const langArg = toTesseractLang(langs);
+  const partial = !!options.returnPartialOnAbort;
+  const pdfjs = await loadPdfjs();
+  const tess = await import("tesseract.js");
+
+  const srcBytes = new Uint8Array(await file.arrayBuffer());
+  const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
+  const totalPages = srcDoc.numPages;
+
+  const skipSet = new Set<number>((options.skipPageIndices ?? []).map((i) => i + 1));
+  const out: OcrPageLayer[] = [];
+
+  const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
+  const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2)));
+
+  onProgress?.({
+    page: 0,
+    totalPages,
+    stage: "loading-language",
+    message:
+      langs.length > 1
+        ? `Loading language packs (${langs.join(", ")})…`
+        : `Loading ${langs[0]} language pack…`,
+  });
+  const workers = await Promise.all(
+    Array.from({ length: poolSize }, () => tess.createWorker(langArg)),
+  );
+  const idleWorkers = [...workers];
+  const waiters: Array<(w: (typeof workers)[number]) => void> = [];
+  const acquire = (): Promise<(typeof workers)[number]> =>
+    new Promise((res) => {
+      const w = idleWorkers.pop();
+      if (w) return res(w);
+      waiters.push(res);
+    });
+  const release = (w: (typeof workers)[number]) => {
+    const next = waiters.shift();
+    if (next) next(w);
+    else idleWorkers.push(w);
+  };
+
+  const RENDER_CONCURRENCY = Math.min(2, poolSize);
+  let renderSlots = RENDER_CONCURRENCY;
+  const renderWaiters: Array<() => void> = [];
+  const acquireRender = () =>
+    new Promise<void>((res) => {
+      if (renderSlots > 0) { renderSlots--; res(); }
+      else renderWaiters.push(res);
+    });
+  const releaseRender = () => {
+    const next = renderWaiters.shift();
+    if (next) next();
+    else renderSlots++;
+  };
+
+  let completed = 0;
+  const report = (pageNum: number, stage: OcrProgress["stage"]) => {
+    completed++;
+    onProgress?.({
+      page: completed,
+      totalPages,
+      stage,
+      sourcePage: pageNum,
+      message:
+        stage === "copied"
+          ? `Page ${pageNum} already searchable (${completed}/${totalPages})`
+          : stage === "skipped"
+            ? `Page ${pageNum} already had text (${completed}/${totalPages})`
+            : `Processed page ${pageNum} (${completed}/${totalPages})`,
+    });
+  };
+
+  const processPage = async (pageNum: number): Promise<void> => {
+    if (signal?.aborted) throw new Error("Cancelled");
+    if (skipSet.has(pageNum)) { report(pageNum, "copied"); return; }
+
+    const page = await srcDoc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const realItems = (textContent.items as Array<{ str?: string }>).filter(
+      (it) => typeof it.str === "string" && it.str.trim().length > 0,
+    );
+    if (realItems.length >= MIN_TEXT_ITEMS_TO_SKIP_OCR) {
+      report(pageNum, "copied");
+      return;
+    }
+
+    await acquireRender();
+    let words: OcrWord[] = [];
+    let canvas: AnyCanvas | null = null;
+    try {
+      const viewport = page.getViewport({ scale: renderScale });
+      const cw = Math.ceil(viewport.width);
+      const ch = Math.ceil(viewport.height);
+      canvas = makeCanvas(cw, ch);
+      const ctx = canvas.getContext("2d") as
+        | CanvasRenderingContext2D
+        | OffscreenCanvasRenderingContext2D
+        | null;
+      if (!ctx) throw new Error("Canvas 2D context unavailable");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cw, ch);
+      await page.render({
+        canvasContext: ctx as CanvasRenderingContext2D,
+        viewport,
+        canvas: canvas as HTMLCanvasElement,
+      }).promise;
+
+      const worker = await acquire();
+      try {
+        if (signal?.aborted) throw new Error("Cancelled");
+        const { data } = await worker.recognize(
+          canvas as HTMLCanvasElement,
+          {},
+          { blocks: true },
+        );
+        words = collectWords(data);
+      } finally {
+        release(worker);
+      }
+      report(pageNum, "ocr");
+    } finally {
+      releaseRender();
+      canvas = null;
+    }
+
+    const inv = 1 / renderScale;
+    const tokens: OcrToken[] = [];
+    for (const w of words) {
+      const text = w.text.replace(/\s+/g, " ").trim();
+      if (!text) continue;
+      const wp = (w.bbox.x1 - w.bbox.x0) * inv;
+      const hp = (w.bbox.y1 - w.bbox.y0) * inv;
+      if (wp <= 0 || hp <= 0) continue;
+      tokens.push({
+        x: w.bbox.x0 * inv,
+        y: w.bbox.y0 * inv,
+        w: wp,
+        h: hp,
+        text,
+      });
+    }
+    out.push({ srcPage: pageNum - 1, tokens });
+  };
+
+  try {
+    if (partial) {
+      await Promise.allSettled(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    } else {
+      await Promise.all(Array.from({ length: totalPages }, (_, i) => processPage(i + 1)));
+    }
+  } finally {
+    await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
+  }
+
+  if (signal?.aborted && !partial) throw new Error("Cancelled");
+  return { pages: out.sort((a, b) => a.srcPage - b.srcPage) };
+}

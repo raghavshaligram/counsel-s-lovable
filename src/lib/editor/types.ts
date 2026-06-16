@@ -234,9 +234,31 @@ export interface PageOp {
   cropBox?: { x: number; y: number; w: number; h: number };
 }
 
+// OCR sidecar token — one recognized word, positioned in PDF points
+// (top-left origin, matching the editor canvas convention). Tied to the
+// SOURCE page index so reorder/delete page-ops don't displace the layer.
+export interface OcrToken {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+}
+
+export interface OcrPageLayer {
+  srcPage: number; // 0-based index into the original source PDF
+  tokens: OcrToken[];
+}
+
 export interface EditorDoc {
   fileName: string;
   srcBytes: Uint8Array;
   pages: PageOp[]; // ordered list of pages in the working document
   annotations: Anno[];
+  // On-device OCR text layer sidecar. Per-source-page invisible glyph data
+  // composited live on the canvas (so Edit-text can target words) and
+  // embedded as invisible text by exportEditedPdf. The base PDF (srcBytes)
+  // is never mutated.
+  ocrLayer?: OcrPageLayer[];
 }
+

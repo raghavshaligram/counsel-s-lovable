@@ -90,6 +90,28 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     const annos = doc.annotations.filter((a) => a.page === i);
     for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
 
+    // Embed OCR sidecar tokens as invisible text (rendering mode 3 via
+    // opacity:0). Tied to source page so reorder/rotate respects them.
+    if (!op.blank && doc.ocrLayer) {
+      const layer = doc.ocrLayer.find((p) => p.srcPage === op.srcPage);
+      if (layer) {
+        for (const t of layer.tokens) {
+          if (!t.text || t.w <= 0 || t.h <= 0) continue;
+          const size = Math.max(4, t.h * 0.95);
+          const measured = font.widthOfTextAtSize(t.text, size) || t.w;
+          const adj = measured > 0 ? size * Math.min(1.6, Math.max(0.4, t.w / measured)) : size;
+          outPage.drawText(t.text, {
+            x: t.x,
+            y: ph - (t.y + t.h),
+            size: adj,
+            font,
+            color: rgb(0, 0, 0),
+            opacity: 0,
+          });
+        }
+      }
+    }
+
     // Watermark (drawn on top of annotations so it is visible)
     if (settings?.watermark && settings.watermark.text.trim()) {
       drawWatermark(outPage, settings.watermark, font, pw, ph);
@@ -106,6 +128,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       outPage.setCropBox(x, y, w, h);
       outPage.setMediaBox(x, y, w, h);
     }
+
   }
 
   // Best-effort destructive text rewrite: erase content-stream Tj operands
