@@ -48,6 +48,7 @@ import {
 } from "@/lib/pdf/combine";
 import {
   parseRanges,
+  parseSplitPoints,
   splitPdf,
   downloadBlob,
   getPageCount as getSplitPageCount,
