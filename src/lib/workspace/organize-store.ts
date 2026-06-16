@@ -35,6 +35,7 @@ interface OrganizeState {
 
   setDragId: (id: string | null) => void;
   reorderOver: (overId: string) => void;
+  moveTo: (targetCellId: string, side: "before" | "after") => void;
   setThumb: (cellId: string, thumb: string) => void;
 
   colorFor: (sourceKey: string) => string;
@@ -161,6 +162,22 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     set({ cells: next });
+  },
+
+  /** Drop the currently-dragged cell BEFORE or AFTER `targetCellId`. */
+  moveTo(targetCellId, side) {
+    const { dragId, cells } = get();
+    if (!dragId) return;
+    const from = cells.findIndex((c) => c.cellId === dragId);
+    if (from < 0) return;
+    const next = cells.slice();
+    const [moved] = next.splice(from, 1);
+    // Recompute target index AFTER removal so before/after stays correct.
+    let toIdx = next.findIndex((c) => c.cellId === targetCellId);
+    if (toIdx < 0) toIdx = next.length;
+    if (side === "after") toIdx += 1;
+    next.splice(toIdx, 0, moved);
+    set({ cells: next, dragId: null });
   },
 
   setThumb(id, thumb) {
