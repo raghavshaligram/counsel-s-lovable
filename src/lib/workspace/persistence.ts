@@ -307,3 +307,56 @@ async function dedupe(conn: IDBPDatabase): Promise<void> {
   }
   for (const k of toDelete) await conn.delete(DOC_STORE, k);
 }
+
+/* ----------------------------- Sidecars ----------------------------- */
+// Per-document sidecar: annotations, page-ops, ocr layer. Keyed by
+// `${name}::${size}` so it survives a tab close + re-open. On-device only.
+
+export type SidecarRecord = {
+  fileName: string;
+  size: number;
+  savedAt: number;
+  annotations: Anno[];
+  pages: PageOp[];
+  ocrLayer?: OcrPageLayer[];
+};
+
+export async function loadSidecar(name: string, size: number): Promise<SidecarRecord | null> {
+  const d = db();
+  if (!d) return null;
+  try {
+    return ((await (await d).get(SIDECAR_STORE, sidecarKey(name, size))) as SidecarRecord) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const sidecarTimers = new Map<string, ReturnType<typeof setTimeout>>();
+export function saveSidecarDebounced(name: string, size: number, rec: Omit<SidecarRecord, "savedAt">) {
+  const d = db();
+  if (!d) return;
+  const key = sidecarKey(name, size);
+  const t = sidecarTimers.get(key);
+  if (t) clearTimeout(t);
+  sidecarTimers.set(
+    key,
+    setTimeout(async () => {
+      try {
+        const full: SidecarRecord = { ...rec, savedAt: Date.now() };
+        (await d).put(SIDECAR_STORE, full, key);
+      } catch {
+        /* ignore */
+      }
+    }, 400),
+  );
+}
+
+export async function deleteSidecar(name: string, size: number): Promise<void> {
+  const d = db();
+  if (!d) return;
+  try {
+    (await d).delete(SIDECAR_STORE, sidecarKey(name, size));
+  } catch {
+    /* ignore */
+  }
+}
