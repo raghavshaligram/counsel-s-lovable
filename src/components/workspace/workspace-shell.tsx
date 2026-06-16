@@ -1116,7 +1116,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         <div className="relative flex min-w-0 flex-1">
           {/* CANVAS */}
           <main className="relative flex min-w-0 flex-1 flex-col bg-background">
-            {file && (
+            {file && activeToolId !== "organize" && (
               <>
                 <FloatingToolbar
                   activeToolId={activeToolId}
