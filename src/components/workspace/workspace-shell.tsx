@@ -71,9 +71,13 @@ import {
   loadOpenTabs,
   saveOpenTabs,
   clearOpenTabs,
+  loadSidecar,
+  saveSidecarDebounced,
+  deleteSidecar,
   type RecentMeta,
   type OpenTabMeta,
 } from "@/lib/workspace/persistence";
+
 import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/lib/editor/state";
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { exportEditedPdf } from "@/lib/editor/export";
