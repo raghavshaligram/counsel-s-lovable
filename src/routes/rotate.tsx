@@ -5,8 +5,14 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { RotateCw, RotateCcw } from "lucide-react";
-import { PDFDocument, degrees } from "pdf-lib";
-import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
+import { FileBar, ModeBtn, ToolHeader } from "@/routes/split";
+import { downloadBlob } from "@/lib/pdf/split";
+import {
+  getRotatePageCount,
+  rotatePdf,
+  type RotateAngle,
+  type RotateScope,
+} from "@/lib/pdf/rotate";
 import { useHotkey } from "@/lib/use-hotkey";
 
 export const Route = createFileRoute("/rotate")({
