@@ -35,6 +35,7 @@ interface OrganizeState {
 
   setDragId: (id: string | null) => void;
   reorderOver: (overId: string) => void;
+  moveTo: (targetCellId: string, side: "before" | "after") => void;
   setThumb: (cellId: string, thumb: string) => void;
 
   colorFor: (sourceKey: string) => string;
