@@ -11,11 +11,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GripVertical, FilePlus2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { PDFDocumentProxy } from "pdfjs-dist";
 import { cn } from "@/lib/utils";
 import { useOrganize } from "@/lib/workspace/organize-store";
 import { openPdfjsDoc, renderPageThumb } from "@/lib/pdf/organize";
 import type { PageCell } from "@/lib/pdf/organize";
+
+type PdfDoc = Awaited<ReturnType<typeof openPdfjsDoc>>;
 
 const GAP = 12; // gap-3
 const PAD_X = 20; // px-5
