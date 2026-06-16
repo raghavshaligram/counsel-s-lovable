@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { Download, FileText, Lock, Scissors, X, RefreshCw } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { useHotkey, modKey } from "@/lib/use-hotkey";
+import { parseRanges, splitPdf, downloadBlob, type SplitMode } from "@/lib/pdf/split";
+export { downloadBlob } from "@/lib/pdf/split";
 
 export const Route = createFileRoute("/split")({
   head: () => ({
@@ -192,30 +194,6 @@ function SplitPage() {
   );
 }
 
-function parseRanges(input: string, total: number): { groups: number[][]; error?: string } {
-  if (!total) return { groups: [] };
-  const parts = input
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return { groups: [] };
-  const groups: number[][] = [];
-  for (const part of parts) {
-    const m = part.match(/^(\d+)\s*(?:-\s*(\d*))?$/);
-    if (!m) return { groups: [], error: `"${part}" isn't a valid range` };
-    const start = parseInt(m[1], 10);
-    const endRaw = m[2];
-    const end = endRaw === undefined ? start : endRaw === "" ? total : parseInt(endRaw, 10);
-    if (start < 1 || end < 1 || start > total || end > total) {
-      return { groups: [], error: `"${part}" is out of bounds (1–${total})` };
-    }
-    if (end < start) return { groups: [], error: `"${part}" goes backwards` };
-    const pages: number[] = [];
-    for (let i = start; i <= end; i++) pages.push(i);
-    groups.push(pages);
-  }
-  return { groups };
-}
 
 export function ToolHeader({
   tag,
@@ -369,14 +347,6 @@ export function ModeBtn({
   );
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 // Silence unused import warning
 void Download;
