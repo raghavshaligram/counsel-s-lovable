@@ -568,9 +568,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
 
   const dismissRecent = useCallback(async (id: string) => {
+    const rec = await getRecent(id);
     await removeRecent(id);
+    if (rec) await deleteSidecar(rec.name, rec.size);
     setRecents(await listRecents());
   }, []);
+
 
   const clearAllRecents = useCallback(async () => {
     await clearRecents();
