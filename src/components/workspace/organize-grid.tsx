@@ -80,7 +80,7 @@ export function OrganizeGrid({
 
   // Per-source pdfjs doc cache. Cleared when sources identity changes
   // (e.g. seed / reset). Promises so concurrent cells share one open.
-  const docCacheRef = useRef<Map<string, Promise<PDFDocumentProxy>>>(new Map());
+  const docCacheRef = useRef<Map<string, Promise<PdfDoc>>>(new Map());
   useEffect(() => {
     docCacheRef.current = new Map();
   }, [sources]);
@@ -279,7 +279,7 @@ function CellTile({
   dropSide: "before" | "after" | null;
   color: string;
   bytes: Uint8Array | undefined;
-  docCache: Map<string, Promise<PDFDocumentProxy>>;
+  docCache: Map<string, Promise<PdfDoc>>;
   setThumb: (id: string, t: string) => void;
   onClick: (e: React.MouseEvent) => void;
   onDragStart: (e: React.DragEvent) => void;
