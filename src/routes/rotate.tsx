@@ -160,22 +160,3 @@ function RotatePage() {
   );
 }
 
-function resolveScope(scope: Scope, custom: string, total: number): { indices: number[]; error?: string } {
-  if (scope === "all") return { indices: Array.from({ length: total }, (_, i) => i) };
-  if (scope === "odd")
-    return { indices: Array.from({ length: total }, (_, i) => i).filter((i) => (i + 1) % 2 === 1) };
-  if (scope === "even")
-    return { indices: Array.from({ length: total }, (_, i) => i).filter((i) => (i + 1) % 2 === 0) };
-  const out = new Set<number>();
-  for (const part of custom.split(",").map((s) => s.trim()).filter(Boolean)) {
-    const m = part.match(/^(\d+)\s*(?:-\s*(\d+))?$/);
-    if (!m) return { indices: [], error: `"${part}" isn't valid` };
-    const start = parseInt(m[1], 10);
-    const end = m[2] ? parseInt(m[2], 10) : start;
-    if (start < 1 || end > total || end < start)
-      return { indices: [], error: `"${part}" is out of bounds (1–${total})` };
-    for (let i = start; i <= end; i++) out.add(i - 1);
-  }
-  if (out.size === 0) return { indices: [], error: "Enter at least one page" };
-  return { indices: [...out] };
-}
