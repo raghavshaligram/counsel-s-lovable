@@ -58,6 +58,8 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
   selected: new Set(),
   dragId: null,
   seededFor: null,
+  jumpIdx: null,
+  jumpTick: 0,
 
   async seedFromActiveFile(tabId, file) {
     const bytes = new Uint8Array(await file.arrayBuffer());
