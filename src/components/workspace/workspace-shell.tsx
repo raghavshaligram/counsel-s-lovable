@@ -804,29 +804,28 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       return;
     }
     if (ocrRunning) return;
+    const tabId = activeIdRef.current;
     const ctrl = new AbortController();
     ocrAbortRef.current = ctrl;
     setOcrRunning(true);
     setOcrProgressText("Preparing OCR…");
     const toastId = "wsx-ocr";
     toast.loading("Preparing OCR…", { id: toastId });
-    // Pages we've already handled in earlier runs on this tab — copy them
-    // through instead of redoing them.
     const skipPrev = new Set<number>([...(active.ocrPages ?? []), ...(active.ocrPagesCopied ?? [])]);
     const newlyOcr = new Set<number>();
     const newlyCopied = new Set<number>();
     try {
-      const { ocrPdfToSearchable } = await import("@/lib/pdf/ocr-pdf");
-      const bytes = await ocrPdfToSearchable(
+      const { ocrPdfToTokens } = await import("@/lib/pdf/ocr-pdf");
+      // Sidecar OCR: returns per-source-page tokens — never modifies the
+      // base PDF bytes. Tokens are composited live in the canvas and baked
+      // as invisible text on export.
+      const { pages } = await ocrPdfToTokens(
         f,
         (p) => {
           const pct = p.totalPages > 0 ? Math.round((p.page / p.totalPages) * 100) : 0;
           const text = `OCR: ${p.message}${p.totalPages > 0 ? ` (${pct}%)` : ""}`;
           setOcrProgressText(text);
           toast.loading(text, { id: toastId });
-          // Per-page bookkeeping: only record pages we actually touched in
-          // this run (skipPrev pages also come back as "copied" but we
-          // already know about those — don't double-count).
           if (typeof p.sourcePage === "number") {
             const idx = p.sourcePage - 1;
             if (!skipPrev.has(idx)) {
@@ -841,37 +840,31 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           skipPageIndices: [...skipPrev],
         },
       );
-      // We need per-page records — re-derive by inspecting the loaded
-      // result. Simpler: instrument the progress callback above. Rewire
-      // here so we don't lose data on early abort.
-      const baseName = f.name.replace(/\s*\(OCR(?:\s*partial)?\)\.pdf$/i, "").replace(/\.pdf$/i, "");
       const aborted = ctrl.signal.aborted;
-      const suffix = aborted ? " (OCR partial)" : " (OCR)";
-      const newFile = new File(
-        [bytes as BlobPart],
-        `${baseName}${suffix}.pdf`,
-        { type: "application/pdf" },
-      );
 
-      // Merge per-page records: skipped pages stay where they were, new
-      // pages get added.
+      // Push tokens into the editor sidecar. Base PDF stays pristine.
+      if (pages.length > 0) {
+        dispatchEditorFor(tabId, { type: "SET_OCR_LAYER", pages });
+      }
+
+      // Per-tab OCR memory (drives banner suppression, page tag, resume).
       const mergedOcr = new Set<number>([...(active.ocrPages ?? []), ...newlyOcr]);
       const mergedCopied = new Set<number>([...(active.ocrPagesCopied ?? []), ...newlyCopied]);
       const mergedOcrArr = [...mergedOcr].sort((a, b) => a - b);
       const mergedCopiedArr = [...mergedCopied].sort((a, b) => a - b);
 
       patchActive({
-        file: newFile,
         isDirty: true,
         ocrPages: mergedOcrArr,
         ocrPagesCopied: mergedCopiedArr,
         ocrIsPartial: aborted,
       });
 
-      // Persist the OCR'd file + per-page OCR memory on-device so reopening
-      // keeps the text layer AND the per-page OCR tags. Never uploaded.
+      // Persist OCR metadata on the recent entry so reopen restores tags.
+      // The sidecar (annotations + ocrLayer) is saved separately via the
+      // doc-change effect.
       void (async () => {
-        await addRecent(newFile, {
+        await addRecent(f, {
           ocrPages: mergedOcrArr,
           ocrPagesCopied: mergedCopiedArr,
           ocrIsPartial: aborted,
@@ -879,8 +872,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setRecents(await listRecents());
       })();
 
-
-      // Toast: report only what changed.
       const fmtRanges = (s: Set<number>) => formatPageRanges([...s].map((i) => i + 1));
       if (aborted) {
         toast.success(
@@ -909,7 +900,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setOcrProgressText("");
       ocrAbortRef.current = null;
     }
-  }, [active.file, active.ocrPages, active.ocrPagesCopied, ocrRunning, patchActive]);
+  }, [active.file, active.ocrPages, active.ocrPagesCopied, ocrRunning, patchActive, dispatchEditorFor]);
+
 
   const onStopOcr = useCallback(() => {
     // Queue edit-text BEFORE abort: the OCR finalize will swap the file,
