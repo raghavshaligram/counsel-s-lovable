@@ -53,7 +53,7 @@ import {
   downloadBlob,
   getPageCount as getSplitPageCount,
 } from "@/lib/pdf/split";
-import { Scissors, RotateCw, RotateCcw } from "lucide-react";
+import { Scissors, RotateCw, RotateCcw, LayoutGrid } from "lucide-react";
 import {
   getRotatePageCount,
   resolveRotateScope,
@@ -61,6 +61,10 @@ import {
   type RotateAngle,
   type RotateScope,
 } from "@/lib/pdf/rotate";
+import { useOrganize } from "@/lib/workspace/organize-store";
+import { buildPdfFromCells } from "@/lib/pdf/organize";
+import { useTray } from "@/lib/tray/store";
+import { downloadBytes } from "@/lib/batch/runner";
 
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
@@ -85,6 +89,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <SplitPanel ctx={ctx} />;
     case "rotate":
       return <RotatePanel ctx={ctx} />;
+    case "organize":
+      return <OrganizePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -1515,5 +1521,177 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+/* ============================== Organize ============================== */
+
+function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const cells = useOrganize((s) => s.cells);
+  const selected = useOrganize((s) => s.selected);
+  const sources = useOrganize((s) => s.sources);
+  const selectAll = useOrganize((s) => s.selectAll);
+  const clearSelection = useOrganize((s) => s.clearSelection);
+  const rotateSelected = useOrganize((s) => s.rotateSelected);
+  const deleteSelected = useOrganize((s) => s.deleteSelected);
+  const addTrayEntry = useOrganize((s) => s.addTrayEntry);
+  const resolveBytes = useOrganize((s) => s.resolveBytes);
+  const colorFor = useOrganize((s) => s.colorFor);
+
+  const trayEntries = useTray((s) => s.entries);
+
+  const [building, setBuilding] = useState(false);
+
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of cells) m.set(c.source, (m.get(c.source) ?? 0) + 1);
+    return m;
+  }, [cells]);
+
+  const buildPdf = useCallback(async () => {
+    if (cells.length === 0) return;
+    setBuilding(true);
+    try {
+      const bytes = await buildPdfFromCells(cells, resolveBytes);
+      downloadBytes(bytes, `vaultpdf-organized-${Date.now()}.pdf`, "application/pdf");
+      toast.success(`Built PDF with ${cells.length} page${cells.length === 1 ? "" : "s"}`);
+    } catch (err) {
+      console.error("[organize] build failed", err);
+      toast.error("Failed to build PDF", { description: (err as Error).message });
+    } finally {
+      setBuilding(false);
+    }
+  }, [cells, resolveBytes]);
+
+  if (!ctx.file && cells.length === 0) {
+    return (
+      <p className="text-[11.5px] leading-snug text-text-2">
+        Open a document to organize its pages. You can also pull pages in from
+        any other open document — they appear in the grid alongside the active
+        document's pages.
+      </p>
+    );
+  }
+
+  const sourceEntries = Object.entries(sources);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Selection" icon={<LayoutGrid className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={selectAll}
+            disabled={cells.length === 0}
+            className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={selected.size === 0}
+            className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Clear
+          </button>
+        </div>
+        <p className="mt-1.5 text-[10.5px] text-text-muted">
+          Shift-click to select a range. Drag any tile to reorder.
+        </p>
+      </Section>
+
+      <Section title="Edit pages" icon={<Wand2 className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            onClick={rotateSelected}
+            disabled={selected.size === 0}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RotateCw className="h-3 w-3" /> Rotate 90°
+          </button>
+          <button
+            type="button"
+            onClick={deleteSelected}
+            disabled={selected.size === 0}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-evidence/40 bg-surface-2 px-2 py-1.5 text-[11.5px] text-evidence hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 className="h-3 w-3" /> Delete
+          </button>
+        </div>
+      </Section>
+
+      <Section title="Sources" icon={<FilesIcon className="h-3 w-3" />}>
+        <ul className="flex flex-col gap-1">
+          {sourceEntries.map(([key, src]) => (
+            <li
+              key={key}
+              className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-1.5 py-1"
+            >
+              <span
+                aria-hidden
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ background: colorFor(key) }}
+              />
+              <span className="min-w-0 flex-1 truncate text-[11.5px] text-foreground" title={src.fileName}>
+                {key === "active" ? "★ " : ""}{src.fileName}
+              </span>
+              <span className="font-mono text-[10px] tabular-nums text-text-muted">
+                {counts.get(key) ?? 0}/{src.pageCount}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {trayEntries.length > 0 && (
+          <>
+            <div className="mt-2.5 mb-1 text-[10px] uppercase tracking-[0.14em] text-text-muted">
+              Add from other open docs
+            </div>
+            <ul className="flex flex-col gap-1">
+              {trayEntries.map((e) => (
+                <li
+                  key={e.id}
+                  className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-1.5 py-1"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[11.5px] text-foreground" title={e.name}>
+                    {e.name}
+                  </span>
+                  <span className="font-mono text-[10px] tabular-nums text-text-muted">
+                    {e.pageCount}p
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void addTrayEntry(e.id)}
+                    className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-3 px-1.5 py-0.5 text-[10.5px] text-foreground hover:border-vault/40 hover:text-vault"
+                  >
+                    <Plus className="h-2.5 w-2.5" /> Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Section>
+
+      <button
+        type="button"
+        onClick={buildPdf}
+        disabled={building || cells.length === 0}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+          (building || cells.length === 0) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {building ? "Building…" : `Build PDF (${cells.length})`}
+      </button>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
   );
 }
