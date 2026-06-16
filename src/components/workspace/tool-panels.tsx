@@ -53,7 +53,14 @@ import {
   downloadBlob,
   getPageCount as getSplitPageCount,
 } from "@/lib/pdf/split";
-import { Scissors } from "lucide-react";
+import { Scissors, RotateCw, RotateCcw } from "lucide-react";
+import {
+  getRotatePageCount,
+  resolveRotateScope,
+  rotatePdf,
+  type RotateAngle,
+  type RotateScope,
+} from "@/lib/pdf/rotate";
 
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
@@ -76,6 +83,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <MergePanel ctx={ctx} />;
     case "split":
       return <SplitPanel ctx={ctx} />;
+    case "rotate":
+      return <RotatePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -1291,6 +1300,186 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 /* ----------------------------- Generic ------------------------------ */
 
+
+/* ============================== Rotate ============================== */
+
+function RotatePanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const [angle, setAngle] = useState<RotateAngle>(90);
+  const [scope, setScope] = useState<RotateScope>("all");
+  const [custom, setCustom] = useState("");
+  const [pageCount, setPageCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!file) {
+      setPageCount(0);
+      return;
+    }
+    void (async () => {
+      try {
+        const n = await getRotatePageCount(file);
+        if (!cancelled) setPageCount(n);
+      } catch {
+        if (!cancelled) setPageCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
+
+  const resolved = useMemo(
+    () => resolveRotateScope(scope, custom, pageCount),
+    [scope, custom, pageCount],
+  );
+
+  const canRun =
+    !!file &&
+    !busy &&
+    pageCount > 0 &&
+    !resolved.error &&
+    resolved.indices.length > 0;
+
+  const run = useCallback(async () => {
+    if (!file) {
+      toast.error("Open a PDF first.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await rotatePdf(file, { angle, scope, custom });
+      downloadBlob(result.blob, result.filename);
+      toast.success(
+        `Rotated ${result.rotatedCount} page${result.rotatedCount === 1 ? "" : "s"}`,
+        { description: `${result.filename} · nothing was uploaded.` },
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error("Rotate failed", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, angle, scope, custom]);
+
+  const angleBtn = (a: RotateAngle, label: string, Icon: typeof RotateCw) => (
+    <button
+      type="button"
+      onClick={() => setAngle(a)}
+      className={cn(
+        "inline-flex items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+        angle === a
+          ? "border-vault/60 bg-accent-soft text-foreground"
+          : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {label}
+    </button>
+  );
+
+  const scopeBtn = (id: RotateScope, label: string) => (
+    <button
+      type="button"
+      onClick={() => setScope(id)}
+      className={cn(
+        "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+        scope === id
+          ? "border-vault/60 bg-accent-soft text-foreground"
+          : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      {!file ? (
+        <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
+          Open a PDF in the workspace to rotate it.
+        </p>
+      ) : (
+        <>
+          <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+            <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+              <div className="truncate text-[12px] text-foreground" title={file.name}>
+                {file.name}
+              </div>
+              <div className="mt-0.5 text-[10.5px] text-text-muted tabular-nums">
+                {pageCount > 0
+                  ? `${pageCount} page${pageCount === 1 ? "" : "s"}`
+                  : "Reading…"}
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Angle" icon={<RotateCw className="h-3 w-3" />}>
+            <div className="grid grid-cols-3 gap-1.5">
+              {angleBtn(90, "90°", RotateCw)}
+              {angleBtn(180, "180°", RotateCw)}
+              {angleBtn(270, "270°", RotateCcw)}
+            </div>
+          </Section>
+
+          <Section title="Pages">
+            <div className="grid grid-cols-2 gap-1.5">
+              {scopeBtn("all", "All")}
+              {scopeBtn("odd", "Odd")}
+              {scopeBtn("even", "Even")}
+              {scopeBtn("custom", "Custom")}
+            </div>
+            {scope === "custom" && (
+              <input
+                value={custom}
+                onChange={(e) => setCustom(e.target.value)}
+                placeholder="e.g. 1-3, 5, 8-10"
+                spellCheck={false}
+                className="mt-2 w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40"
+              />
+            )}
+            <div className="mt-1.5 text-[10.5px] leading-snug text-text-muted">
+              {resolved.error ? (
+                <span className="text-destructive">{resolved.error}</span>
+              ) : pageCount === 0 ? (
+                "Waiting for page count…"
+              ) : (
+                `Rotates ${resolved.indices.length} of ${pageCount} page${pageCount === 1 ? "" : "s"} by ${angle}°`
+              )}
+            </div>
+          </Section>
+
+          <button
+            type="button"
+            onClick={run}
+            disabled={!canRun}
+            className={cn(
+              "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+              canRun ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+            )}
+          >
+            {busy ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Rotating…
+              </>
+            ) : (
+              <>
+                <RotateCw className="h-3.5 w-3.5" /> Rotate &amp; download
+              </>
+            )}
+          </button>
+
+          <div className="text-center text-[10px] text-text-muted">
+            On-device · nothing leaves your browser
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function ComingSoonPanel({ label }: { label: string }) {
   return (
