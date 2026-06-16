@@ -1038,6 +1038,189 @@ function MergePanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
+/* ============================== Split =============================== */
+
+function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const [mode, setMode] = useState<"ranges" | "each">("ranges");
+  const [ranges, setRanges] = useState("1-");
+  const [pageCount, setPageCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  // Resolve page count whenever the active file changes.
+  useEffect(() => {
+    let cancelled = false;
+    if (!file) {
+      setPageCount(0);
+      return;
+    }
+    void (async () => {
+      try {
+        const n = await getSplitPageCount(file);
+        if (cancelled) return;
+        setPageCount(n);
+        setRanges(`1-${n}`);
+      } catch {
+        if (cancelled) return;
+        setPageCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
+
+  const parsed = useMemo(() => parseRanges(ranges, pageCount), [ranges, pageCount]);
+
+  const run = useCallback(async () => {
+    if (!file) {
+      toast.error("Open a PDF first.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await splitPdf(
+        file,
+        mode === "each" ? { mode: "each" } : { mode: "ranges", ranges },
+      );
+      downloadBlob(result.blob, result.filename);
+      if (result.kind === "pdf") {
+        toast.success(`Saved ${result.pageCount} pages`, {
+          description: `${result.filename} · nothing was uploaded.`,
+        });
+      } else {
+        toast.success(`Saved ${result.fileCount} files in zip`, {
+          description: `${result.pageCount} pages · ${result.filename} · nothing was uploaded.`,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Split failed", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, mode, ranges]);
+
+  const canRun =
+    !!file &&
+    !busy &&
+    pageCount > 0 &&
+    (mode === "each" || (parsed.groups.length > 0 && !parsed.error));
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      {!file ? (
+        <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
+          Open a PDF in the workspace to split it.
+        </p>
+      ) : (
+        <>
+          <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+            <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+              <div className="truncate text-[12px] text-foreground" title={file.name}>
+                {file.name}
+              </div>
+              <div className="mt-0.5 text-[10.5px] text-text-muted tabular-nums">
+                {pageCount > 0
+                  ? `${pageCount} page${pageCount === 1 ? "" : "s"}`
+                  : "Reading…"}
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Mode" icon={<Scissors className="h-3 w-3" />}>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setMode("ranges")}
+                className={cn(
+                  "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+                  mode === "ranges"
+                    ? "border-vault/60 bg-accent-soft text-foreground"
+                    : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+                )}
+              >
+                By ranges
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("each")}
+                className={cn(
+                  "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+                  mode === "each"
+                    ? "border-vault/60 bg-accent-soft text-foreground"
+                    : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+                )}
+              >
+                Every page
+              </button>
+            </div>
+          </Section>
+
+          {mode === "ranges" && (
+            <Section title="Ranges">
+              <input
+                value={ranges}
+                onChange={(e) => setRanges(e.target.value)}
+                placeholder="e.g. 1-3, 5, 8-10"
+                spellCheck={false}
+                className="w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40"
+              />
+              <div className="mt-1.5 text-[10.5px] leading-snug text-text-muted">
+                {parsed.error ? (
+                  <span className="text-destructive">{parsed.error}</span>
+                ) : pageCount === 0 ? (
+                  "Waiting for page count…"
+                ) : parsed.groups.length === 0 ? (
+                  "Enter pages like 1-3, 5, 8-10"
+                ) : parsed.groups.length === 1 ? (
+                  `One file with ${parsed.groups[0].length} page${parsed.groups[0].length === 1 ? "" : "s"}`
+                ) : (
+                  `${parsed.groups.length} files in a zip (${parsed.groups
+                    .map((g) => g.length)
+                    .join(" + ")} pages)`
+                )}
+              </div>
+            </Section>
+          )}
+
+          {mode === "each" && (
+            <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-2 text-[11px] text-text-muted">
+              Saves every page as its own PDF inside a zip.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={run}
+            disabled={!canRun}
+            className={cn(
+              "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+              canRun ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+            )}
+          >
+            {busy ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Splitting…
+              </>
+            ) : (
+              <>
+                <Scissors className="h-3.5 w-3.5" /> Split &amp; download
+              </>
+            )}
+          </button>
+
+          <div className="text-center text-[10px] text-text-muted">
+            On-device · nothing leaves your browser
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ----------------------------- Generic ------------------------------ */
 
 
