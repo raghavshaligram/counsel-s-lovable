@@ -1532,6 +1532,8 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const sources = useOrganize((s) => s.sources);
   const selectAll = useOrganize((s) => s.selectAll);
   const clearSelection = useOrganize((s) => s.clearSelection);
+  const selectRange = useOrganize((s) => s.selectRange);
+  const requestJump = useOrganize((s) => s.requestJump);
   const rotateSelected = useOrganize((s) => s.rotateSelected);
   const deleteSelected = useOrganize((s) => s.deleteSelected);
   const addTrayEntry = useOrganize((s) => s.addTrayEntry);
@@ -1541,6 +1543,9 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const trayEntries = useTray((s) => s.entries);
 
   const [building, setBuilding] = useState(false);
+  const [jumpVal, setJumpVal] = useState("");
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
 
   const counts = useMemo(() => {
     const m = new Map<string, number>();
