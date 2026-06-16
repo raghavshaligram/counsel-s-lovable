@@ -73,6 +73,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <SignFillPanel ctx={ctx} />;
     case "merge":
       return <MergePanel ctx={ctx} />;
+    case "split":
+      return <SplitPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
