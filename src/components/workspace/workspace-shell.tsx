@@ -1244,7 +1244,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
               {activeToolId === "organize" ? (
-                <OrganizeGrid activeTabId={active.id} activeFile={file} />
+                <OrganizeGrid activeTabId={active.id} activeFile={file} onOpenFile={openFile} />
               ) : file ? (
                 editorState.doc && editorState.doc.pages.length > 0 ? (
                   <EditorPages
