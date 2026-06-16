@@ -773,6 +773,30 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.id, active.file]);
 
+  // Auto-save the sidecar (annotations + page-ops + ocrLayer) whenever the
+  // active editor doc changes. On-device IndexedDB only — never uploaded.
+  // Debounced inside saveSidecarDebounced.
+  useEffect(() => {
+    const f = active.file;
+    const d = active.editor.doc;
+    if (!f || !d) return;
+    if (d.fileName !== f.name) return;
+    saveSidecarDebounced(f.name, f.size, {
+      fileName: d.fileName,
+      size: f.size,
+      annotations: d.annotations,
+      pages: d.pages,
+      ocrLayer: d.ocrLayer,
+    });
+  }, [
+    active.file,
+    active.editor.doc?.annotations,
+    active.editor.doc?.pages,
+    active.editor.doc?.ocrLayer,
+    active.editor.doc?.fileName,
+  ]);
+
+
   const onExport = useCallback(async () => {
     if (!editorState.doc || editorState.doc.pages.length === 0) {
       toast.error("Nothing to export yet");
