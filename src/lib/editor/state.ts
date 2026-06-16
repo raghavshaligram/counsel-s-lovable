@@ -134,9 +134,11 @@ export function reducer(s: State, a: Action): State {
       };
       return { ...s, doc: next, past: [], future: [] };
     }
-
+    case "ADD_ANNO": {
+      if (!s.doc) return s;
       return commit(s, { ...s.doc, annotations: [...s.doc.annotations, a.a] });
     }
+
     case "UPDATE_ANNO": {
       if (!s.doc) return s;
       return {
