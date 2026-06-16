@@ -34,12 +34,15 @@ export function OrganizeGrid({
   const reset = useOrganize((s) => s.reset);
   const toggleSelect = useOrganize((s) => s.toggleSelect);
   const setDragId = useOrganize((s) => s.setDragId);
-  const reorderOver = useOrganize((s) => s.reorderOver);
+  const moveTo = useOrganize((s) => s.moveTo);
   const setThumb = useOrganize((s) => s.setThumb);
   const colorFor = useOrganize((s) => s.colorFor);
 
   const [seeding, setSeeding] = useState(false);
   const [thumbing, setThumbing] = useState(false);
+  // Live insertion indicator: { cellId, side } means "drop here, on this
+  // side of the target". Cleared on dragend / drop / leaving the grid.
+  const [dropTarget, setDropTarget] = useState<{ cellId: string; side: "before" | "after" } | null>(null);
 
   // Auto-seed from the active tab's file whenever organize becomes active
   // for a new tab (or the file identity changes). Cross-doc additions are
@@ -123,54 +126,113 @@ export function OrganizeGrid({
         {(seeding || thumbing) && <span className="ml-2 text-vault/70">rendering…</span>}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 pb-16 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-        {cells.map((c, i) => (
-          <div
-            key={c.cellId}
-            draggable
-            onDragStart={() => setDragId(c.cellId)}
-            onDragOver={(e) => {
-              e.preventDefault();
-              reorderOver(c.cellId);
-            }}
-            onDragEnd={() => setDragId(null)}
-            onClick={(e) => toggleSelect(c.cellId, e.shiftKey)}
-            className={cn(
-              "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
-              selected.has(c.cellId)
-                ? "border-vault ring-2 ring-vault/50"
-                : "border-border hover:border-vault/40",
-              dragId === c.cellId && "opacity-40",
-            )}
-          >
-            <div
-              className="absolute left-0 top-0 bottom-0 w-[3px]"
-              style={{ background: colorFor(c.source) }}
-            />
-            <div className="grid aspect-[3/4] place-items-center overflow-hidden bg-canvas/60">
-              {c.thumb ? (
-                <img
-                  src={c.thumb}
-                  alt={`Page ${c.pageIndex + 1} of ${c.fileName}`}
-                  style={{ transform: `rotate(${c.rotation}deg)` }}
-                  className="max-h-full max-w-full transition-transform"
+      <div
+        className="grid grid-cols-2 gap-3 pb-16 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+        onDragLeave={(e) => {
+          // Only clear when the pointer actually leaves the grid, not when
+          // moving between child tiles.
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setDropTarget(null);
+          }
+        }}
+      >
+        {cells.map((c, i) => {
+          const isDragged = dragId === c.cellId;
+          const showBefore = dropTarget?.cellId === c.cellId && dropTarget.side === "before";
+          const showAfter = dropTarget?.cellId === c.cellId && dropTarget.side === "after";
+          return (
+            <div key={c.cellId} className="relative">
+              {/* Insertion indicator — vertical accent bar on the chosen edge. */}
+              <span
+                aria-hidden
+                className={cn(
+                  "pointer-events-none absolute -left-1.5 top-0 bottom-0 w-[3px] rounded-full bg-vault transition-opacity",
+                  showBefore ? "opacity-100" : "opacity-0",
+                )}
+              />
+              <span
+                aria-hidden
+                className={cn(
+                  "pointer-events-none absolute -right-1.5 top-0 bottom-0 w-[3px] rounded-full bg-vault transition-opacity",
+                  showAfter ? "opacity-100" : "opacity-0",
+                )}
+              />
+              <div
+                draggable
+                onDragStart={(e) => {
+                  // Internal payload only — keeps "Files" out of
+                  // dataTransfer.types so the shell's file-drop overlay
+                  // stays dormant during reorder.
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("application/x-vaultpdf-cell", c.cellId);
+                  setDragId(c.cellId);
+                }}
+                onDragOver={(e) => {
+                  if (!dragId) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const side: "before" | "after" =
+                    e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+                  if (
+                    !dropTarget ||
+                    dropTarget.cellId !== c.cellId ||
+                    dropTarget.side !== side
+                  ) {
+                    setDropTarget({ cellId: c.cellId, side });
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (dropTarget) moveTo(dropTarget.cellId, dropTarget.side);
+                  setDropTarget(null);
+                  setDragId(null);
+                }}
+                onDragEnd={() => {
+                  setDragId(null);
+                  setDropTarget(null);
+                }}
+                onClick={(e) => toggleSelect(c.cellId, e.shiftKey)}
+                className={cn(
+                  "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
+                  selected.has(c.cellId)
+                    ? "border-vault ring-2 ring-vault/50"
+                    : "border-border hover:border-vault/40",
+                  isDragged && "opacity-40",
+                )}
+              >
+                <div
+                  className="absolute left-0 top-0 bottom-0 w-[3px]"
+                  style={{ background: colorFor(c.source) }}
                 />
-              ) : (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
-              )}
+                <div className="grid aspect-[3/4] place-items-center overflow-hidden bg-canvas/60">
+                  {c.thumb ? (
+                    <img
+                      src={c.thumb}
+                      alt={`Page ${c.pageIndex + 1} of ${c.fileName}`}
+                      style={{ transform: `rotate(${c.rotation}deg)` }}
+                      className="max-h-full max-w-full transition-transform"
+                    />
+                  ) : (
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
+                  )}
+                </div>
+                <div className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 font-mono text-[10px]">
+                  <span className="tabular-nums text-text-muted">#{i + 1}</span>
+                  <span className="truncate text-text-muted" title={c.fileName}>
+                    {c.fileName}
+                  </span>
+                  <span className="tabular-nums text-text-muted">p.{c.pageIndex + 1}</span>
+                </div>
+                <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/cell:opacity-100">
+                  <GripVertical className="h-3.5 w-3.5 text-text-muted" />
+                </span>
+              </div>
             </div>
-            <div className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 font-mono text-[10px]">
-              <span className="tabular-nums text-text-muted">#{i + 1}</span>
-              <span className="truncate text-text-muted" title={c.fileName}>
-                {c.fileName}
-              </span>
-              <span className="tabular-nums text-text-muted">p.{c.pageIndex + 1}</span>
-            </div>
-            <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/cell:opacity-100">
-              <GripVertical className="h-3.5 w-3.5 text-text-muted" />
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
