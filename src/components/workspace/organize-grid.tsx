@@ -199,8 +199,7 @@ export function OrganizeGrid({
                 paddingLeft: PAD_X,
                 paddingRight: PAD_X,
                 display: "grid",
-                gridTemplateColumns: `repeat(${cols}, minmax(${TILE_MIN}px, ${tileW}px))`,
-                justifyContent: "center",
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                 columnGap: GAP,
               }}
             >
