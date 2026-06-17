@@ -1626,7 +1626,27 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       </Section>
 
+      <Section title="Grid density" icon={<LayoutGrid className="h-3 w-3" />}>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Big</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(density * 100)}
+            onChange={(e) => setDensity(parseInt(e.target.value, 10) / 100)}
+            className="h-1 flex-1 accent-vault"
+          />
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Small</span>
+        </div>
+        <p className="mt-1.5 text-[10.5px] text-text-muted">
+          Drag to fit more or fewer thumbnails per row.
+        </p>
+      </Section>
+
       <Section title="Selection" icon={<LayoutGrid className="h-3 w-3" />}>
+
         <div className="grid grid-cols-2 gap-1.5">
           <button
             type="button"
