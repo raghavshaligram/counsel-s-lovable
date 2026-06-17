@@ -91,10 +91,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RotatePanel ctx={ctx} />;
     case "organize":
       return <OrganizePanel ctx={ctx} />;
-    case "extract-pages":
-      return <ExtractPagesPanel ctx={ctx} />;
-    case "extract-data":
-      return <ExtractDataPanel ctx={ctx} />;
+    case "extract":
+      return <ExtractPanel ctx={ctx} />;
     case "watermark":
       return <WatermarkPanel ctx={ctx} />;
     default:
