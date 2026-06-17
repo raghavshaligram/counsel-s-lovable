@@ -863,7 +863,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const newlyOcr = new Set<number>();
     const newlyCopied = new Set<number>();
     try {
-      const { ocrPdfToTokens } = await import("@/lib/pdf/ocr-pdf");
+      const { ocrPdfToTokens } = await import("@/lib/pdf/ocr-pdf").catch((err) => {
+        // Stale dynamic-chunk reference (e.g. after a new deploy). Reload once
+        // so the browser fetches the fresh chunk hash, then surface the error.
+        if (/dynamically imported module|Failed to fetch/i.test(String(err?.message ?? err))
+            && !sessionStorage.getItem("ocr-chunk-reloaded")) {
+          sessionStorage.setItem("ocr-chunk-reloaded", "1");
+          window.location.reload();
+        }
+        throw err;
+      });
       // Sidecar OCR: returns per-source-page tokens — never modifies the
       // base PDF bytes. Tokens are composited live in the canvas and baked
       // as invisible text on export.
