@@ -8,13 +8,28 @@
  * right inspector (OrganizePanel) drives all actions; this surface
  * only handles select / drag / click / scroll.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GripVertical, FilePlus2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-store";
 import { openPdfjsDoc, renderPageThumb } from "@/lib/pdf/organize";
 import type { PageCell } from "@/lib/pdf/organize";
+
+const HOVER_DELAY_MS = 200;
+const PREVIEW_W = 520;
+const PREVIEW_CACHE_MAX = 24;
+const PREVIEW_OFFSET = 20;
+
+type HoverState = {
+  cellId: string;
+  source: string;
+  pageIndex: number;
+  rotation: number;
+  fileName: string;
+  x: number;
+  y: number;
+};
 
 type PdfDoc = Awaited<ReturnType<typeof openPdfjsDoc>>;
 
