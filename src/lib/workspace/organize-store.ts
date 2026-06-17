@@ -42,6 +42,8 @@ interface OrganizeState {
 
   seedFromActiveFile: (tabId: string, file: File) => Promise<void>;
   addTrayEntry: (entryId: string) => Promise<void>;
+  /** Append one or more local PDF files to the grid (drop or picker). */
+  addLocalFiles: (files: File[]) => Promise<void>;
   reset: () => void;
 
   toggleSelect: (cellId: string, shift: boolean) => void;
@@ -131,6 +133,43 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
       sources: { ...s.sources, [entryId]: src },
       cells: [...s.cells, ...additions],
     }));
+  },
+
+  async addLocalFiles(files) {
+    const pdfs = files.filter(
+      (f) => f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name)),
+    );
+    if (pdfs.length === 0) return;
+    for (const file of pdfs) {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pageCount = doc.getPageCount();
+        // Unique source key per add — never collide with prior sources,
+        // even when re-adding the same file.
+        const key = `local:${file.name}:${file.size}:${file.lastModified}:${++nonce}`;
+        const colorIdx = Object.keys(get().sources).length;
+        const additions: PageCell[] = [];
+        for (let i = 0; i < pageCount; i++) {
+          additions.push({
+            cellId: cellId(key, i),
+            source: key,
+            fileName: file.name,
+            pageIndex: i,
+            rotation: 0,
+          });
+        }
+        set((s) => ({
+          sources: {
+            ...s.sources,
+            [key]: { bytes, fileName: file.name, pageCount, colorIdx },
+          },
+          cells: [...s.cells, ...additions],
+        }));
+      } catch (err) {
+        console.error("[organize-store] addLocalFiles failed for", file.name, err);
+      }
+    }
   },
 
   reset() {

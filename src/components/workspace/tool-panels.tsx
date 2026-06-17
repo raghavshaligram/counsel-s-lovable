@@ -1537,10 +1537,13 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const rotateSelected = useOrganize((s) => s.rotateSelected);
   const deleteSelected = useOrganize((s) => s.deleteSelected);
   const addTrayEntry = useOrganize((s) => s.addTrayEntry);
+  const addLocalFiles = useOrganize((s) => s.addLocalFiles);
   const resolveBytes = useOrganize((s) => s.resolveBytes);
   const colorFor = useOrganize((s) => s.colorFor);
   const density = useOrganize((s) => s.density);
   const setDensity = useOrganize((s) => s.setDensity);
+
+  const addPdfsRef = useRef<HTMLInputElement | null>(null);
 
 
   const trayEntries = useTray((s) => s.entries);
@@ -1743,6 +1746,34 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
       </Section>
 
       <Section title="Sources" icon={<FilesIcon className="h-3 w-3" />}>
+        <input
+          ref={addPdfsRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) {
+              void addLocalFiles(files).then(() => {
+                toast.success(
+                  `Added ${files.length} PDF${files.length === 1 ? "" : "s"}`,
+                );
+              });
+            }
+            if (addPdfsRef.current) addPdfsRef.current.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => addPdfsRef.current?.click()}
+          className="mb-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add PDFs
+        </button>
+        <p className="mb-2 text-[10.5px] text-text-muted">
+          Pick multiple files, or drag &amp; drop PDFs onto the grid. Pages are appended.
+        </p>
         <ul className="flex flex-col gap-1">
           {sourceEntries.map(([key, src]) => (
             <li
