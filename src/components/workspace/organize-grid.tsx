@@ -576,8 +576,7 @@ function CellTile({
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
-        onMouseEnter={onHoverStart ? (e) => onHoverStart(e.clientX, e.clientY) : undefined}
-        onMouseMove={onHoverMove ? (e) => onHoverMove(e.clientX, e.clientY) : undefined}
+        onMouseEnter={onHoverStart ? (e) => onHoverStart(e.currentTarget.getBoundingClientRect()) : undefined}
         onMouseLeave={onHoverEnd}
         className={cn(
           "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
