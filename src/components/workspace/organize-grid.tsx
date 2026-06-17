@@ -24,9 +24,9 @@ const PAD_Y = 24; // py-6
 const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
-/** Density maps directly to column count: 0 = big/few, 1 = small/many. */
-const TILE_MIN = 64;
-const TILE_MAX = 220;
+/** Density maps directly to column count: 0 = big/few, 1 = small/many.
+ *  Thumbnail width = (available width − gaps) / cols, so fewer cols
+ *  = larger thumbnails. No fixed cap — tiles always fill the row. */
 
 export function OrganizeGrid({
   activeTabId,
@@ -105,7 +105,7 @@ export function OrganizeGrid({
   const cols = useMemo(() => densityToGridColumns(density), [density]);
   const tileW = useMemo(() => {
     const usable = Math.max(0, containerW - PAD_X * 2 - GAP * (cols - 1));
-    return Math.max(TILE_MIN, Math.min(TILE_MAX, Math.floor(usable / cols)));
+    return Math.max(48, Math.floor(usable / cols));
   }, [containerW, cols]);
   // 3/4 thumb + label
   const tileH = Math.round(tileW * (4 / 3)) + LABEL_H;
@@ -199,8 +199,7 @@ export function OrganizeGrid({
                 paddingLeft: PAD_X,
                 paddingRight: PAD_X,
                 display: "grid",
-                gridTemplateColumns: `repeat(${cols}, minmax(${TILE_MIN}px, ${tileW}px))`,
-                justifyContent: "center",
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                 columnGap: GAP,
               }}
             >
