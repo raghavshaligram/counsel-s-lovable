@@ -91,6 +91,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RotatePanel ctx={ctx} />;
     case "organize":
       return <OrganizePanel ctx={ctx} />;
+    case "extract":
+      return <ExtractPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
