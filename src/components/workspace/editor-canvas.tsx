@@ -1070,6 +1070,11 @@ function TextMiniToolbar({
     (a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined) ??
     (a.family === "serif" ? "tinos" : a.family === "mono" ? "cousine" : "arimo");
 
+  const manualFamily = (a as { fontFamilyOverride?: string }).fontFamilyOverride ?? "";
+  // Lazy-load the chosen Google Font when the user picks one from the
+  // manual override dropdown (system fonts are skipped inside the hook).
+  useGoogleFontLoader(manualFamily.split(",")[0]?.replace(/['"]/g, "").trim());
+
   const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); };
   // Buttons in the toolbar must NOT steal focus from the active textarea —
   // otherwise the textarea blurs, fires onBlur, and (for an empty new text
