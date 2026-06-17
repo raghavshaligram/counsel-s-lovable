@@ -62,6 +62,7 @@ import {
   type RotateScope,
 } from "@/lib/pdf/rotate";
 import { useOrganize } from "@/lib/workspace/organize-store";
+import { densityToGridColumns } from "@/lib/workspace/organize-store";
 import { buildPdfFromCells } from "@/lib/pdf/organize";
 import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
@@ -1584,6 +1585,8 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const sourceEntries = Object.entries(sources);
 
   const total = cells.length;
+  const densityPercent = Math.round(density * 100);
+  const densityCols = densityToGridColumns(density);
   const doJump = () => {
     const n = parseInt(jumpVal, 10);
     if (!Number.isFinite(n) || total === 0) return;
@@ -1626,7 +1629,11 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       </Section>
 
-      <Section title="Grid density" icon={<LayoutGrid className="h-3 w-3" />}>
+      <Section
+        title="Grid density"
+        icon={<LayoutGrid className="h-3 w-3" />}
+        right={<span className="font-mono text-[10px] text-vault">{densityPercent}% · {densityCols} cols</span>}
+      >
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Big</span>
           <input
@@ -1634,8 +1641,8 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
             min={0}
             max={100}
             step={1}
-            value={Math.round(density * 100)}
-            onChange={(e) => setDensity(parseInt(e.target.value, 10) / 100)}
+            value={densityPercent}
+            onChange={(e) => setDensity(e.currentTarget.valueAsNumber / 100)}
             className="h-1 flex-1 accent-vault"
           />
           <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Small</span>
