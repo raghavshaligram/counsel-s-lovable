@@ -25,6 +25,11 @@ interface OrganizeState {
   jumpIdx: number | null;
   jumpTick: number;
 
+  /** Grid density 0..1 — 0 = largest tiles (fewest cols), 1 = smallest. */
+  density: number;
+  setDensity: (d: number) => void;
+
+
   seedFromActiveFile: (tabId: string, file: File) => Promise<void>;
   addTrayEntry: (entryId: string) => Promise<void>;
   reset: () => void;
