@@ -261,21 +261,32 @@ export function OrganizeGrid({
     };
   }, [hoverKey, hover, sources]);
 
-  // Position popup near cursor, clamped to viewport.
+  // Anchor popup to the hovered tile rect, inside the scroll-container's
+  // bounds (so it never slides under the inspector / off-screen).
   const popupPos = useMemo(() => {
     if (!hover) return null;
     const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-    const estH = Math.round(PREVIEW_W * (11 / 8.5)); // rough A4-ish; clamped below
+    const parent = parentRef.current?.getBoundingClientRect();
+    const boundLeft = Math.max(8, parent?.left ?? 8);
+    const boundRight = Math.min(vw - 8, parent?.right ?? vw - 8);
     const w = PREVIEW_W;
-    const h = Math.min(estH, vh - 32);
-    let left = hover.x + PREVIEW_OFFSET;
-    if (left + w + 8 > vw) left = hover.x - PREVIEW_OFFSET - w;
-    if (left < 8) left = 8;
-    let top = hover.y - h / 2;
+    const h = Math.min(Math.round(PREVIEW_W * (11 / 8.5)), vh - 32);
+
+    const spaceRight = boundRight - hover.rect.right - PREVIEW_OFFSET;
+    const spaceLeft = hover.rect.left - boundLeft - PREVIEW_OFFSET;
+    let left: number;
+    // Prefer whichever side fits; if neither fits, pick the larger side and clamp.
+    if (spaceRight >= w) left = hover.rect.right + PREVIEW_OFFSET;
+    else if (spaceLeft >= w) left = hover.rect.left - PREVIEW_OFFSET - w;
+    else if (spaceRight >= spaceLeft) left = Math.max(boundLeft, boundRight - w);
+    else left = boundLeft;
+
+    const tileMidY = (hover.rect.top + hover.rect.bottom) / 2;
+    let top = tileMidY - h / 2;
     if (top + h + 8 > vh) top = vh - h - 8;
     if (top < 8) top = 8;
-    return { left, top };
+    return { left, top, h };
   }, [hover]);
 
   if (!activeFile && cells.length === 0) {
