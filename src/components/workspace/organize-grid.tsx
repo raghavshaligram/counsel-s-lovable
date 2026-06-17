@@ -193,7 +193,8 @@ export function OrganizeGrid({
                 paddingLeft: PAD_X,
                 paddingRight: PAD_X,
                 display: "grid",
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${cols}, ${tileW}px)`,
+                justifyContent: "center",
                 columnGap: GAP,
               }}
             >
