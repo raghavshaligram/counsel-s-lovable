@@ -5,7 +5,8 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Stamp } from "lucide-react";
-import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
+import { applyTextWatermark, type WatermarkPos } from "@/lib/pdf/watermark";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
 
@@ -63,53 +64,8 @@ function WatermarkPage() {
     if (!file || !text.trim()) return;
     setBusy(true);
     try {
-      const doc = await PDFDocument.load(await file.arrayBuffer(), {
-        ignoreEncryption: true,
-      });
-      const font = await doc.embedFont(StandardFonts.HelveticaBold);
-      const op = Math.max(0.05, Math.min(1, opacity / 100));
-      for (const page of doc.getPages()) {
-        const { width, height } = page.getSize();
-        const tw = font.widthOfTextAtSize(text, size);
-        const th = size;
-        let x: number, y: number, rot = 0;
-        if (pos === "diagonal") {
-          x = width / 2 - tw / 2;
-          y = height / 2 - th / 2;
-          rot = Math.atan2(height, width) * (180 / Math.PI);
-          page.drawText(text, {
-            x,
-            y,
-            font,
-            size,
-            color: rgb(0.5, 0.5, 0.5),
-            opacity: op,
-            rotate: degrees(rot),
-          });
-          continue;
-        }
-        if (pos === "top") {
-          x = width / 2 - tw / 2;
-          y = height - th - 36;
-        } else if (pos === "bottom") {
-          x = width / 2 - tw / 2;
-          y = 36;
-        } else {
-          x = width / 2 - tw / 2;
-          y = height / 2 - th / 2;
-        }
-        page.drawText(text, {
-          x,
-          y,
-          font,
-          size,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity: op,
-        });
-      }
-      const bytes = await doc.save();
-      const base = file.name.replace(/\.pdf$/i, "");
-      downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${base}-watermarked.pdf`);
+      const result = await applyTextWatermark(file, { text, opacity, size, pos });
+      downloadBlob(result.blob, result.filename);
       toast.success("Watermark added");
     } catch (err) {
       console.error(err);
@@ -118,6 +74,7 @@ function WatermarkPage() {
       setBusy(false);
     }
   };
+
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
