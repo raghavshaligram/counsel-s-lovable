@@ -766,6 +766,14 @@ export function EditorCanvas({
     // editing a scanned word doesn't suddenly swap families on the user.
     const fontKey = it.fontKey;
     const family: TextAnno["family"] = it.family;
+    // Translate the PDF's internal PostScript name (e.g. "Inter-Bold",
+    // "TimesNewRomanPSMT") into a real CSS font stack. When the match
+    // resolves to a Google Font, the toolbar's useGoogleFontLoader picks
+    // it up and injects the stylesheet — so the editable overlay renders
+    // in the document's actual typeface, not a generic substitute.
+    const matched = it.fontName ? matchPdfFont(it.fontName) : null;
+    const fontFamilyOverride =
+      matched && matched.fontFamily !== "sans-serif" ? matched.fontFamily : undefined;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       x: it.x - padX, y: it.y - padTop,
@@ -776,6 +784,7 @@ export function EditorCanvas({
       bg: it.bg,
       family,
       fontKey,
+      fontFamilyOverride,
       fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
       textOffsetY: padTop,
