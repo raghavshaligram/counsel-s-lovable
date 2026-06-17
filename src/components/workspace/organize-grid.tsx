@@ -575,6 +575,7 @@ function CellTile({
       />
       <div
         draggable
+        data-cell-id={cell.cellId}
         onDragStart={(e) => {
           onHoverEnd?.();
           onDragStart(e);
@@ -583,7 +584,7 @@ function CellTile({
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
-        onMouseEnter={onHoverStart ? (e) => onHoverStart(e.currentTarget.getBoundingClientRect()) : undefined}
+        onMouseEnter={onHoverStart}
         onMouseLeave={onHoverEnd}
         className={cn(
           "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
