@@ -17,6 +17,7 @@ import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
+import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
 
 interface TextItem {
   x: number;
