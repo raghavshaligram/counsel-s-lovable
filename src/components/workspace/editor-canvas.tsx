@@ -622,10 +622,16 @@ export function EditorCanvas({
         // user can see where they're typing. text-edit (replacing existing PDF
         // text) keeps the transparent skin so it blends with surrounding glyphs.
         const showEditChrome = isEditing && a.kind === "text";
+        // While the user hasn't actually edited a text-edit annotation, the
+        // textarea must render no glyphs at all — the original PDF text shows
+        // through the transparent overlay so the page looks identical to
+        // before clicking. Only the blinking caret remains visible.
+        const isUnchangedEdit =
+          a.kind === "text-edit" && a.text === (a.source?.originalString ?? "");
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
-          color: rgbCss(a.color, a.opacity),
+          color: isUnchangedEdit ? "transparent" : rgbCss(a.color, a.opacity),
           fontSize: a.fontSize * scale,
           fontFamily: fam,
           fontWeight: isBold ? 700 : 400,
@@ -918,6 +924,13 @@ export function EditorCanvas({
             auto-grown text box size). */}
         {annos.map((a) => {
           if (a.kind !== "text-edit" || !a.cover) return null;
+          // Don't draw the cover until the text actually differs from the
+          // original — entering edit mode alone must change NOTHING visually.
+          // The original PDF glyphs stay visible underneath the transparent
+          // textarea; the cover + replacement glyphs only appear after a real
+          // edit happens.
+          const original = a.source?.originalString ?? "";
+          if (a.text === original) return null;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
           return (
