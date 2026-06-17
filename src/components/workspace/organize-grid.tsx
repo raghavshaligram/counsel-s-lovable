@@ -419,6 +419,10 @@ export function OrganizeGrid({
       }}
       onPointerMove={handlePointerMove}
       onPointerLeave={endHover}
+      onWheel={(event) => {
+        if (!canHover) return;
+        lastPointerRef.current = { x: event.clientX, y: event.clientY };
+      }}
     >
       <div
         className="sticky top-0 z-10 flex items-center justify-end gap-2 border-b border-border/40 bg-canvas/95 px-5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-muted backdrop-blur"
