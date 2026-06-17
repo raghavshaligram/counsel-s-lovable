@@ -65,10 +65,11 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
   seededFor: null,
   jumpIdx: null,
   jumpTick: 0,
-  density: 0.5,
+  density: 0.65,
   setDensity(d) {
     set({ density: Math.max(0, Math.min(1, d)) });
   },
+
 
 
   async seedFromActiveFile(tabId, file) {
