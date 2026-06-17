@@ -30,6 +30,11 @@ type HoverState = {
   rect: { left: number; right: number; top: number; bottom: number };
 };
 
+type HoverCandidate = {
+  cell: PageCell;
+  rect: { left: number; right: number; top: number; bottom: number };
+};
+
 type PdfDoc = Awaited<ReturnType<typeof openPdfjsDoc>>;
 
 const GAP = 12; // gap-3
@@ -160,6 +165,11 @@ export function OrganizeGrid({
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, string>>(new Map());
   const hoverTimerRef = useRef<number | null>(null);
+  const cellsByIdRef = useRef<Map<string, PageCell>>(new Map());
+
+  useEffect(() => {
+    cellsByIdRef.current = new Map(cells.map((cell) => [cell.cellId, cell]));
+  }, [cells]);
 
   // Clear preview cache when sources change (file replaced / reset).
   useEffect(() => {
@@ -174,30 +184,17 @@ export function OrganizeGrid({
   };
 
   const startHover = useCallback(
-    (cell: PageCell) => {
+    ({ cell, rect }: HoverCandidate) => {
       if (!canHover) return;
       clearHoverTimer();
-      const cellId = cell.cellId;
       hoverTimerRef.current = window.setTimeout(() => {
-        // Re-measure NOW (not at mouseenter time) — the tile may have moved
-        // or unmounted due to scroll during the 200ms delay.
-        const el = parentRef.current?.querySelector(
-          `[data-cell-id="${cellId}"]`,
-        ) as HTMLElement | null;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
         setHover({
           cellId: cell.cellId,
           source: cell.source,
           pageIndex: cell.pageIndex,
           rotation: cell.rotation,
           fileName: cell.fileName,
-          rect: {
-            left: rect.left,
-            right: rect.right,
-            top: rect.top,
-            bottom: rect.bottom,
-          },
+          rect,
         });
       }, HOVER_DELAY_MS);
     },
@@ -226,6 +223,30 @@ export function OrganizeGrid({
       window.removeEventListener("scroll", onScroll, { capture: true } as never);
     };
   }, [endHover]);
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!canHover || event.pointerType !== "mouse") return;
+      const tile = (event.target as Element | null)?.closest?.<HTMLElement>("[data-cell-id]");
+      const cellId = tile?.dataset.cellId;
+      if (!tile || !cellId) {
+        endHover();
+        return;
+      }
+      const cell = cellsByIdRef.current.get(cellId);
+      if (!cell) {
+        endHover();
+        return;
+      }
+      if (hover?.cellId === cellId) return;
+      const rect = tile.getBoundingClientRect();
+      startHover({
+        cell,
+        rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+      });
+    },
+    [canHover, endHover, hover?.cellId, startHover],
+  );
 
   // Render the larger preview on-demand when hover target changes.
   const hoverKey = hover ? `${hover.source}::${hover.pageIndex}` : null;
