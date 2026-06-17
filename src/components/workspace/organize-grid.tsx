@@ -191,15 +191,17 @@ export function OrganizeGrid({
           return (
             <div
               key={vRow.key}
+              data-index={vRow.index}
+              ref={rowVirtualizer.measureElement}
               style={{
                 position: "absolute",
                 top: 0,
                 left: 0,
                 right: 0,
                 transform: `translateY(${vRow.start + PAD_Y}px)`,
-                height: rowH,
                 paddingLeft: PAD_X,
                 paddingRight: PAD_X,
+                paddingBottom: GAP,
                 display: "grid",
                 gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                 columnGap: GAP,
