@@ -528,7 +528,7 @@ function CellTile({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
-  onHoverStart?: (rect: DOMRect) => void;
+  onHoverStart?: () => void;
   onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
