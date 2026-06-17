@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GripVertical, FilePlus2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
-import { useOrganize } from "@/lib/workspace/organize-store";
+import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-store";
 import { openPdfjsDoc, renderPageThumb } from "@/lib/pdf/organize";
 import type { PageCell } from "@/lib/pdf/organize";
 
@@ -25,20 +25,8 @@ const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
 /** Density maps directly to column count: 0 = big/few, 1 = small/many. */
-const TILE_MIN = 84;
+const TILE_MIN = 64;
 const TILE_MAX = 220;
-const COLS_MIN = 2;
-const COLS_MAX = 8;
-
-function maxColsForWidth(w: number) {
-  if (w <= 0) return COLS_MIN;
-  return Math.max(COLS_MIN, Math.min(COLS_MAX, Math.floor((w + GAP) / (TILE_MIN + GAP))));
-}
-function colsForDensity(w: number, density: number) {
-  const maxCols = maxColsForWidth(w);
-  const d = Math.max(0, Math.min(1, density));
-  return Math.max(COLS_MIN, Math.min(maxCols, Math.round(COLS_MIN + (maxCols - COLS_MIN) * d)));
-}
 
 export function OrganizeGrid({
   activeTabId,
@@ -114,13 +102,10 @@ export function OrganizeGrid({
   }, []);
 
   const density = useOrganize((s) => s.density);
-  const cols = useMemo(
-    () => colsForDensity(Math.max(0, containerW - PAD_X * 2), density),
-    [containerW, density],
-  );
+  const cols = useMemo(() => densityToGridColumns(density), [density]);
   const tileW = useMemo(() => {
     const usable = Math.max(0, containerW - PAD_X * 2 - GAP * (cols - 1));
-    return Math.min(TILE_MAX, Math.max(TILE_MIN, Math.floor(usable / cols)));
+    return Math.max(TILE_MIN, Math.min(TILE_MAX, Math.floor(usable / cols)));
   }, [containerW, cols]);
   // 3/4 thumb + label
   const tileH = Math.round(tileW * (4 / 3)) + LABEL_H;
@@ -214,7 +199,7 @@ export function OrganizeGrid({
                 paddingLeft: PAD_X,
                 paddingRight: PAD_X,
                 display: "grid",
-                gridTemplateColumns: `repeat(${cols}, ${tileW}px)`,
+                gridTemplateColumns: `repeat(${cols}, minmax(${TILE_MIN}px, ${tileW}px))`,
                 justifyContent: "center",
                 columnGap: GAP,
               }}
