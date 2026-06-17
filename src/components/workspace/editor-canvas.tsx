@@ -1216,40 +1216,22 @@ function TextMiniToolbar({
         onChange={(e) => {
           const key = e.target.value as FontKey;
           const kind = FONT_META[key]?.kind ?? "sans";
-          update({ fontKey: key, family: kind, fontApproximate: false } as Partial<Anno>);
+          // Clear any auto-detected CSS override so the bundled family wins,
+          // both on screen and in export.
+          update({ fontKey: key, family: kind, fontApproximate: false, fontFamilyOverride: undefined } as Partial<Anno>);
           setHintDismissed(true);
         }}
         title={isApprox ? "Approximate match — pick the closest font" : "Font"}
+        onMouseDown={keepFocus}
         style={{
           ...btn,
-          background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 140,
+          background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 180,
           border: showHint ? "1px solid var(--vault)" : "1px solid rgba(255,255,255,0.12)",
           boxShadow: showHint ? "0 0 0 2px rgba(245,158,11,0.18)" : "none",
         }}
       >
         {TOOLBAR_FONTS.map((f) => (
           <option key={f.key} value={f.key} style={{ background: "#1a1a1c", color: "#fff" }}>
-            {f.label}
-          </option>
-        ))}
-      </select>
-      <select
-        value={manualFamily}
-        onChange={(e) => {
-          const fam = e.target.value;
-          update({ fontFamilyOverride: fam || undefined } as Partial<Anno>);
-        }}
-        title="Manual font override"
-        onMouseDown={keepFocus}
-        style={{
-          ...btn,
-          background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 110,
-          border: "1px solid rgba(255,255,255,0.12)",
-        }}
-      >
-        <option value="" style={{ background: "#1a1a1c", color: "#fff" }}>Auto</option>
-        {MANUAL_FONTS.map((f) => (
-          <option key={f.label} value={f.family} style={{ background: "#1a1a1c", color: "#fff", fontFamily: f.family }}>
             {f.label}
           </option>
         ))}
