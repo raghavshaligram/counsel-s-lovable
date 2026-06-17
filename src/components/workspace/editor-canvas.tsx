@@ -1016,6 +1016,22 @@ const TOOLBAR_FONTS: { key: FontKey; label: string }[] = FONT_KEYS.map((k) => ({
   label: `${FONT_META[k].label} — ${FONT_META[k].matches}`,
 }));
 
+// Manual override picker — 10 standard web/Google fonts the user can choose
+// from when the auto-matcher guesses wrong. Each entry maps a display label
+// to a CSS font-family stack that the canvas/textarea renders with.
+const MANUAL_FONTS: { label: string; family: string }[] = [
+  { label: "Arial",            family: `Arial, Helvetica, sans-serif` },
+  { label: "Times New Roman",  family: `"Times New Roman", Times, serif` },
+  { label: "Courier New",      family: `"Courier New", Courier, monospace` },
+  { label: "Inter",            family: `Inter, sans-serif` },
+  { label: "Roboto",           family: `Roboto, sans-serif` },
+  { label: "Open Sans",        family: `"Open Sans", sans-serif` },
+  { label: "Lato",             family: `Lato, sans-serif` },
+  { label: "Montserrat",       family: `Montserrat, sans-serif` },
+  { label: "Playfair Display", family: `"Playfair Display", serif` },
+  { label: "Source Code Pro",  family: `"Source Code Pro", monospace` },
+];
+
 function TextMiniToolbar({
   anno, scale, pageW, pageH, dispatch,
 }: {
