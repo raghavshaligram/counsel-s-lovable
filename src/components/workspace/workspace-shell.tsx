@@ -1764,19 +1764,23 @@ function TextEditPropsBar({
   const isEdit = anno.kind === "text-edit";
   const patch = (p: Record<string, unknown>) =>
     dispatch({ type: "UPDATE_ANNO", id: anno.id, patch: p as never });
-  const fontKey: string = anno.fontKey ?? "arimo";
+  const fontKey: string = anno.fontKey ?? (anno.family === "serif" ? "tinos" : anno.family === "mono" ? "cousine" : "arimo");
   const fontMeta = FONT_META[fontKey as FontKey] ?? FONT_META.arimo;
+  const setFontKey = (key: FontKey) => {
+    const meta = FONT_META[key] ?? FONT_META.arimo;
+    patch({ fontKey: key, family: meta.kind, fontApproximate: false, fontFamilyOverride: undefined });
+  };
   return (
     <>
       <select
         aria-label="Font"
         value={fontKey}
-        onChange={(e) => patch({ fontKey: e.target.value })}
+        onChange={(e) => setFontKey(e.target.value as FontKey)}
         className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
         title={`Metric-compatible: matches ${fontMeta.matches}`}
       >
         {Object.values(FONT_META).map((m) => (
-          <option key={m.key} value={m.key}>{m.label}</option>
+          <option key={m.key} value={m.key}>{m.label} — {m.matches}</option>
         ))}
       </select>
       <input
