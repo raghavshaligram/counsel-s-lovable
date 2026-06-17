@@ -24,14 +24,14 @@ const PAD_Y = 24; // py-6
 const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
-/** Pick a column count from container width (matches the prior
- *  responsive grid breakpoints: sm/md/lg/xl). */
+/** Target tile width — keeps thumbnails legible without making them
+ *  absurdly large when the canvas is narrow. Cols scale to fit. */
+const TARGET_TILE_W = 170;
+const MAX_TILE_W = 220;
+
 function colsForWidth(w: number) {
-  if (w >= 1280) return 6;
-  if (w >= 1024) return 5;
-  if (w >= 768) return 4;
-  if (w >= 640) return 3;
-  return 2;
+  if (w <= 0) return 2;
+  return Math.max(2, Math.floor((w + GAP) / (TARGET_TILE_W + GAP)));
 }
 
 export function OrganizeGrid({
