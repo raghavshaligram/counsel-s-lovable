@@ -72,12 +72,11 @@ function sampleTextColor(
   }
 }
 
-// Sample the page background by reading a thin RING immediately outside the
-// glyph bbox (top + bottom strips, plus left + right strips). We deliberately
-// avoid sampling pixels inside the bbox (those are the glyphs themselves) and
-// we do NOT filter by luminance — that lets the cover match any background
-// color (light, dark, tinted, gradient sampled locally) instead of falling
-// back to white on non-white pages.
+// Sample the page background by reading a RING just outside the glyph bbox
+// and returning the MODAL (most frequent) color quantized to 8-step bins per
+// channel. This handles any page color (white, cream, gray, dark) without
+// being fooled by adjacent glyphs that sneak into the strips, and avoids any
+// hardcoded white fallback.
 function samplePageBg(
   ctx: CanvasRenderingContext2D,
   sx: number,
@@ -85,50 +84,64 @@ function samplePageBg(
   sw: number,
   sh: number,
 ): RGB {
-  try {
-    const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    // Wider sampling band — small glyphs were yielding too few opaque pixels
-    // and triggering the pure-white fallback, which left bright covers on a
-    // cream page. A larger band makes the median robust for any font size.
-    const band = Math.max(6, Math.floor(sh * 0.9));
-    const bx = Math.max(0, Math.floor(sx));
-    const by = Math.max(0, Math.floor(sy));
-    const bw = Math.max(1, Math.floor(sw));
-    const bh = Math.max(1, Math.floor(sh));
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const bx = Math.max(0, Math.floor(sx));
+  const by = Math.max(0, Math.floor(sy));
+  const bw = Math.max(1, Math.floor(sw));
+  const bh = Math.max(1, Math.floor(sh));
 
+  // Try progressively larger rings if the first pass yields too few opaque
+  // pixels (small glyph in a busy line). Reading further out also dodges
+  // adjacent baselines that would skew the mode toward ink.
+  const rings = [
+    Math.max(4, Math.floor(sh * 0.6)),
+    Math.max(8, Math.floor(sh * 1.4)),
+    Math.max(16, Math.floor(sh * 2.5)),
+  ];
+
+  const read = (x: number, y: number, w: number, h: number, into: ImageData[]) => {
+    const cx = Math.max(0, Math.min(x, cw - 1));
+    const cy = Math.max(0, Math.min(y, ch - 1));
+    const ww = Math.max(1, Math.min(w, cw - cx));
+    const hh = Math.max(1, Math.min(h, ch - cy));
+    if (ww < 1 || hh < 1) return;
+    try { into.push(ctx.getImageData(cx, cy, ww, hh)); } catch { /* tainted */ }
+  };
+
+  for (const band of rings) {
     const strips: ImageData[] = [];
-    const read = (x: number, y: number, w: number, h: number) => {
-      const cx = Math.max(0, Math.min(x, cw - 1));
-      const cy = Math.max(0, Math.min(y, ch - 1));
-      const ww = Math.max(1, Math.min(w, cw - cx));
-      const hh = Math.max(1, Math.min(h, ch - cy));
-      if (ww < 1 || hh < 1) return;
-      strips.push(ctx.getImageData(cx, cy, ww, hh));
-    };
-    // top + bottom strips outside glyph rows
-    read(bx, by - band, bw, band);
-    read(bx, by + bh, bw, band);
-    // left + right strips (smaller — kerning extents)
-    read(bx - band, by, band, bh);
-    read(bx + bw, by, band, bh);
+    read(bx, by - band, bw, band, strips);
+    read(bx, by + bh, bw, band, strips);
+    read(bx - band, by, band, bh, strips);
+    read(bx + bw, by, band, bh, strips);
 
-    const rs: number[] = [], gs: number[] = [], bs: number[] = [];
+    // Mode by 8-step quantization (32 buckets per channel = 32768 keys).
+    const counts = new Map<number, { n: number; r: number; g: number; b: number }>();
+    let total = 0;
     for (const img of strips) {
       const d = img.data;
       for (let i = 0; i < d.length; i += 4) {
         if (d[i + 3] < 128) continue;
-        rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]);
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+        const c = counts.get(key);
+        if (c) { c.n++; c.r += r; c.g += g; c.b += b; }
+        else counts.set(key, { n: 1, r, g, b });
+        total++;
       }
     }
-    // Even a handful of samples is enough — anything below this means we
-    // hit a clipped/empty region, so fall back to transparent-ish white.
-    if (rs.length < 1) return { r: 1, g: 1, b: 1 };
-    // Median per channel — robust to occasional outliers (descenders, rules).
-    const med = (arr: number[]) => {
-      arr.sort((a, b) => a - b);
-      return arr[arr.length >> 1];
-    };
-    return { r: med(rs) / 255, g: med(gs) / 255, b: med(bs) / 255 };
+    if (total < 20) continue;
+    let best: { n: number; r: number; g: number; b: number } | null = null;
+    for (const c of counts.values()) if (!best || c.n > best.n) best = c;
+    if (!best) continue;
+    return { r: best.r / best.n / 255, g: best.g / best.n / 255, b: best.b / best.n / 255 };
+  }
+  // Last resort: sample a single pixel far above the bbox. Avoids hardcoded white.
+  try {
+    const fx = Math.max(0, Math.min(cw - 1, bx + (bw >> 1)));
+    const fy = Math.max(0, by - Math.max(20, sh * 3));
+    const d = ctx.getImageData(fx, fy, 1, 1).data;
+    return { r: d[0] / 255, g: d[1] / 255, b: d[2] / 255 };
   } catch {
     return { r: 1, g: 1, b: 1 };
   }
