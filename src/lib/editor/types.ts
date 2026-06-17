@@ -196,6 +196,9 @@ export interface TextEditAnno extends BaseAnno {
   // shrinks below the original size.
   cover?: { x: number; y: number; w: number; h: number };
   source?: TextSource;
+  // Manual CSS font-family override picked from the toolbar dropdown.
+  // When set, takes precedence over `fontKey`/`family` for on-screen rendering.
+  fontFamilyOverride?: string;
 }
 
 // Destructive redaction: draws a solid fill over the bbox AND attempts to
