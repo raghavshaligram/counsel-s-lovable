@@ -24,9 +24,9 @@ const PAD_Y = 24; // py-6
 const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
-/** Density maps directly to column count: 0 = big/few, 1 = small/many. */
-const TILE_MIN = 64;
-const TILE_MAX = 220;
+/** Density maps directly to column count: 0 = big/few, 1 = small/many.
+ *  Thumbnail width = (available width − gaps) / cols, so fewer cols
+ *  = larger thumbnails. No fixed cap — tiles always fill the row. */
 
 export function OrganizeGrid({
   activeTabId,
