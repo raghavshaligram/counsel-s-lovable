@@ -24,14 +24,17 @@ const PAD_Y = 24; // py-6
 const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
-/** Target tile width — keeps thumbnails legible without making them
- *  absurdly large when the canvas is narrow. Cols scale to fit. */
-const TARGET_TILE_W = 170;
-const MAX_TILE_W = 220;
-
-function colsForWidth(w: number) {
+/** Map density 0..1 → target tile width. 0 = large overview tiles,
+ *  1 = tiny dense thumbnails. Cols then = floor(usable / target). */
+const TILE_MIN = 90;
+const TILE_MAX = 240;
+function targetTileFor(density: number) {
+  const d = Math.max(0, Math.min(1, density));
+  return Math.round(TILE_MAX - (TILE_MAX - TILE_MIN) * d);
+}
+function colsForWidth(w: number, target: number) {
   if (w <= 0) return 2;
-  return Math.max(2, Math.floor((w + GAP) / (TARGET_TILE_W + GAP)));
+  return Math.max(2, Math.floor((w + GAP) / (target + GAP)));
 }
 
 export function OrganizeGrid({
