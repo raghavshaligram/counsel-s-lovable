@@ -18,6 +18,7 @@ import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
+import { matchPdfFont } from "@/lib/utils/fontMatcher";
 
 interface TextItem {
   x: number;
@@ -83,7 +84,10 @@ function samplePageBg(
 ): RGB {
   try {
     const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    const band = Math.max(2, Math.floor(sh * 0.45));
+    // Wider sampling band — small glyphs were yielding too few opaque pixels
+    // and triggering the pure-white fallback, which left bright covers on a
+    // cream page. A larger band makes the median robust for any font size.
+    const band = Math.max(6, Math.floor(sh * 0.9));
     const bx = Math.max(0, Math.floor(sx));
     const by = Math.max(0, Math.floor(sy));
     const bw = Math.max(1, Math.floor(sw));
@@ -113,7 +117,9 @@ function samplePageBg(
         rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]);
       }
     }
-    if (rs.length < 4) return { r: 1, g: 1, b: 1 };
+    // Even a handful of samples is enough — anything below this means we
+    // hit a clipped/empty region, so fall back to transparent-ish white.
+    if (rs.length < 1) return { r: 1, g: 1, b: 1 };
     // Median per channel — robust to occasional outliers (descenders, rules).
     const med = (arr: number[]) => {
       arr.sort((a, b) => a - b);
@@ -765,6 +771,14 @@ export function EditorCanvas({
     // editing a scanned word doesn't suddenly swap families on the user.
     const fontKey = it.fontKey;
     const family: TextAnno["family"] = it.family;
+    // Translate the PDF's internal PostScript name (e.g. "Inter-Bold",
+    // "TimesNewRomanPSMT") into a real CSS font stack. When the match
+    // resolves to a Google Font, the toolbar's useGoogleFontLoader picks
+    // it up and injects the stylesheet — so the editable overlay renders
+    // in the document's actual typeface, not a generic substitute.
+    const matched = it.fontName ? matchPdfFont(it.fontName) : null;
+    const fontFamilyOverride =
+      matched && matched.fontFamily !== "sans-serif" ? matched.fontFamily : undefined;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       x: it.x - padX, y: it.y - padTop,
@@ -775,6 +789,7 @@ export function EditorCanvas({
       bg: it.bg,
       family,
       fontKey,
+      fontFamilyOverride,
       fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
       textOffsetY: padTop,
