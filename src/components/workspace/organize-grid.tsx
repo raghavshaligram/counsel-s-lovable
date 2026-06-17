@@ -452,7 +452,7 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
-                  onHoverStart={canHover ? (rect) => startHover(c, rect) : undefined}
+                  onHoverStart={canHover ? () => startHover(c) : undefined}
                   onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
