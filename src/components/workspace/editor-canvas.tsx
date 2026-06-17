@@ -1169,6 +1169,7 @@ function TextMiniToolbar({
 
   return (
     <div
+      ref={tbRef}
       data-text-toolbar="1"
       onMouseDown={stop}
       onPointerDown={stop}
