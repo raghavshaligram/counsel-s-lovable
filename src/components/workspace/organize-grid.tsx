@@ -24,14 +24,14 @@ const PAD_Y = 24; // py-6
 const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
-/** Pick a column count from container width (matches the prior
- *  responsive grid breakpoints: sm/md/lg/xl). */
+/** Target tile width — keeps thumbnails legible without making them
+ *  absurdly large when the canvas is narrow. Cols scale to fit. */
+const TARGET_TILE_W = 170;
+const MAX_TILE_W = 220;
+
 function colsForWidth(w: number) {
-  if (w >= 1280) return 6;
-  if (w >= 1024) return 5;
-  if (w >= 768) return 4;
-  if (w >= 640) return 3;
-  return 2;
+  if (w <= 0) return 2;
+  return Math.max(2, Math.floor((w + GAP) / (TARGET_TILE_W + GAP)));
 }
 
 export function OrganizeGrid({
@@ -101,7 +101,7 @@ export function OrganizeGrid({
   const cols = useMemo(() => colsForWidth(Math.max(0, containerW - PAD_X * 2)), [containerW]);
   const tileW = useMemo(() => {
     const usable = Math.max(0, containerW - PAD_X * 2 - GAP * (cols - 1));
-    return Math.max(80, Math.floor(usable / cols));
+    return Math.min(MAX_TILE_W, Math.max(80, Math.floor(usable / cols)));
   }, [containerW, cols]);
   // 3/4 thumb + label
   const tileH = Math.round(tileW * (4 / 3)) + LABEL_H;
@@ -193,7 +193,8 @@ export function OrganizeGrid({
                 paddingLeft: PAD_X,
                 paddingRight: PAD_X,
                 display: "grid",
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${cols}, ${tileW}px)`,
+                justifyContent: "center",
                 columnGap: GAP,
               }}
             >
