@@ -105,7 +105,7 @@ export function OrganizeGrid({
   const cols = useMemo(() => densityToGridColumns(density), [density]);
   const tileW = useMemo(() => {
     const usable = Math.max(0, containerW - PAD_X * 2 - GAP * (cols - 1));
-    return Math.max(TILE_MIN, Math.min(TILE_MAX, Math.floor(usable / cols)));
+    return Math.max(48, Math.floor(usable / cols));
   }, [containerW, cols]);
   // 3/4 thumb + label
   const tileH = Math.round(tileW * (4 / 3)) + LABEL_H;
