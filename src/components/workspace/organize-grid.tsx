@@ -26,8 +26,8 @@ const HEADER_H = 28; // top counts row
 
 /** Map density 0..1 → target tile width. 0 = large overview tiles,
  *  1 = tiny dense thumbnails. Cols then = floor(usable / target). */
-const TILE_MIN = 90;
-const TILE_MAX = 240;
+const TILE_MIN = 72;
+const TILE_MAX = 220;
 function targetTileFor(density: number) {
   const d = Math.max(0, Math.min(1, density));
   return Math.round(TILE_MAX - (TILE_MAX - TILE_MIN) * d);
