@@ -493,6 +493,9 @@ function CellTile({
   onDragOver,
   onDrop,
   onDragEnd,
+  onHoverStart,
+  onHoverMove,
+  onHoverEnd,
 }: {
   cell: PageCell;
   indexInGrid: number;
@@ -508,6 +511,9 @@ function CellTile({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
+  onHoverStart?: (clientX: number, clientY: number) => void;
+  onHoverMove?: (clientX: number, clientY: number) => void;
+  onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
   useEffect(() => {
