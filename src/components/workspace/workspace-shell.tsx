@@ -120,7 +120,8 @@ const TOOLS: RailTool[] = [
   { id: "merge", label: "Merge", icon: Files, group: "pages", groupLabel: "Pages" },
   { id: "split", label: "Split", icon: Scissors, group: "pages", groupLabel: "Pages" },
   { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Pages" },
-  { id: "extract", label: "Extract", icon: TableIcon, group: "pages", groupLabel: "Pages" },
+  { id: "extract-pages", label: "Extract Pages", icon: Scissors, group: "pages", groupLabel: "Pages" },
+  { id: "extract-data", label: "Extract Data", icon: TableIcon, group: "pages", groupLabel: "Pages" },
   { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Pages" },
   { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
   // Convert
