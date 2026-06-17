@@ -1209,7 +1209,7 @@ function TextMiniToolbar({
           >×</button>
         </div>
       )}
-      <div style={{ height: tbH, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
+      <div style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
       <select
         value={currentFontKey}
         onChange={(e) => {
