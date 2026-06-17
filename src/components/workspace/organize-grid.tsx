@@ -431,11 +431,21 @@ export function OrganizeGrid({
                   bytes={sources[c.source]?.bytes}
                   docCache={docCacheRef.current}
                   setThumb={setThumb}
-                  onClick={(e) => toggleSelect(c.cellId, e.shiftKey)}
+                  onClick={(e) => {
+                    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                      toggleSelect(c.cellId, e.shiftKey);
+                      return;
+                    }
+                    if (peek?.cellId === c.cellId) closePeek();
+                    else openPeekFromTile(c, e.currentTarget as HTMLElement);
+                  }}
+                  onFocus={() => setFocusedCellId(c.cellId)}
+                  isFocused={focusedCellId === c.cellId}
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = "move";
                     e.dataTransfer.setData("application/x-vaultpdf-cell", c.cellId);
                     setDragId(c.cellId);
+                    closePeek();
                   }}
                   onDragOver={(e) => {
                     if (!dragId) return;
