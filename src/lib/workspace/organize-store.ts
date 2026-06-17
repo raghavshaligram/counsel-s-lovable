@@ -42,6 +42,8 @@ interface OrganizeState {
 
   seedFromActiveFile: (tabId: string, file: File) => Promise<void>;
   addTrayEntry: (entryId: string) => Promise<void>;
+  /** Append one or more local PDF files to the grid (drop or picker). */
+  addLocalFiles: (files: File[]) => Promise<void>;
   reset: () => void;
 
   toggleSelect: (cellId: string, shift: boolean) => void;
