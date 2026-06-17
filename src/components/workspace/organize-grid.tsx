@@ -170,6 +170,8 @@ export function OrganizeGrid({
         <span>{cells.length} page{cells.length === 1 ? "" : "s"}</span>
         <span className="text-text-muted">·</span>
         <span className={selected.size > 0 ? "text-vault" : ""}>{selected.size} selected</span>
+        <span className="text-text-muted">·</span>
+        <span>{cols} cols</span>
         {seeding && <span className="ml-2 text-vault/70">rendering…</span>}
       </div>
 
