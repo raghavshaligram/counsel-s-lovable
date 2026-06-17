@@ -214,6 +214,19 @@ export function OrganizeGrid({
   }, [dragId, endHover]);
   useEffect(() => () => clearHoverTimer(), []);
 
+  // Close preview on any scroll — the anchored rect would be stale otherwise.
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const onScroll = () => endHover();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll, { capture: true } as never);
+    };
+  }, [endHover]);
+
   // Render the larger preview on-demand when hover target changes.
   const hoverKey = hover ? `${hover.source}::${hover.pageIndex}` : null;
   useEffect(() => {
