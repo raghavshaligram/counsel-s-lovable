@@ -779,9 +779,19 @@ export function EditorCanvas({
     // resolves to a Google Font, the toolbar's useGoogleFontLoader picks
     // it up and injects the stylesheet — so the editable overlay renders
     // in the document's actual typeface, not a generic substitute.
-    const matched = it.fontName ? matchPdfFont(it.fontName) : null;
-    const fontFamilyOverride =
-      matched && matched.fontFamily !== "sans-serif" ? matched.fontFamily : undefined;
+    // Try the PostScript name first (richest signal), then fall back to the
+    // CSS family pdf.js resolved from the embedded font dictionary. The
+    // matcher already strips `AAAAAA+` subset prefixes internally.
+    const tryNames = [it.fontName, it.cssFamily].filter(Boolean) as string[];
+    let matched: { fontFamily: string } | null = null;
+    for (const n of tryNames) {
+      const r = matchPdfFont(n);
+      if (r.fontFamily !== "sans-serif") { matched = r; break; }
+    }
+    const fontFamilyOverride = matched?.fontFamily;
+    if (import.meta.env.DEV) {
+      console.debug("[font-match]", { fontName: it.fontName, cssFamily: it.cssFamily, resolved: fontFamilyOverride ?? "(no match)" });
+    }
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       x: it.x - padX, y: it.y - padTop,
