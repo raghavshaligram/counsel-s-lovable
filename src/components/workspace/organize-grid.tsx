@@ -538,33 +538,35 @@ function CellTile({
   indexInGrid,
   isDragged,
   isSelected,
+  isFocused,
   dropSide,
   color,
   bytes,
   docCache,
   setThumb,
   onClick,
+  onFocus,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
-  onHoverEnd,
 }: {
   cell: PageCell;
   indexInGrid: number;
   isDragged: boolean;
   isSelected: boolean;
+  isFocused: boolean;
   dropSide: "before" | "after" | null;
   color: string;
   bytes: Uint8Array | undefined;
   docCache: Map<string, Promise<PdfDoc>>;
   setThumb: (id: string, t: string) => void;
-  onClick: (e: React.MouseEvent) => void;
+  onClick: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onFocus: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
-  onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
   useEffect(() => {
@@ -611,20 +613,20 @@ function CellTile({
       <div
         draggable
         data-cell-id={cell.cellId}
-        onDragStart={(e) => {
-          onHoverEnd?.();
-          onDragStart(e);
-        }}
+        tabIndex={0}
+        onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
-        onMouseLeave={onHoverEnd}
+        onFocus={onFocus}
         className={cn(
-          "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
+          "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 outline-none transition-all focus-visible:ring-2 focus-visible:ring-vault/60",
           isSelected
             ? "border-vault ring-2 ring-vault/50"
-            : "border-border hover:border-vault/40",
+            : isFocused
+              ? "border-vault/50"
+              : "border-border hover:border-vault/40",
           isDragged && "opacity-40",
         )}
       >
