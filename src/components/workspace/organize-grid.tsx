@@ -163,7 +163,43 @@ export function OrganizeGrid({
   const virtualRows = rowVirtualizer.getVirtualItems();
 
   return (
-    <div ref={parentRef} className="h-full overflow-auto" style={{ contain: "strict" }}>
+    <div
+      ref={parentRef}
+      className={cn(
+        "relative h-full overflow-auto transition-colors",
+        fileDropHot && "bg-vault/5 ring-2 ring-inset ring-vault/50",
+      )}
+      style={{ contain: "strict" }}
+      onDragEnter={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("Files")) {
+          e.preventDefault();
+          e.stopPropagation();
+          setFileDropHot(true);
+        }
+      }}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("Files")) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setFileDropHot(false);
+        }
+      }}
+      onDrop={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+        // Intercept BEFORE the workspace-shell global drop handler can
+        // replace the active tab's file — Organize must APPEND, not replace.
+        e.preventDefault();
+        e.stopPropagation();
+        setFileDropHot(false);
+        const files = Array.from(e.dataTransfer.files ?? []);
+        if (files.length > 0) void addLocalFiles(files);
+      }}
+    >
       <div
         className="sticky top-0 z-10 flex items-center justify-end gap-2 border-b border-border/40 bg-canvas/95 px-5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-muted backdrop-blur"
         style={{ height: HEADER_H }}
