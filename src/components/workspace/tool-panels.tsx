@@ -91,10 +91,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RotatePanel ctx={ctx} />;
     case "organize":
       return <OrganizePanel ctx={ctx} />;
-    case "extract-pages":
-      return <ExtractPagesPanel ctx={ctx} />;
-    case "extract-data":
-      return <ExtractDataPanel ctx={ctx} />;
+    case "extract":
+      return <ExtractPanel ctx={ctx} />;
     case "watermark":
       return <WatermarkPanel ctx={ctx} />;
     default:
@@ -1853,7 +1851,44 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
-/* ============================== Extract Pages ============================== */
+/* ============================== Extract ============================== */
+
+type ExtractMode = "pages" | "data";
+
+function ExtractPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const [mode, setMode] = useState<ExtractMode>("pages");
+  const modeBtn = (id: ExtractMode, label: string) => (
+    <button
+      type="button"
+      onClick={() => setMode(id)}
+      className={cn(
+        "flex-1 rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+        mode === id
+          ? "border-vault/60 bg-accent-soft text-foreground"
+          : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex h-full flex-col gap-3">
+      <div className="flex gap-1.5">
+        {modeBtn("pages", "Pages → PDF")}
+        {modeBtn("data", "Data → Excel")}
+      </div>
+      <div className="flex-1 min-h-0">
+        {mode === "pages" ? (
+          <ExtractPagesPanel ctx={ctx} />
+        ) : (
+          <ExtractDataPanel ctx={ctx} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Extract Pages ---------- */
 
 function ExtractPagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file } = ctx;
