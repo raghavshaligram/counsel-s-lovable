@@ -174,9 +174,15 @@ export function OrganizeGrid({
   };
 
   const startHover = useCallback(
-    (cell: PageCell, clientX: number, clientY: number) => {
+    (cell: PageCell, rect: DOMRect) => {
       if (!canHover) return;
       clearHoverTimer();
+      const snap = {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+      };
       hoverTimerRef.current = window.setTimeout(() => {
         setHover({
           cellId: cell.cellId,
@@ -184,16 +190,12 @@ export function OrganizeGrid({
           pageIndex: cell.pageIndex,
           rotation: cell.rotation,
           fileName: cell.fileName,
-          x: clientX,
-          y: clientY,
+          rect: snap,
         });
       }, HOVER_DELAY_MS);
     },
     [canHover],
   );
-  const moveHover = useCallback((clientX: number, clientY: number) => {
-    setHover((h) => (h ? { ...h, x: clientX, y: clientY } : h));
-  }, []);
   const endHover = useCallback(() => {
     clearHoverTimer();
     setHover(null);
