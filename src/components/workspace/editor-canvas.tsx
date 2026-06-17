@@ -17,6 +17,7 @@ import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
+import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
 
 interface TextItem {
   x: number;
@@ -581,7 +582,10 @@ export function EditorCanvas({
         // changing the cover area.
         const bg = "transparent";
         const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
-        const fam = editFontKey && FONT_META[editFontKey]
+        const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
+        const fam = famOverride
+          ? famOverride
+          : editFontKey && FONT_META[editFontKey]
           ? FONT_META[editFontKey].cssFamily
           : (a.family === "serif" ? `'Times New Roman', Times, serif`
             : a.family === "mono" ? `'Courier New', Courier, monospace`
@@ -809,7 +813,10 @@ export function EditorCanvas({
     if (!el) return;
     const a = activeText;
     const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
-    const fam = editFontKey && FONT_META[editFontKey]
+    const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
+    const fam = famOverride
+      ? famOverride
+      : editFontKey && FONT_META[editFontKey]
       ? FONT_META[editFontKey].cssFamily
       : (a.family === "serif" ? `'Times New Roman', Times, serif`
         : a.family === "mono" ? `'Courier New', Courier, monospace`
@@ -1009,6 +1016,22 @@ const TOOLBAR_FONTS: { key: FontKey; label: string }[] = FONT_KEYS.map((k) => ({
   label: `${FONT_META[k].label} — ${FONT_META[k].matches}`,
 }));
 
+// Manual override picker — 10 standard web/Google fonts the user can choose
+// from when the auto-matcher guesses wrong. Each entry maps a display label
+// to a CSS font-family stack that the canvas/textarea renders with.
+const MANUAL_FONTS: { label: string; family: string }[] = [
+  { label: "Arial",            family: `Arial, Helvetica, sans-serif` },
+  { label: "Times New Roman",  family: `"Times New Roman", Times, serif` },
+  { label: "Courier New",      family: `"Courier New", Courier, monospace` },
+  { label: "Inter",            family: `Inter, sans-serif` },
+  { label: "Roboto",           family: `Roboto, sans-serif` },
+  { label: "Open Sans",        family: `"Open Sans", sans-serif` },
+  { label: "Lato",             family: `Lato, sans-serif` },
+  { label: "Montserrat",       family: `Montserrat, sans-serif` },
+  { label: "Playfair Display", family: `"Playfair Display", serif` },
+  { label: "Source Code Pro",  family: `"Source Code Pro", monospace` },
+];
+
 function TextMiniToolbar({
   anno, scale, pageW, pageH, dispatch,
 }: {
@@ -1046,6 +1069,11 @@ function TextMiniToolbar({
   const currentFontKey: FontKey =
     (a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined) ??
     (a.family === "serif" ? "tinos" : a.family === "mono" ? "cousine" : "arimo");
+
+  const manualFamily = (a as { fontFamilyOverride?: string }).fontFamilyOverride ?? "";
+  // Lazy-load the chosen Google Font when the user picks one from the
+  // manual override dropdown (system fonts are skipped inside the hook).
+  useGoogleFontLoader(manualFamily.split(",")[0]?.replace(/['"]/g, "").trim());
 
   const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); };
   // Buttons in the toolbar must NOT steal focus from the active textarea —
@@ -1119,6 +1147,27 @@ function TextMiniToolbar({
       >
         {TOOLBAR_FONTS.map((f) => (
           <option key={f.key} value={f.key} style={{ background: "#1a1a1c", color: "#fff" }}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+      <select
+        value={manualFamily}
+        onChange={(e) => {
+          const fam = e.target.value;
+          update({ fontFamilyOverride: fam || undefined } as Partial<Anno>);
+        }}
+        title="Manual font override"
+        onMouseDown={keepFocus}
+        style={{
+          ...btn,
+          background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 110,
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      >
+        <option value="" style={{ background: "#1a1a1c", color: "#fff" }}>Auto</option>
+        {MANUAL_FONTS.map((f) => (
+          <option key={f.label} value={f.family} style={{ background: "#1a1a1c", color: "#fff", fontFamily: f.family }}>
             {f.label}
           </option>
         ))}
