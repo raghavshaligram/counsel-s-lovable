@@ -319,7 +319,8 @@ function CellTile({
   }, [cell.cellId, cell.thumb, bytes]);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
+
       <span
         aria-hidden
         className={cn(
