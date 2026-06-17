@@ -165,6 +165,8 @@ export function OrganizeGrid({
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, string>>(new Map());
   const hoverTimerRef = useRef<number | null>(null);
+  const scrollHoverTimerRef = useRef<number | null>(null);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const cellsByIdRef = useRef<Map<string, PageCell>>(new Map());
 
   useEffect(() => {
@@ -180,6 +182,12 @@ export function OrganizeGrid({
     if (hoverTimerRef.current != null) {
       window.clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
+    }
+  };
+  const clearScrollHoverTimer = () => {
+    if (scrollHoverTimerRef.current != null) {
+      window.clearTimeout(scrollHoverTimerRef.current);
+      scrollHoverTimerRef.current = null;
     }
   };
 
@@ -202,6 +210,7 @@ export function OrganizeGrid({
   );
   const endHover = useCallback(() => {
     clearHoverTimer();
+    clearScrollHoverTimer();
     setHover(null);
     setPreviewSrc(null);
   }, []);
@@ -209,7 +218,32 @@ export function OrganizeGrid({
   useEffect(() => {
     if (dragId) endHover();
   }, [dragId, endHover]);
-  useEffect(() => () => clearHoverTimer(), []);
+  useEffect(() => () => {
+    clearHoverTimer();
+    clearScrollHoverTimer();
+  }, []);
+
+  const startHoverFromTile = useCallback(
+    (tile: HTMLElement | null) => {
+      const cellId = tile?.dataset.cellId;
+      if (!tile || !cellId) {
+        endHover();
+        return;
+      }
+      const cell = cellsByIdRef.current.get(cellId);
+      if (!cell) {
+        endHover();
+        return;
+      }
+      if (hover?.cellId === cellId) return;
+      const rect = tile.getBoundingClientRect();
+      startHover({
+        cell,
+        rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+      });
+    },
+    [endHover, hover?.cellId, startHover],
+  );
 
   // Close preview on any scroll — the anchored rect would be stale otherwise.
   useEffect(() => {
