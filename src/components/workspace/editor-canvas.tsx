@@ -235,7 +235,7 @@ export function EditorCanvas({
           const x = m[4], y = m[5] - fh;
           const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
-          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, fontKey, fontApprox, color, bg }];
+          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, color, bg }];
         });
 
         // Merge sidecar OCR tokens for this SOURCE page (top-left PDF
