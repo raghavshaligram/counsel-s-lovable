@@ -474,7 +474,6 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
-                  onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
             </div>
@@ -482,34 +481,51 @@ export function OrganizeGrid({
         })}
       </div>
 
-      {hover && popupPos && (
-        <div
-          className="pointer-events-none fixed z-50 animate-fade-in"
-          style={{ left: popupPos.left, top: popupPos.top, width: PREVIEW_W }}
-          aria-hidden
-        >
-          <div className="overflow-hidden rounded-lg border border-border bg-surface-2 shadow-2xl ring-1 ring-black/10">
-            <div
-              className="grid w-full place-items-center bg-canvas/60"
-              style={{ minHeight: Math.round(PREVIEW_W * 1.1) }}
-            >
-              {previewSrc ? (
-                <img
-                  src={previewSrc}
-                  alt=""
-                  style={{ transform: `rotate(${hover.rotation}deg)` }}
-                  className="block h-auto w-full object-contain"
-                />
-              ) : (
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
-              )}
-            </div>
-            <div className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-[10.5px] text-text-muted">
-              <span className="truncate">{hover.fileName}</span>
-              <span className="tabular-nums">Page {hover.pageIndex + 1}</span>
+      {peek && popupPos && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-canvas/40 animate-fade-in"
+            onClick={closePeek}
+            onWheel={closePeek}
+            aria-hidden
+          />
+          <div
+            className="fixed z-50 animate-fade-in"
+            style={{ left: popupPos.left, top: popupPos.top, width: PREVIEW_W }}
+            role="dialog"
+            aria-label={`Preview of ${peek.fileName} page ${peek.pageIndex + 1}`}
+          >
+            <div className="relative overflow-hidden rounded-lg border border-border bg-surface-2 shadow-2xl ring-1 ring-black/10">
+              <button
+                type="button"
+                onClick={closePeek}
+                aria-label="Close preview"
+                className="absolute right-2 top-2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md bg-canvas/70 text-text-muted backdrop-blur transition hover:bg-canvas hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+              <div
+                className="grid w-full place-items-center bg-canvas/60"
+                style={{ minHeight: Math.round(PREVIEW_W * 1.1) }}
+              >
+                {previewSrc ? (
+                  <img
+                    src={previewSrc}
+                    alt=""
+                    style={{ transform: `rotate(${peek.rotation}deg)` }}
+                    className="block h-auto w-full object-contain"
+                  />
+                ) : (
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
+                )}
+              </div>
+              <div className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-[10.5px] text-text-muted">
+                <span className="truncate">{peek.fileName}</span>
+                <span className="tabular-nums">Page {peek.pageIndex + 1}</span>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
