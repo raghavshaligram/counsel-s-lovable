@@ -918,6 +918,13 @@ export function EditorCanvas({
             auto-grown text box size). */}
         {annos.map((a) => {
           if (a.kind !== "text-edit" || !a.cover) return null;
+          // Don't draw the cover until the text actually differs from the
+          // original — entering edit mode alone must change NOTHING visually.
+          // The original PDF glyphs stay visible underneath the transparent
+          // textarea; the cover + replacement glyphs only appear after a real
+          // edit happens.
+          const original = a.source?.originalString ?? "";
+          if (a.text === original) return null;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
           return (
