@@ -52,6 +52,9 @@ export function OrganizeGrid({
   const moveTo = useOrganize((s) => s.moveTo);
   const setThumb = useOrganize((s) => s.setThumb);
   const colorFor = useOrganize((s) => s.colorFor);
+  const addLocalFiles = useOrganize((s) => s.addLocalFiles);
+
+  const [fileDropHot, setFileDropHot] = useState(false);
 
   const [seeding, setSeeding] = useState(false);
   const [dropTarget, setDropTarget] = useState<{ cellId: string; side: "before" | "after" } | null>(null);
