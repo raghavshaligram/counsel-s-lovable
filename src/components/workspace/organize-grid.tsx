@@ -174,23 +174,30 @@ export function OrganizeGrid({
   };
 
   const startHover = useCallback(
-    (cell: PageCell, rect: DOMRect) => {
+    (cell: PageCell) => {
       if (!canHover) return;
       clearHoverTimer();
-      const snap = {
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
-      };
+      const cellId = cell.cellId;
       hoverTimerRef.current = window.setTimeout(() => {
+        // Re-measure NOW (not at mouseenter time) — the tile may have moved
+        // or unmounted due to scroll during the 200ms delay.
+        const el = parentRef.current?.querySelector(
+          `[data-cell-id="${cellId}"]`,
+        ) as HTMLElement | null;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
         setHover({
           cellId: cell.cellId,
           source: cell.source,
           pageIndex: cell.pageIndex,
           rotation: cell.rotation,
           fileName: cell.fileName,
-          rect: snap,
+          rect: {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          },
         });
       }, HOVER_DELAY_MS);
     },
