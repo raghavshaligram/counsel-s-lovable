@@ -25,7 +25,7 @@ interface OrganizeState {
   jumpIdx: number | null;
   jumpTick: number;
 
-  /** Grid density 0..1 — 0 = largest tiles (fewest cols), 1 = smallest. */
+  /** Grid density 0..1 — 0 = fewest/largest columns, 1 = most/smallest. */
   density: number;
   setDensity: (d: number) => void;
 
@@ -65,7 +65,7 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
   seededFor: null,
   jumpIdx: null,
   jumpTick: 0,
-  density: 0.65,
+  density: 0.55,
   setDensity(d) {
     set({ density: Math.max(0, Math.min(1, d)) });
   },
