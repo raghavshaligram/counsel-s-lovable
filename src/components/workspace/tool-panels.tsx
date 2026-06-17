@@ -1539,6 +1539,9 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const addTrayEntry = useOrganize((s) => s.addTrayEntry);
   const resolveBytes = useOrganize((s) => s.resolveBytes);
   const colorFor = useOrganize((s) => s.colorFor);
+  const density = useOrganize((s) => s.density);
+  const setDensity = useOrganize((s) => s.setDensity);
+
 
   const trayEntries = useTray((s) => s.entries);
 
