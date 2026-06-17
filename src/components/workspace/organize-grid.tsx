@@ -152,6 +152,131 @@ export function OrganizeGrid({
     rowVirtualizer.scrollToIndex(row, { align: "start" });
   }, [jumpTick, jumpIdx, cols, rowCount, rowVirtualizer]);
 
+  // ---- Hover preview (magnifier) --------------------------------------
+  const canHover = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches,
+    [],
+  );
+  const [hover, setHover] = useState<HoverState | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const previewCacheRef = useRef<Map<string, string>>(new Map());
+  const hoverTimerRef = useRef<number | null>(null);
+
+  // Clear preview cache when sources change (file replaced / reset).
+  useEffect(() => {
+    previewCacheRef.current = new Map();
+  }, [sources]);
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current != null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  const startHover = useCallback(
+    (cell: PageCell, clientX: number, clientY: number) => {
+      if (!canHover) return;
+      clearHoverTimer();
+      hoverTimerRef.current = window.setTimeout(() => {
+        setHover({
+          cellId: cell.cellId,
+          source: cell.source,
+          pageIndex: cell.pageIndex,
+          rotation: cell.rotation,
+          fileName: cell.fileName,
+          x: clientX,
+          y: clientY,
+        });
+      }, HOVER_DELAY_MS);
+    },
+    [canHover],
+  );
+  const moveHover = useCallback((clientX: number, clientY: number) => {
+    setHover((h) => (h ? { ...h, x: clientX, y: clientY } : h));
+  }, []);
+  const endHover = useCallback(() => {
+    clearHoverTimer();
+    setHover(null);
+    setPreviewSrc(null);
+  }, []);
+  // Cancel preview entirely on drag.
+  useEffect(() => {
+    if (dragId) endHover();
+  }, [dragId, endHover]);
+  useEffect(() => () => clearHoverTimer(), []);
+
+  // Render the larger preview on-demand when hover target changes.
+  const hoverKey = hover ? `${hover.source}::${hover.pageIndex}` : null;
+  useEffect(() => {
+    if (!hover || !hoverKey) {
+      setPreviewSrc(null);
+      return;
+    }
+    const cached = previewCacheRef.current.get(hoverKey);
+    if (cached) {
+      setPreviewSrc(cached);
+      return;
+    }
+    setPreviewSrc(null);
+    const bytes = sources[hover.source]?.bytes;
+    if (!bytes) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        let docPromise = docCacheRef.current.get(hover.source);
+        if (!docPromise) {
+          docPromise = openPdfjsDoc(bytes);
+          docCacheRef.current.set(hover.source, docPromise);
+        }
+        const doc = await docPromise;
+        if (cancelled) return;
+        const page = await doc.getPage(hover.pageIndex + 1);
+        const base = page.getViewport({ scale: 1 });
+        const scale = Math.min(3, PREVIEW_W / (base.width || PREVIEW_W));
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(vp.width);
+        canvas.height = Math.ceil(vp.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp, canvas } as never).promise;
+        if (cancelled) return;
+        const url = canvas.toDataURL("image/jpeg", 0.85);
+        previewCacheRef.current.set(hoverKey, url);
+        if (previewCacheRef.current.size > PREVIEW_CACHE_MAX) {
+          const firstKey = previewCacheRef.current.keys().next().value;
+          if (firstKey) previewCacheRef.current.delete(firstKey);
+        }
+        setPreviewSrc(url);
+      } catch (err) {
+        console.error("[organize-grid] hover preview failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hoverKey, hover, sources]);
+
+  // Position popup near cursor, clamped to viewport.
+  const popupPos = useMemo(() => {
+    if (!hover) return null;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const estH = Math.round(PREVIEW_W * (11 / 8.5)); // rough A4-ish; clamped below
+    const w = PREVIEW_W;
+    const h = Math.min(estH, vh - 32);
+    let left = hover.x + PREVIEW_OFFSET;
+    if (left + w + 8 > vw) left = hover.x - PREVIEW_OFFSET - w;
+    if (left < 8) left = 8;
+    let top = hover.y - h / 2;
+    if (top + h + 8 > vh) top = vh - h - 8;
+    if (top < 8) top = 8;
+    return { left, top };
+  }, [hover]);
+
   if (!activeFile && cells.length === 0) {
     return (
       <div className="grid h-full place-items-center p-10">
