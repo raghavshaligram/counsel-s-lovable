@@ -25,6 +25,11 @@ interface OrganizeState {
   jumpIdx: number | null;
   jumpTick: number;
 
+  /** Grid density 0..1 — 0 = largest tiles (fewest cols), 1 = smallest. */
+  density: number;
+  setDensity: (d: number) => void;
+
+
   seedFromActiveFile: (tabId: string, file: File) => Promise<void>;
   addTrayEntry: (entryId: string) => Promise<void>;
   reset: () => void;
@@ -60,6 +65,11 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
   seededFor: null,
   jumpIdx: null,
   jumpTick: 0,
+  density: 0.5,
+  setDensity(d) {
+    set({ density: Math.max(0, Math.min(1, d)) });
+  },
+
 
   async seedFromActiveFile(tabId, file) {
     const bytes = new Uint8Array(await file.arrayBuffer());

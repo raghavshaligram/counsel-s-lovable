@@ -24,14 +24,17 @@ const PAD_Y = 24; // py-6
 const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
-/** Target tile width — keeps thumbnails legible without making them
- *  absurdly large when the canvas is narrow. Cols scale to fit. */
-const TARGET_TILE_W = 170;
-const MAX_TILE_W = 220;
-
-function colsForWidth(w: number) {
+/** Map density 0..1 → target tile width. 0 = large overview tiles,
+ *  1 = tiny dense thumbnails. Cols then = floor(usable / target). */
+const TILE_MIN = 90;
+const TILE_MAX = 240;
+function targetTileFor(density: number) {
+  const d = Math.max(0, Math.min(1, density));
+  return Math.round(TILE_MAX - (TILE_MAX - TILE_MIN) * d);
+}
+function colsForWidth(w: number, target: number) {
   if (w <= 0) return 2;
-  return Math.max(2, Math.floor((w + GAP) / (TARGET_TILE_W + GAP)));
+  return Math.max(2, Math.floor((w + GAP) / (target + GAP)));
 }
 
 export function OrganizeGrid({
@@ -98,10 +101,15 @@ export function OrganizeGrid({
     return () => ro.disconnect();
   }, []);
 
-  const cols = useMemo(() => colsForWidth(Math.max(0, containerW - PAD_X * 2)), [containerW]);
+  const density = useOrganize((s) => s.density);
+  const target = useMemo(() => targetTileFor(density), [density]);
+  const cols = useMemo(
+    () => colsForWidth(Math.max(0, containerW - PAD_X * 2), target),
+    [containerW, target],
+  );
   const tileW = useMemo(() => {
     const usable = Math.max(0, containerW - PAD_X * 2 - GAP * (cols - 1));
-    return Math.min(MAX_TILE_W, Math.max(80, Math.floor(usable / cols)));
+    return Math.min(TILE_MAX, Math.max(TILE_MIN, Math.floor(usable / cols)));
   }, [containerW, cols]);
   // 3/4 thumb + label
   const tileH = Math.round(tileW * (4 / 3)) + LABEL_H;
@@ -361,15 +369,13 @@ function CellTile({
           )}
         </div>
         <div
-          className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 font-mono text-[10px]"
+          className="flex items-center justify-center border-t border-border/60 px-2 py-1.5 font-mono text-[10.5px]"
           style={{ height: LABEL_H }}
+          title={`${cell.fileName} · page ${cell.pageIndex + 1} · position ${indexInGrid + 1}`}
         >
-          <span className="tabular-nums text-text-muted">#{indexInGrid + 1}</span>
-          <span className="truncate text-text-muted" title={cell.fileName}>
-            {cell.fileName}
-          </span>
-          <span className="tabular-nums text-text-muted">p.{cell.pageIndex + 1}</span>
+          <span className="tabular-nums text-text-muted">Page {indexInGrid + 1}</span>
         </div>
+
         <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/cell:opacity-100">
           <GripVertical className="h-3.5 w-3.5 text-text-muted" />
         </span>
