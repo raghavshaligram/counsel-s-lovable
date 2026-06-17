@@ -14,6 +14,16 @@ import { PDFDocument } from "pdf-lib";
 import { getBytes } from "@/lib/tray/blobs";
 import { useTray } from "@/lib/tray/store";
 
+export const ORGANIZE_GRID_MIN_COLS = 2;
+export const ORGANIZE_GRID_MAX_COLS = 8;
+
+export function densityToGridColumns(density: number) {
+  const d = Math.max(0, Math.min(1, density));
+  return Math.round(
+    ORGANIZE_GRID_MIN_COLS + (ORGANIZE_GRID_MAX_COLS - ORGANIZE_GRID_MIN_COLS) * d,
+  );
+}
+
 interface OrganizeState {
   sources: Record<string, OrganizeSource & { colorIdx: number }>;
   cells: PageCell[];
@@ -65,7 +75,7 @@ export const useOrganize = create<OrganizeState>((set, get) => ({
   seededFor: null,
   jumpIdx: null,
   jumpTick: 0,
-  density: 0.55,
+  density: 0.5,
   setDensity(d) {
     set({ density: Math.max(0, Math.min(1, d)) });
   },
