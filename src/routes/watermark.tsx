@@ -5,7 +5,8 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Stamp } from "lucide-react";
-import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
+import { applyTextWatermark, type WatermarkPos } from "@/lib/pdf/watermark";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
 
