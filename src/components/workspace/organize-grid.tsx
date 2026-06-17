@@ -521,6 +521,13 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
+                  onHoverStart={canHover ? (cell, tile) => {
+                    const rect = tile.getBoundingClientRect();
+                    startHover({
+                      cell,
+                      rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+                    });
+                  } : undefined}
                   onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
