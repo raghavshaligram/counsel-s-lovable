@@ -8,13 +8,28 @@
  * right inspector (OrganizePanel) drives all actions; this surface
  * only handles select / drag / click / scroll.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GripVertical, FilePlus2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-store";
 import { openPdfjsDoc, renderPageThumb } from "@/lib/pdf/organize";
 import type { PageCell } from "@/lib/pdf/organize";
+
+const HOVER_DELAY_MS = 200;
+const PREVIEW_W = 520;
+const PREVIEW_CACHE_MAX = 24;
+const PREVIEW_OFFSET = 20;
+
+type HoverState = {
+  cellId: string;
+  source: string;
+  pageIndex: number;
+  rotation: number;
+  fileName: string;
+  x: number;
+  y: number;
+};
 
 type PdfDoc = Awaited<ReturnType<typeof openPdfjsDoc>>;
 
@@ -136,6 +151,131 @@ export function OrganizeGrid({
     const row = Math.min(rowCount - 1, Math.max(0, Math.floor(jumpIdx / cols)));
     rowVirtualizer.scrollToIndex(row, { align: "start" });
   }, [jumpTick, jumpIdx, cols, rowCount, rowVirtualizer]);
+
+  // ---- Hover preview (magnifier) --------------------------------------
+  const canHover = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches,
+    [],
+  );
+  const [hover, setHover] = useState<HoverState | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const previewCacheRef = useRef<Map<string, string>>(new Map());
+  const hoverTimerRef = useRef<number | null>(null);
+
+  // Clear preview cache when sources change (file replaced / reset).
+  useEffect(() => {
+    previewCacheRef.current = new Map();
+  }, [sources]);
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current != null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  const startHover = useCallback(
+    (cell: PageCell, clientX: number, clientY: number) => {
+      if (!canHover) return;
+      clearHoverTimer();
+      hoverTimerRef.current = window.setTimeout(() => {
+        setHover({
+          cellId: cell.cellId,
+          source: cell.source,
+          pageIndex: cell.pageIndex,
+          rotation: cell.rotation,
+          fileName: cell.fileName,
+          x: clientX,
+          y: clientY,
+        });
+      }, HOVER_DELAY_MS);
+    },
+    [canHover],
+  );
+  const moveHover = useCallback((clientX: number, clientY: number) => {
+    setHover((h) => (h ? { ...h, x: clientX, y: clientY } : h));
+  }, []);
+  const endHover = useCallback(() => {
+    clearHoverTimer();
+    setHover(null);
+    setPreviewSrc(null);
+  }, []);
+  // Cancel preview entirely on drag.
+  useEffect(() => {
+    if (dragId) endHover();
+  }, [dragId, endHover]);
+  useEffect(() => () => clearHoverTimer(), []);
+
+  // Render the larger preview on-demand when hover target changes.
+  const hoverKey = hover ? `${hover.source}::${hover.pageIndex}` : null;
+  useEffect(() => {
+    if (!hover || !hoverKey) {
+      setPreviewSrc(null);
+      return;
+    }
+    const cached = previewCacheRef.current.get(hoverKey);
+    if (cached) {
+      setPreviewSrc(cached);
+      return;
+    }
+    setPreviewSrc(null);
+    const bytes = sources[hover.source]?.bytes;
+    if (!bytes) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        let docPromise = docCacheRef.current.get(hover.source);
+        if (!docPromise) {
+          docPromise = openPdfjsDoc(bytes);
+          docCacheRef.current.set(hover.source, docPromise);
+        }
+        const doc = await docPromise;
+        if (cancelled) return;
+        const page = await doc.getPage(hover.pageIndex + 1);
+        const base = page.getViewport({ scale: 1 });
+        const scale = Math.min(3, PREVIEW_W / (base.width || PREVIEW_W));
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(vp.width);
+        canvas.height = Math.ceil(vp.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp, canvas } as never).promise;
+        if (cancelled) return;
+        const url = canvas.toDataURL("image/jpeg", 0.85);
+        previewCacheRef.current.set(hoverKey, url);
+        if (previewCacheRef.current.size > PREVIEW_CACHE_MAX) {
+          const firstKey = previewCacheRef.current.keys().next().value;
+          if (firstKey) previewCacheRef.current.delete(firstKey);
+        }
+        setPreviewSrc(url);
+      } catch (err) {
+        console.error("[organize-grid] hover preview failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hoverKey, hover, sources]);
+
+  // Position popup near cursor, clamped to viewport.
+  const popupPos = useMemo(() => {
+    if (!hover) return null;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const estH = Math.round(PREVIEW_W * (11 / 8.5)); // rough A4-ish; clamped below
+    const w = PREVIEW_W;
+    const h = Math.min(estH, vh - 32);
+    let left = hover.x + PREVIEW_OFFSET;
+    if (left + w + 8 > vw) left = hover.x - PREVIEW_OFFSET - w;
+    if (left < 8) left = 8;
+    let top = hover.y - h / 2;
+    if (top + h + 8 > vh) top = vh - h - 8;
+    if (top < 8) top = 8;
+    return { left, top };
+  }, [hover]);
 
   if (!activeFile && cells.length === 0) {
     return (
@@ -293,12 +433,45 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
+                  onHoverStart={canHover ? (x, y) => startHover(c, x, y) : undefined}
+                  onHoverMove={canHover ? moveHover : undefined}
+                  onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
             </div>
           );
         })}
       </div>
+
+      {hover && popupPos && (
+        <div
+          className="pointer-events-none fixed z-50 animate-fade-in"
+          style={{ left: popupPos.left, top: popupPos.top, width: PREVIEW_W }}
+          aria-hidden
+        >
+          <div className="overflow-hidden rounded-lg border border-border bg-surface-2 shadow-2xl ring-1 ring-black/10">
+            <div
+              className="grid w-full place-items-center bg-canvas/60"
+              style={{ minHeight: Math.round(PREVIEW_W * 1.1) }}
+            >
+              {previewSrc ? (
+                <img
+                  src={previewSrc}
+                  alt=""
+                  style={{ transform: `rotate(${hover.rotation}deg)` }}
+                  className="block h-auto w-full object-contain"
+                />
+              ) : (
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-[10.5px] text-text-muted">
+              <span className="truncate">{hover.fileName}</span>
+              <span className="tabular-nums">Page {hover.pageIndex + 1}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -320,6 +493,9 @@ function CellTile({
   onDragOver,
   onDrop,
   onDragEnd,
+  onHoverStart,
+  onHoverMove,
+  onHoverEnd,
 }: {
   cell: PageCell;
   indexInGrid: number;
@@ -335,6 +511,9 @@ function CellTile({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
+  onHoverStart?: (clientX: number, clientY: number) => void;
+  onHoverMove?: (clientX: number, clientY: number) => void;
+  onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
   useEffect(() => {
@@ -380,11 +559,17 @@ function CellTile({
       />
       <div
         draggable
-        onDragStart={onDragStart}
+        onDragStart={(e) => {
+          onHoverEnd?.();
+          onDragStart(e);
+        }}
         onDragOver={onDragOver}
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
+        onMouseEnter={onHoverStart ? (e) => onHoverStart(e.clientX, e.clientY) : undefined}
+        onMouseMove={onHoverMove ? (e) => onHoverMove(e.clientX, e.clientY) : undefined}
+        onMouseLeave={onHoverEnd}
         className={cn(
           "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
           isSelected
