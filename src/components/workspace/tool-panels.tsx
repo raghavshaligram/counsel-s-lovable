@@ -91,8 +91,10 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RotatePanel ctx={ctx} />;
     case "organize":
       return <OrganizePanel ctx={ctx} />;
-    case "extract":
-      return <ExtractPanel ctx={ctx} />;
+    case "extract-pages":
+      return <ExtractPagesPanel ctx={ctx} />;
+    case "extract-data":
+      return <ExtractDataPanel ctx={ctx} />;
     case "watermark":
       return <WatermarkPanel ctx={ctx} />;
     default:
@@ -1851,118 +1853,95 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
-/* ============================== Extract ============================== */
+/* ============================== Extract Pages ============================== */
 
-function ExtractPanel({ ctx }: { ctx: ToolPanelCtx }) {
+function ExtractPagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file } = ctx;
-  const [tables, setTables] = useState<
-    import("@/lib/pdf/extract-tables").ExtractedTable[]
-  >([]);
-  const [enabled, setEnabled] = useState<Set<number>>(new Set());
+  const [ranges, setRanges] = useState("1-");
+  const [pageCount, setPageCount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const lastRunRef = useRef<File | null>(null);
 
-  const run = useCallback(async (f: File) => {
-    setBusy(true);
-    setStatus("Reading PDF locally…");
-    setTables([]);
-    try {
-      const { extractTables } = await import("@/lib/pdf/extract-tables");
-      const results = await extractTables(f, 1.5, (p) => {
-        setStatus(
-          p.stage === "ocr"
-            ? `OCR scanning page ${p.page} of ${p.totalPages}…`
-            : `Reading page ${p.page} of ${p.totalPages}…`,
-        );
-      });
-      setTables(results);
-      setEnabled(new Set(results.map((r) => r.page)));
-      if (results.length === 0) toast.info("No tabular structure found.");
-      else
-        toast.success(
-          `Found tables on ${results.length} page${results.length === 1 ? "" : "s"}`,
-        );
-    } catch (err) {
-      console.error(err);
-      toast.error("Couldn't read that PDF. Is it password-protected?");
-    } finally {
-      setBusy(false);
-      setStatus(null);
-    }
-  }, []);
-
-  // Auto-run when file changes
   useEffect(() => {
+    let cancelled = false;
     if (!file) {
-      setTables([]);
-      setEnabled(new Set());
-      lastRunRef.current = null;
+      setPageCount(0);
       return;
     }
-    if (lastRunRef.current === file) return;
-    lastRunRef.current = file;
-    void run(file);
-  }, [file, run]);
+    void (async () => {
+      try {
+        const { getPageCount } = await import("@/lib/pdf/extract-pages");
+        const n = await getPageCount(file);
+        if (!cancelled) setPageCount(n);
+      } catch {
+        if (!cancelled) setPageCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
 
-  const selected = useMemo(
-    () => tables.filter((t) => enabled.has(t.page)),
-    [tables, enabled],
-  );
-
-  const baseName = file?.name.replace(/\.pdf$/i, "") || "extract";
-
-  const exportXlsx = async () => {
-    if (selected.length === 0) return;
+  const parsed = useMemo(() => {
+    if (!pageCount) return { count: 0, error: undefined as string | undefined };
     try {
-      const { downloadXlsx } = await import("@/lib/pdf/extract-tables");
-      await downloadXlsx(selected, `${baseName}.xlsx`);
-      toast.success("Excel file saved");
+      // Lazy-import shape isn't available synchronously; replicate the very
+      // small validation locally to drive UI feedback. Real parse runs in
+      // extractPages() inside the lib.
+      const parts = ranges
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      let count = 0;
+      for (const part of parts) {
+        const m = part.match(/^(\d+)\s*(?:-\s*(\d*))?$/);
+        if (!m) return { count: 0, error: `"${part}" isn't a valid range` };
+        const start = parseInt(m[1], 10);
+        const endRaw = m[2];
+        const end =
+          endRaw === undefined
+            ? start
+            : endRaw === ""
+              ? pageCount
+              : parseInt(endRaw, 10);
+        if (start < 1 || end < 1 || start > pageCount || end > pageCount)
+          return { count: 0, error: `"${part}" out of bounds (1–${pageCount})` };
+        if (end < start)
+          return { count: 0, error: `"${part}" goes backwards` };
+        count += end - start + 1;
+      }
+      return { count, error: undefined };
+    } catch {
+      return { count: 0, error: "Invalid range" };
+    }
+  }, [ranges, pageCount]);
+
+  const canRun = !!file && !busy && pageCount > 0 && !parsed.error && parsed.count > 0;
+
+  const run = useCallback(async () => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { extractPages } = await import("@/lib/pdf/extract-pages");
+      const result = await extractPages(file, ranges);
+      triggerDownload(result.blob, result.filename);
+      toast.success(
+        `Extracted ${result.pageCount} page${result.pageCount === 1 ? "" : "s"}`,
+        { description: `${result.filename} · nothing was uploaded.` },
+      );
     } catch (err) {
       console.error(err);
-      toast.error("Excel export failed");
+      toast.error("Extract failed", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setBusy(false);
     }
-  };
-
-  const exportCsv = async () => {
-    if (selected.length === 0) return;
-    const { rowsToCsv } = await import("@/lib/pdf/extract-tables");
-    const parts = selected.map(
-      (t) => `# Page ${t.page}\n${rowsToCsv(t.rows)}`,
-    );
-    triggerDownload(
-      new Blob([parts.join("\n\n")], { type: "text/csv" }),
-      `${baseName}.csv`,
-    );
-    toast.success("CSV saved");
-  };
-
-  const exportJson = () => {
-    if (selected.length === 0) return;
-    const json = JSON.stringify(
-      selected.map((t) => ({ page: t.page, source: t.source, rows: t.rows })),
-      null,
-      2,
-    );
-    triggerDownload(
-      new Blob([json], { type: "application/json" }),
-      `${baseName}.json`,
-    );
-    toast.success("JSON saved");
-  };
-
-  const togglePage = (p: number) =>
-    setEnabled((prev) => {
-      const next = new Set(prev);
-      if (next.has(p)) next.delete(p);
-      else next.add(p);
-      return next;
-    });
+  }, [file, ranges]);
 
   if (!file) {
     return (
       <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-        Open a PDF in the workspace to extract its tables.
+        Open a PDF in the workspace to extract pages.
       </p>
     );
   }
@@ -1975,145 +1954,188 @@ function ExtractPanel({ ctx }: { ctx: ToolPanelCtx }) {
             {file.name}
           </div>
           <div className="mt-0.5 text-[10.5px] text-text-muted tabular-nums">
-            {busy
-              ? (status ?? "Working…")
-              : tables.length > 0
-                ? `Tables on ${tables.length} page${tables.length === 1 ? "" : "s"}`
-                : "No tables found"}
+            {pageCount > 0
+              ? `${pageCount} page${pageCount === 1 ? "" : "s"}`
+              : "Reading…"}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => file && run(file)}
-          disabled={busy}
-          className={cn(
-            "mt-1.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[11.5px] text-text-2 transition-colors hover:text-foreground",
-            busy && "cursor-not-allowed opacity-50",
-          )}
-        >
-          {busy ? (
-            <>
-              <RefreshCw className="h-3 w-3 animate-spin" /> Scanning…
-            </>
+      </Section>
+
+      <Section title="Pages" icon={<Scissors className="h-3 w-3" />}>
+        <input
+          value={ranges}
+          onChange={(e) => setRanges(e.target.value)}
+          placeholder="e.g. 1-3, 5, 8-10"
+          spellCheck={false}
+          className="w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40"
+        />
+        <div className="mt-1.5 text-[10.5px] leading-snug text-text-muted">
+          {parsed.error ? (
+            <span className="text-destructive">{parsed.error}</span>
+          ) : pageCount === 0 ? (
+            "Waiting for page count…"
           ) : (
-            <>
-              <RefreshCw className="h-3 w-3" /> Re-scan
-            </>
+            `Extracts ${parsed.count} of ${pageCount} page${pageCount === 1 ? "" : "s"} into a new PDF`
           )}
-        </button>
-      </Section>
-
-      {tables.length > 0 && (
-        <Section
-          title="Pages"
-          icon={<TableIcon className="h-3 w-3" />}
-          right={
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                className="text-[10.5px] text-text-2 hover:text-foreground"
-                onClick={() =>
-                  setEnabled(new Set(tables.map((t) => t.page)))
-                }
-              >
-                All
-              </button>
-              <span className="text-text-muted">·</span>
-              <button
-                type="button"
-                className="text-[10.5px] text-text-2 hover:text-foreground"
-                onClick={() => setEnabled(new Set())}
-              >
-                None
-              </button>
-            </div>
-          }
-        >
-          <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-border bg-surface-1 p-1.5">
-            {tables.map((t) => {
-              const on = enabled.has(t.page);
-              const cols = t.rows.reduce(
-                (m, r) => Math.max(m, r.length),
-                0,
-              );
-              return (
-                <label
-                  key={t.page}
-                  className={cn(
-                    "flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
-                    on
-                      ? "border-vault/60 bg-accent-soft text-foreground"
-                      : "border-border bg-surface-2 text-text-2 hover:text-foreground",
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => togglePage(t.page)}
-                      className="h-3 w-3 accent-current"
-                    />
-                    <span>Page {t.page}</span>
-                  </div>
-                  <span className="text-[10px] tabular-nums text-text-muted">
-                    {t.rows.length}×{cols}
-                    {t.source === "ocr" ? " · OCR" : ""}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </Section>
-      )}
-
-      <Section title="Export" icon={<Download className="h-3 w-3" />}>
-        <div className="space-y-1.5">
-          <button
-            type="button"
-            onClick={exportXlsx}
-            disabled={selected.length === 0 || busy}
-            className={cn(
-              "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
-              selected.length === 0 || busy
-                ? "cursor-not-allowed opacity-50"
-                : "hover:opacity-90",
-            )}
-          >
-            <Download className="h-3.5 w-3.5" /> Excel (.xlsx)
-          </button>
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              onClick={exportCsv}
-              disabled={selected.length === 0 || busy}
-              className={cn(
-                "rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[11.5px] text-text-2 transition-colors hover:text-foreground",
-                (selected.length === 0 || busy) &&
-                  "cursor-not-allowed opacity-50",
-              )}
-            >
-              CSV
-            </button>
-            <button
-              type="button"
-              onClick={exportJson}
-              disabled={selected.length === 0 || busy}
-              className={cn(
-                "rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[11.5px] text-text-2 transition-colors hover:text-foreground",
-                (selected.length === 0 || busy) &&
-                  "cursor-not-allowed opacity-50",
-              )}
-            >
-              JSON
-            </button>
-          </div>
-          <div className="text-[10.5px] text-text-muted">
-            {selected.length} table{selected.length === 1 ? "" : "s"} selected
-          </div>
         </div>
       </Section>
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <button
+        type="button"
+        onClick={run}
+        disabled={!canRun}
+        className={cn(
+          "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+          canRun ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+        )}
+      >
+        {busy ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Extracting…
+          </>
+        ) : (
+          <>
+            <Download className="h-3.5 w-3.5" /> Extract &amp; download
+          </>
+        )}
+      </button>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+/* ============================== Extract Data ============================== */
+
+type ExtractDataFormat = "xlsx" | "csv" | "json";
+
+function ExtractDataPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const [format, setFormat] = useState<ExtractDataFormat>("xlsx");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const run = useCallback(async () => {
+    if (!file) return;
+    setBusy(true);
+    setStatus("Reading PDF locally…");
+    try {
+      const { extractTables, downloadXlsx, rowsToCsv } = await import(
+        "@/lib/pdf/extract-tables"
+      );
+      const results = await extractTables(file, 1.5, (p) => {
+        setStatus(
+          p.stage === "ocr"
+            ? `OCR scanning page ${p.page} of ${p.totalPages}…`
+            : `Reading page ${p.page} of ${p.totalPages}…`,
+        );
+      });
+      if (results.length === 0) {
+        toast.info("No tabular structure found in this PDF.");
+        return;
+      }
+      const baseName = file.name.replace(/\.pdf$/i, "") || "extract";
+      if (format === "xlsx") {
+        await downloadXlsx(results, `${baseName}.xlsx`);
+      } else if (format === "csv") {
+        const parts = results.map(
+          (t) => `# Page ${t.page}\n${rowsToCsv(t.rows)}`,
+        );
+        triggerDownload(
+          new Blob([parts.join("\n\n")], { type: "text/csv" }),
+          `${baseName}.csv`,
+        );
+      } else {
+        const json = JSON.stringify(
+          results.map((t) => ({ page: t.page, source: t.source, rows: t.rows })),
+          null,
+          2,
+        );
+        triggerDownload(
+          new Blob([json], { type: "application/json" }),
+          `${baseName}.json`,
+        );
+      }
+      toast.success(
+        `Extracted tables from ${results.length} page${results.length === 1 ? "" : "s"}`,
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error("Couldn't read that PDF. Is it password-protected?");
+    } finally {
+      setBusy(false);
+      setStatus(null);
+    }
+  }, [file, format]);
+
+  if (!file) {
+    return (
+      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
+        Open a PDF in the workspace to extract its data.
+      </p>
+    );
+  }
+
+  const fmtBtn = (id: ExtractDataFormat, label: string) => (
+    <button
+      type="button"
+      onClick={() => setFormat(id)}
+      className={cn(
+        "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+        format === id
+          ? "border-vault/60 bg-accent-soft text-foreground"
+          : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+          <div className="truncate text-[12px] text-foreground" title={file.name}>
+            {file.name}
+          </div>
+          {status && (
+            <div className="mt-0.5 text-[10.5px] text-text-muted">{status}</div>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Format" icon={<TableIcon className="h-3 w-3" />}>
+        <div className="grid grid-cols-3 gap-1.5">
+          {fmtBtn("xlsx", "Excel")}
+          {fmtBtn("csv", "CSV")}
+          {fmtBtn("json", "JSON")}
+        </div>
+      </Section>
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy}
+        className={cn(
+          "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+          busy ? "cursor-not-allowed opacity-50" : "hover:opacity-90",
+        )}
+      >
+        {busy ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Extracting…
+          </>
+        ) : (
+          <>
+            <Download className="h-3.5 w-3.5" /> Extract data
+          </>
+        )}
+      </button>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
