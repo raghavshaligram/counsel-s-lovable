@@ -118,6 +118,7 @@ export function OrganizeGrid({
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowH,
     overscan: 4,
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
 
   // Re-measure when row height changes (column count change etc.)
