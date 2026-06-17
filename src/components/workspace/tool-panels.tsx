@@ -1537,10 +1537,13 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const rotateSelected = useOrganize((s) => s.rotateSelected);
   const deleteSelected = useOrganize((s) => s.deleteSelected);
   const addTrayEntry = useOrganize((s) => s.addTrayEntry);
+  const addLocalFiles = useOrganize((s) => s.addLocalFiles);
   const resolveBytes = useOrganize((s) => s.resolveBytes);
   const colorFor = useOrganize((s) => s.colorFor);
   const density = useOrganize((s) => s.density);
   const setDensity = useOrganize((s) => s.setDensity);
+
+  const addPdfsRef = useRef<HTMLInputElement | null>(null);
 
 
   const trayEntries = useTray((s) => s.entries);
