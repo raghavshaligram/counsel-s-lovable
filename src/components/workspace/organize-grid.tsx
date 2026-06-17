@@ -319,7 +319,8 @@ function CellTile({
   }, [cell.cellId, cell.thumb, bytes]);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
+
       <span
         aria-hidden
         className={cn(
@@ -353,13 +354,13 @@ function CellTile({
           className="absolute left-0 top-0 bottom-0 w-[3px]"
           style={{ background: color }}
         />
-        <div className="grid aspect-[3/4] place-items-center overflow-hidden bg-canvas/60">
+        <div className="grid aspect-[3/4] w-full place-items-center overflow-hidden bg-canvas/60">
           {cell.thumb ? (
             <img
               src={cell.thumb}
               alt={`Page ${cell.pageIndex + 1} of ${cell.fileName}`}
               style={{ transform: `rotate(${cell.rotation}deg)` }}
-              className="max-h-full max-w-full transition-transform"
+              className="h-full w-full object-contain transition-transform"
             />
           ) : (
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />

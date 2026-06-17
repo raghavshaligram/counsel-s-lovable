@@ -68,8 +68,8 @@ export async function buildPdfFromCells(
 export async function renderPageThumb(
   pdfjsDoc: { getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number }; render: (o: unknown) => { promise: Promise<void> } }> },
   pageIndex: number,
-  scale = 0.3,
-  quality = 0.72,
+  scale = 1.0,
+  quality = 0.78,
 ): Promise<string | null> {
   const page = await pdfjsDoc.getPage(pageIndex + 1);
   const viewport = page.getViewport({ scale });
