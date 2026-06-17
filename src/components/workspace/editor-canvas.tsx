@@ -1085,17 +1085,57 @@ function TextMiniToolbar({
   const update = (patch: Partial<Anno>) =>
     dispatch({ type: "UPDATE_ANNO", id: anno.id, patch });
   const a = anno;
-  const tbH = 38;
-  const margin = 8;
+  const margin = 10;
+  const tbRef = useRef<HTMLDivElement>(null);
+  const [tbSize, setTbSize] = useState({ w: 460, h: 80 });
+  const [placeBelow, setPlaceBelow] = useState(false);
+
   const screenLeft = a.x * scale;
   const screenTop = a.y * scale;
   const screenW = a.w * scale;
-  let top = screenTop - tbH - margin;
-  if (top < 4) top = screenTop + a.h * scale + margin;
-  const tbApproxW = 460;
-  let left = screenLeft + screenW / 2 - tbApproxW / 2;
-  left = Math.max(4, Math.min(left, pageW - tbApproxW - 4));
-  if (top + tbH > pageH - 4) top = pageH - tbH - 4;
+  const screenH = a.h * scale;
+
+  // Measure the actual toolbar size, then decide above vs below based on the
+  // text box's position in the VIEWPORT (not just the page). This ensures the
+  // toolbar never covers the text being edited regardless of scroll position.
+  useEffect(() => {
+    const el = tbRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setTbSize({ w: r.width, h: r.height });
+      // Find the text box on screen via the page wrapper coords.
+      const page = el.parentElement;
+      if (!page) return;
+      const pageRect = page.getBoundingClientRect();
+      const textTopVp = pageRect.top + screenTop;
+      const textBottomVp = pageRect.top + screenTop + screenH;
+      const roomAbove = textTopVp;
+      const roomBelow = window.innerHeight - textBottomVp;
+      const needed = r.height + margin;
+      // Prefer above; flip below only if there's not enough room above AND
+      // there IS room below.
+      if (roomAbove < needed && roomBelow >= needed) setPlaceBelow(true);
+      else if (roomAbove >= needed) setPlaceBelow(false);
+      else setPlaceBelow(roomBelow > roomAbove); // both tight — pick the larger gap
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [screenTop, screenH, a.id]);
+
+  const top = placeBelow
+    ? screenTop + screenH + margin
+    : screenTop - tbSize.h - margin;
+  let left = screenLeft + screenW / 2 - tbSize.w / 2;
+  left = Math.max(4, Math.min(left, pageW - tbSize.w - 4));
 
   const btn: React.CSSProperties = {
     height: 26, minWidth: 26, padding: "0 6px",
