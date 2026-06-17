@@ -18,6 +18,7 @@ import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
+import { matchPdfFont } from "@/lib/utils/fontMatcher";
 
 interface TextItem {
   x: number;
