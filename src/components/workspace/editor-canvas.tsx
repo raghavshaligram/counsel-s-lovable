@@ -581,7 +581,10 @@ export function EditorCanvas({
         // changing the cover area.
         const bg = "transparent";
         const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
-        const fam = editFontKey && FONT_META[editFontKey]
+        const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
+        const fam = famOverride
+          ? famOverride
+          : editFontKey && FONT_META[editFontKey]
           ? FONT_META[editFontKey].cssFamily
           : (a.family === "serif" ? `'Times New Roman', Times, serif`
             : a.family === "mono" ? `'Courier New', Courier, monospace`
