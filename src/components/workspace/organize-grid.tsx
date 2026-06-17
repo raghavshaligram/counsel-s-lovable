@@ -174,23 +174,30 @@ export function OrganizeGrid({
   };
 
   const startHover = useCallback(
-    (cell: PageCell, rect: DOMRect) => {
+    (cell: PageCell) => {
       if (!canHover) return;
       clearHoverTimer();
-      const snap = {
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
-      };
+      const cellId = cell.cellId;
       hoverTimerRef.current = window.setTimeout(() => {
+        // Re-measure NOW (not at mouseenter time) — the tile may have moved
+        // or unmounted due to scroll during the 200ms delay.
+        const el = parentRef.current?.querySelector(
+          `[data-cell-id="${cellId}"]`,
+        ) as HTMLElement | null;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
         setHover({
           cellId: cell.cellId,
           source: cell.source,
           pageIndex: cell.pageIndex,
           rotation: cell.rotation,
           fileName: cell.fileName,
-          rect: snap,
+          rect: {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          },
         });
       }, HOVER_DELAY_MS);
     },
@@ -206,6 +213,19 @@ export function OrganizeGrid({
     if (dragId) endHover();
   }, [dragId, endHover]);
   useEffect(() => () => clearHoverTimer(), []);
+
+  // Close preview on any scroll — the anchored rect would be stale otherwise.
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const onScroll = () => endHover();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll, { capture: true } as never);
+    };
+  }, [endHover]);
 
   // Render the larger preview on-demand when hover target changes.
   const hoverKey = hover ? `${hover.source}::${hover.pageIndex}` : null;
@@ -445,7 +465,7 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
-                  onHoverStart={canHover ? (rect) => startHover(c, rect) : undefined}
+                  onHoverStart={canHover ? () => startHover(c) : undefined}
                   onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
@@ -521,7 +541,7 @@ function CellTile({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
-  onHoverStart?: (rect: DOMRect) => void;
+  onHoverStart?: () => void;
   onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
@@ -568,6 +588,7 @@ function CellTile({
       />
       <div
         draggable
+        data-cell-id={cell.cellId}
         onDragStart={(e) => {
           onHoverEnd?.();
           onDragStart(e);
@@ -576,7 +597,7 @@ function CellTile({
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
-        onMouseEnter={onHoverStart ? (e) => onHoverStart(e.currentTarget.getBoundingClientRect()) : undefined}
+        onMouseEnter={onHoverStart}
         onMouseLeave={onHoverEnd}
         className={cn(
           "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
