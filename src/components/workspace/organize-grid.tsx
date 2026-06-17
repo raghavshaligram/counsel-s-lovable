@@ -150,18 +150,11 @@ export function OrganizeGrid({
     rowVirtualizer.scrollToIndex(row, { align: "start" });
   }, [jumpTick, jumpIdx, cols, rowCount, rowVirtualizer]);
 
-  // ---- Hover preview (magnifier) --------------------------------------
-  const canHover = useMemo(
-    () => typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches,
-    [],
-  );
-  const [hover, setHover] = useState<HoverState | null>(null);
+  // ---- Click/Space-to-peek preview ------------------------------------
+  const [peek, setPeek] = useState<PeekState | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, string>>(new Map());
-  const hoverTimerRef = useRef<number | null>(null);
-  const scrollHoverTimerRef = useRef<number | null>(null);
-  const pendingHoverCellIdRef = useRef<string | null>(null);
-  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const cellsByIdRef = useRef<Map<string, PageCell>>(new Map());
 
   useEffect(() => {
@@ -173,131 +166,92 @@ export function OrganizeGrid({
     previewCacheRef.current = new Map();
   }, [sources]);
 
-  const clearHoverTimer = () => {
-    if (hoverTimerRef.current != null) {
-      window.clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-    pendingHoverCellIdRef.current = null;
-  };
-  const clearScrollHoverTimer = () => {
-    if (scrollHoverTimerRef.current != null) {
-      window.clearTimeout(scrollHoverTimerRef.current);
-      scrollHoverTimerRef.current = null;
-    }
-  };
-
-  const endHover = useCallback(() => {
-    clearHoverTimer();
-    clearScrollHoverTimer();
-    setHover(null);
+  const closePeek = useCallback(() => {
+    setPeek(null);
     setPreviewSrc(null);
   }, []);
-  // Cancel preview entirely on drag.
-  useEffect(() => {
-    if (dragId) endHover();
-  }, [dragId, endHover]);
-  useEffect(() => () => {
-    clearHoverTimer();
-    clearScrollHoverTimer();
+
+  const openPeekFromTile = useCallback((cell: PageCell, tile: HTMLElement) => {
+    const rect = tile.getBoundingClientRect();
+    setPeek({
+      cellId: cell.cellId,
+      source: cell.source,
+      pageIndex: cell.pageIndex,
+      rotation: cell.rotation,
+      fileName: cell.fileName,
+      rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+    });
   }, []);
 
-  const startHoverFromTile = useCallback(
-    (tile: HTMLElement | null) => {
-      const cellId = tile?.dataset.cellId;
-      if (!tile || !cellId) {
-        endHover();
-        return;
-      }
-      const cell = cellsByIdRef.current.get(cellId);
-      if (!cell) {
-        endHover();
-        return;
-      }
-      if (hover?.cellId === cellId || pendingHoverCellIdRef.current === cellId) return;
-      clearHoverTimer();
-      pendingHoverCellIdRef.current = cellId;
-      hoverTimerRef.current = window.setTimeout(() => {
-        pendingHoverCellIdRef.current = null;
-        if (!tile.isConnected) return;
-        const freshCell = cellsByIdRef.current.get(cellId);
-        if (!freshCell) return;
-        const rect = tile.getBoundingClientRect();
-        setHover({
-          cellId,
-          source: freshCell.source,
-          pageIndex: freshCell.pageIndex,
-          rotation: freshCell.rotation,
-          fileName: freshCell.fileName,
-          rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
-        });
-      }, HOVER_DELAY_MS);
-    },
-    [endHover, hover?.cellId],
-  );
-
-  // Close preview on any scroll — the anchored rect would be stale otherwise.
+  // Cancel preview entirely on drag.
   useEffect(() => {
-    const el = parentRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      clearHoverTimer();
-      clearScrollHoverTimer();
-      setHover(null);
-      setPreviewSrc(null);
-      const pointer = lastPointerRef.current;
-      if (!pointer || !canHover) return;
-      scrollHoverTimerRef.current = window.setTimeout(() => {
-        const target = document.elementFromPoint(pointer.x, pointer.y);
-        const tile = target?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
-        startHoverFromTile(tile);
-      }, HOVER_DELAY_MS);
+    if (dragId) closePeek();
+  }, [dragId, closePeek]);
+
+  // Close on Esc; close on scroll (anchored rect would be stale).
+  useEffect(() => {
+    if (!peek) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closePeek();
+      }
     };
-    el.addEventListener("scroll", onScroll, { passive: true });
+    const onScroll = () => closePeek();
+    window.addEventListener("keydown", onKey);
+    parentRef.current?.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    const parent = parentRef.current;
     return () => {
-      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("keydown", onKey);
+      parent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("scroll", onScroll, { capture: true } as never);
     };
-  }, [canHover, startHoverFromTile]);
+  }, [peek, closePeek]);
 
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!canHover || event.pointerType !== "mouse") return;
-      lastPointerRef.current = { x: event.clientX, y: event.clientY };
-      clearScrollHoverTimer();
-      const tile = (event.target as Element | null)?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
-      startHoverFromTile(tile);
+  // Space on a focused tile toggles peek (keyboard quickview).
+  const handleGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== " " && e.key !== "Spacebar") return;
+      const target = e.target as HTMLElement | null;
+      const tile = target?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
+      const cellId = tile?.dataset.cellId;
+      if (!tile || !cellId) return;
+      const cell = cellsByIdRef.current.get(cellId);
+      if (!cell) return;
+      e.preventDefault();
+      if (peek?.cellId === cellId) closePeek();
+      else openPeekFromTile(cell, tile);
     },
-    [canHover, startHoverFromTile],
+    [peek?.cellId, openPeekFromTile, closePeek],
   );
 
-  // Render the larger preview on-demand when hover target changes.
-  const hoverKey = hover ? `${hover.source}::${hover.pageIndex}` : null;
+  // Render the larger preview on-demand when peek target changes.
+  const peekKey = peek ? `${peek.source}::${peek.pageIndex}` : null;
   useEffect(() => {
-    if (!hover || !hoverKey) {
+    if (!peek || !peekKey) {
       setPreviewSrc(null);
       return;
     }
-    const cached = previewCacheRef.current.get(hoverKey);
+    const cached = previewCacheRef.current.get(peekKey);
     if (cached) {
       setPreviewSrc(cached);
       return;
     }
     setPreviewSrc(null);
-    const bytes = sources[hover.source]?.bytes;
+    const bytes = sources[peek.source]?.bytes;
     if (!bytes) return;
     let cancelled = false;
     (async () => {
       try {
-        let docPromise = docCacheRef.current.get(hover.source);
+        let docPromise = docCacheRef.current.get(peek.source);
         if (!docPromise) {
           docPromise = openPdfjsDoc(bytes);
-          docCacheRef.current.set(hover.source, docPromise);
+          docCacheRef.current.set(peek.source, docPromise);
         }
         const doc = await docPromise;
         if (cancelled) return;
-        const page = await doc.getPage(hover.pageIndex + 1);
+        const page = await doc.getPage(peek.pageIndex + 1);
         const base = page.getViewport({ scale: 1 });
         const scale = Math.min(3, PREVIEW_W / (base.width || PREVIEW_W));
         const vp = page.getViewport({ scale });
@@ -311,25 +265,24 @@ export function OrganizeGrid({
         await page.render({ canvasContext: ctx, viewport: vp, canvas } as never).promise;
         if (cancelled) return;
         const url = canvas.toDataURL("image/jpeg", 0.85);
-        previewCacheRef.current.set(hoverKey, url);
+        previewCacheRef.current.set(peekKey, url);
         if (previewCacheRef.current.size > PREVIEW_CACHE_MAX) {
           const firstKey = previewCacheRef.current.keys().next().value;
           if (firstKey) previewCacheRef.current.delete(firstKey);
         }
         setPreviewSrc(url);
       } catch (err) {
-        console.error("[organize-grid] hover preview failed", err);
+        console.error("[organize-grid] peek preview failed", err);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [hoverKey, hover, sources]);
+  }, [peekKey, peek, sources]);
 
-  // Anchor popup to the hovered tile rect, inside the scroll-container's
-  // bounds (so it never slides under the inspector / off-screen).
+  // Anchor popup to the tile rect, inside the scroll-container's bounds.
   const popupPos = useMemo(() => {
-    if (!hover) return null;
+    if (!peek) return null;
     const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     const parent = parentRef.current?.getBoundingClientRect();
@@ -338,21 +291,21 @@ export function OrganizeGrid({
     const w = PREVIEW_W;
     const h = Math.min(Math.round(PREVIEW_W * (11 / 8.5)), vh - 32);
 
-    const spaceRight = boundRight - hover.rect.right - PREVIEW_OFFSET;
-    const spaceLeft = hover.rect.left - boundLeft - PREVIEW_OFFSET;
+    const spaceRight = boundRight - peek.rect.right - PREVIEW_OFFSET;
+    const spaceLeft = peek.rect.left - boundLeft - PREVIEW_OFFSET;
     let left: number;
-    // Prefer whichever side fits; if neither fits, pick the larger side and clamp.
-    if (spaceRight >= w) left = hover.rect.right + PREVIEW_OFFSET;
-    else if (spaceLeft >= w) left = hover.rect.left - PREVIEW_OFFSET - w;
+    if (spaceRight >= w) left = peek.rect.right + PREVIEW_OFFSET;
+    else if (spaceLeft >= w) left = peek.rect.left - PREVIEW_OFFSET - w;
     else if (spaceRight >= spaceLeft) left = Math.max(boundLeft, boundRight - w);
     else left = boundLeft;
 
-    const tileMidY = (hover.rect.top + hover.rect.bottom) / 2;
+    const tileMidY = (peek.rect.top + peek.rect.bottom) / 2;
     let top = tileMidY - h / 2;
     if (top + h + 8 > vh) top = vh - h - 8;
     if (top < 8) top = 8;
     return { left, top, h };
-  }, [hover]);
+  }, [peek]);
+
 
   if (!activeFile && cells.length === 0) {
     return (
