@@ -9,19 +9,18 @@
  * only handles select / drag / click / scroll.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { GripVertical, FilePlus2 } from "lucide-react";
+import { GripVertical, FilePlus2, X } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-store";
 import { openPdfjsDoc, renderPageThumb } from "@/lib/pdf/organize";
 import type { PageCell } from "@/lib/pdf/organize";
 
-const HOVER_DELAY_MS = 200;
 const PREVIEW_W = 520;
 const PREVIEW_CACHE_MAX = 24;
 const PREVIEW_OFFSET = 20;
 
-type HoverState = {
+type PeekState = {
   cellId: string;
   source: string;
   pageIndex: number;
@@ -151,18 +150,11 @@ export function OrganizeGrid({
     rowVirtualizer.scrollToIndex(row, { align: "start" });
   }, [jumpTick, jumpIdx, cols, rowCount, rowVirtualizer]);
 
-  // ---- Hover preview (magnifier) --------------------------------------
-  const canHover = useMemo(
-    () => typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches,
-    [],
-  );
-  const [hover, setHover] = useState<HoverState | null>(null);
+  // ---- Click/Space-to-peek preview ------------------------------------
+  const [peek, setPeek] = useState<PeekState | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [focusedCellId, setFocusedCellId] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, string>>(new Map());
-  const hoverTimerRef = useRef<number | null>(null);
-  const scrollHoverTimerRef = useRef<number | null>(null);
-  const pendingHoverCellIdRef = useRef<string | null>(null);
-  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const cellsByIdRef = useRef<Map<string, PageCell>>(new Map());
 
   useEffect(() => {
@@ -174,131 +166,92 @@ export function OrganizeGrid({
     previewCacheRef.current = new Map();
   }, [sources]);
 
-  const clearHoverTimer = () => {
-    if (hoverTimerRef.current != null) {
-      window.clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-    pendingHoverCellIdRef.current = null;
-  };
-  const clearScrollHoverTimer = () => {
-    if (scrollHoverTimerRef.current != null) {
-      window.clearTimeout(scrollHoverTimerRef.current);
-      scrollHoverTimerRef.current = null;
-    }
-  };
-
-  const endHover = useCallback(() => {
-    clearHoverTimer();
-    clearScrollHoverTimer();
-    setHover(null);
+  const closePeek = useCallback(() => {
+    setPeek(null);
     setPreviewSrc(null);
   }, []);
-  // Cancel preview entirely on drag.
-  useEffect(() => {
-    if (dragId) endHover();
-  }, [dragId, endHover]);
-  useEffect(() => () => {
-    clearHoverTimer();
-    clearScrollHoverTimer();
+
+  const openPeekFromTile = useCallback((cell: PageCell, tile: HTMLElement) => {
+    const rect = tile.getBoundingClientRect();
+    setPeek({
+      cellId: cell.cellId,
+      source: cell.source,
+      pageIndex: cell.pageIndex,
+      rotation: cell.rotation,
+      fileName: cell.fileName,
+      rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+    });
   }, []);
 
-  const startHoverFromTile = useCallback(
-    (tile: HTMLElement | null) => {
-      const cellId = tile?.dataset.cellId;
-      if (!tile || !cellId) {
-        endHover();
-        return;
-      }
-      const cell = cellsByIdRef.current.get(cellId);
-      if (!cell) {
-        endHover();
-        return;
-      }
-      if (hover?.cellId === cellId || pendingHoverCellIdRef.current === cellId) return;
-      clearHoverTimer();
-      pendingHoverCellIdRef.current = cellId;
-      hoverTimerRef.current = window.setTimeout(() => {
-        pendingHoverCellIdRef.current = null;
-        if (!tile.isConnected) return;
-        const freshCell = cellsByIdRef.current.get(cellId);
-        if (!freshCell) return;
-        const rect = tile.getBoundingClientRect();
-        setHover({
-          cellId,
-          source: freshCell.source,
-          pageIndex: freshCell.pageIndex,
-          rotation: freshCell.rotation,
-          fileName: freshCell.fileName,
-          rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
-        });
-      }, HOVER_DELAY_MS);
-    },
-    [endHover, hover?.cellId],
-  );
-
-  // Close preview on any scroll — the anchored rect would be stale otherwise.
+  // Cancel preview entirely on drag.
   useEffect(() => {
-    const el = parentRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      clearHoverTimer();
-      clearScrollHoverTimer();
-      setHover(null);
-      setPreviewSrc(null);
-      const pointer = lastPointerRef.current;
-      if (!pointer || !canHover) return;
-      scrollHoverTimerRef.current = window.setTimeout(() => {
-        const target = document.elementFromPoint(pointer.x, pointer.y);
-        const tile = target?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
-        startHoverFromTile(tile);
-      }, HOVER_DELAY_MS);
+    if (dragId) closePeek();
+  }, [dragId, closePeek]);
+
+  // Close on Esc; close on scroll (anchored rect would be stale).
+  useEffect(() => {
+    if (!peek) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closePeek();
+      }
     };
-    el.addEventListener("scroll", onScroll, { passive: true });
+    const onScroll = () => closePeek();
+    window.addEventListener("keydown", onKey);
+    parentRef.current?.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    const parent = parentRef.current;
     return () => {
-      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("keydown", onKey);
+      parent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("scroll", onScroll, { capture: true } as never);
     };
-  }, [canHover, startHoverFromTile]);
+  }, [peek, closePeek]);
 
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!canHover || event.pointerType !== "mouse") return;
-      lastPointerRef.current = { x: event.clientX, y: event.clientY };
-      clearScrollHoverTimer();
-      const tile = (event.target as Element | null)?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
-      startHoverFromTile(tile);
+  // Space on a focused tile toggles peek (keyboard quickview).
+  const handleGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== " " && e.key !== "Spacebar") return;
+      const target = e.target as HTMLElement | null;
+      const tile = target?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
+      const cellId = tile?.dataset.cellId;
+      if (!tile || !cellId) return;
+      const cell = cellsByIdRef.current.get(cellId);
+      if (!cell) return;
+      e.preventDefault();
+      if (peek?.cellId === cellId) closePeek();
+      else openPeekFromTile(cell, tile);
     },
-    [canHover, startHoverFromTile],
+    [peek?.cellId, openPeekFromTile, closePeek],
   );
 
-  // Render the larger preview on-demand when hover target changes.
-  const hoverKey = hover ? `${hover.source}::${hover.pageIndex}` : null;
+  // Render the larger preview on-demand when peek target changes.
+  const peekKey = peek ? `${peek.source}::${peek.pageIndex}` : null;
   useEffect(() => {
-    if (!hover || !hoverKey) {
+    if (!peek || !peekKey) {
       setPreviewSrc(null);
       return;
     }
-    const cached = previewCacheRef.current.get(hoverKey);
+    const cached = previewCacheRef.current.get(peekKey);
     if (cached) {
       setPreviewSrc(cached);
       return;
     }
     setPreviewSrc(null);
-    const bytes = sources[hover.source]?.bytes;
+    const bytes = sources[peek.source]?.bytes;
     if (!bytes) return;
     let cancelled = false;
     (async () => {
       try {
-        let docPromise = docCacheRef.current.get(hover.source);
+        let docPromise = docCacheRef.current.get(peek.source);
         if (!docPromise) {
           docPromise = openPdfjsDoc(bytes);
-          docCacheRef.current.set(hover.source, docPromise);
+          docCacheRef.current.set(peek.source, docPromise);
         }
         const doc = await docPromise;
         if (cancelled) return;
-        const page = await doc.getPage(hover.pageIndex + 1);
+        const page = await doc.getPage(peek.pageIndex + 1);
         const base = page.getViewport({ scale: 1 });
         const scale = Math.min(3, PREVIEW_W / (base.width || PREVIEW_W));
         const vp = page.getViewport({ scale });
@@ -312,25 +265,24 @@ export function OrganizeGrid({
         await page.render({ canvasContext: ctx, viewport: vp, canvas } as never).promise;
         if (cancelled) return;
         const url = canvas.toDataURL("image/jpeg", 0.85);
-        previewCacheRef.current.set(hoverKey, url);
+        previewCacheRef.current.set(peekKey, url);
         if (previewCacheRef.current.size > PREVIEW_CACHE_MAX) {
           const firstKey = previewCacheRef.current.keys().next().value;
           if (firstKey) previewCacheRef.current.delete(firstKey);
         }
         setPreviewSrc(url);
       } catch (err) {
-        console.error("[organize-grid] hover preview failed", err);
+        console.error("[organize-grid] peek preview failed", err);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [hoverKey, hover, sources]);
+  }, [peekKey, peek, sources]);
 
-  // Anchor popup to the hovered tile rect, inside the scroll-container's
-  // bounds (so it never slides under the inspector / off-screen).
+  // Anchor popup to the tile rect, inside the scroll-container's bounds.
   const popupPos = useMemo(() => {
-    if (!hover) return null;
+    if (!peek) return null;
     const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     const parent = parentRef.current?.getBoundingClientRect();
@@ -339,21 +291,21 @@ export function OrganizeGrid({
     const w = PREVIEW_W;
     const h = Math.min(Math.round(PREVIEW_W * (11 / 8.5)), vh - 32);
 
-    const spaceRight = boundRight - hover.rect.right - PREVIEW_OFFSET;
-    const spaceLeft = hover.rect.left - boundLeft - PREVIEW_OFFSET;
+    const spaceRight = boundRight - peek.rect.right - PREVIEW_OFFSET;
+    const spaceLeft = peek.rect.left - boundLeft - PREVIEW_OFFSET;
     let left: number;
-    // Prefer whichever side fits; if neither fits, pick the larger side and clamp.
-    if (spaceRight >= w) left = hover.rect.right + PREVIEW_OFFSET;
-    else if (spaceLeft >= w) left = hover.rect.left - PREVIEW_OFFSET - w;
+    if (spaceRight >= w) left = peek.rect.right + PREVIEW_OFFSET;
+    else if (spaceLeft >= w) left = peek.rect.left - PREVIEW_OFFSET - w;
     else if (spaceRight >= spaceLeft) left = Math.max(boundLeft, boundRight - w);
     else left = boundLeft;
 
-    const tileMidY = (hover.rect.top + hover.rect.bottom) / 2;
+    const tileMidY = (peek.rect.top + peek.rect.bottom) / 2;
     let top = tileMidY - h / 2;
     if (top + h + 8 > vh) top = vh - h - 8;
     if (top < 8) top = 8;
     return { left, top, h };
-  }, [hover]);
+  }, [peek]);
+
 
   if (!activeFile && cells.length === 0) {
     return (
@@ -417,12 +369,7 @@ export function OrganizeGrid({
         const files = Array.from(e.dataTransfer.files ?? []);
         if (files.length > 0) void addLocalFiles(files);
       }}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={endHover}
-      onWheel={(event) => {
-        if (!canHover) return;
-        lastPointerRef.current = { x: event.clientX, y: event.clientY };
-      }}
+      onKeyDown={handleGridKeyDown}
     >
       <div
         className="sticky top-0 z-10 flex items-center justify-end gap-2 border-b border-border/40 bg-canvas/95 px-5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-muted backdrop-blur"
@@ -484,11 +431,21 @@ export function OrganizeGrid({
                   bytes={sources[c.source]?.bytes}
                   docCache={docCacheRef.current}
                   setThumb={setThumb}
-                  onClick={(e) => toggleSelect(c.cellId, e.shiftKey)}
+                  onClick={(e) => {
+                    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                      toggleSelect(c.cellId, e.shiftKey);
+                      return;
+                    }
+                    if (peek?.cellId === c.cellId) closePeek();
+                    else openPeekFromTile(c, e.currentTarget as HTMLElement);
+                  }}
+                  onFocus={() => setFocusedCellId(c.cellId)}
+                  isFocused={focusedCellId === c.cellId}
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = "move";
                     e.dataTransfer.setData("application/x-vaultpdf-cell", c.cellId);
                     setDragId(c.cellId);
+                    closePeek();
                   }}
                   onDragOver={(e) => {
                     if (!dragId) return;
@@ -517,7 +474,6 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
-                  onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
             </div>
@@ -525,34 +481,51 @@ export function OrganizeGrid({
         })}
       </div>
 
-      {hover && popupPos && (
-        <div
-          className="pointer-events-none fixed z-50 animate-fade-in"
-          style={{ left: popupPos.left, top: popupPos.top, width: PREVIEW_W }}
-          aria-hidden
-        >
-          <div className="overflow-hidden rounded-lg border border-border bg-surface-2 shadow-2xl ring-1 ring-black/10">
-            <div
-              className="grid w-full place-items-center bg-canvas/60"
-              style={{ minHeight: Math.round(PREVIEW_W * 1.1) }}
-            >
-              {previewSrc ? (
-                <img
-                  src={previewSrc}
-                  alt=""
-                  style={{ transform: `rotate(${hover.rotation}deg)` }}
-                  className="block h-auto w-full object-contain"
-                />
-              ) : (
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
-              )}
-            </div>
-            <div className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-[10.5px] text-text-muted">
-              <span className="truncate">{hover.fileName}</span>
-              <span className="tabular-nums">Page {hover.pageIndex + 1}</span>
+      {peek && popupPos && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-canvas/40 animate-fade-in"
+            onClick={closePeek}
+            onWheel={closePeek}
+            aria-hidden
+          />
+          <div
+            className="fixed z-50 animate-fade-in"
+            style={{ left: popupPos.left, top: popupPos.top, width: PREVIEW_W }}
+            role="dialog"
+            aria-label={`Preview of ${peek.fileName} page ${peek.pageIndex + 1}`}
+          >
+            <div className="relative overflow-hidden rounded-lg border border-border bg-surface-2 shadow-2xl ring-1 ring-black/10">
+              <button
+                type="button"
+                onClick={closePeek}
+                aria-label="Close preview"
+                className="absolute right-2 top-2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md bg-canvas/70 text-text-muted backdrop-blur transition hover:bg-canvas hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+              <div
+                className="grid w-full place-items-center bg-canvas/60"
+                style={{ minHeight: Math.round(PREVIEW_W * 1.1) }}
+              >
+                {previewSrc ? (
+                  <img
+                    src={previewSrc}
+                    alt=""
+                    style={{ transform: `rotate(${peek.rotation}deg)` }}
+                    className="block h-auto w-full object-contain"
+                  />
+                ) : (
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
+                )}
+              </div>
+              <div className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-[10.5px] text-text-muted">
+                <span className="truncate">{peek.fileName}</span>
+                <span className="tabular-nums">Page {peek.pageIndex + 1}</span>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -565,33 +538,35 @@ function CellTile({
   indexInGrid,
   isDragged,
   isSelected,
+  isFocused,
   dropSide,
   color,
   bytes,
   docCache,
   setThumb,
   onClick,
+  onFocus,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
-  onHoverEnd,
 }: {
   cell: PageCell;
   indexInGrid: number;
   isDragged: boolean;
   isSelected: boolean;
+  isFocused: boolean;
   dropSide: "before" | "after" | null;
   color: string;
   bytes: Uint8Array | undefined;
   docCache: Map<string, Promise<PdfDoc>>;
   setThumb: (id: string, t: string) => void;
-  onClick: (e: React.MouseEvent) => void;
+  onClick: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onFocus: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
-  onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
   useEffect(() => {
@@ -638,20 +613,20 @@ function CellTile({
       <div
         draggable
         data-cell-id={cell.cellId}
-        onDragStart={(e) => {
-          onHoverEnd?.();
-          onDragStart(e);
-        }}
+        tabIndex={0}
+        onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
-        onMouseLeave={onHoverEnd}
+        onFocus={onFocus}
         className={cn(
-          "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
+          "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 outline-none transition-all focus-visible:ring-2 focus-visible:ring-vault/60",
           isSelected
             ? "border-vault ring-2 ring-vault/50"
-            : "border-border hover:border-vault/40",
+            : isFocused
+              ? "border-vault/50"
+              : "border-border hover:border-vault/40",
           isDragged && "opacity-40",
         )}
       >
