@@ -31,6 +31,9 @@ interface TextItem {
   italic: boolean;
   transform: number[];
   fontName?: string;
+  /** Resolved CSS family from pdf.js `styles` map — richer than the raw
+   *  PostScript fontName and used as a secondary signal for matchPdfFont. */
+  cssFamily?: string;
   fontKey?: FontKey;
   fontApprox?: boolean;
   color: RGB;
