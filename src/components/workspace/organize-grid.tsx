@@ -249,37 +249,36 @@ export function OrganizeGrid({
   useEffect(() => {
     const el = parentRef.current;
     if (!el) return;
-    const onScroll = () => endHover();
+    const onScroll = () => {
+      clearHoverTimer();
+      clearScrollHoverTimer();
+      setHover(null);
+      setPreviewSrc(null);
+      const pointer = lastPointerRef.current;
+      if (!pointer || !canHover) return;
+      scrollHoverTimerRef.current = window.setTimeout(() => {
+        const target = document.elementFromPoint(pointer.x, pointer.y);
+        const tile = target?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
+        startHoverFromTile(tile);
+      }, HOVER_DELAY_MS);
+    };
     el.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     return () => {
       el.removeEventListener("scroll", onScroll);
       window.removeEventListener("scroll", onScroll, { capture: true } as never);
     };
-  }, [endHover]);
+  }, [canHover, startHoverFromTile]);
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!canHover || event.pointerType !== "mouse") return;
-      const tile = (event.target as Element | null)?.closest?.<HTMLElement>("[data-cell-id]");
-      const cellId = tile?.dataset.cellId;
-      if (!tile || !cellId) {
-        endHover();
-        return;
-      }
-      const cell = cellsByIdRef.current.get(cellId);
-      if (!cell) {
-        endHover();
-        return;
-      }
-      if (hover?.cellId === cellId) return;
-      const rect = tile.getBoundingClientRect();
-      startHover({
-        cell,
-        rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
-      });
+      lastPointerRef.current = { x: event.clientX, y: event.clientY };
+      clearScrollHoverTimer();
+      const tile = (event.target as Element | null)?.closest?.<HTMLElement>("[data-cell-id]") ?? null;
+      startHoverFromTile(tile);
     },
-    [canHover, endHover, hover?.cellId, startHover],
+    [canHover, startHoverFromTile],
   );
 
   // Render the larger preview on-demand when hover target changes.
