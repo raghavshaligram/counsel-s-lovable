@@ -93,6 +93,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <OrganizePanel ctx={ctx} />;
     case "extract":
       return <ExtractPanel ctx={ctx} />;
+    case "watermark":
+      return <WatermarkPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
