@@ -433,12 +433,45 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
+                  onHoverStart={canHover ? (x, y) => startHover(c, x, y) : undefined}
+                  onHoverMove={canHover ? moveHover : undefined}
+                  onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
             </div>
           );
         })}
       </div>
+
+      {hover && popupPos && (
+        <div
+          className="pointer-events-none fixed z-50 animate-fade-in"
+          style={{ left: popupPos.left, top: popupPos.top, width: PREVIEW_W }}
+          aria-hidden
+        >
+          <div className="overflow-hidden rounded-lg border border-border bg-surface-2 shadow-2xl ring-1 ring-black/10">
+            <div
+              className="grid w-full place-items-center bg-canvas/60"
+              style={{ minHeight: Math.round(PREVIEW_W * 1.1) }}
+            >
+              {previewSrc ? (
+                <img
+                  src={previewSrc}
+                  alt=""
+                  style={{ transform: `rotate(${hover.rotation}deg)` }}
+                  className="block h-auto w-full object-contain"
+                />
+              ) : (
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-vault/40 border-t-vault" />
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-[10.5px] text-text-muted">
+              <span className="truncate">{hover.fileName}</span>
+              <span className="tabular-nums">Page {hover.pageIndex + 1}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
