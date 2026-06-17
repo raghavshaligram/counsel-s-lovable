@@ -1151,6 +1151,27 @@ function TextMiniToolbar({
           </option>
         ))}
       </select>
+      <select
+        value={manualFamily}
+        onChange={(e) => {
+          const fam = e.target.value;
+          update({ fontFamilyOverride: fam || undefined } as Partial<Anno>);
+        }}
+        title="Manual font override"
+        onMouseDown={keepFocus}
+        style={{
+          ...btn,
+          background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 110,
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      >
+        <option value="" style={{ background: "#1a1a1c", color: "#fff" }}>Auto</option>
+        {MANUAL_FONTS.map((f) => (
+          <option key={f.label} value={f.family} style={{ background: "#1a1a1c", color: "#fff", fontFamily: f.family }}>
+            {f.label}
+          </option>
+        ))}
+      </select>
       <input
         type="number"
         min={6}
