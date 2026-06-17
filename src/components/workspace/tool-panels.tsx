@@ -61,8 +61,7 @@ import {
   type RotateAngle,
   type RotateScope,
 } from "@/lib/pdf/rotate";
-import { useOrganize } from "@/lib/workspace/organize-store";
-import { densityToGridColumns } from "@/lib/workspace/organize-store";
+import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-store";
 import { buildPdfFromCells } from "@/lib/pdf/organize";
 import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
