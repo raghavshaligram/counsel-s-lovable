@@ -392,6 +392,8 @@ export function OrganizeGrid({
         const files = Array.from(e.dataTransfer.files ?? []);
         if (files.length > 0) void addLocalFiles(files);
       }}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={endHover}
     >
       <div
         className="sticky top-0 z-10 flex items-center justify-end gap-2 border-b border-border/40 bg-canvas/95 px-5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-muted backdrop-blur"
@@ -486,7 +488,6 @@ export function OrganizeGrid({
                     setDragId(null);
                     setDropTarget(null);
                   }}
-                  onHoverStart={canHover ? () => startHover(c) : undefined}
                   onHoverEnd={canHover ? endHover : undefined}
                 />
               ))}
@@ -545,7 +546,6 @@ function CellTile({
   onDragOver,
   onDrop,
   onDragEnd,
-  onHoverStart,
   onHoverEnd,
 }: {
   cell: PageCell;
@@ -562,7 +562,6 @@ function CellTile({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
-  onHoverStart?: () => void;
   onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
@@ -618,8 +617,6 @@ function CellTile({
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
-        onMouseEnter={onHoverStart}
-        onMouseLeave={onHoverEnd}
         className={cn(
           "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
           isSelected
