@@ -586,6 +586,7 @@ function CellTile({
   onDragOver,
   onDrop,
   onDragEnd,
+  onHoverStart,
   onHoverEnd,
 }: {
   cell: PageCell;
@@ -602,6 +603,7 @@ function CellTile({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: (e: React.DragEvent) => void;
+  onHoverStart?: (cell: PageCell, tile: HTMLElement) => void;
   onHoverEnd?: () => void;
 }) {
   // Lazy thumb render — runs once per cell when mounted, only if missing.
@@ -657,6 +659,8 @@ function CellTile({
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
+        onMouseEnter={(e) => onHoverStart?.(cell, e.currentTarget)}
+        onMouseLeave={onHoverEnd}
         className={cn(
           "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
           isSelected
