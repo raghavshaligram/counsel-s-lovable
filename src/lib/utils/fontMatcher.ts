@@ -4,85 +4,87 @@ export interface FontMatch {
   fontStyle?: string;
 }
 
-export function matchPdfFont(postscriptName: string): FontMatch {
-  const name = postscriptName.trim();
+/**
+ * Translate a PDF internal font name (PostScript name from the font
+ * dictionary, e.g. `Helvetica-Bold`, `TimesNewRomanPSMT`,
+ * `AAAAAB+Inter-SemiBold`) into a real CSS font stack the editor can render
+ * with. PDFs embed subsets with a six-letter `AAAAAA+` prefix — we strip it
+ * before matching so subset fonts hit the same branch as their base font.
+ */
+export function matchPdfFont(rawName: string): FontMatch {
+  // Strip PDF subset prefix (e.g. "AAAAAB+TimesNewRomanPS-BoldMT").
+  const name = rawName.trim().replace(/^[A-Z]{6}\+/, "");
+  const lower = name.toLowerCase();
+
+  const hasBold = /bold|black|heavy|extrabold|semibold|demibold|800|900/i.test(name);
+  const hasItalic = /italic|oblique/i.test(name);
 
   // 1. Helvetica / Arial Family (Sans-Serif)
-  const helveticaArial = /^Helvetica|^ArialMT$/i;
-  const timesRoman = /^Times(?:NewRomanPS)?(?:MT|PSMT)/i;
-  const courier = /^Courier(?:NewPS)?(?:MT|PSMT)/i;
-
-  if (helveticaArial.test(name)) {
-    const weight = /Bold/i.test(name) ? 'bold' : undefined;
-    const style = /Italic|Oblique/i.test(name) ? 'italic' : undefined;
+  if (/helvetica|arial|liberationsans|nimbussans|^sans/i.test(name)) {
     return {
-      fontFamily: 'Arial, Helvetica, sans-serif',
-      fontWeight: weight,
-      fontStyle: style,
+      fontFamily: "Arial, Helvetica, sans-serif",
+      fontWeight: hasBold ? "bold" : "normal",
+      fontStyle: hasItalic ? "italic" : "normal",
     };
   }
 
   // 2. Times New Roman Family (Serif)
-  if (timesRoman.test(name)) {
-    const weight = /Bold/i.test(name) ? 'bold' : undefined;
-    const style = /Italic/i.test(name) ? 'italic' : undefined;
+  if (/times|tinos|liberationserif|nimbusroman|^serif/i.test(name)) {
     return {
       fontFamily: '"Times New Roman", Times, serif',
-      fontWeight: weight,
-      fontStyle: style,
+      fontWeight: hasBold ? "bold" : "normal",
+      fontStyle: hasItalic ? "italic" : "normal",
     };
   }
 
   // 3. Courier Family (Monospace)
-  if (courier.test(name)) {
-    const weight = /Bold/i.test(name) ? 'bold' : undefined;
-    const style = /Oblique/i.test(name) ? 'italic' : undefined;
+  if (/courier|cousine|liberationmono|nimbusmono|consolas|^mono/i.test(name)) {
     return {
       fontFamily: '"Courier New", Courier, monospace',
-      fontWeight: weight,
-      fontStyle: style,
+      fontWeight: hasBold ? "bold" : "normal",
+      fontStyle: hasItalic ? "italic" : "normal",
     };
   }
 
-  // 4. Modern Google Fonts
-  const modernFont = name.match(/^(Inter|Roboto|OpenSans|Lato)(?:-(Regular|Bold|Italic|BoldItalic|Medium|Light|Thin|Black))?(?:\d+)?$/i);
-  if (modernFont) {
-    const [, fontBase, weightSuffix] = modernFont;
-    const family = fontBase!; // e.g. "Inter", "Roboto"
-
-    let fontWeight: string | undefined;
-    switch (weightSuffix?.toLowerCase()) {
-      case 'bold':
-        fontWeight = 'bold';
-        break;
-      case 'medium':
-        fontWeight = '500';
-        break;
-      case 'light':
-        fontWeight = '300';
-        break;
-      case 'thin':
-        fontWeight = '100';
-        break;
-      case 'black':
-        fontWeight = '900';
-        break;
-      case 'regular':
-      default:
-        fontWeight = 'normal';
-        break;
+  // 4. Modern Google Fonts (Catch-all). Match any of the 10 toolbar fonts
+  //    whose token appears in the PostScript name — covers spellings like
+  //    `Inter-SemiBold`, `OpenSans-Italic`, `SourceCodePro-Regular`.
+  const googleMap: { token: RegExp; family: string }[] = [
+    { token: /opensans/i,       family: '"Open Sans", sans-serif' },
+    { token: /sourcecodepro/i,  family: '"Source Code Pro", monospace' },
+    { token: /playfairdisplay/i,family: '"Playfair Display", serif' },
+    { token: /montserrat/i,     family: "Montserrat, sans-serif" },
+    { token: /inter\b/i,        family: "Inter, sans-serif" },
+    { token: /roboto/i,         family: "Roboto, sans-serif" },
+    { token: /\blato\b/i,       family: "Lato, sans-serif" },
+  ];
+  const cleaned = name.replace(/[-_\s]/g, "");
+  for (const { token, family } of googleMap) {
+    if (token.test(cleaned) || token.test(name)) {
+      const weightMatch = /-(thin|light|regular|medium|semibold|bold|extrabold|black)/i.exec(name);
+      const weightWord = weightMatch?.[1]?.toLowerCase();
+      const weight =
+        weightWord === "thin" ? "100" :
+        weightWord === "light" ? "300" :
+        weightWord === "medium" ? "500" :
+        weightWord === "semibold" ? "600" :
+        weightWord === "bold" ? "bold" :
+        weightWord === "extrabold" ? "800" :
+        weightWord === "black" ? "900" :
+        hasBold ? "bold" : "normal";
+      return { fontFamily: family, fontWeight: weight, fontStyle: hasItalic ? "italic" : "normal" };
     }
-
-    return {
-      fontFamily: family,
-      fontWeight,
-    };
   }
 
-  // 5. Fallback
-  return {
-    fontFamily: 'sans-serif',
-    fontWeight: 'normal',
-    fontStyle: 'normal',
-  };
+  // 5. Generic family hints — last-chance guess so the editor has *something*
+  //    to render with instead of a meaningless system fallback.
+  if (/serif/i.test(lower)) {
+    return { fontFamily: '"Times New Roman", Times, serif', fontWeight: hasBold ? "bold" : "normal", fontStyle: hasItalic ? "italic" : "normal" };
+  }
+  if (/mono/i.test(lower)) {
+    return { fontFamily: '"Courier New", Courier, monospace', fontWeight: hasBold ? "bold" : "normal", fontStyle: hasItalic ? "italic" : "normal" };
+  }
+
+  // 6. Fallback
+  return { fontFamily: "sans-serif", fontWeight: "normal", fontStyle: "normal" };
 }
