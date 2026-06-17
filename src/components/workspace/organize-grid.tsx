@@ -369,15 +369,13 @@ function CellTile({
           )}
         </div>
         <div
-          className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 font-mono text-[10px]"
+          className="flex items-center justify-center border-t border-border/60 px-2 py-1.5 font-mono text-[10.5px]"
           style={{ height: LABEL_H }}
+          title={`${cell.fileName} · page ${cell.pageIndex + 1} · position ${indexInGrid + 1}`}
         >
-          <span className="tabular-nums text-text-muted">#{indexInGrid + 1}</span>
-          <span className="truncate text-text-muted" title={cell.fileName}>
-            {cell.fileName}
-          </span>
-          <span className="tabular-nums text-text-muted">p.{cell.pageIndex + 1}</span>
+          <span className="tabular-nums text-text-muted">Page {indexInGrid + 1}</span>
         </div>
+
         <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/cell:opacity-100">
           <GripVertical className="h-3.5 w-3.5 text-text-muted" />
         </span>
