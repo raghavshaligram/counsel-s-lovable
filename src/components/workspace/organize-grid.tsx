@@ -30,9 +30,6 @@ const TILE_MAX = 220;
 const COLS_MIN = 2;
 const COLS_MAX = 8;
 
-function clampDensity(density: number) {
-  return Math.max(0, Math.min(1, density));
-}
 function maxColsForWidth(w: number) {
   if (w <= 0) return COLS_MIN;
   return Math.max(COLS_MIN, Math.min(COLS_MAX, Math.floor((w + GAP) / (TILE_MIN + GAP))));
