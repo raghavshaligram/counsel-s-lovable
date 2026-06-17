@@ -27,8 +27,7 @@ type HoverState = {
   pageIndex: number;
   rotation: number;
   fileName: string;
-  x: number;
-  y: number;
+  rect: { left: number; right: number; top: number; bottom: number };
 };
 
 type PdfDoc = Awaited<ReturnType<typeof openPdfjsDoc>>;
