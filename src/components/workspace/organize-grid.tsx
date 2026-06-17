@@ -30,11 +30,6 @@ type HoverState = {
   rect: { left: number; right: number; top: number; bottom: number };
 };
 
-type HoverCandidate = {
-  cell: PageCell;
-  rect: { left: number; right: number; top: number; bottom: number };
-};
-
 type PdfDoc = Awaited<ReturnType<typeof openPdfjsDoc>>;
 
 const GAP = 12; // gap-3
@@ -166,6 +161,7 @@ export function OrganizeGrid({
   const previewCacheRef = useRef<Map<string, string>>(new Map());
   const hoverTimerRef = useRef<number | null>(null);
   const scrollHoverTimerRef = useRef<number | null>(null);
+  const pendingHoverCellIdRef = useRef<string | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const cellsByIdRef = useRef<Map<string, PageCell>>(new Map());
 
@@ -183,6 +179,7 @@ export function OrganizeGrid({
       window.clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
+    pendingHoverCellIdRef.current = null;
   };
   const clearScrollHoverTimer = () => {
     if (scrollHoverTimerRef.current != null) {
@@ -191,23 +188,6 @@ export function OrganizeGrid({
     }
   };
 
-  const startHover = useCallback(
-    ({ cell, rect }: HoverCandidate) => {
-      if (!canHover) return;
-      clearHoverTimer();
-      hoverTimerRef.current = window.setTimeout(() => {
-        setHover({
-          cellId: cell.cellId,
-          source: cell.source,
-          pageIndex: cell.pageIndex,
-          rotation: cell.rotation,
-          fileName: cell.fileName,
-          rect,
-        });
-      }, HOVER_DELAY_MS);
-    },
-    [canHover],
-  );
   const endHover = useCallback(() => {
     clearHoverTimer();
     clearScrollHoverTimer();
@@ -235,14 +215,26 @@ export function OrganizeGrid({
         endHover();
         return;
       }
-      if (hover?.cellId === cellId) return;
-      const rect = tile.getBoundingClientRect();
-      startHover({
-        cell,
-        rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
-      });
+      if (hover?.cellId === cellId || pendingHoverCellIdRef.current === cellId) return;
+      clearHoverTimer();
+      pendingHoverCellIdRef.current = cellId;
+      hoverTimerRef.current = window.setTimeout(() => {
+        pendingHoverCellIdRef.current = null;
+        if (!tile.isConnected) return;
+        const freshCell = cellsByIdRef.current.get(cellId);
+        if (!freshCell) return;
+        const rect = tile.getBoundingClientRect();
+        setHover({
+          cellId,
+          source: freshCell.source,
+          pageIndex: freshCell.pageIndex,
+          rotation: freshCell.rotation,
+          fileName: freshCell.fileName,
+          rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+        });
+      }, HOVER_DELAY_MS);
     },
-    [endHover, hover?.cellId, startHover],
+    [endHover, hover?.cellId],
   );
 
   // Close preview on any scroll — the anchored rect would be stale otherwise.
