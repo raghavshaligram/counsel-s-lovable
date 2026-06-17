@@ -1220,7 +1220,7 @@ function TextMiniToolbar({
           setHintDismissed(true);
         }}
         title={isApprox ? "Approximate match — pick the closest font" : "Font"}
-        onMouseDown={keepFocus}
+        onMouseDown={stop}
         style={{
           ...btn,
           background: "#1a1a1c", color: "#fff", padding: "0 6px", minWidth: 180,
