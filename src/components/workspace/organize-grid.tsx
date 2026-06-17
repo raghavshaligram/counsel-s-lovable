@@ -559,11 +559,17 @@ function CellTile({
       />
       <div
         draggable
-        onDragStart={onDragStart}
+        onDragStart={(e) => {
+          onHoverEnd?.();
+          onDragStart(e);
+        }}
         onDragOver={onDragOver}
         onDrop={onDrop}
         onDragEnd={onDragEnd}
         onClick={onClick}
+        onMouseEnter={onHoverStart ? (e) => onHoverStart(e.clientX, e.clientY) : undefined}
+        onMouseMove={onHoverMove ? (e) => onHoverMove(e.clientX, e.clientY) : undefined}
+        onMouseLeave={onHoverEnd}
         className={cn(
           "group/cell relative cursor-pointer overflow-hidden rounded-md border bg-surface-2 transition-all",
           isSelected
