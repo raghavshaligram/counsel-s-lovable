@@ -97,6 +97,9 @@ export interface TextAnno extends BaseAnno {
   italic?: boolean;
   underline?: boolean;
   align?: TextAlign;
+  // Manual CSS font-family override picked from the toolbar dropdown.
+  // When set, takes precedence over `family`/`fontKey` for on-screen rendering.
+  fontFamilyOverride?: string;
 }
 
 export interface HighlightAnno extends BaseAnno {
