@@ -24,17 +24,23 @@ const PAD_Y = 24; // py-6
 const LABEL_H = 26; // footer row inside each tile
 const HEADER_H = 28; // top counts row
 
-/** Map density 0..1 → target tile width. 0 = large overview tiles,
- *  1 = tiny dense thumbnails. Cols then = floor(usable / target). */
-const TILE_MIN = 72;
+/** Density maps directly to column count: 0 = big/few, 1 = small/many. */
+const TILE_MIN = 84;
 const TILE_MAX = 220;
-function targetTileFor(density: number) {
-  const d = Math.max(0, Math.min(1, density));
-  return Math.round(TILE_MAX - (TILE_MAX - TILE_MIN) * d);
+const COLS_MIN = 2;
+const COLS_MAX = 8;
+
+function clampDensity(density: number) {
+  return Math.max(0, Math.min(1, density));
 }
-function colsForWidth(w: number, target: number) {
-  if (w <= 0) return 2;
-  return Math.max(2, Math.floor((w + GAP) / (target + GAP)));
+function maxColsForWidth(w: number) {
+  if (w <= 0) return COLS_MIN;
+  return Math.max(COLS_MIN, Math.min(COLS_MAX, Math.floor((w + GAP) / (TILE_MIN + GAP))));
+}
+function colsForDensity(w: number, density: number) {
+  const maxCols = maxColsForWidth(w);
+  const d = Math.max(0, Math.min(1, density));
+  return Math.max(COLS_MIN, Math.min(maxCols, Math.round(COLS_MIN + (maxCols - COLS_MIN) * d)));
 }
 
 export function OrganizeGrid({
@@ -94,18 +100,26 @@ export function OrganizeGrid({
   useLayoutEffect(() => {
     const el = parentRef.current;
     if (!el) return;
-    const measure = () => setContainerW(el.clientWidth);
+    const measure = () => {
+      const next = Math.floor(el.getBoundingClientRect().width || el.clientWidth || 0);
+      setContainerW((prev) => (Math.abs(prev - next) > 1 ? next : prev));
+    };
     measure();
+    const raf = requestAnimationFrame(measure);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+      ro.disconnect();
+    };
   }, []);
 
   const density = useOrganize((s) => s.density);
-  const target = useMemo(() => targetTileFor(density), [density]);
   const cols = useMemo(
-    () => colsForWidth(Math.max(0, containerW - PAD_X * 2), target),
-    [containerW, target],
+    () => colsForDensity(Math.max(0, containerW - PAD_X * 2), density),
+    [containerW, density],
   );
   const tileW = useMemo(() => {
     const usable = Math.max(0, containerW - PAD_X * 2 - GAP * (cols - 1));
