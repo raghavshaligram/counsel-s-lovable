@@ -1182,9 +1182,11 @@ export function EditorCanvas({
     if (!el) return;
     const a = activeText;
     const fam = resolveTextFontFamily(a);
-    const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-    const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
-    const padBottom = a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
+    const cover = a.kind === "text-edit" ? a.cover : undefined;
+    const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+    const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;
+    const padTop = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+    const padBottom = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
@@ -1194,15 +1196,15 @@ export function EditorCanvas({
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
     // Measure widest line + total height; convert px → PDF points.
-    const measuredW = el.offsetWidth / scale + padX * 2 + 1;
+    const measuredW = el.offsetWidth / scale + padLeft + padRight + 1;
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    // Lock text-edit to the captured ORIGINAL glyph bounds (it.w/it.h),
-    // which the annotation was created with. The padded `cover` rect is a
-    // separate masking layer and must not drive the textarea size.
-    const lockedW = a.kind === "text-edit" ? a.w : null;
-    const lockedH = a.kind === "text-edit" ? a.h : null;
+    // Lock text-edit's visible wrapper to the padded cover rect so the edit
+    // chrome never looks shorter than the original line. Padding insets the
+    // editable glyphs back onto the exact original text bounds.
+    const lockedW = a.kind === "text-edit" ? a.cover?.w ?? a.w : null;
+    const lockedH = a.kind === "text-edit" ? a.cover?.h ?? a.h : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
     const newH = lockedH ?? Math.max(minH, measuredH);
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
