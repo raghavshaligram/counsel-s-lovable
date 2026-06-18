@@ -791,6 +791,19 @@ export function EditorCanvas({
               // Read the textarea's value directly to avoid a stale closure on
               // `a.text` when blur fires before React flushes the last keystroke.
               const finalText = e.currentTarget.value;
+              const taRect = e.currentTarget.getBoundingClientRect();
+              console.log("[text-edit-commit]", {
+                annotationId: a.id,
+                editId: editingId,
+                phase: "blur",
+                originalString: a.kind === "text-edit" ? a.source?.originalString ?? "" : "",
+                committedText: finalText,
+                changed: finalText !== (a.kind === "text-edit" ? a.source?.originalString ?? "" : ""),
+                extractedWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
+                coverWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
+                textareaWidthPt: taRect.width / scale,
+                willDelete: !finalText.trim() && a.kind === "text",
+              });
               if (finalText !== a.text) {
                 dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
               }
