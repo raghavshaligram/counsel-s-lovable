@@ -421,7 +421,7 @@ function drawAnno(
         if (align === "center") x = a.x + padX + (innerW - tw) / 2;
         else if (align === "right") x = a.x + padX + (innerW - tw);
         const y = baselineY0 - i * lineH;
-        page.drawText(line, { x, y, size: a.fontSize, font: useFont, color: col(a.color), characterSpacing: tracking });
+        page.drawText(line, { x, y, size: a.fontSize, font: useFont, color: col(a.color) });
         if (a.underline) {
           page.drawLine({
             start: { x, y: y - a.fontSize * 0.12 },
