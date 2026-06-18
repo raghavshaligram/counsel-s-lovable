@@ -28,7 +28,7 @@ function isSystemFont(fontFamily: string): boolean {
 function buildFontUrl(fontFamily: string): string {
   const name = fontFamily.replace(/['"]/g, "").trim();
   const encoded = encodeURIComponent(name);
-  return `https://fonts.googleapis.com/css2?family=${encoded}:wght@400;700&display=swap`;
+  return `https://fonts.googleapis.com/css2?family=${encoded}:wght@100..900&display=swap`;
 }
 
 function getLinkId(fontFamily: string): string {
