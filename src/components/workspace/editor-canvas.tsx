@@ -1228,11 +1228,11 @@ export function EditorCanvas({
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    // Lock text-edit's visible wrapper to the padded cover rect so the edit
-    // chrome never looks shorter than the original line. Padding insets the
-    // editable glyphs back onto the exact original text bounds.
-    const lockedW = a.kind === "text-edit" ? a.cover?.w ?? a.w : null;
-    const lockedH = a.kind === "text-edit" ? a.cover?.h ?? a.h : null;
+    // Keep the model locked to the original glyph rect for export/alignment.
+    // The visual wrapper uses `cover` in renderAnno; padding insets the live
+    // textarea glyphs back onto this original rect.
+    const lockedW = a.kind === "text-edit" ? a.w : null;
+    const lockedH = a.kind === "text-edit" ? a.h : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
     const newH = lockedH ?? Math.max(minH, measuredH);
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
