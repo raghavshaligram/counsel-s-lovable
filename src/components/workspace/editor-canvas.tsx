@@ -1063,6 +1063,66 @@ export function EditorCanvas({
       const coverRect = coverEl?.getBoundingClientRect();
       const coverComputed = coverEl ? window.getComputedStyle(coverEl) : null;
       const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
+      // Textarea visibility audit — computed paint properties that can hide
+      // glyphs (color match, opacity, -webkit-text-fill-color, visibility).
+      const isUnchangedEdit =
+        activeText.kind === "text-edit" &&
+        activeText.text === (activeText.source?.originalString ?? "");
+      console.log("[text-edit-style]", {
+        id: activeText.id,
+        color: computed.color,
+        backgroundColor: computed.backgroundColor,
+        opacity: computed.opacity,
+        visibility: computed.visibility,
+        display: computed.display,
+        zIndex: computed.zIndex,
+        webkitTextFillColor:
+          (computed as any).webkitTextFillColor ??
+          computed.getPropertyValue("-webkit-text-fill-color"),
+        caretColor:
+          (computed as any).caretColor ?? computed.getPropertyValue("caret-color"),
+        textareaInlineColor: (el as HTMLElement).style.color,
+        // The text-edit overlay paints transparent glyphs until the user
+        // actually changes the string, so the original PDF text shows through
+        // unchanged. When isUnchangedEdit=true, color:"transparent" is by
+        // design — type a character and color should switch to the real value.
+        isUnchangedEdit,
+        originalString: activeText.source?.originalString ?? "",
+        currentText: activeText.text,
+      });
+      console.log("[text-edit-layers]", {
+        id: activeText.id,
+        coverZIndex: coverComputed?.zIndex ?? "(no cover)",
+        textareaZIndex: computed.zIndex,
+        // Both are z-index:auto and live in the same overlay parent.
+        // Paint order = DOM order. The cover map runs BEFORE annos.map, so
+        // every annotation (textarea included) paints ON TOP of its cover.
+        coverDomIndex: coverEl
+          ? Array.from(coverEl.parentElement?.children ?? []).indexOf(coverEl)
+          : -1,
+        textareaWrapperDomIndex: (() => {
+          const wrapAnno = el.parentElement; // baseStyle wrapper for the anno
+          const parent = wrapAnno?.parentElement;
+          return parent && wrapAnno
+            ? Array.from(parent.children).indexOf(wrapAnno)
+            : -1;
+        })(),
+      });
+      // Width-mismatch explainer. extractedWidth = COVER bbox (cover.w), which
+      // is intentionally expanded by coverPadX*2 beyond the glyph quads so
+      // stale anti-aliased pixels are fully hidden. textareaWidth = ANNO bbox
+      // (activeText.w) with the smaller padX*2. Δ ≈ (coverPadX - padX) * 2.
+      console.log("[text-edit-width-explain]", {
+        id: activeText.id,
+        extractedWidthPt: activeText.cover?.w ?? null,
+        textareaWidthPt: rect.width / scale,
+        annoWidthPt: activeText.w,
+        deltaPt: (activeText.cover?.w ?? 0) - rect.width / scale,
+        coverPadXApproxPt:
+          ((activeText.cover?.w ?? 0) - activeText.w) / 2,
+        note:
+          "extractedWidth is the cover rectangle (larger by design); the textarea is anchored to the anno bbox. The ~10% gap is the cover's safety padding, not a measurement bug.",
+      });
       console.log("[text-edit-bounds]", {
         id: activeText.id,
         intendedBackground,
