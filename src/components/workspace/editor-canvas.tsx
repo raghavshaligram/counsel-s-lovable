@@ -1192,6 +1192,29 @@ export function EditorCanvas({
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
     el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
+    if (a.kind === "text-edit" && !a.text.includes("\n")) {
+      const targetTextW = a.source?.bounds?.w ?? a.w;
+      const slots = Math.max(0, (a.text || "").length - 1);
+      if (targetTextW > 0 && slots > 0) {
+        el.style.letterSpacing = "0px";
+        el.style.whiteSpace = "pre";
+        el.textContent = a.text && a.text.length > 0 ? a.text : " ";
+        const untrackedTextW = el.offsetWidth / scale;
+        const desiredTracking = Math.max(0, Math.min(a.fontSize * 0.6, (targetTextW - untrackedTextW) / slots));
+        if (Number.isFinite(desiredTracking) && Math.abs(desiredTracking - (a.letterSpacing ?? 0)) > 0.02) {
+          console.log("[text-edit-fit]", {
+            id: a.id,
+            targetTextWidthPt: targetTextW,
+            untrackedTextWidthPt: untrackedTextW,
+            previousLetterSpacingPt: a.letterSpacing ?? 0,
+            nextLetterSpacingPt: desiredTracking,
+            slots,
+          });
+          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: desiredTracking } as Partial<Anno> });
+          return;
+        }
+      }
+    }
     el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
