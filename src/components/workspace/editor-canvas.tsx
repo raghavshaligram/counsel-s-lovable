@@ -36,8 +36,53 @@ interface TextItem {
   cssFamily?: string;
   fontKey?: FontKey;
   fontApprox?: boolean;
+  fontWeight?: number | string;
+  lineHeight?: number;
+  letterSpacing?: number;
   color: RGB;
   bg: RGB;
+}
+
+function cssFontFamilyName(stack: string | undefined): string {
+  return (stack ?? "")
+    .split(",")[0]
+    ?.replace(/['"]/g, "")
+    .trim() ?? "";
+}
+
+function numericFontWeight(weight: number | string | undefined, bold: boolean): number {
+  if (typeof weight === "number") return weight;
+  if (typeof weight === "string") {
+    const n = Number.parseInt(weight, 10);
+    if (Number.isFinite(n)) return n;
+    if (/bold/i.test(weight)) return 700;
+  }
+  return bold ? 700 : 400;
+}
+
+function estimateLetterSpacing(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  widthPdf: number,
+  fontSizePx: number,
+  fontFamily: string,
+  fontWeight: number | string,
+  fontStyle: string,
+  scaleFactor: number,
+): number {
+  const slots = Math.max(0, text.length - 1);
+  if (!text.trim() || slots === 0 || widthPdf <= 0) return 0;
+  try {
+    ctx.save();
+    ctx.font = `${fontStyle} ${fontWeight} ${fontSizePx}px ${fontFamily || "sans-serif"}`;
+    const measuredPdf = ctx.measureText(text).width / scaleFactor;
+    ctx.restore();
+    const spacing = (widthPdf - measuredPdf) / slots;
+    return Number.isFinite(spacing) && Math.abs(spacing) <= fontSizePx / scaleFactor * 0.4 ? spacing : 0;
+  } catch {
+    try { ctx.restore(); } catch { /* ignore */ }
+    return 0;
+  }
 }
 
 function sampleTextColor(
