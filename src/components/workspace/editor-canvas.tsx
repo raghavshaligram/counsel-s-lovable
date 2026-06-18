@@ -235,6 +235,11 @@ export function EditorCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  // Tracks the in-flight pdf.js RenderTask for this canvas so we can cancel
+  // it before starting a new render. pdf.js throws "Cannot use the same
+  // canvas during multiple render() operations" if we don't serialize these.
+  const renderTaskRef = useRef<{ cancel: () => void; promise: Promise<unknown> } | null>(null);
+  const canvasIdRef = useRef<string>(`ec-${Math.random().toString(36).slice(2, 9)}`);
   const [textItems, setTextItems] = useState<TextItem[]>([]);
   // Tracks whether pdf.js getTextContent has resolved for this page. Until
   // it has, we don't know if the page is scanned, so the banner stays hidden
@@ -256,6 +261,17 @@ export function EditorCanvas({
     setBannerDismissed(false);
     (async () => {
       const canvas = canvasRef.current; if (!canvas) return;
+      const cid = canvasIdRef.current;
+      // Cancel any in-flight render targeting this canvas before touching it.
+      if (renderTaskRef.current) {
+        try {
+          console.debug("[pdf-render] cancel", { canvasId: cid, page: op.srcPage });
+          renderTaskRef.current.cancel();
+          await renderTaskRef.current.promise.catch(() => {});
+        } catch { /* noop */ }
+        renderTaskRef.current = null;
+      }
+      if (cancelled) return;
       if (op.blank) {
         const w = op.width * scale, h = op.height * scale;
         canvas.width = w; canvas.height = h;
@@ -279,7 +295,22 @@ export function EditorCanvas({
         canvas.style.width = `${Math.ceil(cssVp.width)}px`;
         canvas.style.height = `${Math.ceil(cssVp.height)}px`;
         const ctx = canvas.getContext("2d"); if (!ctx) return;
-        await page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]).promise;
+        console.debug("[pdf-render] start", { canvasId: cid, page: op.srcPage, scale });
+        const task = page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]);
+        renderTaskRef.current = task as unknown as { cancel: () => void; promise: Promise<unknown> };
+        try {
+          await task.promise;
+          console.debug("[pdf-render] complete", { canvasId: cid, page: op.srcPage });
+        } catch (e) {
+          const name = (e as { name?: string } | null)?.name;
+          if (name === "RenderingCancelledException" || cancelled) {
+            console.debug("[pdf-render] cancelled", { canvasId: cid, page: op.srcPage });
+            return;
+          }
+          throw e;
+        } finally {
+          if (renderTaskRef.current === (task as unknown)) renderTaskRef.current = null;
+        }
         if (cancelled) return;
 
         const baseVp = page.getViewport({ scale: 1 });
@@ -356,6 +387,11 @@ export function EditorCanvas({
     })();
     return () => {
       cancelled = true;
+      // Cancel any in-flight render so the canvas isn't touched after teardown.
+      if (renderTaskRef.current) {
+        try { renderTaskRef.current.cancel(); } catch { /* noop */ }
+        renderTaskRef.current = null;
+      }
       // Free the canvas backing store on unmount (virtualization tear-down).
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
