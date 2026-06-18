@@ -32,7 +32,7 @@ export function matchPdfFont(rawName: string): FontMatch {
   // 1. Helvetica / Arial Family (Sans-Serif)
   if (/helvetica|arial|liberationsans|nimbussans|^sans/i.test(name)) {
     return {
-      fontFamily: "Arial, Helvetica, sans-serif",
+      fontFamily: "Helvetica, Arial, sans-serif",
       fontWeight,
       fontStyle: hasItalic ? "italic" : "normal",
       matched: true,

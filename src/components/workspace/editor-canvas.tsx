@@ -1057,21 +1057,35 @@ export function EditorCanvas({
           if (a.kind !== "text-edit" || !a.cover) return null;
           // Don't draw the cover until the text actually differs from the
           // original — entering edit mode alone must change NOTHING visually.
-          // The original PDF glyphs stay visible underneath the transparent
-          // textarea; the cover + replacement glyphs only appear after a real
-          // edit happens.
           const original = a.source?.originalString ?? "";
           if (a.text === original) return null;
+          // While actively editing, keep the cover fully transparent so no
+          // white/sampled mask appears behind the textarea. The mask is only
+          // applied at export time (and when not focused) to hide stale
+          // original glyphs from the rendered PDF canvas underneath.
+          const isEditing = editingId === a.id;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
+          const bgCss = isEditing ? "transparent" : rgbCss(a.bg);
+          if (isEditing) {
+            console.log("[text-edit-cover]", {
+              id: a.id,
+              editing: true,
+              background: "transparent",
+              sampledBg: a.bg,
+              note: "cover suppressed during editing",
+            });
+          }
           return (
             <div
               key={`cover-${a.id}`}
+              data-vault-element="text-edit-cover"
+              data-anno-id={a.id}
               style={{
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: rgbCss(a.bg),
+                background: bgCss,
                 pointerEvents: "none",
               }}
             />
