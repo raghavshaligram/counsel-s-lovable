@@ -193,7 +193,7 @@ function drawWatermark(
     });
     return;
   }
-  let x = pw / 2 - tw / 2;
+  const x = pw / 2 - tw / 2;
   let y = ph / 2 - th / 2;
   if (wm.position === "top") y = ph - th - 36;
   else if (wm.position === "bottom") y = 36;
