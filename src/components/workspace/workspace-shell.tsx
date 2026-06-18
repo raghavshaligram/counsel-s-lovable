@@ -1281,6 +1281,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     pageLayout={pageLayout}
                     onAutoFit={autoFit}
                     fitNonce={fitNonce}
+                    zoomMode={zoomMode}
                   />
 
 
