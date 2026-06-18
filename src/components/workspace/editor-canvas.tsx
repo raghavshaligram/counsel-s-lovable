@@ -633,6 +633,7 @@ export function EditorCanvas({
       position: "absolute", left: minX, top: minY, width: w, height: h,
       pointerEvents: interactive ? "auto" : "none",
       cursor: isEditingThis ? "text" : isLocked ? "text" : interactive ? "move" : "default",
+      zIndex: a.kind === "text-edit" ? 2 : undefined,
     };
 
 
@@ -731,7 +732,8 @@ export function EditorCanvas({
         const bg = "transparent";
         const fam = resolveTextFontFamily(a);
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
-        const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) * scale : 0;
+        const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) * scale : 0;
+        const padBottom = a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom * scale : 0;
         const align = a.align ?? "left";
         const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
@@ -740,16 +742,12 @@ export function EditorCanvas({
         // user can see where they're typing. text-edit (replacing existing PDF
         // text) keeps the transparent skin so it blends with surrounding glyphs.
         const showEditChrome = isEditing && a.kind === "text";
-        // While the user hasn't actually edited a text-edit annotation, the
-        // textarea must render no glyphs at all — the original PDF text shows
-        // through the transparent overlay so the page looks identical to
-        // before clicking. Only the blinking caret remains visible.
-        const isUnchangedEdit =
-          a.kind === "text-edit" && a.text === (a.source?.originalString ?? "");
+        const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
-          color: isUnchangedEdit ? "transparent" : rgbCss(a.color, a.opacity),
+          color: textColor,
+          WebkitTextFillColor: textColor,
           fontSize: a.fontSize * scale,
           fontFamily: fam,
           fontWeight,
@@ -765,6 +763,7 @@ export function EditorCanvas({
           paddingTop: padTop,
           paddingLeft: padX,
           paddingRight: padX,
+          paddingBottom: padBottom,
           boxSizing: "border-box",
           margin: 0,
           border: showEditChrome ? "1.5px solid var(--vault)" : "none",
