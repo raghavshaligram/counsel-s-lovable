@@ -866,14 +866,27 @@ export function EditorCanvas({
     // CSS family pdf.js resolved from the embedded font dictionary. The
     // matcher already strips `AAAAAA+` subset prefixes internally.
     const tryNames = [it.fontName, it.cssFamily].filter(Boolean) as string[];
-    let matched: { fontFamily: string } | null = null;
+    let matched: ReturnType<typeof matchPdfFont> | null = null;
     for (const n of tryNames) {
       const r = matchPdfFont(n);
-      if (r.fontFamily !== "sans-serif") { matched = r; break; }
+      matched = r;
+      if (r.matched) break;
     }
     const fontFamilyOverride = matched?.fontFamily;
+    const fontWeight = numericFontWeight(matched?.fontWeight, it.bold);
     if (import.meta.env.DEV) {
-      console.debug("[font-match]", { fontName: it.fontName, cssFamily: it.cssFamily, resolved: fontFamilyOverride ?? "(no match)" });
+      console.debug("[text-edit-font] extraction", {
+        rawPdfFontName: it.fontName,
+        pdfCssFamily: it.cssFamily,
+        matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
+        fontFamilyOverride: fontFamilyOverride ?? "",
+        fontKey,
+        fontApproximate: !!it.fontApprox,
+        fontSize: it.h,
+        fontWeight,
+        lineHeight: it.lineHeight ?? 1,
+        letterSpacing: it.letterSpacing ?? 0,
+      });
     }
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
@@ -888,9 +901,12 @@ export function EditorCanvas({
       fontFamilyOverride,
       fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
+      fontWeight,
+      lineHeight: it.lineHeight ?? 1,
+      letterSpacing: it.letterSpacing ?? 0,
       textOffsetY: padTop,
       cover,
-      source: { originalString: it.str, transform: it.transform, fontName: it.fontName },
+      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
     } });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
