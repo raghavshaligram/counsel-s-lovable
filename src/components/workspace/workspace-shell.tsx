@@ -689,9 +689,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         e.preventDefault();
         openFile();
       } else if (!meta && (e.key === "+" || e.key === "=")) {
-        patchActive({ zoom: Math.min(400, zoom + 10) });
+        patchActive({ zoom: Math.min(400, zoom + 10), zoomMode: "custom" });
       } else if (!meta && e.key === "-") {
-        patchActive({ zoom: Math.max(25, zoom - 10) });
+        patchActive({ zoom: Math.max(25, zoom - 10), zoomMode: "custom" });
       }
     };
     window.addEventListener("keydown", onKey);
