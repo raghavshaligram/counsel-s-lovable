@@ -19,6 +19,7 @@ export type TabState = {
   activeToolId: string | null;
   inspectorOpen: boolean;
   zoom: number;
+  zoomMode: ZoomMode;
   pageLayout: "single" | "double";
   continuous: boolean;
   showGaps: boolean;
