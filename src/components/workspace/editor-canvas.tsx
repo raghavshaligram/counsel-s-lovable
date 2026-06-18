@@ -1247,6 +1247,8 @@ function TextMiniToolbar({
     (a.family === "serif" ? "tinos" : a.family === "mono" ? "cousine" : "arimo");
 
   const manualFamily = (a as { fontFamilyOverride?: string }).fontFamilyOverride ?? "";
+  const currentFontValue = manualFamily ? "__detected" : currentFontKey;
+  const detectedFamilyLabel = cssFontFamilyName(manualFamily) || (a.kind === "text-edit" ? a.source?.fontName : "") || "Detected font";
   // Lazy-load the chosen Google Font when the user picks one from the
   // manual override dropdown (system fonts are skipped inside the hook).
   useGoogleFontLoader(manualFamily.split(",")[0]?.replace(/['"]/g, "").trim());
@@ -1307,8 +1309,9 @@ function TextMiniToolbar({
       )}
       <div style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
       <select
-        value={currentFontKey}
+        value={currentFontValue}
         onChange={(e) => {
+          if (e.target.value === "__detected") return;
           const key = e.target.value as FontKey;
           const kind = FONT_META[key]?.kind ?? "sans";
           // Clear any auto-detected CSS override so the bundled family wins,
@@ -1325,6 +1328,11 @@ function TextMiniToolbar({
           boxShadow: showHint ? "0 0 0 2px rgba(245,158,11,0.18)" : "none",
         }}
       >
+        {manualFamily && (
+          <option value="__detected" style={{ background: "#1a1a1c", color: "#fff" }}>
+            {detectedFamilyLabel}
+          </option>
+        )}
         {TOOLBAR_FONTS.map((f) => (
           <option key={f.key} value={f.key} style={{ background: "#1a1a1c", color: "#fff" }}>
             {f.label}
