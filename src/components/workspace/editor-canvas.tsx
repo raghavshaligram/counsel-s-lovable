@@ -1085,9 +1085,8 @@ export function EditorCanvas({
         id: activeText.id,
         coverZIndex: coverComputed?.zIndex ?? "(no cover)",
         textareaZIndex: computed.zIndex,
-        // Both are z-index:auto and live in the same overlay parent.
-        // Paint order = DOM order. The cover map runs BEFORE annos.map, so
-        // every annotation (textarea included) paints ON TOP of its cover.
+        // The cover is fixed below the editable annotation wrapper so it can
+        // hide the PDF canvas glyphs without covering the live textarea text.
         coverDomIndex: coverEl
           ? Array.from(coverEl.parentElement?.children ?? []).indexOf(coverEl)
           : -1,
