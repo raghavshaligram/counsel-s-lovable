@@ -354,7 +354,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           showGaps: typeof ui.showGaps === "boolean" ? ui.showGaps : true,
           theme: ui.theme ?? "dark",
           zoom: typeof ui.zoom === "number" ? ui.zoom : 100,
-          zoomMode: ui.zoomMode ?? "smart",
+          zoomMode: ui.zoomMode ?? "actual",
         });
       }
       setRecents(recentsList);
@@ -2964,7 +2964,7 @@ const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
   ocrPages, ocrPagesCopied, showOcrTags, pageLayout = "single",
-  onAutoFit, fitNonce, zoomMode = "smart",
+  onAutoFit, fitNonce, zoomMode = "actual",
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
