@@ -188,8 +188,29 @@ function samplePageBg(
       }
     }
     if (total < 20) continue;
+    // Find the brightest CLUSTER that is also well-represented. Pages are
+    // overwhelmingly lighter than ink, but a tight ring around a glyph can
+    // be dominated by anti-aliased mid-grays — taking the plain mode then
+    // yields e.g. rgb(241,241,241) instead of the real page white. We
+    // pick the cluster with the highest luminance among those that hold
+    // at least 15% of sampled pixels (≥3% if nothing qualifies).
+    const clusters = [...counts.values()].sort((a, b) => b.n - a.n);
+    const minShareStrong = total * 0.15;
+    const minShareWeak = total * 0.03;
+    const lum = (c: { r: number; g: number; b: number; n: number }) =>
+      (0.299 * (c.r / c.n) + 0.587 * (c.g / c.n) + 0.114 * (c.b / c.n));
     let best: { n: number; r: number; g: number; b: number } | null = null;
-    for (const c of counts.values()) if (!best || c.n > best.n) best = c;
+    for (const c of clusters) {
+      if (c.n < minShareStrong) break;
+      if (!best || lum(c) > lum(best)) best = c;
+    }
+    if (!best) {
+      for (const c of clusters) {
+        if (c.n < minShareWeak) break;
+        if (!best || lum(c) > lum(best)) best = c;
+      }
+    }
+    if (!best) best = clusters[0] ?? null;
     if (!best) continue;
     return { r: best.r / best.n / 255, g: best.g / best.n / 255, b: best.b / best.n / 255 };
   }
@@ -876,15 +897,20 @@ export function EditorCanvas({
   const onClickEditHit = (it: TextItem) => {
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
-    // Cover bbox: expand by a fraction of glyph height (more for bold/heavy
-    // originals) so anti-aliased thick strokes don't leak through.
-    const coverPad = Math.max(1, it.h * (it.bold ? 0.18 : 0.1));
+    // Cover bbox: expand generously around the captured glyph bounds so
+    // anti-aliased thick strokes, italic skew, and ascenders/descenders
+    // never leak through. Pad more vertically because pdf.js' glyph bbox
+    // hugs cap-height; descenders ("y", "g") sit a few px below.
+    const coverPadX = Math.max(2, it.h * (it.italic ? 0.28 : 0.18));
+    const coverPadTop = Math.max(2, it.h * (it.bold ? 0.30 : 0.22));
+    const coverPadBottom = Math.max(2, it.h * 0.40);
     const cover = {
-      x: it.x - coverPad,
-      y: it.y - coverPad,
-      w: it.w + coverPad * 2,
-      h: it.h + coverPad * 2,
+      x: it.x - coverPadX,
+      y: it.y - coverPadTop,
+      w: it.w + coverPadX * 2,
+      h: it.h + coverPadTop + coverPadBottom,
     };
+    const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const padX = Math.max(2, it.h * 0.15);
     const padTop = Math.max(2, it.h * 0.35);
     const padBottom = Math.max(2, it.h * 0.45);
@@ -942,6 +968,15 @@ export function EditorCanvas({
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
     } });
+    console.log("[text-edit-bounds-init]", {
+      id,
+      originalGlyphPdf: originalGlyph,
+      coverPdf: cover,
+      annoPdf: { x: it.x - padX, y: it.y - padTop, w: it.w + padX * 2, h: it.h + padTop + padBottom },
+      pads: { coverPadX, coverPadTop, coverPadBottom, padX, padTop, padBottom },
+      sampledBg: it.bg,
+      intendedCoverBackground: `rgba(${Math.round(it.bg.r*255)},${Math.round(it.bg.g*255)},${Math.round(it.bg.b*255)},1)`,
+    });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
     setEditingId(id);
@@ -1018,9 +1053,34 @@ export function EditorCanvas({
         scale,
         text: activeText.text,
       });
+      // Bounds audit — query the cover DOM and compare screen rects of
+      // original glyphs vs cover vs textarea. Also surface intended vs
+      // computed background so we can prove whether the transparent branch
+      // ran and whether another rule overrides it.
+      const coverEl = document.querySelector<HTMLElement>(
+        `[data-vault-element='text-edit-cover'][data-anno-id='${activeText.id}']`,
+      );
+      const coverRect = coverEl?.getBoundingClientRect();
+      const coverComputed = coverEl ? window.getComputedStyle(coverEl) : null;
+      const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
+      console.log("[text-edit-bounds]", {
+        id: activeText.id,
+        intendedBackground,
+        computedBackground: coverComputed?.backgroundColor ?? "(no cover element)",
+        coverInlineStyle: coverEl?.style.background ?? "(no cover element)",
+        coverScreen: coverRect && wrapRect
+          ? { x: coverRect.left - wrapRect.left, y: coverRect.top - wrapRect.top, w: coverRect.width, h: coverRect.height }
+          : null,
+        textareaScreen: wrapRect
+          ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
+          : null,
+        coverPdf: activeText.cover,
+        annoPdf: { x: activeText.x, y: activeText.y, w: activeText.w, h: activeText.h },
+        editing: editingId === activeText.id,
+      });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeText, scale]);
+  }, [activeText, scale, editingId]);
 
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
