@@ -932,6 +932,30 @@ export function EditorCanvas({
       (a.kind === "text" || a.kind === "text-edit"),
   ) as (typeof annos[number] & { kind: "text" | "text-edit" }) | undefined;
 
+  useEffect(() => {
+    if (!activeText || activeText.kind !== "text-edit") return;
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-text-edit-id="${activeText.id}"]`);
+      if (!el) return;
+      const computed = window.getComputedStyle(el);
+      const override = activeText.fontFamilyOverride ?? "";
+      console.debug("[text-edit-font] dom", {
+        rawPdfFontName: activeText.source?.fontName ?? "",
+        matchedFontName: override
+          ? cssFontFamilyName(override)
+          : activeText.fontKey && FONT_META[activeText.fontKey as FontKey]
+          ? FONT_META[activeText.fontKey as FontKey].label
+          : "",
+        fontFamilyOverride: override,
+        computedDomFontFamily: computed.fontFamily,
+        computedFontWeight: computed.fontWeight,
+        computedLineHeight: computed.lineHeight,
+        computedLetterSpacing: computed.letterSpacing,
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeText]);
+
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
   useEffect(() => {
