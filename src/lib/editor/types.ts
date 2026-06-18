@@ -67,6 +67,7 @@ export interface TextSource {
   transform?: number[]; // a,b,c,d,e,f (pdf.js text item transform)
   fontName?: string;
   cssFamily?: string;
+  bounds?: { x: number; y: number; w: number; h: number };
 }
 
 export interface BaseAnno {

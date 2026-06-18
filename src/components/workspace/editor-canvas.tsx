@@ -562,9 +562,12 @@ export function EditorCanvas({
 
   const renderAnno = (a: Anno) => {
     const selected = state.selectedAnnoId === a.id;
+    const displayRect = a.kind === "text-edit" && a.cover
+      ? a.cover
+      : { x: a.x, y: a.y, w: a.w, h: a.h };
     const pts = [
-      toScreen(a.x, a.y), toScreen(a.x + a.w, a.y),
-      toScreen(a.x, a.y + a.h), toScreen(a.x + a.w, a.y + a.h),
+      toScreen(displayRect.x, displayRect.y), toScreen(displayRect.x + displayRect.w, displayRect.y),
+      toScreen(displayRect.x, displayRect.y + displayRect.h), toScreen(displayRect.x + displayRect.w, displayRect.y + displayRect.h),
     ];
     const minX = Math.min(...pts.map((p) => p.x));
     const minY = Math.min(...pts.map((p) => p.y));
@@ -731,9 +734,15 @@ export function EditorCanvas({
         // changing the cover area.
         const bg = "transparent";
         const fam = resolveTextFontFamily(a);
-        const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
-        const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) * scale : 0;
-        const padBottom = a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom * scale : 0;
+        const cover = a.kind === "text-edit" ? a.cover : undefined;
+        const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+        const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
+        const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+        const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
+        const padTop = padTopPt * scale;
+        const padLeft = padLeftPt * scale;
+        const padRight = padRightPt * scale;
+        const padBottom = padBottomPt * scale;
         const align = a.align ?? "left";
         const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
@@ -761,8 +770,8 @@ export function EditorCanvas({
           overflow: "hidden",
           padding: 0,
           paddingTop: padTop,
-          paddingLeft: padX,
-          paddingRight: padX,
+          paddingLeft: padLeft,
+          paddingRight: padRight,
           paddingBottom: padBottom,
           boxSizing: "border-box",
           margin: 0,
@@ -802,6 +811,7 @@ export function EditorCanvas({
                 extractedWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
                 coverWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
                 textareaWidthPt: taRect.width / scale,
+                textTargetWidthPt: a.kind === "text-edit" ? a.w : null,
                 willDelete: !finalText.trim() && a.kind === "text",
               });
               if (finalText !== a.text) {
@@ -987,18 +997,19 @@ export function EditorCanvas({
       fontWeight,
       lineHeight: it.lineHeight ?? 1,
       letterSpacing: it.letterSpacing ?? 0,
-      // No internal padding — the textarea now sits at the glyph origin.
+      // Keep the data model at the original glyph bounds; renderAnno expands
+      // the visible edit wrapper to the cover rect and adds matching padding.
       textOffsetX: 0,
       textOffsetY: 0,
       textPadBottom: 0,
       cover,
-      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
+      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
     } });
     console.log("[text-edit-bounds-init]", {
       id,
       originalGlyphPdf: originalGlyph,
       coverPdf: cover,
-      annoPdf: cover,
+      annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
       sampledBg: it.bg,
       intendedCoverBackground: `rgba(${Math.round(it.bg.r*255)},${Math.round(it.bg.g*255)},${Math.round(it.bg.b*255)},1)`,
@@ -1051,17 +1062,27 @@ export function EditorCanvas({
       // points, captured at click time) to the live textarea geometry
       // (screen pixels, converted back to PDF points via `scale`).
       const rect = el.getBoundingClientRect();
-      const wrap = el.closest<HTMLElement>("[data-vault-element='page-wrap']")
+      const wrap = overlayRef.current
+        ?? el.closest<HTMLElement>("[data-vault-element='page-wrap']")
         ?? el.offsetParent as HTMLElement | null;
       const wrapRect = wrap?.getBoundingClientRect();
       const cover = activeText.cover;
       console.log("[text-edit-layout]", {
         id: activeText.id,
-        // Original extracted bbox (PDF points)
-        extractedLeft: cover?.x ?? null,
-        extractedTop: cover?.y ?? null,
-        extractedWidth: cover?.w ?? null,
-        extractedHeight: cover?.h ?? null,
+        // Original extracted glyph bbox (PDF points)
+        extractedLeft: activeText.source?.bounds?.x ?? activeText.x,
+        extractedTop: activeText.source?.bounds?.y ?? activeText.y,
+        extractedWidth: activeText.source?.bounds?.w ?? activeText.w,
+        extractedHeight: activeText.source?.bounds?.h ?? activeText.h,
+        originalLeft: activeText.source?.bounds?.x ?? activeText.x,
+        originalTop: activeText.source?.bounds?.y ?? activeText.y,
+        originalWidth: activeText.source?.bounds?.w ?? activeText.w,
+        originalHeight: activeText.source?.bounds?.h ?? activeText.h,
+        // Padded cover bbox (PDF points) — deliberately larger than glyphs
+        coverLeft: cover?.x ?? null,
+        coverTop: cover?.y ?? null,
+        coverWidth: cover?.w ?? null,
+        coverHeight: cover?.h ?? null,
         // Annotation box (PDF points) — what the textarea is anchored to
         annoLeft: activeText.x,
         annoTop: activeText.y,
@@ -1099,11 +1120,8 @@ export function EditorCanvas({
         visibility: computed.visibility,
         display: computed.display,
         zIndex: computed.zIndex,
-        webkitTextFillColor:
-          (computed as any).webkitTextFillColor ??
-          computed.getPropertyValue("-webkit-text-fill-color"),
-        caretColor:
-          (computed as any).caretColor ?? computed.getPropertyValue("caret-color"),
+        webkitTextFillColor: computed.getPropertyValue("-webkit-text-fill-color"),
+        caretColor: computed.getPropertyValue("caret-color"),
         textareaInlineColor: (el as HTMLElement).style.color,
         expectedTextColor: rgbCss(activeText.color, activeText.opacity),
         originalString: activeText.source?.originalString ?? "",
@@ -1128,14 +1146,16 @@ export function EditorCanvas({
       });
       console.log("[text-edit-width-explain]", {
         id: activeText.id,
-        extractedWidthPt: activeText.cover?.w ?? null,
+        originalWidthPt: activeText.source?.bounds?.w ?? activeText.w,
+        extractedWidthPt: activeText.source?.bounds?.w ?? activeText.w,
+        coverWidthPt: activeText.cover?.w ?? null,
         textareaWidthPt: rect.width / scale,
         annoWidthPt: activeText.w,
         deltaPt: (activeText.cover?.w ?? 0) - rect.width / scale,
         coverPadXApproxPt:
           ((activeText.cover?.w ?? 0) - activeText.w) / 2,
         note:
-          "The textarea wrapper now uses the same PDF rectangle as the cover; any small remaining delta is DOM pixel rounding at the current zoom.",
+          "The textarea wrapper uses the padded cover rect so it cannot appear shorter; the text content is inset back onto the original glyph bounds.",
       });
       console.log("[text-edit-bounds]", {
         id: activeText.id,
@@ -1148,6 +1168,7 @@ export function EditorCanvas({
         textareaScreen: wrapRect
           ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
           : null,
+        originalGlyphPdf: activeText.source?.bounds ?? null,
         coverPdf: activeText.cover,
         annoPdf: { x: activeText.x, y: activeText.y, w: activeText.w, h: activeText.h },
         editing: editingId === activeText.id,
@@ -1164,25 +1185,50 @@ export function EditorCanvas({
     if (!el) return;
     const a = activeText;
     const fam = resolveTextFontFamily(a);
-    const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-    const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
-    const padBottom = a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
+    const cover = a.kind === "text-edit" ? a.cover : undefined;
+    const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+    const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;
+    const padTop = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+    const padBottom = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
     el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
+    if (a.kind === "text-edit" && !a.text.includes("\n")) {
+      const targetTextW = a.source?.bounds?.w ?? a.w;
+      const slots = Math.max(0, (a.text || "").length - 1);
+      if (targetTextW > 0 && slots > 0) {
+        el.style.letterSpacing = "0px";
+        el.style.whiteSpace = "pre";
+        el.textContent = a.text && a.text.length > 0 ? a.text : " ";
+        const untrackedTextW = el.offsetWidth / scale;
+        const desiredTracking = Math.max(0, Math.min(a.fontSize * 0.6, (targetTextW - untrackedTextW) / slots));
+        if (Number.isFinite(desiredTracking) && Math.abs(desiredTracking - (a.letterSpacing ?? 0)) > 0.02) {
+          console.log("[text-edit-fit]", {
+            id: a.id,
+            targetTextWidthPt: targetTextW,
+            untrackedTextWidthPt: untrackedTextW,
+            previousLetterSpacingPt: a.letterSpacing ?? 0,
+            nextLetterSpacingPt: desiredTracking,
+            slots,
+          });
+          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: desiredTracking } as Partial<Anno> });
+          return;
+        }
+      }
+    }
     el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
     // Measure widest line + total height; convert px → PDF points.
-    const measuredW = el.offsetWidth / scale + padX * 2 + 1;
+    const measuredW = el.offsetWidth / scale + padLeft + padRight + 1;
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    // Lock text-edit to the captured ORIGINAL glyph bounds (it.w/it.h),
-    // which the annotation was created with. The padded `cover` rect is a
-    // separate masking layer and must not drive the textarea size.
+    // Keep the model locked to the original glyph rect for export/alignment.
+    // The visual wrapper uses `cover` in renderAnno; padding insets the live
+    // textarea glyphs back onto this original rect.
     const lockedW = a.kind === "text-edit" ? a.w : null;
     const lockedH = a.kind === "text-edit" ? a.h : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
