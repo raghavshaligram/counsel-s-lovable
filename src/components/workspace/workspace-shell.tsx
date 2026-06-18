@@ -2832,6 +2832,64 @@ function ZoomButton({
   return label ? <Tip label={label} placement="top">{btn}</Tip> : btn;
 }
 
+type ZoomModeOpt = "smart" | "fit-width" | "fit-page" | "actual" | "custom";
+
+function ZoomModeSelect({
+  mode,
+  onChange,
+}: {
+  mode: ZoomModeOpt;
+  onChange: (m: ZoomModeOpt) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const LABEL: Record<ZoomModeOpt, string> = {
+    smart: "Smart",
+    "fit-width": "Fit Width",
+    "fit-page": "Fit Page",
+    actual: "Actual Size",
+    custom: "Custom",
+  };
+  const options: ZoomModeOpt[] = ["smart", "fit-width", "fit-page", "actual"];
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+        title="Zoom mode"
+      >
+        <StretchHorizontal className="h-3.5 w-3.5" />
+        <span>{LABEL[mode]}</span>
+      </button>
+      {open ? (
+        <div className="absolute bottom-[110%] right-0 z-50 min-w-[150px] rounded-md border border-border bg-surface-1 p-1 shadow-lg">
+          {options.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => { onChange(o); setOpen(false); }}
+              className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[12px] hover:bg-surface-2 ${
+                mode === o ? "text-foreground" : "text-text-2"
+              }`}
+            >
+              <span>{LABEL[o]}</span>
+              {mode === o ? <span className="text-[10px] text-text-muted">●</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+
 function KeyChip({
   children,
   inline,
