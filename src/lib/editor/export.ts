@@ -54,7 +54,8 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   };
   for (const a of doc.annotations) {
     if (a.kind === "text-edit" && a.fontKey) {
-      await ensureBundled(a.fontKey as FontKey, !!a.bold, !!a.italic);
+      const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
+      await ensureBundled(a.fontKey as FontKey, !!a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600), !!a.italic);
     }
   }
 
