@@ -1032,9 +1032,34 @@ export function EditorCanvas({
         scale,
         text: activeText.text,
       });
+      // Bounds audit — query the cover DOM and compare screen rects of
+      // original glyphs vs cover vs textarea. Also surface intended vs
+      // computed background so we can prove whether the transparent branch
+      // ran and whether another rule overrides it.
+      const coverEl = document.querySelector<HTMLElement>(
+        `[data-vault-element='text-edit-cover'][data-anno-id='${activeText.id}']`,
+      );
+      const coverRect = coverEl?.getBoundingClientRect();
+      const coverComputed = coverEl ? window.getComputedStyle(coverEl) : null;
+      const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
+      console.log("[text-edit-bounds]", {
+        id: activeText.id,
+        intendedBackground,
+        computedBackground: coverComputed?.backgroundColor ?? "(no cover element)",
+        coverInlineStyle: coverEl?.style.background ?? "(no cover element)",
+        coverScreen: coverRect && wrapRect
+          ? { x: coverRect.left - wrapRect.left, y: coverRect.top - wrapRect.top, w: coverRect.width, h: coverRect.height }
+          : null,
+        textareaScreen: wrapRect
+          ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
+          : null,
+        coverPdf: activeText.cover,
+        annoPdf: { x: activeText.x, y: activeText.y, w: activeText.w, h: activeText.h },
+        editing: editingId === activeText.id,
+      });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeText, scale]);
+  }, [activeText, scale, editingId]);
 
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
