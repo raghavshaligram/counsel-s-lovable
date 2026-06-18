@@ -2,6 +2,7 @@ export interface FontMatch {
   fontFamily: string;
   fontWeight?: string;
   fontStyle?: string;
+  matched: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export function matchPdfFont(rawName: string): FontMatch {
       fontFamily: "Arial, Helvetica, sans-serif",
       fontWeight: hasBold ? "bold" : "normal",
       fontStyle: hasItalic ? "italic" : "normal",
+      matched: true,
     };
   }
 
@@ -34,6 +36,7 @@ export function matchPdfFont(rawName: string): FontMatch {
       fontFamily: '"Times New Roman", Times, serif',
       fontWeight: hasBold ? "bold" : "normal",
       fontStyle: hasItalic ? "italic" : "normal",
+      matched: true,
     };
   }
 
@@ -43,6 +46,7 @@ export function matchPdfFont(rawName: string): FontMatch {
       fontFamily: '"Courier New", Courier, monospace',
       fontWeight: hasBold ? "bold" : "normal",
       fontStyle: hasItalic ? "italic" : "normal",
+      matched: true,
     };
   }
 
@@ -72,19 +76,19 @@ export function matchPdfFont(rawName: string): FontMatch {
         weightWord === "extrabold" ? "800" :
         weightWord === "black" ? "900" :
         hasBold ? "bold" : "normal";
-      return { fontFamily: family, fontWeight: weight, fontStyle: hasItalic ? "italic" : "normal" };
+      return { fontFamily: family, fontWeight: weight, fontStyle: hasItalic ? "italic" : "normal", matched: true };
     }
   }
 
   // 5. Generic family hints — last-chance guess so the editor has *something*
   //    to render with instead of a meaningless system fallback.
   if (/serif/i.test(lower)) {
-    return { fontFamily: '"Times New Roman", Times, serif', fontWeight: hasBold ? "bold" : "normal", fontStyle: hasItalic ? "italic" : "normal" };
+    return { fontFamily: '"Times New Roman", Times, serif', fontWeight: hasBold ? "bold" : "normal", fontStyle: hasItalic ? "italic" : "normal", matched: true };
   }
   if (/mono/i.test(lower)) {
-    return { fontFamily: '"Courier New", Courier, monospace', fontWeight: hasBold ? "bold" : "normal", fontStyle: hasItalic ? "italic" : "normal" };
+    return { fontFamily: '"Courier New", Courier, monospace', fontWeight: hasBold ? "bold" : "normal", fontStyle: hasItalic ? "italic" : "normal", matched: true };
   }
 
   // 6. Fallback
-  return { fontFamily: "sans-serif", fontWeight: "normal", fontStyle: "normal" };
+  return { fontFamily: `"${name}", sans-serif`, fontWeight: hasBold ? "bold" : "normal", fontStyle: hasItalic ? "italic" : "normal", matched: false };
 }
