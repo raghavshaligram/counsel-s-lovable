@@ -235,6 +235,11 @@ export function EditorCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  // Tracks the in-flight pdf.js RenderTask for this canvas so we can cancel
+  // it before starting a new render. pdf.js throws "Cannot use the same
+  // canvas during multiple render() operations" if we don't serialize these.
+  const renderTaskRef = useRef<{ cancel: () => void; promise: Promise<unknown> } | null>(null);
+  const canvasIdRef = useRef<string>(`ec-${Math.random().toString(36).slice(2, 9)}`);
   const [textItems, setTextItems] = useState<TextItem[]>([]);
   // Tracks whether pdf.js getTextContent has resolved for this page. Until
   // it has, we don't know if the page is scanned, so the banner stays hidden
