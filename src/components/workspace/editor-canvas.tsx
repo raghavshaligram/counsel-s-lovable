@@ -1230,6 +1230,7 @@ export function EditorCanvas({
                 width: br.x - tl.x, height: br.y - tl.y,
                 background: bgCss,
                 pointerEvents: "none",
+                zIndex: 1,
               }}
             />
           );
