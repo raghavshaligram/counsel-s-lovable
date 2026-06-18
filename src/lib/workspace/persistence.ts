@@ -34,6 +34,7 @@ export type WorkspaceUIState = {
   showGaps: boolean;
   theme: "dark" | "sepia" | "soft" | "white";
   zoom: number;
+  zoomMode: "smart" | "fit-width" | "fit-page" | "actual" | "custom";
   licenseKey: string | null;
 };
 
