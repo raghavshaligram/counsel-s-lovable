@@ -1067,11 +1067,16 @@ export function EditorCanvas({
       const cover = activeText.cover;
       console.log("[text-edit-layout]", {
         id: activeText.id,
-        // Original extracted bbox (PDF points)
-        extractedLeft: cover?.x ?? null,
-        extractedTop: cover?.y ?? null,
-        extractedWidth: cover?.w ?? null,
-        extractedHeight: cover?.h ?? null,
+        // Original extracted glyph bbox (PDF points)
+        originalLeft: activeText.source?.bounds?.x ?? activeText.x,
+        originalTop: activeText.source?.bounds?.y ?? activeText.y,
+        originalWidth: activeText.source?.bounds?.w ?? activeText.w,
+        originalHeight: activeText.source?.bounds?.h ?? activeText.h,
+        // Padded cover bbox (PDF points) — deliberately larger than glyphs
+        coverLeft: cover?.x ?? null,
+        coverTop: cover?.y ?? null,
+        coverWidth: cover?.w ?? null,
+        coverHeight: cover?.h ?? null,
         // Annotation box (PDF points) — what the textarea is anchored to
         annoLeft: activeText.x,
         annoTop: activeText.y,
@@ -1138,14 +1143,15 @@ export function EditorCanvas({
       });
       console.log("[text-edit-width-explain]", {
         id: activeText.id,
-        extractedWidthPt: activeText.cover?.w ?? null,
+        originalWidthPt: activeText.source?.bounds?.w ?? activeText.w,
+        coverWidthPt: activeText.cover?.w ?? null,
         textareaWidthPt: rect.width / scale,
         annoWidthPt: activeText.w,
         deltaPt: (activeText.cover?.w ?? 0) - rect.width / scale,
         coverPadXApproxPt:
           ((activeText.cover?.w ?? 0) - activeText.w) / 2,
         note:
-          "The textarea wrapper now uses the same PDF rectangle as the cover; any small remaining delta is DOM pixel rounding at the current zoom.",
+          "The textarea wrapper uses the padded cover rect so it cannot appear shorter; the text content is inset back onto the original glyph bounds.",
       });
       console.log("[text-edit-bounds]", {
         id: activeText.id,
@@ -1158,6 +1164,7 @@ export function EditorCanvas({
         textareaScreen: wrapRect
           ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
           : null,
+        originalGlyphPdf: activeText.source?.bounds ?? null,
         coverPdf: activeText.cover,
         annoPdf: { x: activeText.x, y: activeText.y, w: activeText.w, h: activeText.h },
         editing: editingId === activeText.id,
