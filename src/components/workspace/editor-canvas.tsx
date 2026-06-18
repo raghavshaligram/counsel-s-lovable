@@ -1119,11 +1119,8 @@ export function EditorCanvas({
         visibility: computed.visibility,
         display: computed.display,
         zIndex: computed.zIndex,
-        webkitTextFillColor:
-          (computed as any).webkitTextFillColor ??
-          computed.getPropertyValue("-webkit-text-fill-color"),
-        caretColor:
-          (computed as any).caretColor ?? computed.getPropertyValue("caret-color"),
+        webkitTextFillColor: computed.getPropertyValue("-webkit-text-fill-color"),
+        caretColor: computed.getPropertyValue("caret-color"),
         textareaInlineColor: (el as HTMLElement).style.color,
         expectedTextColor: rgbCss(activeText.color, activeText.opacity),
         originalString: activeText.source?.originalString ?? "",
