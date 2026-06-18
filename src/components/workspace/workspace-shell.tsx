@@ -292,6 +292,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const activeToolId = active.activeToolId;
   const inspectorOpen = active.inspectorOpen;
   const zoom = active.zoom;
+  const zoomMode = active.zoomMode;
   const pageLayout = active.pageLayout;
   const continuous = active.continuous;
   const showGaps = active.showGaps;
