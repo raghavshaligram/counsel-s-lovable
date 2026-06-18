@@ -1381,30 +1381,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         </div>
         <div className="flex items-center gap-1">
           <ZoomButton
-            onClick={() => patchActive({ zoom: Math.max(25, zoom - 10) })}
+            onClick={() => patchActive({ zoom: Math.max(25, zoom - 10), zoomMode: "custom" })}
             label="Zoom out"
           >
             <Minus className="h-3.5 w-3.5" />
           </ZoomButton>
           <button
             type="button"
-            onClick={() => patchActive({ zoom: 100 })}
+            onClick={() => patchActive({ zoom: 100, zoomMode: "actual" })}
             title="Reset to 100%"
             className="font-mono tabular-nums px-2 text-text-2 hover:text-foreground min-w-[3.5rem] text-center"
           >
             {zoom}%
           </button>
           <ZoomButton
-            onClick={() => patchActive({ zoom: Math.min(400, zoom + 10) })}
+            onClick={() => patchActive({ zoom: Math.min(400, zoom + 10), zoomMode: "custom" })}
             label="Zoom in"
           >
             <Plus className="h-3.5 w-3.5" />
           </ZoomButton>
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <ZoomButton onClick={() => setFitNonce((n) => n + 1)} label="Fit width">
-            <StretchHorizontal className="h-3.5 w-3.5" />
-          </ZoomButton>
-
+          <ZoomModeSelect
+            mode={zoomMode}
+            onChange={(m) => {
+              patchActive({ zoomMode: m });
+              setFitNonce((n) => n + 1);
+            }}
+          />
         </div>
         <div className="flex items-center gap-1.5 text-text-muted">
           <Lock className="h-3 w-3 text-vault" strokeWidth={2.5} />
