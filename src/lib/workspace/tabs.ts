@@ -9,6 +9,7 @@
 import { initialState, type State as EditorState } from "@/lib/editor/state";
 
 export type ReadingTheme = "dark" | "sepia" | "soft" | "white";
+export type ZoomMode = "smart" | "fit-width" | "fit-page" | "actual" | "custom";
 
 export type TabState = {
   id: string;
