@@ -973,7 +973,7 @@ export function EditorCanvas({
       if (!el) return;
       const computed = window.getComputedStyle(el);
       const override = activeText.fontFamilyOverride ?? "";
-      console.debug("[text-edit-font] dom", {
+      console.log("[text-edit-font] dom", {
         rawPdfFontName: activeText.source?.fontName ?? "",
         matchedFontName: override
           ? cssFontFamilyName(override)
