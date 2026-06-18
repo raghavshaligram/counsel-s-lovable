@@ -387,6 +387,11 @@ export function EditorCanvas({
     })();
     return () => {
       cancelled = true;
+      // Cancel any in-flight render so the canvas isn't touched after teardown.
+      if (renderTaskRef.current) {
+        try { renderTaskRef.current.cancel(); } catch { /* noop */ }
+        renderTaskRef.current = null;
+      }
       // Free the canvas backing store on unmount (virtualization tear-down).
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
