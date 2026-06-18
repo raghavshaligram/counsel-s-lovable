@@ -1193,20 +1193,35 @@ export function EditorCanvas({
             they sit beneath the editable text box but always hide the
             original glyphs at their captured bounds (independent of the
             auto-grown text box size). */}
+        {(() => {
+          // Count rendered text-edit overlays per annotation id for the
+          // duplicate-text audit.
+          const textEditCounts = new Map<string, number>();
+          for (const a of annos) {
+            if (a.kind === "text-edit") {
+              textEditCounts.set(a.id, (textEditCounts.get(a.id) ?? 0) + 1);
+            }
+          }
+          for (const [id, n] of textEditCounts) {
+            console.log("[text-edit-render]", {
+              annotationId: id,
+              renderCount: n,
+              editingId,
+              expected: 1,
+            });
+          }
+          return null;
+        })()}
         {annos.map((a) => {
           if (a.kind !== "text-edit" || !a.cover) return null;
-          const original = a.source?.originalString ?? "";
+          // A text-edit annotation is a PERMANENT replacement of the
+          // underlying PDF glyphs. The cover must always be painted —
+          // even when the typed text still matches the original — or the
+          // PDF canvas glyphs will show through and double up with the
+          // overlay textarea on top, producing duplicate text.
           const isEditing = editingId === a.id;
-          // Cover must obscure the original PDF glyphs whenever the user is
-          // editing OR has changed the text. Stay invisible only in the
-          // pristine "not editing, never modified" state so the page looks
-          // identical before any interaction.
-          if (!isEditing && a.text === original) return null;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          // Paint the sampled page background — it matches surroundings so
-          // the user never sees a white rectangle, while stale glyphs from
-          // the underlying canvas stay hidden.
           const bgCss = rgbCss(a.bg);
           if (isEditing) {
             console.log("[text-edit-cover]", {
