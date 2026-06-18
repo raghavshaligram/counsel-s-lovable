@@ -261,6 +261,17 @@ export function EditorCanvas({
     setBannerDismissed(false);
     (async () => {
       const canvas = canvasRef.current; if (!canvas) return;
+      const cid = canvasIdRef.current;
+      // Cancel any in-flight render targeting this canvas before touching it.
+      if (renderTaskRef.current) {
+        try {
+          console.debug("[pdf-render] cancel", { canvasId: cid, page: op.srcPage });
+          renderTaskRef.current.cancel();
+          await renderTaskRef.current.promise.catch(() => {});
+        } catch { /* noop */ }
+        renderTaskRef.current = null;
+      }
+      if (cancelled) return;
       if (op.blank) {
         const w = op.width * scale, h = op.height * scale;
         canvas.width = w; canvas.height = h;
@@ -284,7 +295,22 @@ export function EditorCanvas({
         canvas.style.width = `${Math.ceil(cssVp.width)}px`;
         canvas.style.height = `${Math.ceil(cssVp.height)}px`;
         const ctx = canvas.getContext("2d"); if (!ctx) return;
-        await page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]).promise;
+        console.debug("[pdf-render] start", { canvasId: cid, page: op.srcPage, scale });
+        const task = page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]);
+        renderTaskRef.current = task as unknown as { cancel: () => void; promise: Promise<unknown> };
+        try {
+          await task.promise;
+          console.debug("[pdf-render] complete", { canvasId: cid, page: op.srcPage });
+        } catch (e) {
+          const name = (e as { name?: string } | null)?.name;
+          if (name === "RenderingCancelledException" || cancelled) {
+            console.debug("[pdf-render] cancelled", { canvasId: cid, page: op.srcPage });
+            return;
+          }
+          throw e;
+        } finally {
+          if (renderTaskRef.current === (task as unknown)) renderTaskRef.current = null;
+        }
         if (cancelled) return;
 
         const baseVp = page.getViewport({ scale: 1 });
