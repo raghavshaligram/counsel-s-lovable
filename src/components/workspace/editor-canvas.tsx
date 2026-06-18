@@ -1002,13 +1002,13 @@ export function EditorCanvas({
       textOffsetY: 0,
       textPadBottom: 0,
       cover,
-      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
+      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
     } });
     console.log("[text-edit-bounds-init]", {
       id,
       originalGlyphPdf: originalGlyph,
       coverPdf: cover,
-      annoPdf: cover,
+      annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
       sampledBg: it.bg,
       intendedCoverBackground: `rgba(${Math.round(it.bg.r*255)},${Math.round(it.bg.g*255)},${Math.round(it.bg.b*255)},1)`,
