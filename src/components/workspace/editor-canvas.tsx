@@ -188,8 +188,29 @@ function samplePageBg(
       }
     }
     if (total < 20) continue;
+    // Find the brightest CLUSTER that is also well-represented. Pages are
+    // overwhelmingly lighter than ink, but a tight ring around a glyph can
+    // be dominated by anti-aliased mid-grays — taking the plain mode then
+    // yields e.g. rgb(241,241,241) instead of the real page white. We
+    // pick the cluster with the highest luminance among those that hold
+    // at least 15% of sampled pixels (≥3% if nothing qualifies).
+    const clusters = [...counts.values()].sort((a, b) => b.n - a.n);
+    const minShareStrong = total * 0.15;
+    const minShareWeak = total * 0.03;
+    const lum = (c: { r: number; g: number; b: number; n: number }) =>
+      (0.299 * (c.r / c.n) + 0.587 * (c.g / c.n) + 0.114 * (c.b / c.n));
     let best: { n: number; r: number; g: number; b: number } | null = null;
-    for (const c of counts.values()) if (!best || c.n > best.n) best = c;
+    for (const c of clusters) {
+      if (c.n < minShareStrong) break;
+      if (!best || lum(c) > lum(best)) best = c;
+    }
+    if (!best) {
+      for (const c of clusters) {
+        if (c.n < minShareWeak) break;
+        if (!best || lum(c) > lum(best)) best = c;
+      }
+    }
+    if (!best) best = clusters[0] ?? null;
     if (!best) continue;
     return { r: best.r / best.n / 255, g: best.g / best.n / 255, b: best.b / best.n / 255 };
   }
