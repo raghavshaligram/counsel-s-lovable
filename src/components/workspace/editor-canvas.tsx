@@ -986,9 +986,41 @@ export function EditorCanvas({
         computedLineHeight: computed.lineHeight,
         computedLetterSpacing: computed.letterSpacing,
       });
+      // Layout audit: compare the original extracted text bbox (in PDF
+      // points, captured at click time) to the live textarea geometry
+      // (screen pixels, converted back to PDF points via `scale`).
+      const rect = el.getBoundingClientRect();
+      const wrap = el.closest<HTMLElement>("[data-vault-element='page-wrap']")
+        ?? el.offsetParent as HTMLElement | null;
+      const wrapRect = wrap?.getBoundingClientRect();
+      const cover = activeText.cover;
+      console.log("[text-edit-layout]", {
+        id: activeText.id,
+        // Original extracted bbox (PDF points)
+        extractedLeft: cover?.x ?? null,
+        extractedTop: cover?.y ?? null,
+        extractedWidth: cover?.w ?? null,
+        extractedHeight: cover?.h ?? null,
+        // Annotation box (PDF points) — what the textarea is anchored to
+        annoLeft: activeText.x,
+        annoTop: activeText.y,
+        annoWidth: activeText.w,
+        annoHeight: activeText.h,
+        // Live textarea (screen px and PDF-point equivalent)
+        textareaLeftPx: wrapRect ? rect.left - wrapRect.left : rect.left,
+        textareaTopPx: wrapRect ? rect.top - wrapRect.top : rect.top,
+        textareaWidthPx: rect.width,
+        textareaHeightPx: rect.height,
+        textareaLeftPt: (wrapRect ? rect.left - wrapRect.left : rect.left) / scale,
+        textareaTopPt: (wrapRect ? rect.top - wrapRect.top : rect.top) / scale,
+        textareaWidthPt: rect.width / scale,
+        textareaHeightPt: rect.height / scale,
+        scale,
+        text: activeText.text,
+      });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeText]);
+  }, [activeText, scale]);
 
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
@@ -1055,25 +1087,27 @@ export function EditorCanvas({
             auto-grown text box size). */}
         {annos.map((a) => {
           if (a.kind !== "text-edit" || !a.cover) return null;
-          // Don't draw the cover until the text actually differs from the
-          // original — entering edit mode alone must change NOTHING visually.
           const original = a.source?.originalString ?? "";
-          if (a.text === original) return null;
-          // While actively editing, keep the cover fully transparent so no
-          // white/sampled mask appears behind the textarea. The mask is only
-          // applied at export time (and when not focused) to hide stale
-          // original glyphs from the rendered PDF canvas underneath.
           const isEditing = editingId === a.id;
+          // Cover must obscure the original PDF glyphs whenever the user is
+          // editing OR has changed the text. Stay invisible only in the
+          // pristine "not editing, never modified" state so the page looks
+          // identical before any interaction.
+          if (!isEditing && a.text === original) return null;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = isEditing ? "transparent" : rgbCss(a.bg);
+          // Paint the sampled page background — it matches surroundings so
+          // the user never sees a white rectangle, while stale glyphs from
+          // the underlying canvas stay hidden.
+          const bgCss = rgbCss(a.bg);
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
-              background: "transparent",
+              background: bgCss,
               sampledBg: a.bg,
-              note: "cover suppressed during editing",
+              coverPdf: a.cover,
+              coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
             });
           }
           return (
