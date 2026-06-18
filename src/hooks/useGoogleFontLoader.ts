@@ -1,21 +1,21 @@
 import { useEffect } from "react";
 
 const SYSTEM_FONTS = new Set([
-  "Arial",
-  "Helvetica",
+  "arial",
+  "helvetica",
   "sans-serif",
-  "Times New Roman",
-  "Times",
+  "times new roman",
+  "times",
   "serif",
-  "Courier New",
-  "Courier",
+  "courier new",
+  "courier",
   "monospace",
-  "Georgia",
-  "Verdana",
-  "Tahoma",
-  "Trebuchet MS",
-  "Impact",
-  "Comic Sans MS",
+  "georgia",
+  "verdana",
+  "tahoma",
+  "trebuchet ms",
+  "impact",
+  "comic sans ms",
 ]);
 
 function isSystemFont(fontFamily: string): boolean {
