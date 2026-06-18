@@ -1,21 +1,21 @@
 import { useEffect } from "react";
 
 const SYSTEM_FONTS = new Set([
-  "Arial",
-  "Helvetica",
+  "arial",
+  "helvetica",
   "sans-serif",
-  "Times New Roman",
-  "Times",
+  "times new roman",
+  "times",
   "serif",
-  "Courier New",
-  "Courier",
+  "courier new",
+  "courier",
   "monospace",
-  "Georgia",
-  "Verdana",
-  "Tahoma",
-  "Trebuchet MS",
-  "Impact",
-  "Comic Sans MS",
+  "georgia",
+  "verdana",
+  "tahoma",
+  "trebuchet ms",
+  "impact",
+  "comic sans ms",
 ]);
 
 function isSystemFont(fontFamily: string): boolean {
@@ -28,7 +28,7 @@ function isSystemFont(fontFamily: string): boolean {
 function buildFontUrl(fontFamily: string): string {
   const name = fontFamily.replace(/['"]/g, "").trim();
   const encoded = encodeURIComponent(name);
-  return `https://fonts.googleapis.com/css2?family=${encoded}:wght@400;700&display=swap`;
+  return `https://fonts.googleapis.com/css2?family=${encoded}:wght@100..900&display=swap`;
 }
 
 function getLinkId(fontFamily: string): string {

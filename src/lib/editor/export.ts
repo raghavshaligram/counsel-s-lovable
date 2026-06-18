@@ -54,7 +54,8 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   };
   for (const a of doc.annotations) {
     if (a.kind === "text-edit" && a.fontKey) {
-      await ensureBundled(a.fontKey as FontKey, !!a.bold, !!a.italic);
+      const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
+      await ensureBundled(a.fontKey as FontKey, !!a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600), !!a.italic);
     }
   }
 
@@ -192,7 +193,7 @@ function drawWatermark(
     });
     return;
   }
-  let x = pw / 2 - tw / 2;
+  const x = pw / 2 - tw / 2;
   let y = ph / 2 - th / 2;
   if (wm.position === "top") y = ph - th - 36;
   else if (wm.position === "bottom") y = 36;
@@ -404,16 +405,19 @@ function drawAnno(
         height: c.h + pad * 2,
         color: col(a.bg),
       });
-      const bundledKey = a.fontKey ? `${a.fontKey}|${a.bold ? 1 : 0}|${a.italic ? 1 : 0}` : "";
-      const useFont = (bundledKey && bundled?.get(bundledKey)) || pickFont(fonts, a.family ?? "sans", a.bold, a.italic);
+      const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
+      const exportBold = a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600);
+      const bundledKey = a.fontKey ? `${a.fontKey}|${exportBold ? 1 : 0}|${a.italic ? 1 : 0}` : "";
+      const useFont = (bundledKey && bundled?.get(bundledKey)) || pickFont(fonts, a.family ?? "sans", exportBold, a.italic);
       const align = a.align ?? "left";
       const padX = Math.max(2, a.fontSize * 0.15);
       const innerW = Math.max(0, a.w - padX * 2);
       const baselineY0 = yFlip(a.y, a.h) + a.h - (a.textOffsetY ?? 0) - a.fontSize * 0.85;
-      const lineH = a.fontSize * 1.15;
+      const lineH = a.fontSize * (a.lineHeight ?? 1.15);
       const editLines = (a.text || "").split("\n");
       editLines.forEach((line, i) => {
-        const tw = useFont.widthOfTextAtSize(line, a.fontSize);
+        const tracking = a.letterSpacing ?? 0;
+        const tw = useFont.widthOfTextAtSize(line, a.fontSize) + Math.max(0, line.length - 1) * tracking;
         let x = a.x + padX;
         if (align === "center") x = a.x + padX + (innerW - tw) / 2;
         else if (align === "right") x = a.x + padX + (innerW - tw);

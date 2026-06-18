@@ -1766,6 +1766,11 @@ function TextEditPropsBar({
     dispatch({ type: "UPDATE_ANNO", id: anno.id, patch: p as never });
   const fontKey: string = anno.fontKey ?? (anno.family === "serif" ? "tinos" : anno.family === "mono" ? "cousine" : "arimo");
   const fontMeta = FONT_META[fontKey as FontKey] ?? FONT_META.arimo;
+  const fontOverride = typeof anno.fontFamilyOverride === "string" ? anno.fontFamilyOverride : "";
+  const detectedFamilyLabel = fontOverride
+    ? fontOverride.split(",")[0].replace(/['"]/g, "").trim() || "Detected font"
+    : "";
+  const fontValue = fontOverride ? "__detected" : fontKey;
   const setFontKey = (key: FontKey) => {
     const meta = FONT_META[key] ?? FONT_META.arimo;
     patch({ fontKey: key, family: meta.kind, fontApproximate: false, fontFamilyOverride: undefined });
@@ -1774,11 +1779,15 @@ function TextEditPropsBar({
     <>
       <select
         aria-label="Font"
-        value={fontKey}
-        onChange={(e) => setFontKey(e.target.value as FontKey)}
+        value={fontValue}
+        onChange={(e) => {
+          if (e.target.value === "__detected") return;
+          setFontKey(e.target.value as FontKey);
+        }}
         className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
         title={`Metric-compatible: matches ${fontMeta.matches}`}
       >
+        {fontOverride && <option value="__detected">{detectedFamilyLabel}</option>}
         {Object.values(FONT_META).map((m) => (
           <option key={m.key} value={m.key}>{m.label} — {m.matches}</option>
         ))}

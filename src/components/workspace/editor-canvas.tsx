@@ -36,8 +36,65 @@ interface TextItem {
   cssFamily?: string;
   fontKey?: FontKey;
   fontApprox?: boolean;
+  fontWeight?: number | string;
+  lineHeight?: number;
+  letterSpacing?: number;
   color: RGB;
   bg: RGB;
+}
+
+function cssFontFamilyName(stack: string | undefined): string {
+  return (stack ?? "")
+    .split(",")[0]
+    ?.replace(/['"]/g, "")
+    .trim() ?? "";
+}
+
+function numericFontWeight(weight: number | string | undefined, bold: boolean): number {
+  if (typeof weight === "number") return weight;
+  if (typeof weight === "string") {
+    const n = Number.parseInt(weight, 10);
+    if (Number.isFinite(n)) return n;
+    if (/bold/i.test(weight)) return 700;
+  }
+  return bold ? 700 : 400;
+}
+
+function resolveTextFontFamily(a: Anno & { kind: "text" | "text-edit" }): string {
+  const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
+  const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
+  return famOverride
+    ? famOverride
+    : editFontKey && FONT_META[editFontKey]
+    ? FONT_META[editFontKey].cssFamily
+    : (a.family === "serif" ? `'Times New Roman', Times, serif`
+      : a.family === "mono" ? `'Courier New', Courier, monospace`
+      : `Helvetica, Arial, sans-serif`);
+}
+
+function estimateLetterSpacing(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  widthPdf: number,
+  fontSizePx: number,
+  fontFamily: string,
+  fontWeight: number | string,
+  fontStyle: string,
+  scaleFactor: number,
+): number {
+  const slots = Math.max(0, text.length - 1);
+  if (!text.trim() || slots === 0 || widthPdf <= 0) return 0;
+  try {
+    ctx.save();
+    ctx.font = `${fontStyle} ${fontWeight} ${fontSizePx}px ${fontFamily || "sans-serif"}`;
+    const measuredPdf = ctx.measureText(text).width / scaleFactor;
+    ctx.restore();
+    const spacing = (widthPdf - measuredPdf) / slots;
+    return Number.isFinite(spacing) && Math.abs(spacing) <= fontSizePx / scaleFactor * 0.4 ? spacing : 0;
+  } catch {
+    try { ctx.restore(); } catch { /* ignore */ }
+    return 0;
+  }
 }
 
 function sampleTextColor(
@@ -243,12 +300,24 @@ export function EditorCanvas({
           const bold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold|800|900/.test(ffl);
           const italic = /italic|oblique/.test(ffl);
           const det = detectFontKey(it.fontName ?? ff, family, ff);
+          const matchedFont = matchPdfFont(it.fontName || ff || "");
+          const fontWeight = numericFontWeight(matchedFont.fontWeight, bold);
           const fontKey = det.key;
           const fontApprox = det.approximate;
           const x = m[4], y = m[5] - fh;
           const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
-          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, color, bg }];
+          const letterSpacing = estimateLetterSpacing(
+            ctx,
+            it.str,
+            it.width,
+            fh * scale * dpr,
+            matchedFont.fontFamily,
+            fontWeight,
+            matchedFont.fontStyle ?? (italic ? "italic" : "normal"),
+            scale * dpr,
+          );
+          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, fontWeight, lineHeight: 1, letterSpacing, color, bg }];
         });
 
         // Merge sidecar OCR tokens for this SOURCE page (top-left PDF
@@ -603,19 +672,11 @@ export function EditorCanvas({
         // the text box itself stays transparent so it can grow without
         // changing the cover area.
         const bg = "transparent";
-        const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
-        const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
-        const fam = famOverride
-          ? famOverride
-          : editFontKey && FONT_META[editFontKey]
-          ? FONT_META[editFontKey].cssFamily
-          : (a.family === "serif" ? `'Times New Roman', Times, serif`
-            : a.family === "mono" ? `'Courier New', Courier, monospace`
-            : `Helvetica, Arial, sans-serif`);
+        const fam = resolveTextFontFamily(a);
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
         const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) * scale : 0;
         const align = a.align ?? "left";
-        const isBold = !!a.bold;
+        const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
         const isUnderline = !!a.underline;
         // While editing a freshly-added text box, give it visible chrome so the
@@ -634,11 +695,12 @@ export function EditorCanvas({
           color: isUnchangedEdit ? "transparent" : rgbCss(a.color, a.opacity),
           fontSize: a.fontSize * scale,
           fontFamily: fam,
-          fontWeight: isBold ? 700 : 400,
+          fontWeight,
           fontStyle: isItalic ? "italic" : "normal",
           textDecoration: isUnderline ? "underline" : "none",
           textAlign: align,
-          lineHeight: 1.15,
+          lineHeight: a.lineHeight ?? 1.15,
+          letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
           overflow: "hidden",
@@ -687,6 +749,8 @@ export function EditorCanvas({
             }}
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
+            data-text-edit-id={a.id}
+            data-raw-pdf-font={a.kind === "text-edit" ? a.source?.fontName ?? "" : ""}
             style={textStyle}
           />
         ) : (
@@ -802,14 +866,27 @@ export function EditorCanvas({
     // CSS family pdf.js resolved from the embedded font dictionary. The
     // matcher already strips `AAAAAA+` subset prefixes internally.
     const tryNames = [it.fontName, it.cssFamily].filter(Boolean) as string[];
-    let matched: { fontFamily: string } | null = null;
+    let matched: ReturnType<typeof matchPdfFont> | null = null;
     for (const n of tryNames) {
       const r = matchPdfFont(n);
-      if (r.fontFamily !== "sans-serif") { matched = r; break; }
+      matched = r;
+      if (r.matched) break;
     }
     const fontFamilyOverride = matched?.fontFamily;
+    const fontWeight = numericFontWeight(matched?.fontWeight, it.bold);
     if (import.meta.env.DEV) {
-      console.debug("[font-match]", { fontName: it.fontName, cssFamily: it.cssFamily, resolved: fontFamilyOverride ?? "(no match)" });
+      console.debug("[text-edit-font] extraction", {
+        rawPdfFontName: it.fontName,
+        pdfCssFamily: it.cssFamily,
+        matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
+        fontFamilyOverride: fontFamilyOverride ?? "",
+        fontKey,
+        fontApproximate: !!it.fontApprox,
+        fontSize: it.h,
+        fontWeight,
+        lineHeight: it.lineHeight ?? 1,
+        letterSpacing: it.letterSpacing ?? 0,
+      });
     }
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
@@ -824,9 +901,12 @@ export function EditorCanvas({
       fontFamilyOverride,
       fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
+      fontWeight,
+      lineHeight: it.lineHeight ?? 1,
+      letterSpacing: it.letterSpacing ?? 0,
       textOffsetY: padTop,
       cover,
-      source: { originalString: it.str, transform: it.transform, fontName: it.fontName },
+      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
     } });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
@@ -852,6 +932,30 @@ export function EditorCanvas({
       (a.kind === "text" || a.kind === "text-edit"),
   ) as (typeof annos[number] & { kind: "text" | "text-edit" }) | undefined;
 
+  useEffect(() => {
+    if (!activeText || activeText.kind !== "text-edit") return;
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-text-edit-id="${activeText.id}"]`);
+      if (!el) return;
+      const computed = window.getComputedStyle(el);
+      const override = activeText.fontFamilyOverride ?? "";
+      console.debug("[text-edit-font] dom", {
+        rawPdfFontName: activeText.source?.fontName ?? "",
+        matchedFontName: override
+          ? cssFontFamilyName(override)
+          : activeText.fontKey && FONT_META[activeText.fontKey as FontKey]
+          ? FONT_META[activeText.fontKey as FontKey].label
+          : "",
+        fontFamilyOverride: override,
+        computedDomFontFamily: computed.fontFamily,
+        computedFontWeight: computed.fontWeight,
+        computedLineHeight: computed.lineHeight,
+        computedLetterSpacing: computed.letterSpacing,
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeText]);
+
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
   useEffect(() => {
@@ -859,23 +963,16 @@ export function EditorCanvas({
     const el = measureRef.current;
     if (!el) return;
     const a = activeText;
-    const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
-    const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
-    const fam = famOverride
-      ? famOverride
-      : editFontKey && FONT_META[editFontKey]
-      ? FONT_META[editFontKey].cssFamily
-      : (a.family === "serif" ? `'Times New Roman', Times, serif`
-        : a.family === "mono" ? `'Courier New', Courier, monospace`
-        : `Helvetica, Arial, sans-serif`);
+    const fam = resolveTextFontFamily(a);
     const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
     const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) : 0;
     const padBottom = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.35) : 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
-    el.style.fontWeight = a.bold ? "700" : "400";
+    el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
-    el.style.lineHeight = "1.15";
+    el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
+    el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
     // Measure widest line + total height; convert px → PDF points.
@@ -903,7 +1000,7 @@ export function EditorCanvas({
   void onRequestOcr;
 
   return (
-    <div className="relative inline-block" style={{ background: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
+    <div className="relative inline-block" style={{ background: "transparent", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
 
 
@@ -1150,6 +1247,8 @@ function TextMiniToolbar({
     (a.family === "serif" ? "tinos" : a.family === "mono" ? "cousine" : "arimo");
 
   const manualFamily = (a as { fontFamilyOverride?: string }).fontFamilyOverride ?? "";
+  const currentFontValue = manualFamily ? "__detected" : currentFontKey;
+  const detectedFamilyLabel = cssFontFamilyName(manualFamily) || (a.kind === "text-edit" ? a.source?.fontName : "") || "Detected font";
   // Lazy-load the chosen Google Font when the user picks one from the
   // manual override dropdown (system fonts are skipped inside the hook).
   useGoogleFontLoader(manualFamily.split(",")[0]?.replace(/['"]/g, "").trim());
@@ -1210,8 +1309,9 @@ function TextMiniToolbar({
       )}
       <div style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
       <select
-        value={currentFontKey}
+        value={currentFontValue}
         onChange={(e) => {
+          if (e.target.value === "__detected") return;
           const key = e.target.value as FontKey;
           const kind = FONT_META[key]?.kind ?? "sans";
           // Clear any auto-detected CSS override so the bundled family wins,
@@ -1228,6 +1328,11 @@ function TextMiniToolbar({
           boxShadow: showHint ? "0 0 0 2px rgba(245,158,11,0.18)" : "none",
         }}
       >
+        {manualFamily && (
+          <option value="__detected" style={{ background: "#1a1a1c", color: "#fff" }}>
+            {detectedFamilyLabel}
+          </option>
+        )}
         {TOOLBAR_FONTS.map((f) => (
           <option key={f.key} value={f.key} style={{ background: "#1a1a1c", color: "#fff" }}>
             {f.label}
