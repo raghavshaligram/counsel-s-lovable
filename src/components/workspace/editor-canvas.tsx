@@ -1144,6 +1144,7 @@ export function EditorCanvas({
       console.log("[text-edit-width-explain]", {
         id: activeText.id,
         originalWidthPt: activeText.source?.bounds?.w ?? activeText.w,
+        extractedWidthPt: activeText.source?.bounds?.w ?? activeText.w,
         coverWidthPt: activeText.cover?.w ?? null,
         textareaWidthPt: rect.width / scale,
         annoWidthPt: activeText.w,
