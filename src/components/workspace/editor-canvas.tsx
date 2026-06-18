@@ -923,23 +923,16 @@ export function EditorCanvas({
     const el = measureRef.current;
     if (!el) return;
     const a = activeText;
-    const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
-    const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
-    const fam = famOverride
-      ? famOverride
-      : editFontKey && FONT_META[editFontKey]
-      ? FONT_META[editFontKey].cssFamily
-      : (a.family === "serif" ? `'Times New Roman', Times, serif`
-        : a.family === "mono" ? `'Courier New', Courier, monospace`
-        : `Helvetica, Arial, sans-serif`);
+    const fam = resolveTextFontFamily(a);
     const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
     const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) : 0;
     const padBottom = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.35) : 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
-    el.style.fontWeight = a.bold ? "700" : "400";
+    el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
-    el.style.lineHeight = "1.15";
+    el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
+    el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
     // Measure widest line + total height; convert px → PDF points.
