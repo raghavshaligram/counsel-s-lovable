@@ -1061,13 +1061,18 @@ export function EditorCanvas({
       // points, captured at click time) to the live textarea geometry
       // (screen pixels, converted back to PDF points via `scale`).
       const rect = el.getBoundingClientRect();
-      const wrap = el.closest<HTMLElement>("[data-vault-element='page-wrap']")
+      const wrap = overlayRef.current
+        ?? el.closest<HTMLElement>("[data-vault-element='page-wrap']")
         ?? el.offsetParent as HTMLElement | null;
       const wrapRect = wrap?.getBoundingClientRect();
       const cover = activeText.cover;
       console.log("[text-edit-layout]", {
         id: activeText.id,
         // Original extracted glyph bbox (PDF points)
+        extractedLeft: activeText.source?.bounds?.x ?? activeText.x,
+        extractedTop: activeText.source?.bounds?.y ?? activeText.y,
+        extractedWidth: activeText.source?.bounds?.w ?? activeText.w,
+        extractedHeight: activeText.source?.bounds?.h ?? activeText.h,
         originalLeft: activeText.source?.bounds?.x ?? activeText.x,
         originalTop: activeText.source?.bounds?.y ?? activeText.y,
         originalWidth: activeText.source?.bounds?.w ?? activeText.w,
