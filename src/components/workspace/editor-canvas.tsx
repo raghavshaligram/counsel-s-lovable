@@ -60,6 +60,18 @@ function numericFontWeight(weight: number | string | undefined, bold: boolean): 
   return bold ? 700 : 400;
 }
 
+function resolveTextFontFamily(a: Anno & { kind: "text" | "text-edit" }): string {
+  const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
+  const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
+  return famOverride
+    ? famOverride
+    : editFontKey && FONT_META[editFontKey]
+    ? FONT_META[editFontKey].cssFamily
+    : (a.family === "serif" ? `'Times New Roman', Times, serif`
+      : a.family === "mono" ? `'Courier New', Courier, monospace`
+      : `Helvetica, Arial, sans-serif`);
+}
+
 function estimateLetterSpacing(
   ctx: CanvasRenderingContext2D,
   text: string,
