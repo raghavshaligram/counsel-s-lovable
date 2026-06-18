@@ -382,9 +382,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       showGaps,
       theme,
       zoom,
+      zoomMode,
       licenseKey: null,
     });
-  }, [hydrated, activeToolId, inspectorOpen, pageLayout, continuous, showGaps, theme, zoom]);
+  }, [hydrated, activeToolId, inspectorOpen, pageLayout, continuous, showGaps, theme, zoom, zoomMode]);
 
   // Persist the open-tabs metadata so we can offer Resume on refresh.
   useEffect(() => {
