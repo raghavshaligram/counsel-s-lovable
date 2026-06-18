@@ -1138,8 +1138,8 @@ export function EditorCanvas({
     const a = activeText;
     const fam = resolveTextFontFamily(a);
     const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-    const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) : 0;
-    const padBottom = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.35) : 0;
+    const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+    const padBottom = a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
@@ -1153,8 +1153,10 @@ export function EditorCanvas({
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    const newW = Math.max(minW, measuredW);
-    const newH = Math.max(minH, measuredH);
+    const lockedW = a.kind === "text-edit" && a.cover ? a.cover.w : null;
+    const lockedH = a.kind === "text-edit" && a.cover ? a.cover.h : null;
+    const newW = lockedW ?? Math.max(minW, measuredW);
+    const newH = lockedH ?? Math.max(minH, measuredH);
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
       dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
     }
