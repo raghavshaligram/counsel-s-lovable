@@ -911,9 +911,6 @@ export function EditorCanvas({
       h: it.h + coverPadTop + coverPadBottom,
     };
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
-    const padX = Math.max(2, it.h * 0.15);
-    const padTop = Math.max(2, it.h * 0.35);
-    const padBottom = Math.max(2, it.h * 0.45);
     const id = uid();
     // Preserve the detected run font from the underlying text layer so
     // editing a scanned word doesn't suddenly swap families on the user.
@@ -950,8 +947,8 @@ export function EditorCanvas({
     });
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
-      x: it.x - padX, y: it.y - padTop,
-      w: it.w + padX * 2, h: it.h + padTop + padBottom,
+      x: cover.x, y: cover.y,
+      w: cover.w, h: cover.h,
       color: it.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
@@ -964,7 +961,9 @@ export function EditorCanvas({
       fontWeight,
       lineHeight: it.lineHeight ?? 1,
       letterSpacing: it.letterSpacing ?? 0,
-      textOffsetY: padTop,
+      textOffsetX: it.x - cover.x,
+      textOffsetY: it.y - cover.y,
+      textPadBottom: cover.y + cover.h - (it.y + it.h),
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
     } });
@@ -972,8 +971,8 @@ export function EditorCanvas({
       id,
       originalGlyphPdf: originalGlyph,
       coverPdf: cover,
-      annoPdf: { x: it.x - padX, y: it.y - padTop, w: it.w + padX * 2, h: it.h + padTop + padBottom },
-      pads: { coverPadX, coverPadTop, coverPadBottom, padX, padTop, padBottom },
+      annoPdf: cover,
+      pads: { coverPadX, coverPadTop, coverPadBottom },
       sampledBg: it.bg,
       intendedCoverBackground: `rgba(${Math.round(it.bg.r*255)},${Math.round(it.bg.g*255)},${Math.round(it.bg.b*255)},1)`,
     });
