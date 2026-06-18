@@ -633,6 +633,7 @@ export function EditorCanvas({
       position: "absolute", left: minX, top: minY, width: w, height: h,
       pointerEvents: interactive ? "auto" : "none",
       cursor: isEditingThis ? "text" : isLocked ? "text" : interactive ? "move" : "default",
+      zIndex: a.kind === "text-edit" ? 2 : undefined,
     };
 
 
@@ -731,7 +732,8 @@ export function EditorCanvas({
         const bg = "transparent";
         const fam = resolveTextFontFamily(a);
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
-        const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) * scale : 0;
+        const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) * scale : 0;
+        const padBottom = a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom * scale : 0;
         const align = a.align ?? "left";
         const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
@@ -740,16 +742,12 @@ export function EditorCanvas({
         // user can see where they're typing. text-edit (replacing existing PDF
         // text) keeps the transparent skin so it blends with surrounding glyphs.
         const showEditChrome = isEditing && a.kind === "text";
-        // While the user hasn't actually edited a text-edit annotation, the
-        // textarea must render no glyphs at all — the original PDF text shows
-        // through the transparent overlay so the page looks identical to
-        // before clicking. Only the blinking caret remains visible.
-        const isUnchangedEdit =
-          a.kind === "text-edit" && a.text === (a.source?.originalString ?? "");
+        const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
-          color: isUnchangedEdit ? "transparent" : rgbCss(a.color, a.opacity),
+          color: textColor,
+          WebkitTextFillColor: textColor,
           fontSize: a.fontSize * scale,
           fontFamily: fam,
           fontWeight,
@@ -765,6 +763,7 @@ export function EditorCanvas({
           paddingTop: padTop,
           paddingLeft: padX,
           paddingRight: padX,
+          paddingBottom: padBottom,
           boxSizing: "border-box",
           margin: 0,
           border: showEditChrome ? "1.5px solid var(--vault)" : "none",
@@ -911,9 +910,6 @@ export function EditorCanvas({
       h: it.h + coverPadTop + coverPadBottom,
     };
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
-    const padX = Math.max(2, it.h * 0.15);
-    const padTop = Math.max(2, it.h * 0.35);
-    const padBottom = Math.max(2, it.h * 0.45);
     const id = uid();
     // Preserve the detected run font from the underlying text layer so
     // editing a scanned word doesn't suddenly swap families on the user.
@@ -950,8 +946,8 @@ export function EditorCanvas({
     });
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
-      x: it.x - padX, y: it.y - padTop,
-      w: it.w + padX * 2, h: it.h + padTop + padBottom,
+      x: cover.x, y: cover.y,
+      w: cover.w, h: cover.h,
       color: it.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
@@ -964,7 +960,9 @@ export function EditorCanvas({
       fontWeight,
       lineHeight: it.lineHeight ?? 1,
       letterSpacing: it.letterSpacing ?? 0,
-      textOffsetY: padTop,
+      textOffsetX: it.x - cover.x,
+      textOffsetY: it.y - cover.y,
+      textPadBottom: cover.y + cover.h - (it.y + it.h),
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
     } });
@@ -972,8 +970,8 @@ export function EditorCanvas({
       id,
       originalGlyphPdf: originalGlyph,
       coverPdf: cover,
-      annoPdf: { x: it.x - padX, y: it.y - padTop, w: it.w + padX * 2, h: it.h + padTop + padBottom },
-      pads: { coverPadX, coverPadTop, coverPadBottom, padX, padTop, padBottom },
+      annoPdf: cover,
+      pads: { coverPadX, coverPadTop, coverPadBottom },
       sampledBg: it.bg,
       intendedCoverBackground: `rgba(${Math.round(it.bg.r*255)},${Math.round(it.bg.g*255)},${Math.round(it.bg.b*255)},1)`,
     });
@@ -1065,9 +1063,6 @@ export function EditorCanvas({
       const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
       // Textarea visibility audit — computed paint properties that can hide
       // glyphs (color match, opacity, -webkit-text-fill-color, visibility).
-      const isUnchangedEdit =
-        activeText.kind === "text-edit" &&
-        activeText.text === (activeText.source?.originalString ?? "");
       console.log("[text-edit-style]", {
         id: activeText.id,
         color: computed.color,
@@ -1082,11 +1077,7 @@ export function EditorCanvas({
         caretColor:
           (computed as any).caretColor ?? computed.getPropertyValue("caret-color"),
         textareaInlineColor: (el as HTMLElement).style.color,
-        // The text-edit overlay paints transparent glyphs until the user
-        // actually changes the string, so the original PDF text shows through
-        // unchanged. When isUnchangedEdit=true, color:"transparent" is by
-        // design — type a character and color should switch to the real value.
-        isUnchangedEdit,
+        expectedTextColor: rgbCss(activeText.color, activeText.opacity),
         originalString: activeText.source?.originalString ?? "",
         currentText: activeText.text,
       });
@@ -1094,9 +1085,8 @@ export function EditorCanvas({
         id: activeText.id,
         coverZIndex: coverComputed?.zIndex ?? "(no cover)",
         textareaZIndex: computed.zIndex,
-        // Both are z-index:auto and live in the same overlay parent.
-        // Paint order = DOM order. The cover map runs BEFORE annos.map, so
-        // every annotation (textarea included) paints ON TOP of its cover.
+        // The cover is fixed below the editable annotation wrapper so it can
+        // hide the PDF canvas glyphs without covering the live textarea text.
         coverDomIndex: coverEl
           ? Array.from(coverEl.parentElement?.children ?? []).indexOf(coverEl)
           : -1,
@@ -1108,10 +1098,6 @@ export function EditorCanvas({
             : -1;
         })(),
       });
-      // Width-mismatch explainer. extractedWidth = COVER bbox (cover.w), which
-      // is intentionally expanded by coverPadX*2 beyond the glyph quads so
-      // stale anti-aliased pixels are fully hidden. textareaWidth = ANNO bbox
-      // (activeText.w) with the smaller padX*2. Δ ≈ (coverPadX - padX) * 2.
       console.log("[text-edit-width-explain]", {
         id: activeText.id,
         extractedWidthPt: activeText.cover?.w ?? null,
@@ -1121,7 +1107,7 @@ export function EditorCanvas({
         coverPadXApproxPt:
           ((activeText.cover?.w ?? 0) - activeText.w) / 2,
         note:
-          "extractedWidth is the cover rectangle (larger by design); the textarea is anchored to the anno bbox. The ~10% gap is the cover's safety padding, not a measurement bug.",
+          "The textarea wrapper now uses the same PDF rectangle as the cover; any small remaining delta is DOM pixel rounding at the current zoom.",
       });
       console.log("[text-edit-bounds]", {
         id: activeText.id,
@@ -1151,8 +1137,8 @@ export function EditorCanvas({
     const a = activeText;
     const fam = resolveTextFontFamily(a);
     const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-    const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) : 0;
-    const padBottom = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.35) : 0;
+    const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+    const padBottom = a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
@@ -1166,8 +1152,10 @@ export function EditorCanvas({
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    const newW = Math.max(minW, measuredW);
-    const newH = Math.max(minH, measuredH);
+    const lockedW = a.kind === "text-edit" && a.cover ? a.cover.w : null;
+    const lockedH = a.kind === "text-edit" && a.cover ? a.cover.h : null;
+    const newW = lockedW ?? Math.max(minW, measuredW);
+    const newH = lockedH ?? Math.max(minH, measuredH);
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
       dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
     }
@@ -1241,6 +1229,7 @@ export function EditorCanvas({
                 width: br.x - tl.x, height: br.y - tl.y,
                 background: bgCss,
                 pointerEvents: "none",
+                zIndex: 1,
               }}
             />
           );
