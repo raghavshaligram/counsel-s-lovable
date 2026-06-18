@@ -1063,9 +1063,6 @@ export function EditorCanvas({
       const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
       // Textarea visibility audit — computed paint properties that can hide
       // glyphs (color match, opacity, -webkit-text-fill-color, visibility).
-      const isUnchangedEdit =
-        activeText.kind === "text-edit" &&
-        activeText.text === (activeText.source?.originalString ?? "");
       console.log("[text-edit-style]", {
         id: activeText.id,
         color: computed.color,
@@ -1080,11 +1077,7 @@ export function EditorCanvas({
         caretColor:
           (computed as any).caretColor ?? computed.getPropertyValue("caret-color"),
         textareaInlineColor: (el as HTMLElement).style.color,
-        // The text-edit overlay paints transparent glyphs until the user
-        // actually changes the string, so the original PDF text shows through
-        // unchanged. When isUnchangedEdit=true, color:"transparent" is by
-        // design — type a character and color should switch to the real value.
-        isUnchangedEdit,
+        expectedTextColor: rgbCss(activeText.color, activeText.opacity),
         originalString: activeText.source?.originalString ?? "",
         currentText: activeText.text,
       });
@@ -1106,10 +1099,6 @@ export function EditorCanvas({
             : -1;
         })(),
       });
-      // Width-mismatch explainer. extractedWidth = COVER bbox (cover.w), which
-      // is intentionally expanded by coverPadX*2 beyond the glyph quads so
-      // stale anti-aliased pixels are fully hidden. textareaWidth = ANNO bbox
-      // (activeText.w) with the smaller padX*2. Δ ≈ (coverPadX - padX) * 2.
       console.log("[text-edit-width-explain]", {
         id: activeText.id,
         extractedWidthPt: activeText.cover?.w ?? null,
@@ -1119,7 +1108,7 @@ export function EditorCanvas({
         coverPadXApproxPt:
           ((activeText.cover?.w ?? 0) - activeText.w) / 2,
         note:
-          "extractedWidth is the cover rectangle (larger by design); the textarea is anchored to the anno bbox. The ~10% gap is the cover's safety padding, not a measurement bug.",
+          "The textarea wrapper now uses the same PDF rectangle as the cover; any small remaining delta is DOM pixel rounding at the current zoom.",
       });
       console.log("[text-edit-bounds]", {
         id: activeText.id,
