@@ -292,6 +292,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const activeToolId = active.activeToolId;
   const inspectorOpen = active.inspectorOpen;
   const zoom = active.zoom;
+  const zoomMode = active.zoomMode;
   const pageLayout = active.pageLayout;
   const continuous = active.continuous;
   const showGaps = active.showGaps;
@@ -353,6 +354,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           showGaps: typeof ui.showGaps === "boolean" ? ui.showGaps : true,
           theme: ui.theme ?? "dark",
           zoom: typeof ui.zoom === "number" ? ui.zoom : 100,
+          zoomMode: ui.zoomMode ?? "smart",
         });
       }
       setRecents(recentsList);
@@ -380,9 +382,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       showGaps,
       theme,
       zoom,
+      zoomMode,
       licenseKey: null,
     });
-  }, [hydrated, activeToolId, inspectorOpen, pageLayout, continuous, showGaps, theme, zoom]);
+  }, [hydrated, activeToolId, inspectorOpen, pageLayout, continuous, showGaps, theme, zoom, zoomMode]);
 
   // Persist the open-tabs metadata so we can offer Resume on refresh.
   useEffect(() => {
@@ -689,9 +692,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         e.preventDefault();
         openFile();
       } else if (!meta && (e.key === "+" || e.key === "=")) {
-        patchActive({ zoom: Math.min(400, zoom + 10) });
+        patchActive({ zoom: Math.min(400, zoom + 10), zoomMode: "custom" });
       } else if (!meta && e.key === "-") {
-        patchActive({ zoom: Math.max(25, zoom - 10) });
+        patchActive({ zoom: Math.max(25, zoom - 10), zoomMode: "custom" });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1278,6 +1281,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     pageLayout={pageLayout}
                     onAutoFit={autoFit}
                     fitNonce={fitNonce}
+                    zoomMode={zoomMode}
                   />
 
 
@@ -1377,30 +1381,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         </div>
         <div className="flex items-center gap-1">
           <ZoomButton
-            onClick={() => patchActive({ zoom: Math.max(25, zoom - 10) })}
+            onClick={() => patchActive({ zoom: Math.max(25, zoom - 10), zoomMode: "custom" })}
             label="Zoom out"
           >
             <Minus className="h-3.5 w-3.5" />
           </ZoomButton>
           <button
             type="button"
-            onClick={() => patchActive({ zoom: 100 })}
+            onClick={() => patchActive({ zoom: 100, zoomMode: "actual" })}
             title="Reset to 100%"
             className="font-mono tabular-nums px-2 text-text-2 hover:text-foreground min-w-[3.5rem] text-center"
           >
             {zoom}%
           </button>
           <ZoomButton
-            onClick={() => patchActive({ zoom: Math.min(400, zoom + 10) })}
+            onClick={() => patchActive({ zoom: Math.min(400, zoom + 10), zoomMode: "custom" })}
             label="Zoom in"
           >
             <Plus className="h-3.5 w-3.5" />
           </ZoomButton>
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <ZoomButton onClick={() => setFitNonce((n) => n + 1)} label="Fit width">
-            <StretchHorizontal className="h-3.5 w-3.5" />
-          </ZoomButton>
-
+          <ZoomModeSelect
+            mode={zoomMode}
+            onChange={(m) => {
+              patchActive({ zoomMode: m });
+              setFitNonce((n) => n + 1);
+            }}
+          />
         </div>
         <div className="flex items-center gap-1.5 text-text-muted">
           <Lock className="h-3 w-3 text-vault" strokeWidth={2.5} />
@@ -2825,6 +2832,67 @@ function ZoomButton({
   return label ? <Tip label={label} placement="top">{btn}</Tip> : btn;
 }
 
+type ZoomModeOpt = "smart" | "fit-width" | "fit-page" | "actual" | "custom";
+
+function ZoomModeSelect({
+  mode,
+  onChange,
+}: {
+  mode: ZoomModeOpt;
+  onChange: (m: ZoomModeOpt) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const LABEL: Record<ZoomModeOpt, string> = {
+    smart: "Smart",
+    "fit-width": "Fit Width",
+    "fit-page": "Fit Page",
+    actual: "Actual Size",
+    custom: "Custom",
+  };
+  const options: ZoomModeOpt[] = ["smart", "fit-width", "fit-page", "actual"];
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+        title="Zoom mode"
+      >
+        <StretchHorizontal className="h-3.5 w-3.5" />
+        <span>{LABEL[mode]}</span>
+      </button>
+      {open ? (
+        <div className="absolute bottom-[110%] right-0 z-50 min-w-[150px] rounded-md border border-border bg-surface-1 p-1 shadow-lg">
+          {options.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => { onChange(o); setOpen(false); }}
+              className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[12px] hover:bg-surface-2 ${
+                mode === o ? "text-foreground" : "text-text-2"
+              }`}
+            >
+              <span>{LABEL[o]}</span>
+              {mode === o ? <span className="text-[10px] text-text-muted">●</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+
 function KeyChip({
   children,
   inline,
@@ -2896,7 +2964,7 @@ const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
   ocrPages, ocrPagesCopied, showOcrTags, pageLayout = "single",
-  onAutoFit, fitNonce,
+  onAutoFit, fitNonce, zoomMode = "smart",
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
@@ -2911,6 +2979,7 @@ function EditorPages({
   pageLayout?: "single" | "double";
   onAutoFit?: (zoom: number) => void;
   fitNonce?: number;
+  zoomMode?: "smart" | "fit-width" | "fit-page" | "actual" | "custom";
 }) {
 
 
@@ -2922,38 +2991,67 @@ function EditorPages({
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
 
   const srcBytes = state.doc?.srcBytes;
   const pages = state.doc?.pages;
 
-  // Observe the scroll-area width so we can auto-fit on resize.
+  // Observe the scroll-area size so we can auto-fit on resize.
   useEffect(() => {
     const root = containerRef.current?.parentElement;
     if (!root) return;
     setContainerWidth(root.clientWidth);
-    const ro = new ResizeObserver(() => setContainerWidth(root.clientWidth));
+    setContainerHeight(root.clientHeight);
+    const ro = new ResizeObserver(() => {
+      setContainerWidth(root.clientWidth);
+      setContainerHeight(root.clientHeight);
+    });
     ro.observe(root);
     return () => ro.disconnect();
   }, []);
 
-  // Auto-fit zoom: triggers on layout change, document open/switch (sizes/srcBytes),
-  // window resize (containerWidth), or explicit Fit-width request (fitNonce).
-  // Does NOT depend on `zoom`, so user's manual zoom is never overridden.
+  // Auto-fit zoom based on zoomMode. "custom" → never override the user.
+  // "smart" picks fit-width for standard docs (≤ Legal+slack), fit-page for
+  // posters / large-format pages so the whole page is visible at open.
   useEffect(() => {
     if (!onAutoFit) return;
+    if (zoomMode === "custom") return;
     if (sizes.length === 0 || containerWidth <= 0) return;
     const first = sizes[0];
     const second = sizes[1] ?? first;
-    const horizontalPadding = 48; // px-4 container + scrollbar slack
-    const avail = Math.max(100, containerWidth - horizontalPadding);
+    const horizontalPadding = 48; // px-4 + scrollbar slack
+    const verticalPadding = 48;
+    const availW = Math.max(100, containerWidth - horizontalPadding);
+    const availH = Math.max(100, containerHeight - verticalPadding);
     const rowGap = Math.max(8, Math.floor(gap / 2));
-    const naturalWidth = pageLayout === "double"
+    const naturalW = pageLayout === "double"
       ? (first.width + second.width) * 1.3 + rowGap
       : first.width * 1.3;
-    const next = Math.max(25, Math.min(400, Math.round((avail / naturalWidth) * 100)));
+    const naturalH = first.height * 1.3;
+
+    let next = 100;
+    if (zoomMode === "actual") {
+      next = 100;
+    } else if (zoomMode === "fit-width") {
+      next = Math.round((availW / naturalW) * 100);
+    } else if (zoomMode === "fit-page") {
+      next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
+    } else {
+      // smart: large-format → fit-page, otherwise fit-width.
+      // Letter=612x792, A4=595x842, Legal=612x1008, Tabloid=792x1224.
+      // Anything wider/taller (A3=842x1191, A2=1191x1684, posters, plans)
+      // is "large-format" → fit the whole page.
+      const isLargeFormat = first.width > 900 || first.height > 1300;
+      if (isLargeFormat) {
+        next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
+      } else {
+        next = Math.round((availW / naturalW) * 100);
+      }
+    }
+    next = Math.max(25, Math.min(400, next));
     onAutoFit(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageLayout, sizes, srcBytes, containerWidth, fitNonce]);
+  }, [pageLayout, sizes, srcBytes, containerWidth, containerHeight, fitNonce, zoomMode]);
 
 
   // Load doc once per srcBytes.

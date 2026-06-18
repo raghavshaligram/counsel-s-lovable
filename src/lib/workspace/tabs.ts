@@ -9,6 +9,7 @@
 import { initialState, type State as EditorState } from "@/lib/editor/state";
 
 export type ReadingTheme = "dark" | "sepia" | "soft" | "white";
+export type ZoomMode = "smart" | "fit-width" | "fit-page" | "actual" | "custom";
 
 export type TabState = {
   id: string;
@@ -18,6 +19,7 @@ export type TabState = {
   activeToolId: string | null;
   inspectorOpen: boolean;
   zoom: number;
+  zoomMode: ZoomMode;
   pageLayout: "single" | "double";
   continuous: boolean;
   showGaps: boolean;
@@ -50,6 +52,7 @@ export function makeBlankTab(overrides: Partial<TabState> = {}): TabState {
     activeToolId: null,
     inspectorOpen: false,
     zoom: 100,
+    zoomMode: "smart",
     pageLayout: "single",
     continuous: true,
     showGaps: true,
