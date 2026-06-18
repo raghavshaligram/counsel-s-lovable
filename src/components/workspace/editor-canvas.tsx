@@ -957,6 +957,15 @@ export function EditorCanvas({
       lineHeight: it.lineHeight ?? 1,
       letterSpacing: it.letterSpacing ?? 0,
     });
+    // Baseline compensation. pdf.js gives the glyph BASELINE at m[5];
+    // we store `it.y = m[5] - fontSize` (top of em-box). A browser
+    // textarea with `font-size: fontSize` renders its glyph with the
+    // ascender near the em-box top, so anchoring the textarea at
+    // `it.y` makes the rendered glyph paint ~(em − ascent) above the
+    // PDF canvas glyph — a visible "notch up" when entering edit mode.
+    // Empirically ascent ≈ 0.82·em for Helvetica/Times/Arial, so shift
+    // the textarea DOWN by 0.18·fontSize to align baselines.
+    const baselineNudge = it.h * 0.18;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       // Anchor the editable box to the ORIGINAL glyph bounds so the
@@ -964,7 +973,7 @@ export function EditorCanvas({
       // sees the source text. The padded `cover` rectangle below is a
       // separate masking layer that hides anti-aliased glyph edges and
       // descenders without affecting the visible edit chrome.
-      x: it.x, y: it.y,
+      x: it.x, y: it.y + baselineNudge,
       w: it.w, h: it.h,
       color: it.color, opacity: 1,
       text: it.str,
