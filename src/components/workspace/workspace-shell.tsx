@@ -2899,7 +2899,7 @@ const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
   ocrPages, ocrPagesCopied, showOcrTags, pageLayout = "single",
-  onAutoFit, fitNonce,
+  onAutoFit, fitNonce, zoomMode = "smart",
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
@@ -2914,6 +2914,7 @@ function EditorPages({
   pageLayout?: "single" | "double";
   onAutoFit?: (zoom: number) => void;
   fitNonce?: number;
+  zoomMode?: "smart" | "fit-width" | "fit-page" | "actual" | "custom";
 }) {
 
 
@@ -2925,38 +2926,67 @@ function EditorPages({
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
 
   const srcBytes = state.doc?.srcBytes;
   const pages = state.doc?.pages;
 
-  // Observe the scroll-area width so we can auto-fit on resize.
+  // Observe the scroll-area size so we can auto-fit on resize.
   useEffect(() => {
     const root = containerRef.current?.parentElement;
     if (!root) return;
     setContainerWidth(root.clientWidth);
-    const ro = new ResizeObserver(() => setContainerWidth(root.clientWidth));
+    setContainerHeight(root.clientHeight);
+    const ro = new ResizeObserver(() => {
+      setContainerWidth(root.clientWidth);
+      setContainerHeight(root.clientHeight);
+    });
     ro.observe(root);
     return () => ro.disconnect();
   }, []);
 
-  // Auto-fit zoom: triggers on layout change, document open/switch (sizes/srcBytes),
-  // window resize (containerWidth), or explicit Fit-width request (fitNonce).
-  // Does NOT depend on `zoom`, so user's manual zoom is never overridden.
+  // Auto-fit zoom based on zoomMode. "custom" → never override the user.
+  // "smart" picks fit-width for standard docs (≤ Legal+slack), fit-page for
+  // posters / large-format pages so the whole page is visible at open.
   useEffect(() => {
     if (!onAutoFit) return;
+    if (zoomMode === "custom") return;
     if (sizes.length === 0 || containerWidth <= 0) return;
     const first = sizes[0];
     const second = sizes[1] ?? first;
-    const horizontalPadding = 48; // px-4 container + scrollbar slack
-    const avail = Math.max(100, containerWidth - horizontalPadding);
+    const horizontalPadding = 48; // px-4 + scrollbar slack
+    const verticalPadding = 48;
+    const availW = Math.max(100, containerWidth - horizontalPadding);
+    const availH = Math.max(100, containerHeight - verticalPadding);
     const rowGap = Math.max(8, Math.floor(gap / 2));
-    const naturalWidth = pageLayout === "double"
+    const naturalW = pageLayout === "double"
       ? (first.width + second.width) * 1.3 + rowGap
       : first.width * 1.3;
-    const next = Math.max(25, Math.min(400, Math.round((avail / naturalWidth) * 100)));
+    const naturalH = first.height * 1.3;
+
+    let next = 100;
+    if (zoomMode === "actual") {
+      next = 100;
+    } else if (zoomMode === "fit-width") {
+      next = Math.round((availW / naturalW) * 100);
+    } else if (zoomMode === "fit-page") {
+      next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
+    } else {
+      // smart: large-format → fit-page, otherwise fit-width.
+      // Letter=612x792, A4=595x842, Legal=612x1008, Tabloid=792x1224.
+      // Anything wider/taller (A3=842x1191, A2=1191x1684, posters, plans)
+      // is "large-format" → fit the whole page.
+      const isLargeFormat = first.width > 900 || first.height > 1300;
+      if (isLargeFormat) {
+        next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
+      } else {
+        next = Math.round((availW / naturalW) * 100);
+      }
+    }
+    next = Math.max(25, Math.min(400, next));
     onAutoFit(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageLayout, sizes, srcBytes, containerWidth, fitNonce]);
+  }, [pageLayout, sizes, srcBytes, containerWidth, containerHeight, fitNonce, zoomMode]);
 
 
   // Load doc once per srcBytes.
