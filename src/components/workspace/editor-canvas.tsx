@@ -672,19 +672,11 @@ export function EditorCanvas({
         // the text box itself stays transparent so it can grow without
         // changing the cover area.
         const bg = "transparent";
-        const editFontKey = a.kind === "text-edit" ? (a.fontKey as FontKey | undefined) : undefined;
-        const famOverride = (a as { fontFamilyOverride?: string }).fontFamilyOverride;
-        const fam = famOverride
-          ? famOverride
-          : editFontKey && FONT_META[editFontKey]
-          ? FONT_META[editFontKey].cssFamily
-          : (a.family === "serif" ? `'Times New Roman', Times, serif`
-            : a.family === "mono" ? `'Courier New', Courier, monospace`
-            : `Helvetica, Arial, sans-serif`);
+        const fam = resolveTextFontFamily(a);
         const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
         const padX = a.kind === "text-edit" ? Math.max(2, a.fontSize * 0.15) * scale : 0;
         const align = a.align ?? "left";
-        const isBold = !!a.bold;
+        const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
         const isUnderline = !!a.underline;
         // While editing a freshly-added text box, give it visible chrome so the
@@ -703,11 +695,12 @@ export function EditorCanvas({
           color: isUnchangedEdit ? "transparent" : rgbCss(a.color, a.opacity),
           fontSize: a.fontSize * scale,
           fontFamily: fam,
-          fontWeight: isBold ? 700 : 400,
+          fontWeight,
           fontStyle: isItalic ? "italic" : "normal",
           textDecoration: isUnderline ? "underline" : "none",
           textAlign: align,
-          lineHeight: 1.15,
+          lineHeight: a.lineHeight ?? 1.15,
+          letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
           overflow: "hidden",
@@ -756,6 +749,8 @@ export function EditorCanvas({
             }}
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
+            data-text-edit-id={a.id}
+            data-raw-pdf-font={a.kind === "text-edit" ? a.source?.fontName ?? "" : ""}
             style={textStyle}
           />
         ) : (
