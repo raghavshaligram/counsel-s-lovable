@@ -947,6 +947,15 @@ export function EditorCanvas({
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
     } });
+    console.log("[text-edit-bounds-init]", {
+      id,
+      originalGlyphPdf: originalGlyph,
+      coverPdf: cover,
+      annoPdf: { x: it.x - padX, y: it.y - padTop, w: it.w + padX * 2, h: it.h + padTop + padBottom },
+      pads: { coverPadX, coverPadTop, coverPadBottom, padX, padTop, padBottom },
+      sampledBg: it.bg,
+      intendedCoverBackground: `rgba(${Math.round(it.bg.r*255)},${Math.round(it.bg.g*255)},${Math.round(it.bg.b*255)},1)`,
+    });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
     setEditingId(id);
