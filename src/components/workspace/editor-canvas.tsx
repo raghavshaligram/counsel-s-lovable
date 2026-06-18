@@ -910,20 +910,18 @@ export function EditorCanvas({
     }
     const fontFamilyOverride = matched?.fontFamily;
     const fontWeight = numericFontWeight(matched?.fontWeight, it.bold);
-    if (import.meta.env.DEV) {
-      console.debug("[text-edit-font] extraction", {
-        rawPdfFontName: it.fontName,
-        pdfCssFamily: it.cssFamily,
-        matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
-        fontFamilyOverride: fontFamilyOverride ?? "",
-        fontKey,
-        fontApproximate: !!it.fontApprox,
-        fontSize: it.h,
-        fontWeight,
-        lineHeight: it.lineHeight ?? 1,
-        letterSpacing: it.letterSpacing ?? 0,
-      });
-    }
+    console.log("[text-edit-font] extraction", {
+      rawPdfFontName: it.fontName,
+      pdfCssFamily: it.cssFamily,
+      matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
+      fontFamilyOverride: fontFamilyOverride ?? "",
+      fontKey,
+      fontApproximate: !!it.fontApprox,
+      fontSize: it.h,
+      fontWeight,
+      lineHeight: it.lineHeight ?? 1,
+      letterSpacing: it.letterSpacing ?? 0,
+    });
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       x: it.x - padX, y: it.y - padTop,
