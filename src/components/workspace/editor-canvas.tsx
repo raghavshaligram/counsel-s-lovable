@@ -1000,7 +1000,7 @@ export function EditorCanvas({
   void onRequestOcr;
 
   return (
-    <div className="relative inline-block" style={{ background: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
+    <div className="relative inline-block" style={{ background: "transparent", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
 
 
