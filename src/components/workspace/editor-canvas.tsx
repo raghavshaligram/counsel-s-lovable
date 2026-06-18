@@ -986,9 +986,41 @@ export function EditorCanvas({
         computedLineHeight: computed.lineHeight,
         computedLetterSpacing: computed.letterSpacing,
       });
+      // Layout audit: compare the original extracted text bbox (in PDF
+      // points, captured at click time) to the live textarea geometry
+      // (screen pixels, converted back to PDF points via `scale`).
+      const rect = el.getBoundingClientRect();
+      const wrap = el.closest<HTMLElement>("[data-vault-element='page-wrap']")
+        ?? el.offsetParent as HTMLElement | null;
+      const wrapRect = wrap?.getBoundingClientRect();
+      const cover = activeText.cover;
+      console.log("[text-edit-layout]", {
+        id: activeText.id,
+        // Original extracted bbox (PDF points)
+        extractedLeft: cover?.x ?? null,
+        extractedTop: cover?.y ?? null,
+        extractedWidth: cover?.w ?? null,
+        extractedHeight: cover?.h ?? null,
+        // Annotation box (PDF points) — what the textarea is anchored to
+        annoLeft: activeText.x,
+        annoTop: activeText.y,
+        annoWidth: activeText.w,
+        annoHeight: activeText.h,
+        // Live textarea (screen px and PDF-point equivalent)
+        textareaLeftPx: wrapRect ? rect.left - wrapRect.left : rect.left,
+        textareaTopPx: wrapRect ? rect.top - wrapRect.top : rect.top,
+        textareaWidthPx: rect.width,
+        textareaHeightPx: rect.height,
+        textareaLeftPt: (wrapRect ? rect.left - wrapRect.left : rect.left) / scale,
+        textareaTopPt: (wrapRect ? rect.top - wrapRect.top : rect.top) / scale,
+        textareaWidthPt: rect.width / scale,
+        textareaHeightPt: rect.height / scale,
+        scale,
+        text: activeText.text,
+      });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeText]);
+  }, [activeText, scale]);
 
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
