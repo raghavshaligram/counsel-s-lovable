@@ -997,7 +997,8 @@ export function EditorCanvas({
       fontWeight,
       lineHeight: it.lineHeight ?? 1,
       letterSpacing: it.letterSpacing ?? 0,
-      // No internal padding — the textarea now sits at the glyph origin.
+      // Keep the data model at the original glyph bounds; renderAnno expands
+      // the visible edit wrapper to the cover rect and adds matching padding.
       textOffsetX: 0,
       textOffsetY: 0,
       textPadBottom: 0,
