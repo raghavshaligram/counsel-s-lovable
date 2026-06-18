@@ -562,9 +562,12 @@ export function EditorCanvas({
 
   const renderAnno = (a: Anno) => {
     const selected = state.selectedAnnoId === a.id;
+    const displayRect = a.kind === "text-edit" && a.cover
+      ? a.cover
+      : { x: a.x, y: a.y, w: a.w, h: a.h };
     const pts = [
-      toScreen(a.x, a.y), toScreen(a.x + a.w, a.y),
-      toScreen(a.x, a.y + a.h), toScreen(a.x + a.w, a.y + a.h),
+      toScreen(displayRect.x, displayRect.y), toScreen(displayRect.x + displayRect.w, displayRect.y),
+      toScreen(displayRect.x, displayRect.y + displayRect.h), toScreen(displayRect.x + displayRect.w, displayRect.y + displayRect.h),
     ];
     const minX = Math.min(...pts.map((p) => p.x));
     const minY = Math.min(...pts.map((p) => p.y));
@@ -731,9 +734,15 @@ export function EditorCanvas({
         // changing the cover area.
         const bg = "transparent";
         const fam = resolveTextFontFamily(a);
-        const padTop = a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY * scale : 0;
-        const padX = a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) * scale : 0;
-        const padBottom = a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom * scale : 0;
+        const cover = a.kind === "text-edit" ? a.cover : undefined;
+        const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+        const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
+        const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+        const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
+        const padTop = padTopPt * scale;
+        const padLeft = padLeftPt * scale;
+        const padRight = padRightPt * scale;
+        const padBottom = padBottomPt * scale;
         const align = a.align ?? "left";
         const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
@@ -761,8 +770,8 @@ export function EditorCanvas({
           overflow: "hidden",
           padding: 0,
           paddingTop: padTop,
-          paddingLeft: padX,
-          paddingRight: padX,
+          paddingLeft: padLeft,
+          paddingRight: padRight,
           paddingBottom: padBottom,
           boxSizing: "border-box",
           margin: 0,
@@ -802,6 +811,7 @@ export function EditorCanvas({
                 extractedWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
                 coverWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
                 textareaWidthPt: taRect.width / scale,
+                textTargetWidthPt: a.kind === "text-edit" ? a.w : null,
                 willDelete: !finalText.trim() && a.kind === "text",
               });
               if (finalText !== a.text) {
