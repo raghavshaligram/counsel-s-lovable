@@ -1171,8 +1171,11 @@ export function EditorCanvas({
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    const lockedW = a.kind === "text-edit" && a.cover ? a.cover.w : null;
-    const lockedH = a.kind === "text-edit" && a.cover ? a.cover.h : null;
+    // Lock text-edit to the captured ORIGINAL glyph bounds (it.w/it.h),
+    // which the annotation was created with. The padded `cover` rect is a
+    // separate masking layer and must not drive the textarea size.
+    const lockedW = a.kind === "text-edit" ? a.w : null;
+    const lockedH = a.kind === "text-edit" ? a.h : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
     const newH = lockedH ?? Math.max(minH, measuredH);
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
