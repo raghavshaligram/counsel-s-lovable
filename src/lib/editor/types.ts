@@ -66,6 +66,7 @@ export interface TextSource {
   originalString: string;
   transform?: number[]; // a,b,c,d,e,f (pdf.js text item transform)
   fontName?: string;
+  cssFamily?: string;
 }
 
 export interface BaseAnno {
@@ -92,6 +93,9 @@ export interface TextAnno extends BaseAnno {
   kind: "text";
   text: string;
   fontSize: number;
+  fontWeight?: number | string;
+  lineHeight?: number;
+  letterSpacing?: number;
   family?: "sans" | "serif" | "mono";
   bold?: boolean;
   italic?: boolean;
@@ -174,6 +178,9 @@ export interface TextEditAnno extends BaseAnno {
   kind: "text-edit";
   text: string;
   fontSize: number;
+  fontWeight?: number | string;
+  lineHeight?: number;
+  letterSpacing?: number;
   // background fill colour painted over original glyphs
   bg: RGB;
   family?: FontFamily;
