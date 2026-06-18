@@ -354,6 +354,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           showGaps: typeof ui.showGaps === "boolean" ? ui.showGaps : true,
           theme: ui.theme ?? "dark",
           zoom: typeof ui.zoom === "number" ? ui.zoom : 100,
+          zoomMode: ui.zoomMode ?? "smart",
         });
       }
       setRecents(recentsList);
