@@ -959,8 +959,13 @@ export function EditorCanvas({
     });
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
-      x: cover.x, y: cover.y,
-      w: cover.w, h: cover.h,
+      // Anchor the editable box to the ORIGINAL glyph bounds so the
+      // textarea, caret, and selection ring sit exactly where the user
+      // sees the source text. The padded `cover` rectangle below is a
+      // separate masking layer that hides anti-aliased glyph edges and
+      // descenders without affecting the visible edit chrome.
+      x: it.x, y: it.y,
+      w: it.w, h: it.h,
       color: it.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
@@ -973,9 +978,10 @@ export function EditorCanvas({
       fontWeight,
       lineHeight: it.lineHeight ?? 1,
       letterSpacing: it.letterSpacing ?? 0,
-      textOffsetX: it.x - cover.x,
-      textOffsetY: it.y - cover.y,
-      textPadBottom: cover.y + cover.h - (it.y + it.h),
+      // No internal padding — the textarea now sits at the glyph origin.
+      textOffsetX: 0,
+      textOffsetY: 0,
+      textPadBottom: 0,
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily },
     } });
@@ -1165,8 +1171,11 @@ export function EditorCanvas({
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    const lockedW = a.kind === "text-edit" && a.cover ? a.cover.w : null;
-    const lockedH = a.kind === "text-edit" && a.cover ? a.cover.h : null;
+    // Lock text-edit to the captured ORIGINAL glyph bounds (it.w/it.h),
+    // which the annotation was created with. The padded `cover` rect is a
+    // separate masking layer and must not drive the textarea size.
+    const lockedW = a.kind === "text-edit" ? a.w : null;
+    const lockedH = a.kind === "text-edit" ? a.h : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
     const newH = lockedH ?? Math.max(minH, measuredH);
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
