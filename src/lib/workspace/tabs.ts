@@ -52,6 +52,7 @@ export function makeBlankTab(overrides: Partial<TabState> = {}): TabState {
     activeToolId: null,
     inspectorOpen: false,
     zoom: 100,
+    zoomMode: "smart",
     pageLayout: "single",
     continuous: true,
     showGaps: true,
