@@ -8,6 +8,12 @@ import { Eye, EyeOff, Lock, ShieldCheck, KeyRound } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { FileBar, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import {
+  protectPdf,
+  scorePasswordStrength,
+  DEFAULT_PROTECT_PERMS,
+  type ProtectPermissions,
+} from "@/lib/pdf/protect";
 
 export const Route = createFileRoute("/protect")({
   head: () => ({
@@ -31,25 +37,9 @@ export const Route = createFileRoute("/protect")({
   component: ProtectPage,
 });
 
-type Permissions = {
-  printing: boolean;
-  modifying: boolean;
-  copying: boolean;
-  annotating: boolean;
-  fillingForms: boolean;
-  contentAccessibility: boolean;
-  documentAssembly: boolean;
-};
+type Permissions = ProtectPermissions;
 
-const DEFAULT_PERMS: Permissions = {
-  printing: true,
-  modifying: false,
-  copying: false,
-  annotating: true,
-  fillingForms: true,
-  contentAccessibility: true,
-  documentAssembly: false,
-};
+const DEFAULT_PERMS: Permissions = DEFAULT_PROTECT_PERMS;
 
 const PERM_ROWS: { key: keyof Permissions; label: string; desc: string }[] = [
   { key: "printing", label: "Allow printing", desc: "Print high-resolution copies" },
@@ -98,7 +88,7 @@ function ProtectPage() {
   const togglePerm = (k: keyof Permissions) =>
     setPerms((p) => ({ ...p, [k]: !p[k] }));
 
-  const strength = scoreStrength(userPassword);
+  const strength = scorePasswordStrength(userPassword);
 
   const run = async () => {
     if (!file) return;
@@ -116,29 +106,12 @@ function ProtectPage() {
     }
     setBusy(true);
     try {
-      const { PDFDocument: CantooPDFDocument } = await import("@cantoo/pdf-lib");
-      const doc = await CantooPDFDocument.load(await file.arrayBuffer(), {
-        ignoreEncryption: true,
-      });
-      await doc.encrypt({
+      const result = await protectPdf(file, {
         userPassword,
-        ownerPassword: useOwnerPw ? ownerPassword : userPassword,
-        permissions: {
-          printing: perms.printing ? "highResolution" : undefined,
-          modifying: perms.modifying,
-          copying: perms.copying,
-          annotating: perms.annotating,
-          fillingForms: perms.fillingForms,
-          contentAccessibility: perms.contentAccessibility,
-          documentAssembly: perms.documentAssembly,
-        },
+        ownerPassword: useOwnerPw ? ownerPassword : undefined,
+        permissions: perms,
       });
-      const bytes = await doc.save();
-      const base = file.name.replace(/\.pdf$/i, "");
-      downloadBlob(
-        new Blob([bytes as BlobPart], { type: "application/pdf" }),
-        `${base}-protected.pdf`,
-      );
+      downloadBlob(result.blob, result.filename);
       toast.success("Encrypted PDF downloaded");
     } catch (err) {
       console.error(err);
@@ -293,23 +266,4 @@ function ProtectPage() {
       </div>
     </AppShell>
   );
-}
-
-function scoreStrength(pw: string): { pct: number; label: string; color: string } {
-  if (!pw) return { pct: 0, label: "", color: "bg-muted" };
-  let s = 0;
-  if (pw.length >= 8) s++;
-  if (pw.length >= 12) s++;
-  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
-  if (/\d/.test(pw)) s++;
-  if (/[^A-Za-z0-9]/.test(pw)) s++;
-  const map = [
-    { pct: 15, label: "Very weak", color: "bg-destructive" },
-    { pct: 30, label: "Weak", color: "bg-destructive" },
-    { pct: 50, label: "Fair", color: "bg-amber-500" },
-    { pct: 70, label: "Good", color: "bg-amber-400" },
-    { pct: 85, label: "Strong", color: "bg-vault" },
-    { pct: 100, label: "Very strong", color: "bg-vault" },
-  ];
-  return map[Math.min(s, 5)];
 }

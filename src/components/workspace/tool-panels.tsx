@@ -22,6 +22,10 @@ import {
   GripVertical,
   X,
   Files as FilesIcon,
+  KeyRound,
+  Eye,
+  EyeOff,
+
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
@@ -95,6 +99,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ExtractPanel ctx={ctx} />;
     case "watermark":
       return <WatermarkPanel ctx={ctx} />;
+    case "protect":
+      return <ProtectPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -2345,6 +2351,249 @@ function WatermarkPanel({ ctx }: { ctx: ToolPanelCtx }) {
       <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+/* ============================== Protect ============================== */
+
+function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const [userPassword, setUserPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [useOwnerPw, setUseOwnerPw] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [perms, setPerms] = useState(() => {
+    // Lazy import default to keep top-level import light.
+    return {
+      printing: true,
+      modifying: false,
+      copying: false,
+      annotating: true,
+      fillingForms: true,
+      contentAccessibility: true,
+      documentAssembly: false,
+    };
+  });
+  const [busy, setBusy] = useState(false);
+  const [strength, setStrength] = useState<{
+    pct: number;
+    label: string;
+    color: string;
+  }>({ pct: 0, label: "", color: "bg-muted" });
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("@/lib/pdf/protect").then((m) => {
+      if (!cancelled) setStrength(m.scorePasswordStrength(userPassword));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userPassword]);
+
+  const PERM_ROWS: {
+    key: keyof typeof perms;
+    label: string;
+    desc: string;
+  }[] = [
+    { key: "printing", label: "Allow printing", desc: "Print high-resolution copies" },
+    { key: "copying", label: "Allow copying text & images", desc: "Selection and clipboard access" },
+    { key: "modifying", label: "Allow editing content", desc: "Change pages, text, or structure" },
+    { key: "annotating", label: "Allow comments & markup", desc: "Sticky notes, highlights" },
+    { key: "fillingForms", label: "Allow filling forms", desc: "Type into interactive fields" },
+    { key: "documentAssembly", label: "Allow page assembly", desc: "Insert, delete, rotate pages" },
+    { key: "contentAccessibility", label: "Allow accessibility tools", desc: "Screen readers can read content" },
+  ];
+
+  const togglePerm = (k: keyof typeof perms) =>
+    setPerms((p) => ({ ...p, [k]: !p[k] }));
+
+  const run = useCallback(async () => {
+    if (!file) return;
+    if (userPassword.length < 4) {
+      toast.error("Password must be at least 4 characters.");
+      return;
+    }
+    if (userPassword !== confirmPassword) {
+      toast.error("Passwords don't match.");
+      return;
+    }
+    if (useOwnerPw && ownerPassword.length < 4) {
+      toast.error("Owner password must be at least 4 characters.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { protectPdf } = await import("@/lib/pdf/protect");
+      const result = await protectPdf(file, {
+        userPassword,
+        ownerPassword: useOwnerPw ? ownerPassword : undefined,
+        permissions: perms,
+      });
+      triggerDownload(result.blob, result.filename);
+      toast.success("Encrypted PDF downloaded", {
+        description: `${result.filename} · nothing was uploaded.`,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Encryption failed", {
+        description: err instanceof Error ? err.message : "Try a different PDF.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, userPassword, confirmPassword, ownerPassword, useOwnerPw, perms]);
+
+  if (!file) {
+    return (
+      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
+        Open a PDF in the workspace to encrypt it.
+      </p>
+    );
+  }
+
+  const canRun =
+    !busy &&
+    userPassword.length >= 4 &&
+    userPassword === confirmPassword &&
+    (!useOwnerPw || ownerPassword.length >= 4);
+
+  const pwInput = "w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40";
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+          <div className="truncate text-[12px] text-foreground" title={file.name}>
+            {file.name}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Open password" icon={<KeyRound className="h-3 w-3" />}>
+        <div className="space-y-2">
+          <div className="relative">
+            <input
+              type={showPw ? "text" : "password"}
+              value={userPassword}
+              onChange={(e) => setUserPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete="new-password"
+              className={cn(pwInput, "pr-8")}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((s) => !s)}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-foreground"
+              aria-label={showPw ? "Hide password" : "Show password"}
+            >
+              {showPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+          <input
+            type={showPw ? "text" : "password"}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm password"
+            autoComplete="new-password"
+            className={pwInput}
+          />
+          {userPassword && (
+            <div className="space-y-1">
+              <div className="h-1 w-full rounded-full bg-surface-2 overflow-hidden">
+                <div
+                  className={cn("h-full transition-all", strength.color)}
+                  style={{ width: `${strength.pct}%` }}
+                />
+              </div>
+              <div className="text-[10.5px] text-text-muted">
+                {strength.label}
+                {confirmPassword && confirmPassword !== userPassword && (
+                  <span className="ml-2 text-destructive">Passwords don't match</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Owner password">
+        <label className="flex items-start gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={useOwnerPw}
+            onChange={(e) => setUseOwnerPw(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-vault"
+          />
+          <div>
+            <div className="text-[12px] text-foreground leading-tight">
+              Set a separate owner password
+            </div>
+            <div className="text-[10.5px] text-text-muted mt-0.5">
+              Owners can change permissions.
+            </div>
+          </div>
+        </label>
+        {useOwnerPw && (
+          <input
+            type={showPw ? "text" : "password"}
+            value={ownerPassword}
+            onChange={(e) => setOwnerPassword(e.target.value)}
+            placeholder="Owner password"
+            autoComplete="new-password"
+            className={cn(pwInput, "mt-2")}
+          />
+        )}
+      </Section>
+
+      <Section title="Permissions" icon={<ShieldCheck className="h-3 w-3" />}>
+        <div className="space-y-1.5">
+          {PERM_ROWS.map((row) => (
+            <label
+              key={row.key}
+              className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-2 py-1.5 cursor-pointer hover:bg-surface-1 transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={perms[row.key]}
+                onChange={() => togglePerm(row.key)}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-vault"
+              />
+              <div className="min-w-0">
+                <div className="text-[12px] text-foreground leading-tight">{row.label}</div>
+                <div className="text-[10.5px] text-text-muted mt-0.5">{row.desc}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+      </Section>
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={!canRun}
+        className={cn(
+          "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+          canRun ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+        )}
+      >
+        {busy ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Encrypting…
+          </>
+        ) : (
+          <>
+            <Lock className="h-3.5 w-3.5" /> Encrypt &amp; download
+          </>
+        )}
+      </button>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · your password never leaves this tab
       </div>
     </div>
   );
