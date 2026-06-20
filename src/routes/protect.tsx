@@ -88,7 +88,7 @@ function ProtectPage() {
   const togglePerm = (k: keyof Permissions) =>
     setPerms((p) => ({ ...p, [k]: !p[k] }));
 
-  const strength = scoreStrength(userPassword);
+  const strength = scorePasswordStrength(userPassword);
 
   const run = async () => {
     if (!file) return;
@@ -106,29 +106,12 @@ function ProtectPage() {
     }
     setBusy(true);
     try {
-      const { PDFDocument: CantooPDFDocument } = await import("@cantoo/pdf-lib");
-      const doc = await CantooPDFDocument.load(await file.arrayBuffer(), {
-        ignoreEncryption: true,
-      });
-      await doc.encrypt({
+      const result = await protectPdf(file, {
         userPassword,
-        ownerPassword: useOwnerPw ? ownerPassword : userPassword,
-        permissions: {
-          printing: perms.printing ? "highResolution" : undefined,
-          modifying: perms.modifying,
-          copying: perms.copying,
-          annotating: perms.annotating,
-          fillingForms: perms.fillingForms,
-          contentAccessibility: perms.contentAccessibility,
-          documentAssembly: perms.documentAssembly,
-        },
+        ownerPassword: useOwnerPw ? ownerPassword : undefined,
+        permissions: perms,
       });
-      const bytes = await doc.save();
-      const base = file.name.replace(/\.pdf$/i, "");
-      downloadBlob(
-        new Blob([bytes as BlobPart], { type: "application/pdf" }),
-        `${base}-protected.pdf`,
-      );
+      downloadBlob(result.blob, result.filename);
       toast.success("Encrypted PDF downloaded");
     } catch (err) {
       console.error(err);
