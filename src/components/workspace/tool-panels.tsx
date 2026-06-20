@@ -22,6 +22,10 @@ import {
   GripVertical,
   X,
   Files as FilesIcon,
+  KeyRound,
+  Eye,
+  EyeOff,
+
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
