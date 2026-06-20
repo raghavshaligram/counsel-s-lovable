@@ -8,6 +8,12 @@ import { Eye, EyeOff, Lock, ShieldCheck, KeyRound } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { FileBar, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import {
+  protectPdf,
+  scorePasswordStrength,
+  DEFAULT_PROTECT_PERMS,
+  type ProtectPermissions,
+} from "@/lib/pdf/protect";
 
 export const Route = createFileRoute("/protect")({
   head: () => ({
