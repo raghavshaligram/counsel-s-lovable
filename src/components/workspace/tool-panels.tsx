@@ -99,6 +99,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ExtractPanel ctx={ctx} />;
     case "watermark":
       return <WatermarkPanel ctx={ctx} />;
+    case "protect":
+      return <ProtectPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
