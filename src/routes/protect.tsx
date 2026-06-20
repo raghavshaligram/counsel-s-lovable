@@ -267,22 +267,3 @@ function ProtectPage() {
     </AppShell>
   );
 }
-
-function scoreStrength(pw: string): { pct: number; label: string; color: string } {
-  if (!pw) return { pct: 0, label: "", color: "bg-muted" };
-  let s = 0;
-  if (pw.length >= 8) s++;
-  if (pw.length >= 12) s++;
-  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
-  if (/\d/.test(pw)) s++;
-  if (/[^A-Za-z0-9]/.test(pw)) s++;
-  const map = [
-    { pct: 15, label: "Very weak", color: "bg-destructive" },
-    { pct: 30, label: "Weak", color: "bg-destructive" },
-    { pct: 50, label: "Fair", color: "bg-amber-500" },
-    { pct: 70, label: "Good", color: "bg-amber-400" },
-    { pct: 85, label: "Strong", color: "bg-vault" },
-    { pct: 100, label: "Very strong", color: "bg-vault" },
-  ];
-  return map[Math.min(s, 5)];
-}
