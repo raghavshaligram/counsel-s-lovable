@@ -37,25 +37,9 @@ export const Route = createFileRoute("/protect")({
   component: ProtectPage,
 });
 
-type Permissions = {
-  printing: boolean;
-  modifying: boolean;
-  copying: boolean;
-  annotating: boolean;
-  fillingForms: boolean;
-  contentAccessibility: boolean;
-  documentAssembly: boolean;
-};
+type Permissions = ProtectPermissions;
 
-const DEFAULT_PERMS: Permissions = {
-  printing: true,
-  modifying: false,
-  copying: false,
-  annotating: true,
-  fillingForms: true,
-  contentAccessibility: true,
-  documentAssembly: false,
-};
+const DEFAULT_PERMS: Permissions = DEFAULT_PROTECT_PERMS;
 
 const PERM_ROWS: { key: keyof Permissions; label: string; desc: string }[] = [
   { key: "printing", label: "Allow printing", desc: "Print high-resolution copies" },
