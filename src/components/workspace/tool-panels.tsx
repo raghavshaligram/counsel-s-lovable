@@ -3761,6 +3761,19 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
               </div>
             )}
           </Section>
+          <Section title="Pages" icon={<Info className="h-3 w-3" />}>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={imgPages}
+              onChange={(e) => setImgPages(e.target.value)}
+              placeholder="All pages — or e.g. 1-3, 7, 10-12"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+            <div className="mt-1.5 text-[10.5px] text-text-muted">
+              Leave empty to export every page.
+            </div>
+          </Section>
         </>
       )}
 
