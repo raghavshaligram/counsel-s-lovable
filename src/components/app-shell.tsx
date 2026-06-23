@@ -41,8 +41,6 @@ const groups: Group[] = [
     items: [
       { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
       { to: "/word-to-pdf", label: "Word → PDF", icon: WordToPdfIcon, desc: "Convert .docx to a clean PDF" },
-      { to: "/to-images", label: "PDF → Images", icon: ImageIcon, desc: "Export every page as PNG or JPG" },
-      { to: "/images-to-pdf", label: "Images → PDF", icon: ImagesPlusIcon, desc: "Combine JPG/PNG into one PDF" },
     ],
   },
   {
