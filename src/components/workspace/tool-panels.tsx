@@ -2807,3 +2807,219 @@ function UnlockPanel({ ctx }: { ctx: ToolPanelCtx }) {
     </div>
   );
 }
+
+/* ============================== Compare ============================== */
+
+function ComparePanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, otherTabs = [] } = ctx;
+  // Lazy-import the store to avoid pulling the canvas module into the panel
+  // chunk unnecessarily — it's already shared state.
+  const { useCompare } = require("@/lib/workspace/compare-store") as typeof import("@/lib/workspace/compare-store");
+  const bSource = useCompare((s) => s.bSource);
+  const setBSource = useCompare((s) => s.setBSource);
+  const viewMode = useCompare((s) => s.viewMode);
+  const setViewMode = useCompare((s) => s.setViewMode);
+  const threshold = useCompare((s) => s.threshold);
+  const setThreshold = useCompare((s) => s.setThreshold);
+  const diffPixels = useCompare((s) => s.diffPixels);
+  const sizeMatch = useCompare((s) => s.sizeMatch);
+  const totalPages = useCompare((s) => s.totalPages);
+  const page = useCompare((s) => s.page);
+  const exporting = useCompare((s) => s.exporting);
+  const setExporting = useCompare((s) => s.setExporting);
+
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onPickTab = (id: string) => {
+    const t = otherTabs.find((x) => x.id === id);
+    if (!t) return;
+    setBSource({ kind: "tab", tabId: t.id, name: t.name, file: t.file });
+  };
+
+  const onPickFile = (f: File) => {
+    setBSource({ kind: "file", name: f.name, file: f });
+  };
+
+  const onExport = useCallback(async () => {
+    if (!file || bSource.kind === "none") return;
+    setExporting(true);
+    setExportProgress({ done: 0, total: 0 });
+    try {
+      const { exportDiffPdf } = await import("@/lib/pdf/compare");
+      const result = await exportDiffPdf({
+        a: file,
+        b: bSource.file,
+        threshold,
+        onProgress: (done, total) => setExportProgress({ done, total }),
+      });
+      triggerDownload(result.blob, result.filename);
+      toast.success(
+        `Diff PDF downloaded — ${result.changedPages} of ${result.pages} pages changed`,
+        { description: `${result.filename} · nothing was uploaded.` },
+      );
+    } catch (err) {
+      console.error("[compare] export failed", err);
+      toast.error("Couldn't build the diff PDF.", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setExporting(false);
+      setExportProgress(null);
+    }
+  }, [file, bSource, threshold, setExporting]);
+
+  if (!file) {
+    return (
+      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
+        Open a PDF in the workspace to set it as document A, then pick B here.
+      </p>
+    );
+  }
+
+  const inputCls =
+    "w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40";
+
+  const bLabel = bSource.kind === "none" ? "(none)" : bSource.name;
+  const canExport = bSource.kind !== "none" && !exporting && totalPages > 0;
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section title="Document A" icon={<FileText className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+          <div className="truncate text-[12px] text-foreground" title={file.name}>{file.name}</div>
+          <div className="mt-0.5 text-[10.5px] text-text-muted">Active tab</div>
+        </div>
+      </Section>
+
+      <Section title="Document B" icon={<FileText className="h-3 w-3" />}>
+        <div className="space-y-2">
+          {otherTabs.length > 0 && (
+            <select
+              value={bSource.kind === "tab" ? bSource.tabId : ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) onPickTab(v);
+              }}
+              className={inputCls}
+              aria-label="Pick from open tabs"
+            >
+              <option value="">— Pick from open tabs —</option>
+              {otherTabs.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3 inline-flex items-center justify-center gap-1.5"
+          >
+            <Upload className="h-3.5 w-3.5" /> Choose another file…
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPickFile(f);
+              e.target.value = "";
+            }}
+          />
+          <div className="truncate text-[10.5px] text-text-muted" title={bLabel}>
+            B: {bLabel}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="View" icon={<Eye className="h-3 w-3" />}>
+        <div className="inline-flex w-full items-center rounded-md border border-border bg-surface-2 p-0.5">
+          {(["side", "diff", "overlay"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setViewMode(m)}
+              aria-pressed={viewMode === m}
+              className={cn(
+                "flex-1 rounded-[5px] px-2 py-1 text-[11.5px] font-medium transition-colors",
+                viewMode === m ? "bg-vault text-vault-foreground" : "text-text-2 hover:text-foreground",
+              )}
+            >
+              {m === "side" ? "Side by side" : m === "diff" ? "Diff only" : "Overlay"}
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Sensitivity" icon={<ShieldCheck className="h-3 w-3" />}>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={0.02}
+            max={0.4}
+            step={0.02}
+            value={threshold}
+            onChange={(e) => setThreshold(parseFloat(e.target.value))}
+            className="flex-1 accent-vault"
+            aria-label="Sensitivity"
+          />
+          <span className="w-10 text-right font-mono text-[11px] text-foreground/80 tabular-nums">
+            {threshold.toFixed(2)}
+          </span>
+        </div>
+        <div className="mt-1 text-[10.5px] text-text-muted">
+          Lower = stricter (catches more differences).
+        </div>
+      </Section>
+
+      {bSource.kind !== "none" && (
+        <Section title="Result" icon={<GitCompare className="h-3 w-3" />}>
+          <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[11.5px]">
+            {!sizeMatch ? (
+              <div className="text-amber-500">Page {page} sizes differ — visual diff skipped.</div>
+            ) : diffPixels === null ? (
+              <div className="text-text-muted">Rendering page {page}…</div>
+            ) : diffPixels === 0 ? (
+              <div className="text-foreground">Page {page}: identical pixel-for-pixel.</div>
+            ) : (
+              <div className="text-foreground">
+                Page {page}: <span className="font-mono">{diffPixels.toLocaleString()}</span> px changed.
+              </div>
+            )}
+            <div className="mt-0.5 text-[10.5px] text-text-muted">
+              {totalPages > 0 ? `${totalPages} page${totalPages === 1 ? "" : "s"} total` : ""}
+            </div>
+          </div>
+        </Section>
+      )}
+
+      <button
+        type="button"
+        onClick={onExport}
+        disabled={!canExport}
+        className={cn(
+          "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+          canExport ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+        )}
+      >
+        {exporting ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            Exporting {exportProgress ? `${exportProgress.done}/${exportProgress.total}` : "…"}
+          </>
+        ) : (
+          <>
+            <Download className="h-3.5 w-3.5" /> Export diff PDF
+          </>
+        )}
+      </button>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · both PDFs stay in this tab.
+      </div>
+    </div>
+  );
+}
