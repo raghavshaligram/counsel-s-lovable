@@ -3717,7 +3717,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
               <span>
                 <span className="text-foreground">Include images</span>
                 <span className="block text-[11px] text-muted-foreground">
-                  Off = faster, text-only export.
+                  On = slower, embeds images. Off (default) = fast text-only.
                 </span>
               </span>
               <input
