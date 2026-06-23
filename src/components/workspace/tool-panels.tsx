@@ -18,6 +18,7 @@ import {
   Upload,
   Table as TableIcon,
   Lock,
+  LockOpen,
   Plus,
   GripVertical,
   X,
@@ -25,6 +26,9 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  ShieldOff,
+
+
 
 } from "lucide-react";
 import { toast } from "sonner";
