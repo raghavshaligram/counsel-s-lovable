@@ -267,7 +267,8 @@ export async function addRecent(
       ocrPagesCopied: rec.ocrPagesCopied,
       ocrIsPartial: rec.ocrIsPartial,
     };
-  } catch {
+  } catch (err) {
+    console.error("[persistence] addRecent failed", err);
     return null;
   }
 }
@@ -276,9 +277,10 @@ export async function removeRecent(id: string): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).delete(DOC_STORE, id);
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.delete(DOC_STORE, id);
+  } catch (err) {
+    console.warn("[persistence] removeRecent failed", err);
   }
 }
 
@@ -286,9 +288,10 @@ export async function clearRecents(): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).clear(DOC_STORE);
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.clear(DOC_STORE);
+  } catch (err) {
+    console.warn("[persistence] clearRecents failed", err);
   }
 }
 
