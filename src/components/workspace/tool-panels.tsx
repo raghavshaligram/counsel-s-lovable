@@ -3519,18 +3519,8 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (/\.pdf$/i.test(first.name) || /\.docx$/i.test(first.name)) {
       setPicked([first]);
     } else {
-      const imgs = arr.filter((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name));
-      if (!imgs.length) {
-        toast.error("Drop a PDF, a .docx, or one-or-more image files.");
-        return;
-      }
-      // Append when current picked are already images, otherwise replace.
-      setPicked((prev) => {
-        const prevAllImages =
-          prev.length > 0 &&
-          prev.every((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name));
-        return prevAllImages ? [...prev, ...imgs] : imgs;
-      });
+      toast.error("Drop a PDF or a .docx file. For images, use the Image Convert tool.");
+      return;
     }
     setUsingActive(false);
   };
