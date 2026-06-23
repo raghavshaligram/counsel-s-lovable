@@ -29,6 +29,7 @@ import {
   ShieldOff,
   Info,
   ChevronDown,
+  GitCompare,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
