@@ -3613,8 +3613,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
-        multiple
+        accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         className="hidden"
         onChange={(e) => {
           onPick(e.target.files);
