@@ -3498,7 +3498,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   // Settings per target.
   const [wordMode, setWordMode] = useState<"flow" | "page" | "fidelity">("flow");
-  const [wordIncludeImages, setWordIncludeImages] = useState(true);
+  const [wordIncludeImages, setWordIncludeImages] = useState(false);
   const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
   const [imgDpi, setImgDpi] = useState<number>(150);
   const [imgQuality, setImgQuality] = useState<number>(0.92);
@@ -3717,7 +3717,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
               <span>
                 <span className="text-foreground">Include images</span>
                 <span className="block text-[11px] text-muted-foreground">
-                  Off = faster, text-only export.
+                  On = slower, embeds images. Off (default) = fast text-only.
                 </span>
               </span>
               <input

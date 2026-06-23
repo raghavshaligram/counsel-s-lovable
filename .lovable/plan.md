@@ -1,46 +1,68 @@
-## Speed up PDF → Word conversion
+## Squeeze more speed out of on-device PDF → Word
 
-The current converter is slow because every page is processed sequentially, every embedded image and every fidelity-mode page is encoded as PNG (slow + huge), and fidelity mode renders at 2× even when it doesn't need to. Below is a focused set of changes that should cut conversion time roughly 2–5× depending on document type, with no UI redesign.
+Building on what we just shipped (parallel pages, JPEG encoding, 1.5× fidelity, "Include images" toggle), this round targets the next layer of bottlenecks. Honest expectation: another ~1.5–3× on top of current, plus the UI stops freezing during conversion. We will not hit iLovePDF's <1s on arbitrary PDFs — that's a server-side reality — but the experience will feel dramatically snappier.
 
 ### What changes
 
-1. **Process pages in parallel** with a small concurrency limit (4 at a time). Pages are independent — building each page's docx children in parallel and stitching them in order at the end gives a big speedup on multi-page PDFs.
+1. **Move the whole conversion into a Web Worker.**
+   The main thread currently does pdfjs parsing, image decoding, PNG/JPEG encoding, and docx zipping. All of that happens off the UI thread now. The page stays responsive, scroll/click never hitches, and the worker can use `OffscreenCanvas` for faster rendering.
 
-2. **Encode images as JPEG, not PNG**, for both inline images (flow/page modes) and full-page rasters (fidelity mode). JPEG `toBlob` is dramatically faster and produces files 3–10× smaller. We'll keep PNG only for images with an alpha channel.
+2. **`OffscreenCanvas` + `convertToBlob`.**
+   Inside the worker, page rendering and image encoding go through `OffscreenCanvas`, which avoids DOM canvas overhead and is measurably faster, especially for fidelity mode.
 
-3. **Lower default fidelity scale to 1.5×** (was 2×). 1.5× is visually indistinguishable in Word at normal zoom and roughly halves render + encode time. Power users can still bump it.
+3. **Single-pass image extraction.**
+   Today we call `getOperatorList()` *in addition to* the text pass — that's an entire second parse of every page. We'll extract image XObject references from the existing render/text pipeline so each page is parsed once, not twice. For flow/page modes with images on, this is a big win.
 
-4. **Skip image extraction in flow/page modes by default**, behind a new "Include images" toggle (on by default). The image-extraction pass walks the operator list and decodes every XObject — for text-heavy PDFs with lots of decorative images this dominates runtime. The toggle lets users opt out for a fast text-only pass.
+4. **Default "Include images" to OFF for flow/page modes.**
+   For text-heavy PDFs (the common case), image extraction dominates runtime. Off by default makes the typical conversion ~3–5× faster; users who need images flip the toggle (which is already in the panel).
 
-5. **Cache the rendered page canvas in fidelity mode** so we render once and reuse instead of calling `getViewport`/`render` redundantly, and free the canvas immediately after `toBlob` to keep memory flat across pages.
+5. **Stream docx packing.**
+   Start packing earlier — kick off `Packer.toBlob` as soon as all page children resolve, and report progress as "Packing .docx…" so users see motion at the tail of the job instead of a stalled bar.
 
-6. **Show real progress** — switch progress reporting to count *completed* pages from the parallel pool, so the percentage actually advances during long jobs instead of jumping.
+6. **Tune concurrency to hardware.**
+   Use `navigator.hardwareConcurrency` to set page parallelism (clamped 2–8) instead of the fixed 4. Laptops with 8+ cores get a real boost; low-end devices don't get oversubscribed.
+
+7. **Faster line grouping.**
+   Replace the O(n²) `rows.find(...)` line-bucketing with a Y-keyed Map. Negligible on small PDFs, noticeable on text-dense ones (50+ pages).
 
 ### Non-goals
 
-- No web-worker rewrite (large change, marginal win on top of #1–#3).
-- No change to the Convert panel layout or modes — same three modes, same buttons.
-- Underlying conversion functions stay separate (per project rules).
+- No server upload. Conversion stays 100% on-device per the project's core privacy rule.
+- No change to the panel layout or modes — same three modes, same single toggle.
+- No rewrite of the underlying docx library.
 
 ### Technical details
 
 Files touched:
 
+- `src/lib/pdf/to-word.worker.ts` *(new)*
+  - Web Worker entry. Receives `{ buffer, options }`, runs the full conversion (pdfjs + image extraction + docx pack), posts `{ type: "progress", pct, stage }` messages, ends with `{ type: "done", blob }` or `{ type: "error", message }`.
+  - Uses `OffscreenCanvas` for rendering + encoding (`canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 })`).
+  - Imports pdfjs and docx dynamically inside the worker; configures the pdfjs worker source via `import.meta.url`.
+
 - `src/lib/pdf/to-word.ts`
-  - Add a `runWithConcurrency(tasks, limit)` helper; build a `pageChildren: any[][]` array indexed by page number, populate it in parallel, then flatten in order into `allChildren`.
-  - Add `encodeCanvas(canvas, { preferJpeg })` that returns JPEG (`quality: 0.85`) unless the source has alpha, then PNG.
-  - Change `renderPageToPng` → `renderPageToImage(page, scale)` returning `{ data, mime, width, height }`; default scale 1.5.
-  - Change `extractPageImages` to use the same encoder and to early-exit when `includeImages` is false.
-  - Extend `ToWordOptions` with `includeImages?: boolean` (default `true`) and `fidelityScale?: number` (default `1.5`).
-  - Update `ImageRun` calls to pass `type: "jpg" | "png"` based on the encoder output.
-  - Progress callback fires from a shared counter incremented as each page resolves.
+  - Becomes a thin wrapper: spawns the worker (`new Worker(new URL("./to-word.worker.ts", import.meta.url), { type: "module" })`), transfers the file's `ArrayBuffer`, resolves on `done`.
+  - Keeps the same public signature `convertPdfToWordBlob(file, options)` so the panel and the standalone `/to-word` route don't change.
+  - Default `concurrency` switches to `Math.max(2, Math.min(8, navigator.hardwareConcurrency ?? 4))`.
+  - Default `includeImages` flips to `false`.
+  - Single-pass image extraction: reuse the `RenderTask`'s `operatorList` (available after `page.getOperatorList()` is awaited *or* via a custom intent) instead of calling it as a separate post-text step. Group image XObject decoding into the same `await` as text extraction with `Promise.all`.
+  - Swap `rows.find(...)` for `Map<number, StyledLine>` keyed by `Math.round(y / tolerance)`.
 
 - `src/components/workspace/tool-panels.tsx` (ConvertPanel only)
-  - Add `const [includeImages, setIncludeImages] = useState(true)` and a small `Toggle` row inside the existing "Layout" Section when `kind === "pdf" && target === "word"` and `wordMode !== "fidelity"`.
-  - Pass `includeImages` to `convertPdfToWordBlob`. No new section, no new rail — fits inside the existing inspector.
+  - Initial state: `const [wordIncludeImages, setWordIncludeImages] = useState(false)` (flip default).
+  - Update the toggle's hint to read: `On = slower, embeds images. Off (default) = fast text-only.`
+  - No layout/structural changes.
 
-### Expected impact
+- `vite.config.ts`
+  - Verify the worker import resolves with the existing config; TanStack Start + Vite already supports `new Worker(new URL(...), { type: "module" })` out of the box, no plugin change expected. If a transform issue surfaces, add `worker: { format: "es" }`.
 
-- Text-heavy 20-page PDF, flow mode, images on: ~3× faster (parallelism + JPEG).
-- Same PDF with "Include images" off: ~5× faster.
-- 20-page fidelity export: ~2× faster (1.5× scale + JPEG encode).
+### Expected impact (on top of current)
+
+- 10-page text-heavy PDF, default settings (images off): ~3–5× faster, UI never freezes.
+- Same PDF with images on: ~1.5–2× faster (single-pass extraction + worker).
+- 20-page fidelity export: ~1.3–1.6× faster, UI stays responsive.
+- Real number for a typical resume/letter: expect ~0.5–1.5s instead of ~3–5s. For a 50-page report with images on, expect single-digit seconds instead of 15–30s.
+
+### What this will *not* fix
+
+PDFs with hundreds of pages, dense vector graphics, or thousands of embedded images will still take real time — pdfjs is the floor, and we can't undercut it without leaving the browser.
