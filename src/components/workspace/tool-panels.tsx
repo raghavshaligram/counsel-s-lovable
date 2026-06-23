@@ -30,6 +30,7 @@ import {
   Info,
   ChevronDown,
   GitCompare,
+  Hash,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
@@ -133,6 +134,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ConvertPanel ctx={ctx} />;
     case "image-convert":
       return <ImageConvertPanel ctx={ctx} />;
+    case "page-numbers":
+      return <PageNumbersPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -4322,4 +4325,184 @@ function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
     </div>
   );
 }
+
+/* ============================ Page Numbers ============================ */
+/**
+ * Stamps page numbers on the active tab's PDF via the existing
+ * `addPageNumbers` op. Exposes exactly what `PageNumbersOpts` accepts:
+ * anchor, format, startAt, skipFirst, fontSize, margin, prefix.
+ */
+function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+
+  const [anchor, setAnchor] = useState<
+    "top-left" | "top-center" | "top-right" |
+    "bottom-left" | "bottom-center" | "bottom-right"
+  >("bottom-center");
+  const [format, setFormat] = useState<"n" | "page-n" | "n-of-m" | "roman">("page-n");
+  const [startAt, setStartAt] = useState<number>(1);
+  const [skipFirst, setSkipFirst] = useState<number>(0);
+  const [fontSize, setFontSize] = useState<number>(11);
+  const [margin, setMargin] = useState<number>(24);
+  const [prefix, setPrefix] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+
+  const run = useCallback(async (apply: "download" | "replace") => {
+    if (!file) return;
+    setBusy(true);
+    const tid = "wsx-page-numbers";
+    toast.loading("Stamping page numbers…", { id: tid });
+    try {
+      const { addPageNumbers } = await import("@/lib/batch/ops/page-numbers");
+      const out = await addPageNumbers(new Uint8Array(await file.arrayBuffer()), {
+        anchor, format, startAt, skipFirst, fontSize, margin,
+        prefix: prefix || undefined,
+      });
+      if (apply === "download") {
+        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf", "application/pdf");
+        toast.success("Page numbers added", { id: tid });
+      } else {
+        replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
+        toast.success("Page numbers applied to active tab", { id: tid });
+      }
+    } catch (err) {
+      console.error("[page-numbers] failed", err);
+      toast.error("Failed to add page numbers", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, anchor, format, startAt, skipFirst, fontSize, margin, prefix, replaceFile]);
+
+  if (!file) {
+    return (
+      <p className="text-[11.5px] leading-snug text-text-2">
+        Open a PDF to stamp page numbers.
+      </p>
+    );
+  }
+
+  const anchors: Array<typeof anchor> = [
+    "top-left", "top-center", "top-right",
+    "bottom-left", "bottom-center", "bottom-right",
+  ];
+  const formats: Array<{ id: typeof format; label: string; hint: string }> = [
+    { id: "n", label: "1", hint: "Plain" },
+    { id: "page-n", label: "Page 1", hint: "Prefixed" },
+    { id: "n-of-m", label: "1 of N", hint: "With total" },
+    { id: "roman", label: "i", hint: "Lower roman" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Position" icon={<Hash className="h-3 w-3" />}>
+        <div className="grid grid-cols-3 gap-1.5">
+          {anchors.map((a) => (
+            <ModeRow
+              key={a}
+              active={anchor === a}
+              onClick={() => setAnchor(a)}
+              label={a.startsWith("top") ? "Top" : "Bottom"}
+              hint={a.endsWith("left") ? "Left" : a.endsWith("right") ? "Right" : "Center"}
+            />
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Format" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-1.5">
+          {formats.map((f) => (
+            <ModeRow
+              key={f.id}
+              active={format === f.id}
+              onClick={() => setFormat(f.id)}
+              label={f.label}
+              hint={f.hint}
+            />
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Numbering" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-2">
+          <NumberField label="Start at" value={startAt} min={1} onChange={setStartAt} />
+          <NumberField label="Skip first" value={skipFirst} min={0} onChange={setSkipFirst} />
+          <NumberField label="Font size" value={fontSize} min={6} max={48} onChange={setFontSize} />
+          <NumberField label="Margin (pt)" value={margin} min={0} max={144} onChange={setMargin} />
+        </div>
+      </Section>
+
+      <Section title="Prefix" icon={<Info className="h-3 w-3" />}>
+        <input
+          type="text"
+          value={prefix}
+          onChange={(e) => setPrefix(e.target.value)}
+          placeholder="Optional — e.g. — "
+          className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+        />
+        <div className="mt-1.5 text-[10.5px] text-text-muted">
+          Prepended to every stamped number.
+        </div>
+      </Section>
+
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => run("download")}
+          disabled={busy}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            busy && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy ? "Working…" : "Stamp & download"}
+        </button>
+        <button
+          type="button"
+          onClick={() => run("replace")}
+          disabled={busy}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+            busy && "cursor-not-allowed opacity-60",
+          )}
+        >
+          Apply to active tab
+        </button>
+      </div>
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+function NumberField({
+  label, value, onChange, min, max,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max?: number;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">{label}</span>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => {
+          const v = parseInt(e.target.value, 10);
+          if (Number.isFinite(v)) onChange(v);
+        }}
+        className="w-full rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px] text-foreground focus:border-vault/40 focus:outline-none"
+      />
+    </label>
+  );
+}
+
 
