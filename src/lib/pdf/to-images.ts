@@ -10,6 +10,8 @@ export interface ToImagesOptions {
   dpi?: number;
   /** JPG quality 0..1 (ignored for PNG). */
   quality?: number;
+  /** Optional page range, e.g. "1-3,7,10-12". Omit/empty = all pages. */
+  pages?: string;
   onProgress?: (pct: number) => void;
 }
 
@@ -18,6 +20,34 @@ export interface ToImagesResult {
   filename: string;
   pages: number;
   isZip: boolean;
+}
+
+/**
+ * Parse a page range expression like "1-3,7,10-12" into a sorted unique list
+ * of 1-based page numbers, clamped to [1, total]. Returns all pages if the
+ * expression is empty, whitespace-only, or unparseable.
+ */
+export function parsePageRange(expr: string | undefined, total: number): number[] {
+  const all = Array.from({ length: total }, (_, i) => i + 1);
+  if (!expr || !expr.trim()) return all;
+  const out = new Set<number>();
+  for (const raw of expr.split(",")) {
+    const part = raw.trim();
+    if (!part) continue;
+    const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (m) {
+      let a = parseInt(m[1], 10);
+      let b = parseInt(m[2], 10);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+      if (a > b) [a, b] = [b, a];
+      for (let i = a; i <= b; i++) if (i >= 1 && i <= total) out.add(i);
+    } else if (/^\d+$/.test(part)) {
+      const n = parseInt(part, 10);
+      if (n >= 1 && n <= total) out.add(n);
+    }
+  }
+  if (!out.size) return all;
+  return Array.from(out).sort((a, b) => a - b);
 }
 
 export async function convertPdfToImages(
@@ -36,11 +66,14 @@ export async function convertPdfToImages(
   const ext = format === "png" ? "png" : "jpg";
   const base = file.name.replace(/\.pdf$/i, "");
 
+  const pageNums = parsePageRange(options.pages, doc.numPages);
+
   const JSZip = (await import("jszip")).default;
   const zip = new JSZip();
   const pad = String(doc.numPages).length;
 
-  for (let i = 1; i <= doc.numPages; i++) {
+  for (let idx = 0; idx < pageNums.length; idx++) {
+    const i = pageNums[idx];
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement("canvas");
@@ -56,13 +89,13 @@ export async function convertPdfToImages(
       canvas.toBlob((b) => res(b!), mime, format === "jpg" ? quality : undefined),
     );
     zip.file(`${base}-p${String(i).padStart(pad, "0")}.${ext}`, blob);
-    onProgress(Math.round((i / doc.numPages) * 100));
+    onProgress(Math.round(((idx + 1) / pageNums.length) * 100));
   }
 
-  if (doc.numPages === 1) {
+  if (pageNums.length === 1) {
     const only = await zip.file(/.*/)[0].async("blob");
-    return { blob: only, filename: `${base}.${ext}`, pages: 1, isZip: false };
+    return { blob: only, filename: `${base}-p${pageNums[0]}.${ext}`, pages: 1, isZip: false };
   }
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  return { blob: zipBlob, filename: `${base}-images.zip`, pages: doc.numPages, isZip: true };
+  return { blob: zipBlob, filename: `${base}-images.zip`, pages: pageNums.length, isZip: true };
 }

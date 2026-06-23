@@ -33,7 +33,7 @@ import {
   Upload,
   FilePlus2,
   LayoutTemplate,
-  Images as PhotoIcon,
+  
   FileType,
   ArrowRight,
   Scissors,
@@ -2473,9 +2473,9 @@ function EmptyStart({
         {/* Secondary chips */}
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           <ShortcutChip
-            icon={<PhotoIcon className="h-[14px] w-[14px]" />}
-            label="Images → PDF"
-            onClick={() => navigate({ to: "/images-to-pdf" })}
+            icon={<FileType className="h-[14px] w-[14px]" />}
+            label="Convert"
+            onClick={() => navigate({ to: "/workspace", search: { tool: "convert" } as any })}
           />
           <ShortcutChip
             icon={<FileType className="h-[14px] w-[14px]" />}

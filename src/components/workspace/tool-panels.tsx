@@ -3502,6 +3502,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
   const [imgDpi, setImgDpi] = useState<number>(150);
   const [imgQuality, setImgQuality] = useState<number>(0.92);
+  const [imgPages, setImgPages] = useState<string>("");
   const [pdfPageSize, setPdfPageSize] = useState<"letter" | "a4">("letter");
   const [imagesPageSize, setImagesPageSize] = useState<"auto" | "letter" | "a4">("auto");
   const [imagesFit, setImagesFit] = useState<"fit" | "fill">("fit");
@@ -3513,18 +3514,22 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const onPick = (files: FileList | null) => {
     if (!files || !files.length) return;
     const arr = Array.from(files);
-    // If a PDF or DOCX is picked, only the first counts.
     const first = arr[0];
     if (/\.pdf$/i.test(first.name) || /\.docx$/i.test(first.name)) {
       setPicked([first]);
     } else {
-      // Images: accept all image files.
       const imgs = arr.filter((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name));
       if (!imgs.length) {
         toast.error("Drop a PDF, a .docx, or one-or-more image files.");
         return;
       }
-      setPicked(imgs);
+      // Append when current picked are already images, otherwise replace.
+      setPicked((prev) => {
+        const prevAllImages =
+          prev.length > 0 &&
+          prev.every((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name));
+        return prevAllImages ? [...prev, ...imgs] : imgs;
+      });
     }
     setUsingActive(false);
   };
@@ -3575,6 +3580,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           format: imgFormat,
           dpi: imgDpi,
           quality: imgQuality,
+          pages: imgPages.trim() || undefined,
           onProgress: (pct) => setProgress(`Rendering pages… ${pct}%`),
         });
         downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
@@ -3675,6 +3681,100 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         )}
       </Section>
 
+      {kind === "images" && sources.length > 0 && (
+        <Section title={`Order (${sources.length})`} icon={<Info className="h-3 w-3" />}>
+          <div className="text-[10.5px] text-text-muted mb-1.5">
+            Order = page order in the PDF. Use the arrows to reorder.
+          </div>
+          <ul className="space-y-1">
+            {picked.map((f, i) => (
+              <li
+                key={`${f.name}-${i}-${f.size}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", String(i));
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                  if (!Number.isFinite(from) || from === i) return;
+                  setPicked((prev) => {
+                    const next = prev.slice();
+                    const [m] = next.splice(from, 1);
+                    next.splice(i, 0, m);
+                    return next;
+                  });
+                }}
+                className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5"
+              >
+                <span className="w-5 text-center font-mono text-[10.5px] text-text-muted">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[11.5px] text-foreground">
+                  {f.name}
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-label="Move up"
+                    disabled={i === 0}
+                    onClick={() =>
+                      setPicked((prev) => {
+                        if (i === 0) return prev;
+                        const next = prev.slice();
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        return next;
+                      })
+                    }
+                    className="rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move down"
+                    disabled={i === picked.length - 1}
+                    onClick={() =>
+                      setPicked((prev) => {
+                        if (i === prev.length - 1) return prev;
+                        const next = prev.slice();
+                        [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                        return next;
+                      })
+                    }
+                    className="rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Remove"
+                    onClick={() =>
+                      setPicked((prev) => prev.filter((_, j) => j !== i))
+                    }
+                    className="ml-0.5 rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="mt-2 w-full rounded-md border border-dashed border-border bg-surface-2 px-2 py-1.5 text-[11px] text-text-2 hover:border-vault/40 hover:text-foreground"
+          >
+            + Add more images
+          </button>
+        </Section>
+      )}
+
       {kind && allowedTargets.length > 0 && (
         <Section title="Convert to" icon={<Info className="h-3 w-3" />}>
           <div className="grid grid-cols-1 gap-1.5">
@@ -3758,6 +3858,19 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
                   className="w-full accent-vault" />
               </div>
             )}
+          </Section>
+          <Section title="Pages" icon={<Info className="h-3 w-3" />}>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={imgPages}
+              onChange={(e) => setImgPages(e.target.value)}
+              placeholder="All pages — or e.g. 1-3, 7, 10-12"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+            <div className="mt-1.5 text-[10.5px] text-text-muted">
+              Leave empty to export every page.
+            </div>
           </Section>
         </>
       )}

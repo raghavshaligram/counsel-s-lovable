@@ -15,7 +15,6 @@ import { Route as WatermarkRouteImport } from './routes/watermark'
 import { Route as VerifiableRedactionRouteImport } from './routes/verifiable-redaction'
 import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as ToWordRouteImport } from './routes/to-word'
-import { Route as ToImagesRouteImport } from './routes/to-images'
 import { Route as ToExcelRouteImport } from './routes/to-excel'
 import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
@@ -29,7 +28,6 @@ import { Route as OutlineRouteImport } from './routes/outline'
 import { Route as OrganizeRouteImport } from './routes/organize'
 import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
-import { Route as ImagesToPdfRouteImport } from './routes/images-to-pdf'
 import { Route as HeaderFooterRouteImport } from './routes/header-footer'
 import { Route as FlattenRouteImport } from './routes/flatten'
 import { Route as ExtractRouteImport } from './routes/extract'
@@ -69,11 +67,6 @@ const UnlockRoute = UnlockRouteImport.update({
 const ToWordRoute = ToWordRouteImport.update({
   id: '/to-word',
   path: '/to-word',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ToImagesRoute = ToImagesRouteImport.update({
-  id: '/to-images',
-  path: '/to-images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ToExcelRoute = ToExcelRouteImport.update({
@@ -141,11 +134,6 @@ const MergeRoute = MergeRouteImport.update({
   path: '/merge',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ImagesToPdfRoute = ImagesToPdfRouteImport.update({
-  id: '/images-to-pdf',
-  path: '/images-to-pdf',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const HeaderFooterRoute = HeaderFooterRouteImport.update({
   id: '/header-footer',
   path: '/header-footer',
@@ -208,7 +196,6 @@ export interface FileRoutesByFullPath {
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
   '/header-footer': typeof HeaderFooterRoute
-  '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
@@ -222,7 +209,6 @@ export interface FileRoutesByFullPath {
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
-  '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/verifiable-redaction': typeof VerifiableRedactionRoute
@@ -241,7 +227,6 @@ export interface FileRoutesByTo {
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
   '/header-footer': typeof HeaderFooterRoute
-  '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
@@ -255,7 +240,6 @@ export interface FileRoutesByTo {
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
-  '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/verifiable-redaction': typeof VerifiableRedactionRoute
@@ -275,7 +259,6 @@ export interface FileRoutesById {
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
   '/header-footer': typeof HeaderFooterRoute
-  '/images-to-pdf': typeof ImagesToPdfRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
@@ -289,7 +272,6 @@ export interface FileRoutesById {
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
-  '/to-images': typeof ToImagesRoute
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/verifiable-redaction': typeof VerifiableRedactionRoute
@@ -310,7 +292,6 @@ export interface FileRouteTypes {
     | '/extract'
     | '/flatten'
     | '/header-footer'
-    | '/images-to-pdf'
     | '/merge'
     | '/ocr'
     | '/organize'
@@ -324,7 +305,6 @@ export interface FileRouteTypes {
     | '/sign'
     | '/split'
     | '/to-excel'
-    | '/to-images'
     | '/to-word'
     | '/unlock'
     | '/verifiable-redaction'
@@ -343,7 +323,6 @@ export interface FileRouteTypes {
     | '/extract'
     | '/flatten'
     | '/header-footer'
-    | '/images-to-pdf'
     | '/merge'
     | '/ocr'
     | '/organize'
@@ -357,7 +336,6 @@ export interface FileRouteTypes {
     | '/sign'
     | '/split'
     | '/to-excel'
-    | '/to-images'
     | '/to-word'
     | '/unlock'
     | '/verifiable-redaction'
@@ -376,7 +354,6 @@ export interface FileRouteTypes {
     | '/extract'
     | '/flatten'
     | '/header-footer'
-    | '/images-to-pdf'
     | '/merge'
     | '/ocr'
     | '/organize'
@@ -390,7 +367,6 @@ export interface FileRouteTypes {
     | '/sign'
     | '/split'
     | '/to-excel'
-    | '/to-images'
     | '/to-word'
     | '/unlock'
     | '/verifiable-redaction'
@@ -410,7 +386,6 @@ export interface RootRouteChildren {
   ExtractRoute: typeof ExtractRoute
   FlattenRoute: typeof FlattenRoute
   HeaderFooterRoute: typeof HeaderFooterRoute
-  ImagesToPdfRoute: typeof ImagesToPdfRoute
   MergeRoute: typeof MergeRoute
   OcrRoute: typeof OcrRoute
   OrganizeRoute: typeof OrganizeRoute
@@ -424,7 +399,6 @@ export interface RootRouteChildren {
   SignRoute: typeof SignRoute
   SplitRoute: typeof SplitRoute
   ToExcelRoute: typeof ToExcelRoute
-  ToImagesRoute: typeof ToImagesRoute
   ToWordRoute: typeof ToWordRoute
   UnlockRoute: typeof UnlockRoute
   VerifiableRedactionRoute: typeof VerifiableRedactionRoute
@@ -475,13 +449,6 @@ declare module '@tanstack/react-router' {
       path: '/to-word'
       fullPath: '/to-word'
       preLoaderRoute: typeof ToWordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/to-images': {
-      id: '/to-images'
-      path: '/to-images'
-      fullPath: '/to-images'
-      preLoaderRoute: typeof ToImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/to-excel': {
@@ -575,13 +542,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MergeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/images-to-pdf': {
-      id: '/images-to-pdf'
-      path: '/images-to-pdf'
-      fullPath: '/images-to-pdf'
-      preLoaderRoute: typeof ImagesToPdfRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/header-footer': {
       id: '/header-footer'
       path: '/header-footer'
@@ -666,7 +626,6 @@ const rootRouteChildren: RootRouteChildren = {
   ExtractRoute: ExtractRoute,
   FlattenRoute: FlattenRoute,
   HeaderFooterRoute: HeaderFooterRoute,
-  ImagesToPdfRoute: ImagesToPdfRoute,
   MergeRoute: MergeRoute,
   OcrRoute: OcrRoute,
   OrganizeRoute: OrganizeRoute,
@@ -680,7 +639,6 @@ const rootRouteChildren: RootRouteChildren = {
   SignRoute: SignRoute,
   SplitRoute: SplitRoute,
   ToExcelRoute: ToExcelRoute,
-  ToImagesRoute: ToImagesRoute,
   ToWordRoute: ToWordRoute,
   UnlockRoute: UnlockRoute,
   VerifiableRedactionRoute: VerifiableRedactionRoute,
