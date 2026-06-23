@@ -1392,6 +1392,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             otherTabs={tabs
               .filter((t) => t.id !== active.id && t.file)
               .map((t) => ({ id: t.id, name: t.file!.name, file: t.file! }))}
+            ocr={{
+              run: onRequestOcr,
+              stop: () => ocrAbortRef.current?.abort(),
+              running: ocrRunning,
+              progressText: ocrProgressText,
+              ocrPagesCount: ocrPagesArr.length,
+              ocrPagesCopiedCount: ocrPagesCopiedArr.length,
+              scannedRemainingCount: unprocessedScannedSet.size,
+              isPartial: !!active.ocrIsPartial,
+              defaults: ocrOptionsRef.current,
+            }}
           />
         </div>
       </div>
