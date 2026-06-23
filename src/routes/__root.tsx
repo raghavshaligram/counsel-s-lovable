@@ -12,6 +12,7 @@ import { Toaster } from "sonner";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { requestPersistentStorage } from "../lib/storage-persist";
 
 function NotFoundComponent() {
   return (
@@ -138,6 +139,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    // Ask the browser to make our IndexedDB durable. Logs the outcome.
+    void requestPersistentStorage();
+  }, []);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;

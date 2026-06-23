@@ -68,6 +68,17 @@ function db() {
           d.createObjectStore(SIDECAR_STORE);
         }
       },
+      blocked() {
+        console.warn("[persistence] DB upgrade blocked by another tab");
+      },
+      terminated() {
+        console.warn("[persistence] DB connection terminated — will reopen");
+        dbp = null;
+      },
+    }).catch((err) => {
+      console.error("[persistence] openDB failed", err);
+      dbp = null;
+      throw err;
     });
   }
   return dbp;
@@ -80,22 +91,31 @@ export async function loadUIState(): Promise<Partial<WorkspaceUIState> | null> {
   const d = db();
   if (!d) return null;
   try {
-    return ((await (await d).get(UI_STORE, "state")) as Partial<WorkspaceUIState>) ?? null;
-  } catch {
+    const conn = await d;
+    return ((await conn.get(UI_STORE, "state")) as Partial<WorkspaceUIState>) ?? null;
+  } catch (err) {
+    console.warn("[persistence] loadUIState failed", err);
     return null;
   }
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingUIState: Partial<WorkspaceUIState> | null = null;
 export function saveUIStateDebounced(state: Partial<WorkspaceUIState>) {
   const d = db();
   if (!d) return;
+  pendingUIState = state;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
+    const snapshot = pendingUIState;
+    pendingUIState = null;
+    if (!snapshot) return;
     try {
-      (await d).put(UI_STORE, state, "state");
-    } catch {
-      /* ignore */
+      const conn = await d;
+      // .put() returns a promise that resolves when the transaction commits.
+      await conn.put(UI_STORE, snapshot, "state");
+    } catch (err) {
+      console.error("[persistence] saveUIState failed", err);
     }
   }, 250);
 }
@@ -108,9 +128,10 @@ export async function saveOpenTabs(tabs: OpenTabMeta[]): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).put(UI_STORE, tabs, "openTabs");
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.put(UI_STORE, tabs, "openTabs");
+  } catch (err) {
+    console.error("[persistence] saveOpenTabs failed", err);
   }
 }
 
@@ -118,8 +139,10 @@ export async function loadOpenTabs(): Promise<OpenTabMeta[]> {
   const d = db();
   if (!d) return [];
   try {
-    return ((await (await d).get(UI_STORE, "openTabs")) as OpenTabMeta[]) ?? [];
-  } catch {
+    const conn = await d;
+    return ((await conn.get(UI_STORE, "openTabs")) as OpenTabMeta[]) ?? [];
+  } catch (err) {
+    console.warn("[persistence] loadOpenTabs failed", err);
     return [];
   }
 }
@@ -128,9 +151,10 @@ export async function clearOpenTabs(): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).delete(UI_STORE, "openTabs");
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.delete(UI_STORE, "openTabs");
+  } catch (err) {
+    console.warn("[persistence] clearOpenTabs failed", err);
   }
 }
 
@@ -162,7 +186,8 @@ export async function listRecents(): Promise<RecentMeta[]> {
         });
     }
     return out.sort((a, b) => b.addedAt - a.addedAt);
-  } catch {
+  } catch (err) {
+    console.warn("[persistence] listRecents failed", err);
     return [];
   }
 }
@@ -171,8 +196,12 @@ export async function getRecent(id: string): Promise<RecentDoc | null> {
   const d = db();
   if (!d) return null;
   try {
-    return ((await (await d).get(DOC_STORE, id)) as RecentDoc) ?? null;
-  } catch {
+    const conn = await d;
+    const rec = (await conn.get(DOC_STORE, id)) as RecentDoc | undefined;
+    // 'not found / evicted' is normal — return null cleanly.
+    return rec ?? null;
+  } catch (err) {
+    console.warn("[persistence] getRecent failed", err);
     return null;
   }
 }
@@ -238,7 +267,8 @@ export async function addRecent(
       ocrPagesCopied: rec.ocrPagesCopied,
       ocrIsPartial: rec.ocrIsPartial,
     };
-  } catch {
+  } catch (err) {
+    console.error("[persistence] addRecent failed", err);
     return null;
   }
 }
@@ -247,9 +277,10 @@ export async function removeRecent(id: string): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).delete(DOC_STORE, id);
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.delete(DOC_STORE, id);
+  } catch (err) {
+    console.warn("[persistence] removeRecent failed", err);
   }
 }
 
@@ -257,9 +288,10 @@ export async function clearRecents(): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).clear(DOC_STORE);
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.clear(DOC_STORE);
+  } catch (err) {
+    console.warn("[persistence] clearRecents failed", err);
   }
 }
 
@@ -326,38 +358,73 @@ export async function loadSidecar(name: string, size: number): Promise<SidecarRe
   const d = db();
   if (!d) return null;
   try {
-    return ((await (await d).get(SIDECAR_STORE, sidecarKey(name, size))) as SidecarRecord) ?? null;
-  } catch {
+    const conn = await d;
+    const rec = (await conn.get(SIDECAR_STORE, sidecarKey(name, size))) as
+      | SidecarRecord
+      | undefined;
+    return rec ?? null;
+  } catch (err) {
+    console.warn("[persistence] loadSidecar failed", err);
     return null;
   }
 }
 
 const sidecarTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const sidecarPending = new Map<string, Omit<SidecarRecord, "savedAt">>();
 export function saveSidecarDebounced(name: string, size: number, rec: Omit<SidecarRecord, "savedAt">) {
   const d = db();
   if (!d) return;
   const key = sidecarKey(name, size);
+  sidecarPending.set(key, rec);
   const t = sidecarTimers.get(key);
   if (t) clearTimeout(t);
   sidecarTimers.set(
     key,
     setTimeout(async () => {
+      const snapshot = sidecarPending.get(key);
+      sidecarPending.delete(key);
+      if (!snapshot) return;
       try {
-        const full: SidecarRecord = { ...rec, savedAt: Date.now() };
-        (await d).put(SIDECAR_STORE, full, key);
-      } catch {
-        /* ignore */
+        const conn = await d;
+        const full: SidecarRecord = { ...snapshot, savedAt: Date.now() };
+        // Await the put — resolves on transaction commit.
+        await conn.put(SIDECAR_STORE, full, key);
+      } catch (err) {
+        console.error("[persistence] saveSidecar failed", err);
       }
     }, 400),
   );
+}
+
+// Flush all pending sidecar writes immediately. Call before unload / tab close
+// so debounced writes are actually committed.
+export async function flushSidecars(): Promise<void> {
+  const d = db();
+  if (!d) return;
+  const pending = Array.from(sidecarPending.entries());
+  sidecarPending.clear();
+  for (const [, t] of sidecarTimers) clearTimeout(t);
+  sidecarTimers.clear();
+  if (pending.length === 0) return;
+  try {
+    const conn = await d;
+    await Promise.all(
+      pending.map(([key, rec]) =>
+        conn.put(SIDECAR_STORE, { ...rec, savedAt: Date.now() } satisfies SidecarRecord, key),
+      ),
+    );
+  } catch (err) {
+    console.error("[persistence] flushSidecars failed", err);
+  }
 }
 
 export async function deleteSidecar(name: string, size: number): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).delete(SIDECAR_STORE, sidecarKey(name, size));
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.delete(SIDECAR_STORE, sidecarKey(name, size));
+  } catch (err) {
+    console.warn("[persistence] deleteSidecar failed", err);
   }
 }

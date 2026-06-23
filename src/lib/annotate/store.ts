@@ -1,51 +1,74 @@
 import { create } from "zustand";
+import { openDB, type IDBPDatabase } from "idb";
 import type { Annot, AnnotTool, RGB } from "./types";
 import { PRESET_COLORS } from "./types";
 
-// IndexedDB autosave keyed by file hash
+// IndexedDB autosave keyed by file hash. Uses the `idb` wrapper so transaction
+// completion is awaitable (raw IDB returns before tx commits → silent data loss).
 const DB_NAME = "vaultpdf-annotations";
 const STORE = "docs";
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") return reject(new Error("no idb"));
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+let dbp: Promise<IDBPDatabase> | null = null;
+function db(): Promise<IDBPDatabase> | null {
+  if (typeof indexedDB === "undefined") return null;
+  if (!dbp) {
+    dbp = openDB(DB_NAME, 1, {
+      upgrade(d) {
+        if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE);
+      },
+      terminated() {
+        console.warn("[annotate] DB connection terminated — reopening");
+        dbp = null;
+      },
+    }).catch((err) => {
+      console.error("[annotate] openDB failed", err);
+      dbp = null;
+      throw err;
+    });
+  }
+  return dbp;
 }
 
 export async function loadAnnots(hash: string): Promise<Annot[] | null> {
+  const d = db();
+  if (!d) return null;
   try {
-    const db = await openDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).get(hash);
-      req.onsuccess = () => resolve((req.result as Annot[]) ?? null);
-      req.onerror = () => resolve(null);
-    });
-  } catch {
+    const conn = await d;
+    const v = (await conn.get(STORE, hash)) as Annot[] | undefined;
+    // 'not found / evicted' is normal — return null cleanly.
+    return v ?? null;
+  } catch (err) {
+    console.warn("[annotate] loadAnnots failed", err);
     return null;
   }
 }
 
-export async function saveAnnots(hash: string, annots: Annot[]) {
+export async function saveAnnots(hash: string, annots: Annot[]): Promise<boolean> {
+  const d = db();
+  if (!d) return false;
   try {
-    const db = await openDB();
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(annots, hash);
-  } catch { /* ignore */ }
+    const conn = await d;
+    // Await the put — the idb promise resolves on transaction commit, so this
+    // confirms the write actually landed.
+    await conn.put(STORE, annots, hash);
+    return true;
+  } catch (err) {
+    console.error("[annotate] saveAnnots failed", err);
+    return false;
+  }
 }
 
-export async function clearAnnots(hash: string) {
+export async function clearAnnots(hash: string): Promise<boolean> {
+  const d = db();
+  if (!d) return false;
   try {
-    const db = await openDB();
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(hash);
-  } catch { /* ignore */ }
+    const conn = await d;
+    await conn.delete(STORE, hash);
+    return true;
+  } catch (err) {
+    console.warn("[annotate] clearAnnots failed", err);
+    return false;
+  }
 }
 
 // ----- zustand store -----
