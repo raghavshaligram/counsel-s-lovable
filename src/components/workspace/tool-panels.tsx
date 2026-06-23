@@ -131,6 +131,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <OcrPanel ctx={ctx} />;
     case "to-word":
       return <ToWordPanel ctx={ctx} />;
+    case "word-to-pdf":
+      return <WordToPdfPanel />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
