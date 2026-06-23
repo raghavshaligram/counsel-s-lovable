@@ -1230,7 +1230,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               </div>
             )}
 
-            <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5">
+            <div className="absolute right-10 top-3 z-30 flex items-center gap-1.5">
               <CanvasIconButton label="Thumbnails" onClick={() => openTool("organize")}>
                 <LayoutGrid className="h-[15px] w-[15px]" />
               </CanvasIconButton>
