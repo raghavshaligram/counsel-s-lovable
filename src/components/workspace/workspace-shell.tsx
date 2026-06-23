@@ -127,6 +127,7 @@ const TOOLS: RailTool[] = [
   { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
   // Convert
   { id: "convert", label: "Convert", icon: FileType, group: "convert", groupLabel: "Convert" },
+  { id: "image-convert", label: "Image Convert", icon: ImageIcon, group: "convert", groupLabel: "Convert" },
   { id: "ocr", label: "Make Searchable", icon: ScanText, group: "convert", groupLabel: "Convert" },
   // Edit
   { id: "sign", label: "Sign & Fill", icon: PenLine, group: "sign", groupLabel: "Edit" },
