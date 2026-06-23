@@ -129,10 +129,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ComparePanel ctx={ctx} />;
     case "ocr":
       return <OcrPanel ctx={ctx} />;
-    case "to-word":
-      return <ToWordPanel ctx={ctx} />;
-    case "word-to-pdf":
-      return <WordToPdfPanel />;
+    case "convert":
+      return <ConvertPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -3457,4 +3455,397 @@ function WordToPdfPanel() {
   );
 }
 
+
+/* ============================ Unified Convert ============================ */
+
+type ConvertSourceKind = "pdf" | "word" | "images" | null;
+type ConvertTarget = "word" | "excel" | "images" | "pdf";
+
+function detectKind(files: File[]): ConvertSourceKind {
+  if (!files.length) return null;
+  if (files.every((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name))) {
+    return "images";
+  }
+  const f = files[0];
+  if (/\.pdf$/i.test(f.name) || f.type === "application/pdf") return "pdf";
+  if (/\.docx$/i.test(f.name)) return "word";
+  return null;
+}
+
+function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const [picked, setPicked] = useState<File[]>([]);
+  const [usingActive, setUsingActive] = useState(true);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Effective source: picked files override the active tab.
+  const sources: File[] = picked.length > 0
+    ? picked
+    : (usingActive && ctx.file ? [ctx.file] : []);
+  const kind = detectKind(sources);
+
+  // Target selection — reset when kind changes.
+  const allowedTargets: ConvertTarget[] =
+    kind === "pdf" ? ["word", "excel", "images"]
+    : kind === "word" ? ["pdf"]
+    : kind === "images" ? ["pdf"]
+    : [];
+  const [target, setTarget] = useState<ConvertTarget | null>(null);
+  useEffect(() => {
+    if (!allowedTargets.length) { setTarget(null); return; }
+    if (!target || !allowedTargets.includes(target)) setTarget(allowedTargets[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
+
+  // Settings per target.
+  const [wordMode, setWordMode] = useState<"flow" | "page">("flow");
+  const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
+  const [imgDpi, setImgDpi] = useState<number>(150);
+  const [imgQuality, setImgQuality] = useState<number>(0.92);
+  const [pdfPageSize, setPdfPageSize] = useState<"letter" | "a4">("letter");
+  const [imagesPageSize, setImagesPageSize] = useState<"auto" | "letter" | "a4">("auto");
+  const [imagesFit, setImagesFit] = useState<"fit" | "fill">("fit");
+  const [imagesMargin, setImagesMargin] = useState<number>(24);
+
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string>("");
+
+  const onPick = (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const arr = Array.from(files);
+    // If a PDF or DOCX is picked, only the first counts.
+    const first = arr[0];
+    if (/\.pdf$/i.test(first.name) || /\.docx$/i.test(first.name)) {
+      setPicked([first]);
+    } else {
+      // Images: accept all image files.
+      const imgs = arr.filter((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name));
+      if (!imgs.length) {
+        toast.error("Drop a PDF, a .docx, or one-or-more image files.");
+        return;
+      }
+      setPicked(imgs);
+    }
+    setUsingActive(false);
+  };
+
+  const clearPicked = () => {
+    setPicked([]);
+    setUsingActive(true);
+  };
+
+  const run = async () => {
+    if (!sources.length || !target) return;
+    setBusy(true);
+    setProgress("Starting…");
+    const tid = "wsx-convert";
+    toast.loading("Converting…", { id: tid });
+    try {
+      if (kind === "pdf" && target === "word") {
+        const file = sources[0];
+        const prepared = await ensureSearchablePdf(file, (s) => setProgress(s));
+        setProgress("Building .docx…");
+        const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
+        const blob = await convertPdfToWordBlob(prepared, {
+          mode: wordMode,
+          onProgress: (pct) => setProgress(`Reading pages… ${pct}%`),
+        });
+        const base = file.name.replace(/\.pdf$/i, "");
+        downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.docx`);
+        toast.success("Word document downloaded", { id: tid });
+      } else if (kind === "pdf" && target === "excel") {
+        const file = sources[0];
+        // extractTables already OCRs page-by-page where needed.
+        const { extractTables, downloadXlsx } = await import("@/lib/pdf/extract-tables");
+        const result = await extractTables(file, 1.5, (p) => {
+          setProgress(`Scanning page ${p.page}/${p.totalPages} (${p.stage})`);
+        });
+        if (result.length === 0) {
+          toast.warning("No tables detected in this PDF.", { id: tid });
+        } else {
+          await downloadXlsx(result, file.name.replace(/\.pdf$/i, "") + ".xlsx");
+          toast.success(`Exported ${result.length} table${result.length === 1 ? "" : "s"}`, { id: tid });
+        }
+      } else if (kind === "pdf" && target === "images") {
+        const file = sources[0];
+        const { convertPdfToImages } = await import("@/lib/pdf/to-images");
+        const res = await convertPdfToImages(file, {
+          format: imgFormat,
+          dpi: imgDpi,
+          quality: imgQuality,
+          onProgress: (pct) => setProgress(`Rendering pages… ${pct}%`),
+        });
+        downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
+        toast.success(`Exported ${res.pages} page${res.pages === 1 ? "" : "s"}`, { id: tid });
+      } else if (kind === "word" && target === "pdf") {
+        const file = sources[0];
+        const { convertWordToPdfBlob } = await import("@/lib/pdf/word-to-pdf");
+        const { blob, pages } = await convertWordToPdfBlob(file, {
+          pageSize: pdfPageSize,
+          onProgress: (s) => setProgress(s),
+        });
+        const base = file.name.replace(/\.docx$/i, "");
+        downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
+        toast.success(`Converted ${pages} page${pages === 1 ? "" : "s"}`, { id: tid });
+      } else if (kind === "images" && target === "pdf") {
+        const { buildPdfFromImages } = await import("@/lib/pdf/images-to-pdf");
+        const res = await buildPdfFromImages(sources, {
+          pageSize: imagesPageSize,
+          fit: imagesFit,
+          margin: imagesMargin,
+          onProgress: (pct) => setProgress(`Building PDF… ${pct}%`),
+        });
+        downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
+        toast.success(`Built PDF from ${res.pages} image${res.pages === 1 ? "" : "s"}`, { id: tid });
+      } else {
+        toast.error("Unsupported conversion", { id: tid });
+      }
+    } catch (err) {
+      console.error("[convert] failed", err);
+      toast.error("Conversion failed", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          onPick(e.target.files);
+          if (inputRef.current) inputRef.current.value = "";
+        }}
+      />
+
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        {sources.length > 0 ? (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12px] text-foreground">
+                  {sources.length === 1
+                    ? sources[0].name
+                    : `${sources.length} images`}
+                </div>
+                <div className="text-[10.5px] text-text-muted">
+                  {kind === "pdf" && "PDF · active tab"}
+                  {kind === "pdf" && picked.length > 0 && " (replaced)"}
+                  {kind === "word" && "Word .docx"}
+                  {kind === "images" && `${sources.length} file${sources.length === 1 ? "" : "s"}`}
+                  {!kind && "Unsupported file type"}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  className="rounded-md border border-border px-2 py-1 text-[10.5px] text-text-2 hover:border-vault/40 hover:text-foreground"
+                >
+                  Replace
+                </button>
+                {picked.length > 0 && ctx.file && (
+                  <button
+                    type="button"
+                    onClick={clearPicked}
+                    className="rounded-md border border-border px-2 py-1 text-[10.5px] text-text-2 hover:border-vault/40 hover:text-foreground"
+                  >
+                    Use active
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[12px] text-text-2 hover:border-vault/40 hover:text-foreground"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Drop a PDF, Word doc, or images…
+          </button>
+        )}
+      </Section>
+
+      {kind && allowedTargets.length > 0 && (
+        <Section title="Convert to" icon={<Info className="h-3 w-3" />}>
+          <div className="grid grid-cols-1 gap-1.5">
+            {allowedTargets.map((t) => (
+              <ModeRow
+                key={t}
+                active={target === t}
+                onClick={() => setTarget(t)}
+                label={
+                  t === "word" ? "Word document (.docx)"
+                  : t === "excel" ? "Excel spreadsheet (.xlsx)"
+                  : t === "images" ? "Images (PNG / JPG)"
+                  : "PDF document (.pdf)"
+                }
+                hint={
+                  t === "word" ? "Editable text. OCR runs automatically for scanned PDFs."
+                  : t === "excel" ? "Detected tables, one sheet per table."
+                  : t === "images" ? "One image per page, zipped for multi-page."
+                  : kind === "word" ? "Render the .docx to a clean PDF."
+                  : "Combine your images into a single PDF."
+                }
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {kind === "pdf" && target === "word" && (
+        <Section title="Layout" icon={<FileText className="h-3 w-3" />}>
+          <div className="grid grid-cols-1 gap-1.5">
+            <ModeRow active={wordMode === "flow"} onClick={() => setWordMode("flow")}
+              label="Continuous flow" hint="One body of text, no page markers." />
+            <ModeRow active={wordMode === "page"} onClick={() => setWordMode("page")}
+              label="Page breaks + labels" hint="Insert a page break and “Page N” heading per source page." />
+          </div>
+        </Section>
+      )}
+
+      {kind === "pdf" && target === "images" && (
+        <>
+          <Section title="Format" icon={<Info className="h-3 w-3" />}>
+            <div className="grid grid-cols-2 gap-1.5">
+              <ModeRow active={imgFormat === "png"} onClick={() => setImgFormat("png")} label="PNG" hint="Lossless" />
+              <ModeRow active={imgFormat === "jpg"} onClick={() => setImgFormat("jpg")} label="JPG" hint="Smaller files" />
+            </div>
+          </Section>
+          <Section title="Resolution" icon={<Info className="h-3 w-3" />}>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[72, 150, 300].map((d) => (
+                <ModeRow key={d} active={imgDpi === d} onClick={() => setImgDpi(d)}
+                  label={`${d} dpi`}
+                  hint={d === 72 ? "Screen" : d === 150 ? "Standard" : "Print"} />
+              ))}
+            </div>
+            {imgFormat === "jpg" && (
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-[10.5px] text-text-muted mb-1">
+                  <span>JPG quality</span>
+                  <span className="font-mono text-foreground/80">{Math.round(imgQuality * 100)}%</span>
+                </div>
+                <input type="range" min={0.4} max={1} step={0.02} value={imgQuality}
+                  onChange={(e) => setImgQuality(parseFloat(e.target.value))}
+                  className="w-full accent-vault" />
+              </div>
+            )}
+          </Section>
+        </>
+      )}
+
+      {kind === "word" && target === "pdf" && (
+        <Section title="Page size" icon={<Info className="h-3 w-3" />}>
+          <div className="grid grid-cols-2 gap-1.5">
+            <ModeRow active={pdfPageSize === "letter"} onClick={() => setPdfPageSize("letter")}
+              label="US Letter" hint="8.5 × 11 in" />
+            <ModeRow active={pdfPageSize === "a4"} onClick={() => setPdfPageSize("a4")}
+              label="A4" hint="210 × 297 mm" />
+          </div>
+        </Section>
+      )}
+
+      {kind === "images" && target === "pdf" && (
+        <>
+          <Section title="Page size" icon={<Info className="h-3 w-3" />}>
+            <div className="grid grid-cols-3 gap-1.5">
+              <ModeRow active={imagesPageSize === "auto"} onClick={() => setImagesPageSize("auto")}
+                label="Match" hint="Image size" />
+              <ModeRow active={imagesPageSize === "letter"} onClick={() => setImagesPageSize("letter")}
+                label="Letter" hint="8.5×11" />
+              <ModeRow active={imagesPageSize === "a4"} onClick={() => setImagesPageSize("a4")}
+                label="A4" hint="210×297" />
+            </div>
+          </Section>
+          {imagesPageSize !== "auto" && (
+            <Section title="Fit" icon={<Info className="h-3 w-3" />}>
+              <div className="grid grid-cols-2 gap-1.5">
+                <ModeRow active={imagesFit === "fit"} onClick={() => setImagesFit("fit")}
+                  label="Fit" hint="Whole image" />
+                <ModeRow active={imagesFit === "fill"} onClick={() => setImagesFit("fill")}
+                  label="Fill" hint="No borders" />
+              </div>
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-[10.5px] text-text-muted mb-1">
+                  <span>Margin</span>
+                  <span className="font-mono text-foreground/80">{imagesMargin}pt</span>
+                </div>
+                <input type="range" min={0} max={72} step={2} value={imagesMargin}
+                  onChange={(e) => setImagesMargin(parseInt(e.target.value, 10))}
+                  className="w-full accent-vault" />
+              </div>
+            </Section>
+          )}
+        </>
+      )}
+
+      {busy && (
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[10.5px] text-text-muted">
+          {progress || "Working…"}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy || !sources.length || !target || !kind}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+          (busy || !sources.length || !target || !kind) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy ? "Converting…" : target ? `Convert & download` : "Pick a target"}
+      </button>
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+/**
+ * If the PDF has no extractable text on its first few pages, treat it as
+ * scanned and run OCR to produce a searchable PDF before converting.
+ * Returns the (possibly replaced) File ready to feed to text-based converters.
+ */
+async function ensureSearchablePdf(
+  file: File,
+  onStatus: (s: string) => void,
+): Promise<File> {
+  try {
+    const { loadPdfjs } = await import("@/lib/pdf/worker");
+    const pdfjs = await loadPdfjs();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const probePages = Math.min(doc.numPages, 3);
+    let totalChars = 0;
+    for (let i = 1; i <= probePages; i++) {
+      const page = await doc.getPage(i);
+      const tc = await page.getTextContent();
+      totalChars += tc.items.reduce((n: number, it: any) => n + (it.str?.length ?? 0), 0);
+    }
+    // < ~40 chars per probed page → almost certainly scanned.
+    if (totalChars >= 40 * probePages) return file;
+
+    onStatus("Scanned PDF detected — running OCR first…");
+    const { ocrPdfToSearchable } = await import("@/lib/pdf/ocr-pdf");
+    const out = await ocrPdfToSearchable(file, (p) => {
+      onStatus(`OCR · page ${p.page}/${p.totalPages} (${p.stage})`);
+    });
+    return new File([out as BlobPart], file.name, { type: "application/pdf" });
+  } catch (err) {
+    console.warn("[convert] auto-OCR probe failed, continuing with original file", err);
+    return file;
+  }
+}
 
