@@ -3576,6 +3576,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           format: imgFormat,
           dpi: imgDpi,
           quality: imgQuality,
+          pages: imgPages.trim() || undefined,
           onProgress: (pct) => setProgress(`Rendering pages… ${pct}%`),
         });
         downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
