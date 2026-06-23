@@ -8,6 +8,7 @@ import { FileText, Info } from "lucide-react";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { convertPdfToWordBlob } from "@/lib/pdf/to-word";
 
 export const Route = createFileRoute("/to-word")({
   head: () => ({
@@ -62,56 +63,7 @@ function ToWordPage() {
     setBusy(true);
     setProgress(0);
     try {
-      const pdfjs = await loadPdfjs();
-      const { Document, Packer, Paragraph, TextRun, PageBreak, HeadingLevel } = await import("docx");
-      const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-
-      const allChildren: any[] = [];
-      for (let i = 1; i <= doc.numPages; i++) {
-        const page = await doc.getPage(i);
-        const content = await page.getTextContent();
-        const lines = groupIntoLines(content.items as any[]);
-
-        if (mode === "page" && i > 1) {
-          allChildren.push(new Paragraph({ children: [new PageBreak()] }));
-        }
-
-        if (mode === "page") {
-          allChildren.push(
-            new Paragraph({
-              heading: HeadingLevel.HEADING_3,
-              children: [new TextRun({ text: `Page ${i}`, bold: true, color: "888888" })],
-            }),
-          );
-        }
-
-        for (const ln of lines) {
-          if (!ln.text.trim()) {
-            allChildren.push(new Paragraph({ children: [new TextRun("")] }));
-            continue;
-          }
-          allChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: ln.text,
-                  size: Math.max(16, Math.min(36, Math.round(ln.size * 2))),
-                }),
-              ],
-            }),
-          );
-        }
-        setProgress(Math.round((i / doc.numPages) * 100));
-      }
-
-      const docx = new Document({
-        styles: {
-          default: { document: { run: { font: "Calibri", size: 22 } } },
-        },
-        sections: [{ children: allChildren }],
-      });
-
-      const blob = await Packer.toBlob(docx);
+      const blob = await convertPdfToWordBlob(file, { mode, onProgress: setProgress });
       const base = file.name.replace(/\.pdf$/i, "");
       downloadBlob(blob, `${base}.docx`);
       toast.success("Word document downloaded");
@@ -122,6 +74,7 @@ function ToWordPage() {
       setBusy(false);
     }
   };
+
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
@@ -184,33 +137,3 @@ function ToWordPage() {
   );
 }
 
-// Group pdfjs text items into lines using their y-position.
-function groupIntoLines(items: any[]): { text: string; size: number; y: number }[] {
-  const rows: { y: number; size: number; parts: { x: number; str: string }[] }[] = [];
-  for (const it of items) {
-    if (!it.str) continue;
-    const tr = it.transform as number[];
-    const x = tr[4];
-    const y = tr[5];
-    const size = Math.hypot(tr[2], tr[3]) || it.height || 10;
-    let row = rows.find((r) => Math.abs(r.y - y) < Math.max(2, size * 0.4));
-    if (!row) {
-      row = { y, size, parts: [] };
-      rows.push(row);
-    }
-    row.parts.push({ x, str: it.str });
-    if (it.hasEOL) {
-      row.parts.push({ x: x + 9999, str: "\n__EOL__" });
-    }
-  }
-  rows.sort((a, b) => b.y - a.y);
-  const out: { text: string; size: number; y: number }[] = [];
-  for (const r of rows) {
-    r.parts.sort((a, b) => a.x - b.x);
-    const raw = r.parts.map((p) => p.str).join(" ").replace(/\s*\n__EOL__\s*/g, "\n");
-    for (const line of raw.split("\n")) {
-      out.push({ text: line.replace(/\s+/g, " ").trim(), size: r.size, y: r.y });
-    }
-  }
-  return out;
-}

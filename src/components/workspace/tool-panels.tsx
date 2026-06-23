@@ -129,6 +129,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ComparePanel ctx={ctx} />;
     case "ocr":
       return <OcrPanel ctx={ctx} />;
+    case "to-word":
+      return <ToWordPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -3195,3 +3197,124 @@ function ComparePanel({ ctx }: { ctx: ToolPanelCtx }) {
     </div>
   );
 }
+
+/* ============================ PDF → Word ============================ */
+
+function ToWordPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const [mode, setMode] = useState<"flow" | "page">("flow");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  if (!file) {
+    return (
+      <p className="text-[11.5px] leading-snug text-text-2">
+        Open a PDF to convert it to an editable Word document.
+      </p>
+    );
+  }
+
+  const run = async () => {
+    setBusy(true);
+    setProgress(0);
+    const tid = "wsx-to-word";
+    toast.loading("Converting to Word…", { id: tid });
+    try {
+      const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
+      const blob = await convertPdfToWordBlob(file, { mode, onProgress: setProgress });
+      const base = file.name.replace(/\.pdf$/i, "");
+      downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.docx`);
+      toast.success("Word document downloaded", { id: tid });
+    } catch (err) {
+      console.error("[to-word] failed", err);
+      toast.error("Conversion failed", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Layout" icon={<FileText className="h-3 w-3" />}>
+        <div className="grid grid-cols-1 gap-1.5">
+          <ModeRow
+            active={mode === "flow"}
+            onClick={() => setMode("flow")}
+            label="Continuous flow"
+            hint="One body of text, no page markers."
+          />
+          <ModeRow
+            active={mode === "page"}
+            onClick={() => setMode("page")}
+            label="Page breaks + labels"
+            hint="Insert a page break and “Page N” heading per source page."
+          />
+        </div>
+      </Section>
+
+      <Section title="Notes" icon={<Info className="h-3 w-3" />}>
+        <p className="text-[10.5px] leading-snug text-text-muted">
+          Text-only conversion. Images, tables and complex layouts may not
+          survive cleanly — if the PDF is scanned, run{" "}
+          <span className="text-foreground">Make Searchable</span> first.
+        </p>
+      </Section>
+
+      {busy && (
+        <div className="space-y-1">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+            <div className="h-full bg-vault transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="text-[10.5px] text-text-muted">Reading pages… {progress}%</div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+          busy && "cursor-wait opacity-60",
+        )}
+      >
+        <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy ? "Converting…" : "Convert & download .docx"}
+      </button>
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+function ModeRow({
+  active,
+  onClick,
+  label,
+  hint,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-1.5 text-left transition-colors",
+        active
+          ? "border-vault/60 bg-vault/10"
+          : "border-border bg-surface-2 hover:border-vault/40",
+      )}
+    >
+      <span className="text-[12px] font-medium text-foreground">{label}</span>
+      <span className="text-[10.5px] text-text-muted">{hint}</span>
+    </button>
+  );
+}
+
