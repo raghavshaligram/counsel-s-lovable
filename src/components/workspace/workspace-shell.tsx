@@ -925,6 +925,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         {
           returnPartialOnAbort: true,
           skipPageIndices: [...skipPrev],
+          languages: ocrOptionsRef.current.languages,
+          highAccuracy: ocrOptionsRef.current.highAccuracy,
         },
       );
       const aborted = ctrl.signal.aborted;
