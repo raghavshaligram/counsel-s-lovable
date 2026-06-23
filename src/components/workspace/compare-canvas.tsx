@@ -82,9 +82,14 @@ export function CompareCanvas({ activeFile }: { activeFile: File | null }) {
     if (total > 0 && page > total) setPage(total);
   }, [pdfA, pdfB, page, setPage, setTotalPages]);
 
-  // Render current page whenever inputs change.
+  // Render current page whenever inputs change. viewMode is included so a
+  // mode switch re-renders into the freshly mounted canvas elements.
   useEffect(() => {
     if (!pdfA || !pdfB) return;
+    const cA = canvasARef.current;
+    const cB = canvasBRef.current;
+    const cD = canvasDiffRef.current;
+    if (!cA || !cB || !cD) return;
     let cancelled = false;
     setBusy(true);
     void (async () => {
@@ -95,9 +100,9 @@ export function CompareCanvas({ activeFile }: { activeFile: File | null }) {
           pageIndex: page,
           targetWidth: TARGET_WIDTH,
           threshold,
-          canvasA: canvasARef.current!,
-          canvasB: canvasBRef.current!,
-          canvasDiff: canvasDiffRef.current!,
+          canvasA: cA,
+          canvasB: cB,
+          canvasDiff: cD,
         });
         if (cancelled) return;
         setResult({ diffPixels: r.diffPixels, sizeMatch: r.sizeMatch });
@@ -111,7 +116,7 @@ export function CompareCanvas({ activeFile }: { activeFile: File | null }) {
     return () => {
       cancelled = true;
     };
-  }, [pdfA, pdfB, page, threshold, setResult, setBusy]);
+  }, [pdfA, pdfB, page, threshold, viewMode, setResult, setBusy]);
 
   if (!activeFile) {
     return (
