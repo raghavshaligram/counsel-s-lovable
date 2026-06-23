@@ -1580,24 +1580,27 @@ function RailButton({
   alwaysShow?: boolean;
 }) {
   return (
-    <Tip label={label} kbd={kbd} placement="right" alwaysShow={alwaysShow}>
+    <Tip label={kbd ? `${label} (${kbd})` : label} kbd={kbd} placement="right" alwaysShow={alwaysShow}>
       <button
         type="button"
         onClick={onClick}
         aria-label={label}
         className={cn(
-          "relative grid h-9 w-9 place-items-center text-text-2 transition-colors",
+          "relative flex h-auto w-[60px] flex-col items-center justify-center gap-1 py-1.5 text-text-2 transition-colors",
           "hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           active && "bg-accent-soft text-vault",
         )}
         style={{ borderRadius: 9 }}
       >
         {children}
+        <span className="text-[10px] leading-none tracking-tight text-center max-w-full truncate px-1">
+          {label}
+        </span>
         {pinned && (
           <span
             aria-hidden
             title="Pinned"
-            className="absolute -right-[2px] -top-[2px] h-1.5 w-1.5 rounded-full bg-vault"
+            className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-vault"
           />
         )}
       </button>
