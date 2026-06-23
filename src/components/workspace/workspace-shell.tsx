@@ -1237,7 +1237,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                         <div className="mt-2 flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={onRequestOcr}
+                            onClick={() => onRequestOcr()}
                             className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
                           >
                             {hasResumePoint
