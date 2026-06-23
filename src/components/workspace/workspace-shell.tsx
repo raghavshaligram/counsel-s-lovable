@@ -280,6 +280,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     };
   }, []);
 
+  // React to URL ?tool= changes after mount (e.g. clicking a shortcut chip while
+  // already on /workspace). Without this, the search param updates but the
+  // active tool/inspector never opens.
+  useEffect(() => {
+    if (!initialTool) return;
+    const next = TOOLS.find((t) => t.id === initialTool) ?? TOOLS.find((t) => t.group === initialTool);
+    if (!next) return;
+    if (active.activeToolId === next.id && active.inspectorOpen) return;
+    patchActive({ activeToolId: next.id, inspectorOpen: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTool]);
+
   // Pending close (for the unsaved-changes guard).
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
   const [pendingHomeClose, setPendingHomeClose] = useState(false); // legacy guard
