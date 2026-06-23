@@ -3460,8 +3460,8 @@ function WordToPdfPanel() {
 
 /* ============================ Unified Convert ============================ */
 
-type ConvertSourceKind = "pdf" | "word" | "images" | null;
-type ConvertTarget = "word" | "excel" | "images" | "pdf";
+type ConvertSourceKind = "pdf" | "word" | null;
+type ConvertTarget = "word" | "excel" | "pdf";
 
 function detectKind(files: File[]): ConvertSourceKind {
   if (!files.length) return null;
