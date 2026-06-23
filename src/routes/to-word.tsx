@@ -63,56 +63,7 @@ function ToWordPage() {
     setBusy(true);
     setProgress(0);
     try {
-      const pdfjs = await loadPdfjs();
-      const { Document, Packer, Paragraph, TextRun, PageBreak, HeadingLevel } = await import("docx");
-      const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-
-      const allChildren: any[] = [];
-      for (let i = 1; i <= doc.numPages; i++) {
-        const page = await doc.getPage(i);
-        const content = await page.getTextContent();
-        const lines = groupIntoLines(content.items as any[]);
-
-        if (mode === "page" && i > 1) {
-          allChildren.push(new Paragraph({ children: [new PageBreak()] }));
-        }
-
-        if (mode === "page") {
-          allChildren.push(
-            new Paragraph({
-              heading: HeadingLevel.HEADING_3,
-              children: [new TextRun({ text: `Page ${i}`, bold: true, color: "888888" })],
-            }),
-          );
-        }
-
-        for (const ln of lines) {
-          if (!ln.text.trim()) {
-            allChildren.push(new Paragraph({ children: [new TextRun("")] }));
-            continue;
-          }
-          allChildren.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: ln.text,
-                  size: Math.max(16, Math.min(36, Math.round(ln.size * 2))),
-                }),
-              ],
-            }),
-          );
-        }
-        setProgress(Math.round((i / doc.numPages) * 100));
-      }
-
-      const docx = new Document({
-        styles: {
-          default: { document: { run: { font: "Calibri", size: 22 } } },
-        },
-        sections: [{ children: allChildren }],
-      });
-
-      const blob = await Packer.toBlob(docx);
+      const blob = await convertPdfToWordBlob(file, { mode, onProgress: setProgress });
       const base = file.name.replace(/\.pdf$/i, "");
       downloadBlob(blob, `${base}.docx`);
       toast.success("Word document downloaded");
@@ -123,6 +74,7 @@ function ToWordPage() {
       setBusy(false);
     }
   };
+
 
   useHotkey("mod+Enter", () => { void run(); }, !!file && !busy);
   return (
