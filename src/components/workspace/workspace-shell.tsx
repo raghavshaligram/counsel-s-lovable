@@ -33,7 +33,7 @@ import {
   Upload,
   FilePlus2,
   LayoutTemplate,
-  Images as PhotoIcon,
+  
   FileType,
   ArrowRight,
   Scissors,
