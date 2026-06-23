@@ -4,8 +4,7 @@
 // Three modes:
 //   - "flow":     continuous text with bold/italic detection + inline images
 //   - "page":     same as flow, plus page breaks + "Page N" labels
-//   - "fidelity": render every page as a high-res image (preserves layout
-//                 exactly — best for complex/visual PDFs, not editable text)
+//   - "fidelity": render every page as an image (preserves layout exactly)
 
 import { loadPdfjs } from "@/lib/pdf/worker";
 
@@ -13,6 +12,9 @@ export type ToWordMode = "flow" | "page" | "fidelity";
 
 export interface ToWordOptions {
   mode?: ToWordMode;
+  includeImages?: boolean; // flow/page modes — default true
+  fidelityScale?: number; // fidelity mode — default 1.5
+  concurrency?: number; // page-level concurrency — default 4
   onProgress?: (pct: number) => void;
 }
 
@@ -23,7 +25,6 @@ type StyledItem = {
   size: number;
   bold: boolean;
   italic: boolean;
-  hasEOL: boolean;
 };
 
 type StyledLine = {
@@ -55,11 +56,25 @@ function groupStyledLines(items: StyledItem[]): StyledLine[] {
   return rows;
 }
 
-// Extract embedded raster images for a page. Returns PNG bytes + display size.
+async function encodeCanvas(
+  canvas: HTMLCanvasElement,
+  hasAlpha: boolean,
+): Promise<{ data: Uint8Array; type: "jpg" | "png" } | null> {
+  const mime = hasAlpha ? "image/png" : "image/jpeg";
+  const quality = hasAlpha ? undefined : 0.85;
+  const blob: Blob | null = await new Promise((res) =>
+    canvas.toBlob((b) => res(b), mime, quality),
+  );
+  if (!blob) return null;
+  const data = new Uint8Array(await blob.arrayBuffer());
+  return { data, type: hasAlpha ? "png" : "jpg" };
+}
+
+// Extract embedded raster images for a page.
 async function extractPageImages(
   page: any,
-): Promise<{ data: Uint8Array; width: number; height: number }[]> {
-  const out: { data: Uint8Array; width: number; height: number }[] = [];
+): Promise<{ data: Uint8Array; type: "jpg" | "png"; width: number; height: number }[]> {
+  const out: { data: Uint8Array; type: "jpg" | "png"; width: number; height: number }[] = [];
   let ops: any;
   try {
     ops = await page.getOperatorList();
@@ -95,20 +110,21 @@ async function extractPageImages(
       const w = img.width;
       const h = img.height;
       if (!w || !h) continue;
-      // img.bitmap (ImageBitmap) or img.data (raw bytes). Draw to canvas → PNG.
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
       if (!ctx) continue;
+      let hasAlpha = false;
       if (img.bitmap) {
         ctx.drawImage(img.bitmap, 0, 0);
+        hasAlpha = true; // unknown — assume alpha to be safe
       } else if (img.data) {
         const imageData = ctx.createImageData(w, h);
         const src = img.data as Uint8ClampedArray | Uint8Array;
-        // pdfjs may return RGB; expand to RGBA.
         if (src.length === w * h * 4) {
           imageData.data.set(src);
+          hasAlpha = true;
         } else if (src.length === w * h * 3) {
           for (let p = 0, q = 0; p < src.length; p += 3, q += 4) {
             imageData.data[q] = src[p];
@@ -116,6 +132,7 @@ async function extractPageImages(
             imageData.data[q + 2] = src[p + 2];
             imageData.data[q + 3] = 255;
           }
+          hasAlpha = false;
         } else {
           continue;
         }
@@ -123,12 +140,12 @@ async function extractPageImages(
       } else {
         continue;
       }
-      const blob: Blob | null = await new Promise((res) =>
-        canvas.toBlob((b) => res(b), "image/png"),
-      );
-      if (!blob) continue;
-      const buf = new Uint8Array(await blob.arrayBuffer());
-      out.push({ data: buf, width: w, height: h });
+      const enc = await encodeCanvas(canvas, hasAlpha);
+      // free
+      canvas.width = 0;
+      canvas.height = 0;
+      if (!enc) continue;
+      out.push({ data: enc.data, type: enc.type, width: w, height: h });
     } catch {
       // skip unresolved/inline-mask images
     }
@@ -136,27 +153,47 @@ async function extractPageImages(
   return out;
 }
 
-// Render the whole page to a PNG (used in "fidelity" mode).
-async function renderPageToPng(
+async function renderPageToImage(
   page: any,
-  scale = 2,
-): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+  scale: number,
+): Promise<{ data: Uint8Array; type: "jpg" | "png"; width: number; height: number } | null> {
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
   canvas.height = Math.ceil(viewport.height);
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
+  // white background → safe to encode as JPEG (no alpha needed)
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   await page.render({ canvasContext: ctx, viewport }).promise;
-  const blob: Blob | null = await new Promise((res) =>
-    canvas.toBlob((b) => res(b), "image/png"),
-  );
-  if (!blob) return null;
-  return {
-    data: new Uint8Array(await blob.arrayBuffer()),
-    width: canvas.width,
-    height: canvas.height,
-  };
+  const w = canvas.width;
+  const h = canvas.height;
+  const enc = await encodeCanvas(canvas, false);
+  canvas.width = 0;
+  canvas.height = 0;
+  if (!enc) return null;
+  return { data: enc.data, type: enc.type, width: w, height: h };
+}
+
+async function runWithConcurrency<T>(
+  count: number,
+  limit: number,
+  task: (index: number) => Promise<T>,
+  onDone?: () => void,
+): Promise<T[]> {
+  const results: T[] = new Array(count);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, count) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= count) return;
+      results[i] = await task(i);
+      onDone?.();
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export async function convertPdfToWordBlob(
@@ -164,59 +201,68 @@ export async function convertPdfToWordBlob(
   options: ToWordOptions = {},
 ): Promise<Blob> {
   const mode: ToWordMode = options.mode ?? "flow";
+  const includeImages = options.includeImages ?? true;
+  const fidelityScale = options.fidelityScale ?? 1.5;
+  const concurrency = Math.max(1, options.concurrency ?? 4);
   const onProgress = options.onProgress;
 
   const pdfjs = await loadPdfjs();
   const { Document, Packer, Paragraph, TextRun, PageBreak, HeadingLevel, ImageRun, AlignmentType } =
     await import("docx");
   const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const numPages: number = doc.numPages;
 
-  const allChildren: any[] = [];
+  // Target content width ≈ 6.5in = 468pt for default Letter w/ 1in margins.
+  const MAX_IMG_W_PT = 468;
 
-  // Target content width ≈ 6.5in = 624pt for default Letter w/ 1in margins.
-  const MAX_IMG_W_PT = 468; // 6.5in × 72
+  let completed = 0;
+  const tick = () => {
+    completed++;
+    onProgress?.(Math.round((completed / numPages) * 100));
+  };
 
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
+  const buildPage = async (pageIndex: number): Promise<any[]> => {
+    const pageNumber = pageIndex + 1;
+    const page = await doc.getPage(pageNumber);
+    const out: any[] = [];
 
-    if (i > 1 && (mode === "page" || mode === "fidelity")) {
-      allChildren.push(new Paragraph({ children: [new PageBreak()] }));
+    if (pageIndex > 0 && (mode === "page" || mode === "fidelity")) {
+      out.push(new Paragraph({ children: [new PageBreak()] }));
     }
 
     if (mode === "page") {
-      allChildren.push(
+      out.push(
         new Paragraph({
           heading: HeadingLevel.HEADING_3,
-          children: [new TextRun({ text: `Page ${i}`, bold: true, color: "888888" })],
+          children: [new TextRun({ text: `Page ${pageNumber}`, bold: true, color: "888888" })],
         }),
       );
     }
 
     if (mode === "fidelity") {
-      const png = await renderPageToPng(page, 2);
-      if (png) {
+      const img = await renderPageToImage(page, fidelityScale);
+      if (img) {
         const viewport = page.getViewport({ scale: 1 });
-        const ratio = png.height / png.width;
+        const ratio = img.height / img.width;
         const wPt = Math.min(MAX_IMG_W_PT, viewport.width);
         const hPt = wPt * ratio;
-        allChildren.push(
+        out.push(
           new Paragraph({
             alignment: AlignmentType.CENTER,
             children: [
               new ImageRun({
-                type: "png",
-                data: png.data,
+                type: img.type,
+                data: img.data,
                 transformation: { width: wPt, height: hPt },
               } as any),
             ],
           }),
         );
       }
-      onProgress?.(Math.round((i / doc.numPages) * 100));
-      continue;
+      return out;
     }
 
-    // Text + inline images for "flow" / "page" modes.
+    // Text + (optional) inline images for "flow" / "page" modes.
     const content = await page.getTextContent();
     const styles: Record<string, any> = (content as any).styles ?? {};
     const items: StyledItem[] = (content.items as any[])
@@ -235,13 +281,11 @@ export async function convertPdfToWordBlob(
           size: Math.hypot(tr[2], tr[3]) || it.height || 10,
           bold,
           italic,
-          hasEOL: !!it.hasEOL,
         };
       });
 
     const rows = groupStyledLines(items);
     for (const r of rows) {
-      // Merge adjacent parts with identical style into single TextRuns.
       const runs: { text: string; bold: boolean; italic: boolean; size: number }[] = [];
       for (const p of r.parts) {
         const last = runs[runs.length - 1];
@@ -253,10 +297,10 @@ export async function convertPdfToWordBlob(
         }
       }
       if (!runs.length || runs.every((r) => !r.text.trim())) {
-        allChildren.push(new Paragraph({ children: [new TextRun("")] }));
+        out.push(new Paragraph({ children: [new TextRun("")] }));
         continue;
       }
-      allChildren.push(
+      out.push(
         new Paragraph({
           children: runs.map(
             (r) =>
@@ -271,34 +315,35 @@ export async function convertPdfToWordBlob(
       );
     }
 
-    // Append embedded images for this page (after its text).
-    const images = await extractPageImages(page);
-    if (images.length) {
-      const viewport = page.getViewport({ scale: 1 });
-      for (const img of images) {
-        // Estimate display size: scale image to fit content width, preserve aspect.
-        const aspect = img.height / img.width;
-        // Heuristic: original size in pt ≈ image px (pdfjs returns pixel size).
-        // Cap at content width.
-        const wPt = Math.min(MAX_IMG_W_PT, Math.min(img.width, viewport.width));
-        const hPt = wPt * aspect;
-        allChildren.push(
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [
-              new ImageRun({
-                type: "png",
-                data: img.data,
-                transformation: { width: wPt, height: hPt },
-              } as any),
-            ],
-          }),
-        );
+    if (includeImages) {
+      const images = await extractPageImages(page);
+      if (images.length) {
+        const viewport = page.getViewport({ scale: 1 });
+        for (const img of images) {
+          const aspect = img.height / img.width;
+          const wPt = Math.min(MAX_IMG_W_PT, Math.min(img.width, viewport.width));
+          const hPt = wPt * aspect;
+          out.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new ImageRun({
+                  type: img.type,
+                  data: img.data,
+                  transformation: { width: wPt, height: hPt },
+                } as any),
+              ],
+            }),
+          );
+        }
       }
     }
 
-    onProgress?.(Math.round((i / doc.numPages) * 100));
-  }
+    return out;
+  };
+
+  const perPage = await runWithConcurrency(numPages, concurrency, buildPage, tick);
+  const allChildren: any[] = perPage.flat();
 
   const docx = new Document({
     styles: {
