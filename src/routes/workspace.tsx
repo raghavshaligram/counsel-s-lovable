@@ -3,9 +3,8 @@ import { z } from "zod";
 import { WorkspaceShell } from "@/components/workspace/workspace-shell";
 
 const searchSchema = z.object({
-  tool: z
-    .enum(["pages", "redact", "sign", "convert", "secure", "layout", "legal", "ai"])
-    .optional(),
+  // Accept either a group label or a specific tool id — chips/links may pass either.
+  tool: z.string().optional(),
 });
 
 export const Route = createFileRoute("/workspace")({
