@@ -74,6 +74,7 @@ import {
   clearOpenTabs,
   loadSidecar,
   saveSidecarDebounced,
+  flushSidecars,
   deleteSidecar,
   type RecentMeta,
   type OpenTabMeta,
