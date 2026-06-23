@@ -3487,9 +3487,8 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   // Target selection — reset when kind changes.
   const allowedTargets: ConvertTarget[] =
-    kind === "pdf" ? ["word", "excel", "images"]
+    kind === "pdf" ? ["word", "excel"]
     : kind === "word" ? ["pdf"]
-    : kind === "images" ? ["pdf"]
     : [];
   const [target, setTarget] = useState<ConvertTarget | null>(null);
   useEffect(() => {
