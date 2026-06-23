@@ -2605,3 +2605,170 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
     </div>
   );
 }
+
+/* ============================ Unlock ============================ */
+
+function UnlockPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    if (!file) {
+      setNeedsPassword(null);
+      setPassword("");
+      return;
+    }
+    let cancelled = false;
+    setChecking(true);
+    void import("@/lib/pdf/unlock")
+      .then((m) => m.isPdfEncrypted(file))
+      .then((enc) => {
+        if (!cancelled) setNeedsPassword(enc);
+      })
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
+
+  const run = useCallback(async () => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { unlockPdf, WrongPasswordError } = await import("@/lib/pdf/unlock");
+      try {
+        const result = await unlockPdf(file, password || undefined);
+        triggerDownload(result.blob, result.filename);
+        toast.success(
+          result.wasEncrypted ? "Unlocked PDF downloaded" : "Clean copy downloaded",
+          { description: `${result.filename} · nothing was uploaded.` },
+        );
+        // Replace active tab with the decrypted copy so subsequent tools work.
+        try {
+          const decrypted = new File([result.blob], result.filename, {
+            type: "application/pdf",
+          });
+          replaceFile(decrypted);
+        } catch {
+          /* ignore */
+        }
+      } catch (err) {
+        if (err instanceof WrongPasswordError) {
+          toast.error("Wrong password. Try again.");
+        } else {
+          throw err;
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Unlock failed", {
+        description: err instanceof Error ? err.message : "Try a different PDF.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, password, replaceFile]);
+
+  if (!file) {
+    return (
+      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
+        Open a PDF in the workspace to unlock it.
+      </p>
+    );
+  }
+
+  const pwInput =
+    "w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px] text-foreground focus:border-vault/60 focus:outline-none focus:ring-1 focus:ring-vault/40";
+
+  const canRun = !busy && !checking && (!needsPassword || password.length > 0);
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+          <div className="truncate text-[12px] text-foreground" title={file.name}>
+            {file.name}
+          </div>
+        </div>
+      </Section>
+
+      {checking ? (
+        <Section title="Status">
+          <div className="flex items-center gap-2 text-[11.5px] text-text-muted">
+            <RefreshCw className="h-3 w-3 animate-spin" /> Checking encryption…
+          </div>
+        </Section>
+      ) : needsPassword ? (
+        <Section title="Open password" icon={<KeyRound className="h-3 w-3" />}>
+          <div className="relative">
+            <input
+              type={showPw ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter the PDF password"
+              autoFocus
+              autoComplete="current-password"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canRun) {
+                  e.preventDefault();
+                  void run();
+                }
+              }}
+              className={cn(pwInput, "pr-8")}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((s) => !s)}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-foreground"
+              aria-label={showPw ? "Hide password" : "Show password"}
+            >
+              {showPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        </Section>
+      ) : (
+        <Section title="Status">
+          <div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[11.5px] text-text-muted">
+            <ShieldOff className="mt-0.5 h-3.5 w-3.5 shrink-0 text-vault" />
+            <div>This PDF isn't password-protected — we'll re-save a clean copy.</div>
+          </div>
+        </Section>
+      )}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={!canRun}
+        className={cn(
+          "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+          canRun ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+        )}
+      >
+        {busy ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Unlocking…
+          </>
+        ) : (
+          <>
+            <LockOpen className="h-3.5 w-3.5" /> Unlock &amp; download
+          </>
+        )}
+      </button>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · your password never leaves this tab
+      </div>
+
+      <div className="text-center text-[10px] uppercase tracking-[0.18em] text-text-muted">
+        Only unlock PDFs you have permission to open.
+      </div>
+    </div>
+  );
+}
