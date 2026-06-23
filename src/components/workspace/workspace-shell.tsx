@@ -1286,7 +1286,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 className="pointer-events-none absolute inset-0 transition-colors"
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
-              {activeToolId === "organize" ? (
+              {activeToolId === "compare" ? (
+                <CompareCanvas activeFile={file} />
+              ) : activeToolId === "organize" ? (
                 <OrganizeGrid activeTabId={active.id} activeFile={file} onOpenFile={openFile} />
               ) : file ? (
                 editorState.doc && editorState.doc.pages.length > 0 ? (
