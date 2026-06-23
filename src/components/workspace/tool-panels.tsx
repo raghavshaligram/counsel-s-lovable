@@ -3502,6 +3502,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
   const [imgDpi, setImgDpi] = useState<number>(150);
   const [imgQuality, setImgQuality] = useState<number>(0.92);
+  const [imgPages, setImgPages] = useState<string>("");
   const [pdfPageSize, setPdfPageSize] = useState<"letter" | "a4">("letter");
   const [imagesPageSize, setImagesPageSize] = useState<"auto" | "letter" | "a4">("auto");
   const [imagesFit, setImagesFit] = useState<"fit" | "fill">("fit");
