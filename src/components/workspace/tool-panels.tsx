@@ -3703,9 +3703,11 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         <Section title="Layout" icon={<FileText className="h-3 w-3" />}>
           <div className="grid grid-cols-1 gap-1.5">
             <ModeRow active={wordMode === "flow"} onClick={() => setWordMode("flow")}
-              label="Continuous flow" hint="One body of text, no page markers." />
+              label="Continuous flow" hint="Editable text with bold/italic + embedded images." />
             <ModeRow active={wordMode === "page"} onClick={() => setWordMode("page")}
-              label="Page breaks + labels" hint="Insert a page break and “Page N” heading per source page." />
+              label="Page breaks + labels" hint="Same as flow, with a page break and “Page N” heading per source page." />
+            <ModeRow active={wordMode === "fidelity"} onClick={() => setWordMode("fidelity")}
+              label="High fidelity (page images)" hint="Preserves layout exactly by embedding each page as an image. Not editable as text." />
           </div>
         </Section>
       )}
