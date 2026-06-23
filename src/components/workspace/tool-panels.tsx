@@ -131,6 +131,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <OcrPanel ctx={ctx} />;
     case "convert":
       return <ConvertPanel ctx={ctx} />;
+    case "image-convert":
+      return <ImageConvertPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
