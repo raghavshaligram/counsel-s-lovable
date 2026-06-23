@@ -1965,7 +1965,7 @@ function CanvasIconButton({
   onClick: () => void;
 }) {
   return (
-    <Tip label={label} placement="bottom">
+    <Tip label={label} placement="bottom-end">
       <button
         type="button"
         onClick={onClick}
