@@ -3542,7 +3542,8 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       if (kind === "pdf" && target === "word") {
         const file = sources[0];
-        const prepared = await ensureSearchablePdf(file, (s) => setProgress(s));
+        const prepared =
+          wordMode === "fidelity" ? file : await ensureSearchablePdf(file, (s) => setProgress(s));
         setProgress("Building .docx…");
         const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
         const blob = await convertPdfToWordBlob(prepared, {
