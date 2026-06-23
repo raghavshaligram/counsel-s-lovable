@@ -362,6 +362,36 @@ export async function convertPdfToWordBlob(
         };
       });
 
+    // Fallback: if a page has almost no extractable text (common when the
+    // designer converted titles/cover art to outlined paths), render the
+    // whole page as an image so the visual content is preserved.
+    const totalChars = items.reduce((n, it) => n + it.str.trim().length, 0);
+    if (totalChars < 40) {
+      const img = await withTimeout(
+        renderPageToImage(page, 1.5),
+        pageTimeoutMs,
+        () => null,
+      );
+      if (img) {
+        const viewport = page.getViewport({ scale: 1 });
+        const ratio = img.height / img.width;
+        const wPt = Math.min(MAX_IMG_W_PT, viewport.width);
+        out.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new ImageRun({
+                type: img.type,
+                data: img.data,
+                transformation: { width: wPt, height: wPt * ratio },
+              } as any),
+            ],
+          }),
+        );
+        return out;
+      }
+    }
+
     const rows = groupStyledLines(items);
 
     // Build per-line runs, preserving inter-part spacing via x-gap heuristic.
