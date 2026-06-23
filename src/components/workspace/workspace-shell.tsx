@@ -126,11 +126,7 @@ const TOOLS: RailTool[] = [
   { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Pages" },
   { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
   // Convert
-  { id: "to-word", label: "PDF → Word", icon: FileType, group: "convert", groupLabel: "Convert" },
-  { id: "word-to-pdf", label: "Word → PDF", icon: FileType, group: "convert", groupLabel: "Convert" },
-  { id: "to-images", label: "PDF → Images", icon: PhotoIcon, group: "convert", groupLabel: "Convert" },
-  { id: "images-to-pdf", label: "Images → PDF", icon: PhotoIcon, group: "convert", groupLabel: "Convert" },
-  { id: "to-excel", label: "PDF → Excel", icon: TableIcon, group: "convert", groupLabel: "Convert" },
+  { id: "convert", label: "Convert", icon: FileType, group: "convert", groupLabel: "Convert" },
   { id: "ocr", label: "Make Searchable", icon: ScanText, group: "convert", groupLabel: "Convert" },
   // Edit
   { id: "sign", label: "Sign & Fill", icon: PenLine, group: "sign", groupLabel: "Edit" },
