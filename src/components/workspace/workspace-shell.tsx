@@ -1106,7 +1106,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       {/* MAIN ROW */}
       <div className="flex min-h-0 flex-1">
         {/* LEFT RAIL */}
-        <nav className="flex w-[52px] shrink-0 flex-col items-center justify-between border-r border-border bg-surface-1 py-3">
+        <nav className="flex w-[72px] shrink-0 flex-col items-center justify-between border-r border-border bg-surface-1 py-3">
           <ul className="flex flex-col items-center gap-1.5">
             {pinnedTools.map((tool) => (
               <li key={tool.id}>
