@@ -2638,7 +2638,7 @@ function Inspector({
             </button>
           </header>
           <div className="flex-1 overflow-auto px-3 py-3">
-            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch }} />
+            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch, otherTabs }} />
           </div>
         </div>
       ) : (
