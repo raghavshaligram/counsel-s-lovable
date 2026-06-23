@@ -60,6 +60,7 @@ import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
 import { EditorCanvas } from "./editor-canvas";
 import { OrganizeGrid } from "./organize-grid";
+import { CompareCanvas, CompareFloatingBar } from "./compare-canvas";
 import { TabStrip } from "./tab-strip";
 import {
   loadUIState,
