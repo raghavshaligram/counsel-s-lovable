@@ -3497,7 +3497,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
   }, [kind]);
 
   // Settings per target.
-  const [wordMode, setWordMode] = useState<"flow" | "page">("flow");
+  const [wordMode, setWordMode] = useState<"flow" | "page" | "fidelity">("flow");
   const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
   const [imgDpi, setImgDpi] = useState<number>(150);
   const [imgQuality, setImgQuality] = useState<number>(0.92);
@@ -3542,7 +3542,8 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       if (kind === "pdf" && target === "word") {
         const file = sources[0];
-        const prepared = await ensureSearchablePdf(file, (s) => setProgress(s));
+        const prepared =
+          wordMode === "fidelity" ? file : await ensureSearchablePdf(file, (s) => setProgress(s));
         setProgress("Building .docx…");
         const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
         const blob = await convertPdfToWordBlob(prepared, {
@@ -3703,9 +3704,11 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         <Section title="Layout" icon={<FileText className="h-3 w-3" />}>
           <div className="grid grid-cols-1 gap-1.5">
             <ModeRow active={wordMode === "flow"} onClick={() => setWordMode("flow")}
-              label="Continuous flow" hint="One body of text, no page markers." />
+              label="Continuous flow" hint="Editable text with bold/italic + embedded images." />
             <ModeRow active={wordMode === "page"} onClick={() => setWordMode("page")}
-              label="Page breaks + labels" hint="Insert a page break and “Page N” heading per source page." />
+              label="Page breaks + labels" hint="Same as flow, with a page break and “Page N” heading per source page." />
+            <ModeRow active={wordMode === "fidelity"} onClick={() => setWordMode("fidelity")}
+              label="High fidelity (page images)" hint="Preserves layout exactly by embedding each page as an image. Not editable as text." />
           </div>
         </Section>
       )}
