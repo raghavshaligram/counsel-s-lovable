@@ -30,10 +30,10 @@ export const Route = createFileRoute("/word-to-pdf")({
   component: WordToPdfPage,
 });
 
-type PageSize = "letter" | "a4";
-const PAGE_SIZES: Record<PageSize, { w: number; h: number; label: string }> = {
-  letter: { w: 612, h: 792, label: "US Letter" },
-  a4: { w: 595.28, h: 841.89, label: "A4" },
+type PageSize = WordToPdfPageSize;
+const PAGE_SIZES: Record<PageSize, { label: string }> = {
+  letter: { label: "US Letter" },
+  a4: { label: "A4" },
 };
 
 function WordToPdfPage() {
