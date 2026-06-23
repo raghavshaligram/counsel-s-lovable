@@ -3320,3 +3320,141 @@ function ModeRow({
   );
 }
 
+/* ============================ Word → PDF ============================ */
+
+function WordToPdfPanel() {
+  const [file, setFile] = useState<File | null>(null);
+  const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const pickFile = () => inputRef.current?.click();
+
+  const onPicked = (f: File | null | undefined) => {
+    if (!f) return;
+    if (!/\.docx$/i.test(f.name)) {
+      toast.error("Only .docx files are supported. Convert .doc to .docx first.");
+      return;
+    }
+    setFile(f);
+  };
+
+  const run = async () => {
+    if (!file) return;
+    setBusy(true);
+    setProgress("Reading document…");
+    const tid = "wsx-word-to-pdf";
+    toast.loading("Converting to PDF…", { id: tid });
+    try {
+      const { convertWordToPdfBlob } = await import("@/lib/pdf/word-to-pdf");
+      const { blob, pages } = await convertWordToPdfBlob(file, {
+        pageSize,
+        onProgress: setProgress,
+      });
+      const base = file.name.replace(/\.docx$/i, "");
+      downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
+      toast.success(`Converted ${pages} page${pages === 1 ? "" : "s"}`, { id: tid });
+    } catch (err) {
+      console.error("[word-to-pdf] failed", err);
+      toast.error("Conversion failed", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={(e) => {
+          onPicked(e.target.files?.[0]);
+          if (inputRef.current) inputRef.current.value = "";
+        }}
+      />
+
+      <Section title="Source document" icon={<FileText className="h-3 w-3" />}>
+        {file ? (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12px] text-foreground">{file.name}</div>
+              <div className="text-[10.5px] text-text-muted">
+                {(file.size / 1024).toFixed(1)} KB
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={pickFile}
+              className="shrink-0 rounded-md border border-border px-2 py-1 text-[10.5px] text-text-2 hover:border-vault/40 hover:text-foreground"
+            >
+              Replace
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={pickFile}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[12px] text-text-2 hover:border-vault/40 hover:text-foreground"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Choose a .docx file…
+          </button>
+        )}
+      </Section>
+
+      <Section title="Page size" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-1 gap-1.5">
+          <ModeRow
+            active={pageSize === "letter"}
+            onClick={() => setPageSize("letter")}
+            label="US Letter"
+            hint="8.5 × 11 in"
+          />
+          <ModeRow
+            active={pageSize === "a4"}
+            onClick={() => setPageSize("a4")}
+            label="A4"
+            hint="210 × 297 mm"
+          />
+        </div>
+      </Section>
+
+      <Section title="Notes" icon={<Info className="h-3 w-3" />}>
+        <p className="text-[10.5px] leading-snug text-text-muted">
+          Headings, lists, tables and images are preserved. Complex Word layouts
+          may shift.
+        </p>
+      </Section>
+
+      {busy && (
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[10.5px] text-text-muted">
+          {progress || "Working…"}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy || !file}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+          (busy || !file) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy ? "Converting…" : "Convert & download .pdf"}
+      </button>
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+
