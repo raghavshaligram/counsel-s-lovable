@@ -2816,7 +2816,7 @@ function ComparePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file, otherTabs = [] } = ctx;
   // Lazy-import the store to avoid pulling the canvas module into the panel
   // chunk unnecessarily — it's already shared state.
-  const { useCompare } = require("@/lib/workspace/compare-store") as typeof import("@/lib/workspace/compare-store");
+  
   const bSource = useCompare((s) => s.bSource);
   const setBSource = useCompare((s) => s.setBSource);
   const viewMode = useCompare((s) => s.viewMode);
