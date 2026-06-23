@@ -3677,6 +3677,100 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         )}
       </Section>
 
+      {kind === "images" && sources.length > 0 && (
+        <Section title={`Order (${sources.length})`} icon={<Info className="h-3 w-3" />}>
+          <div className="text-[10.5px] text-text-muted mb-1.5">
+            Order = page order in the PDF. Use the arrows to reorder.
+          </div>
+          <ul className="space-y-1">
+            {picked.map((f, i) => (
+              <li
+                key={`${f.name}-${i}-${f.size}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", String(i));
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                  if (!Number.isFinite(from) || from === i) return;
+                  setPicked((prev) => {
+                    const next = prev.slice();
+                    const [m] = next.splice(from, 1);
+                    next.splice(i, 0, m);
+                    return next;
+                  });
+                }}
+                className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5"
+              >
+                <span className="w-5 text-center font-mono text-[10.5px] text-text-muted">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[11.5px] text-foreground">
+                  {f.name}
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-label="Move up"
+                    disabled={i === 0}
+                    onClick={() =>
+                      setPicked((prev) => {
+                        if (i === 0) return prev;
+                        const next = prev.slice();
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        return next;
+                      })
+                    }
+                    className="rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move down"
+                    disabled={i === picked.length - 1}
+                    onClick={() =>
+                      setPicked((prev) => {
+                        if (i === prev.length - 1) return prev;
+                        const next = prev.slice();
+                        [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                        return next;
+                      })
+                    }
+                    className="rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Remove"
+                    onClick={() =>
+                      setPicked((prev) => prev.filter((_, j) => j !== i))
+                    }
+                    className="ml-0.5 rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="mt-2 w-full rounded-md border border-dashed border-border bg-surface-2 px-2 py-1.5 text-[11px] text-text-2 hover:border-vault/40 hover:text-foreground"
+          >
+            + Add more images
+          </button>
+        </Section>
+      )}
+
       {kind && allowedTargets.length > 0 && (
         <Section title="Convert to" icon={<Info className="h-3 w-3" />}>
           <div className="grid grid-cols-1 gap-1.5">
