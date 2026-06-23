@@ -2539,17 +2539,10 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
       <Section
         title="Owner password"
         right={
-          <button
-            type="button"
-            onClick={() => setShowOwner((s) => !s)}
-            className="inline-flex items-center gap-1 text-[10.5px] text-text-muted hover:text-foreground"
-          >
-            {useOwnerPw ? "On" : "Off"}
-            <ChevronDown className={cn("h-3 w-3 transition-transform", showOwner && "rotate-180")} />
-          </button>
+          <span className="text-[10.5px] text-text-muted">{useOwnerPw ? "On" : "Off"}</span>
         }
       >
-        {!showOwner ? (
+        <div className="space-y-2">
           <label className="flex cursor-pointer select-none items-center gap-2">
             <input
               type="checkbox"
@@ -2559,34 +2552,22 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
             />
             <span className="text-[12px] text-foreground">Set a separate owner password</span>
           </label>
-        ) : (
-          <div className="space-y-2">
-            <label className="flex cursor-pointer select-none items-center gap-2">
+          {useOwnerPw && (
+            <>
+              <p className="text-[10.5px] text-text-muted">
+                Owners can change permissions. Recipients only need the open password.
+              </p>
               <input
-                type="checkbox"
-                checked={useOwnerPw}
-                onChange={(e) => setUseOwnerPw(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-border accent-vault"
+                type={showPw ? "text" : "password"}
+                value={ownerPassword}
+                onChange={(e) => setOwnerPassword(e.target.value)}
+                placeholder="Owner password"
+                autoComplete="new-password"
+                className={pwInput}
               />
-              <span className="text-[12px] text-foreground">Set a separate owner password</span>
-            </label>
-            {useOwnerPw && (
-              <>
-                <p className="text-[10.5px] text-text-muted">
-                  Owners can change permissions. Recipients only need the open password.
-                </p>
-                <input
-                  type={showPw ? "text" : "password"}
-                  value={ownerPassword}
-                  onChange={(e) => setOwnerPassword(e.target.value)}
-                  placeholder="Owner password"
-                  autoComplete="new-password"
-                  className={pwInput}
-                />
-              </>
-            )}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </Section>
 
       <Section
