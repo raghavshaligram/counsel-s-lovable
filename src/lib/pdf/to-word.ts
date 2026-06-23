@@ -363,27 +363,100 @@ export async function convertPdfToWordBlob(
       });
 
     const rows = groupStyledLines(items);
+
+    // Build per-line runs, preserving inter-part spacing via x-gap heuristic.
+    type Run = { text: string; bold: boolean; italic: boolean; size: number };
+    type Line = { y: number; size: number; runs: Run[]; rawText: string; indent: number };
+    const lines: Line[] = [];
     for (const r of rows) {
-      const runs: { text: string; bold: boolean; italic: boolean; size: number }[] = [];
+      const runs: Run[] = [];
+      let prevEndX: number | null = null;
+      let prevPartSize = r.size;
+      let raw = "";
       for (const p of r.parts) {
+        // Estimate width of previous part to compute gap. We don't have exact
+        // metrics, so approximate char width as 0.5em of its font size.
+        const gap = prevEndX === null ? 0 : p.x - prevEndX;
+        const spaceW = prevPartSize * 0.25;
+        const needSpace =
+          prevEndX !== null &&
+          gap > spaceW &&
+          !raw.endsWith(" ") &&
+          !p.str.startsWith(" ");
+        const text = (needSpace ? " " : "") + p.str;
+        const sized = Math.max(12, Math.round(p.size * 2)); // half-points, min 6pt
         const last = runs[runs.length - 1];
-        const sized = Math.max(16, Math.min(36, Math.round(p.size * 2)));
         if (last && last.bold === p.bold && last.italic === p.italic && last.size === sized) {
-          last.text += (last.text.endsWith(" ") ? "" : " ") + p.str;
+          last.text += text;
         } else {
-          runs.push({ text: p.str, bold: p.bold, italic: p.italic, size: sized });
+          runs.push({ text, bold: p.bold, italic: p.italic, size: sized });
         }
+        raw += text;
+        const approxW = p.str.length * p.size * 0.5;
+        prevEndX = p.x + approxW;
+        prevPartSize = p.size;
       }
-      if (!runs.length || runs.every((r) => !r.text.trim())) {
+      if (!runs.length) continue;
+      lines.push({ y: r.y, size: r.size, runs, rawText: raw, indent: r.parts[0]?.x ?? 0 });
+    }
+
+    // Merge consecutive lines into paragraphs based on vertical gap + indent.
+    // Break paragraph when: gap > 1.6x line height, big indent change, or
+    // previous line ends with sentence-final punctuation followed by a smaller
+    // line gap that still exceeds 1x line height.
+    let i = 0;
+    while (i < lines.length) {
+      const start = lines[i];
+      const paraRuns: Run[] = [...start.runs];
+      let prev = start;
+      i++;
+      while (i < lines.length) {
+        const cur = lines[i];
+        const lineH = Math.max(prev.size, cur.size);
+        const gap = prev.y - cur.y; // PDF y decreases downward in our normalized space (sorted desc)
+        const indentDelta = Math.abs(cur.indent - start.indent);
+        const bigGap = gap > lineH * 1.6;
+        const indentBreak = indentDelta > lineH * 1.5;
+        const sentenceBreak =
+          /[.!?:]["'\)\]]?\s*$/.test(prev.rawText) && gap > lineH * 1.15;
+        if (bigGap || indentBreak || sentenceBreak) break;
+        // Same paragraph: join with a space if needed
+        const lastRun = paraRuns[paraRuns.length - 1];
+        const firstNew = cur.runs[0];
+        const needSpace =
+          lastRun &&
+          !lastRun.text.endsWith(" ") &&
+          firstNew &&
+          !firstNew.text.startsWith(" ");
+        if (needSpace) lastRun.text += " ";
+        // Soft-hyphen join: if previous line ended with "-" and next starts lowercase, glue.
+        if (lastRun && /[a-z]-$/.test(lastRun.text) && firstNew && /^[a-z]/.test(firstNew.text)) {
+          lastRun.text = lastRun.text.slice(0, -1);
+        }
+        paraRuns.push(...cur.runs);
+        prev = cur;
+        i++;
+      }
+
+      if (!paraRuns.length || paraRuns.every((r) => !r.text.trim())) {
         out.push(new Paragraph({ children: [new TextRun("")] }));
         continue;
       }
+
+      // Heading heuristic: short single-line paragraph in a notably larger size.
+      const maxSize = Math.max(...paraRuns.map((r) => r.size));
+      const isHeading =
+        paraRuns.length <= 4 &&
+        paraRuns.reduce((n, r) => n + r.text.length, 0) < 120 &&
+        maxSize >= 28; // ~14pt+
+
       out.push(
         new Paragraph({
-          children: runs.map(
+          heading: isHeading ? HeadingLevel.HEADING_2 : undefined,
+          children: paraRuns.map(
             (r) =>
               new TextRun({
-                text: r.text.replace(/\s+/g, " "),
+                text: r.text.replace(/[ \t]+/g, " "),
                 bold: r.bold,
                 italics: r.italic,
                 size: r.size,
