@@ -27,9 +27,8 @@ import {
   Eye,
   EyeOff,
   ShieldOff,
-
-
-
+  Info,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
@@ -2373,7 +2372,6 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [useOwnerPw, setUseOwnerPw] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [perms, setPerms] = useState(() => {
-    // Lazy import default to keep top-level import light.
     return {
       printing: true,
       modifying: false,
@@ -2384,6 +2382,8 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
       documentAssembly: false,
     };
   });
+  const [showOwner, setShowOwner] = useState(false);
+  const [showPerms, setShowPerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [strength, setStrength] = useState<{
     pct: number;
@@ -2414,6 +2414,15 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
     { key: "documentAssembly", label: "Allow page assembly", desc: "Insert, delete, rotate pages" },
     { key: "contentAccessibility", label: "Allow accessibility tools", desc: "Screen readers can read content" },
   ];
+
+  const permSummary = useMemo(() => {
+    const vals = Object.values(perms);
+    const allTrue = vals.every((v) => v);
+    const allFalse = vals.every((v) => !v);
+    if (allTrue) return "All allowed";
+    if (allFalse) return "All restricted";
+    return "Some restricted";
+  }, [perms]);
 
   const togglePerm = (k: keyof typeof perms) =>
     setPerms((p) => ({ ...p, [k]: !p[k] }));
@@ -2527,55 +2536,96 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       </Section>
 
-      <Section title="Owner password">
-        <label className="flex items-start gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={useOwnerPw}
-            onChange={(e) => setUseOwnerPw(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-vault"
-          />
-          <div>
-            <div className="text-[12px] text-foreground leading-tight">
-              Set a separate owner password
-            </div>
-            <div className="text-[10.5px] text-text-muted mt-0.5">
-              Owners can change permissions.
-            </div>
+      <Section
+        title="Owner password"
+        right={
+          <button
+            type="button"
+            onClick={() => setShowOwner((s) => !s)}
+            className="inline-flex items-center gap-1 text-[10.5px] text-text-muted hover:text-foreground"
+          >
+            {useOwnerPw ? "On" : "Off"}
+            <ChevronDown className={cn("h-3 w-3 transition-transform", showOwner && "rotate-180")} />
+          </button>
+        }
+      >
+        {!showOwner ? (
+          <label className="flex cursor-pointer select-none items-center gap-2">
+            <input
+              type="checkbox"
+              checked={useOwnerPw}
+              onChange={(e) => setUseOwnerPw(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-border accent-vault"
+            />
+            <span className="text-[12px] text-foreground">Set a separate owner password</span>
+          </label>
+        ) : (
+          <div className="space-y-2">
+            <label className="flex cursor-pointer select-none items-center gap-2">
+              <input
+                type="checkbox"
+                checked={useOwnerPw}
+                onChange={(e) => setUseOwnerPw(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-border accent-vault"
+              />
+              <span className="text-[12px] text-foreground">Set a separate owner password</span>
+            </label>
+            {useOwnerPw && (
+              <>
+                <p className="text-[10.5px] text-text-muted">
+                  Owners can change permissions. Recipients only need the open password.
+                </p>
+                <input
+                  type={showPw ? "text" : "password"}
+                  value={ownerPassword}
+                  onChange={(e) => setOwnerPassword(e.target.value)}
+                  placeholder="Owner password"
+                  autoComplete="new-password"
+                  className={pwInput}
+                />
+              </>
+            )}
           </div>
-        </label>
-        {useOwnerPw && (
-          <input
-            type={showPw ? "text" : "password"}
-            value={ownerPassword}
-            onChange={(e) => setOwnerPassword(e.target.value)}
-            placeholder="Owner password"
-            autoComplete="new-password"
-            className={cn(pwInput, "mt-2")}
-          />
         )}
       </Section>
 
-      <Section title="Permissions" icon={<ShieldCheck className="h-3 w-3" />}>
-        <div className="space-y-1.5">
-          {PERM_ROWS.map((row) => (
-            <label
-              key={row.key}
-              className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-2 py-1.5 cursor-pointer hover:bg-surface-1 transition-colors"
-            >
-              <input
-                type="checkbox"
-                checked={perms[row.key]}
-                onChange={() => togglePerm(row.key)}
-                className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-vault"
-              />
-              <div className="min-w-0">
-                <div className="text-[12px] text-foreground leading-tight">{row.label}</div>
-                <div className="text-[10.5px] text-text-muted mt-0.5">{row.desc}</div>
-              </div>
-            </label>
-          ))}
-        </div>
+      <Section
+        title="Permissions"
+        icon={<ShieldCheck className="h-3 w-3" />}
+        right={
+          <button
+            type="button"
+            onClick={() => setShowPerms((s) => !s)}
+            className="inline-flex items-center gap-1 text-[10.5px] text-text-muted hover:text-foreground"
+          >
+            {permSummary}
+            <ChevronDown className={cn("h-3 w-3 transition-transform", showPerms && "rotate-180")} />
+          </button>
+        }
+      >
+        {showPerms && (
+          <div className="space-y-1">
+            {PERM_ROWS.map((row) => (
+              <label
+                key={row.key}
+                className="flex cursor-pointer select-none items-center gap-2 rounded-md border border-border bg-surface-2 px-2 py-1.5 hover:bg-surface-1 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={perms[row.key]}
+                  onChange={() => togglePerm(row.key)}
+                  className="h-3.5 w-3.5 rounded border-border accent-vault"
+                />
+                <span className="min-w-0 flex-1 text-[12px] text-foreground leading-tight">
+                  {row.label}
+                </span>
+                <span className="shrink-0 text-text-muted" title={row.desc}>
+                  <Info className="h-3 w-3" />
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
       </Section>
 
       <button
