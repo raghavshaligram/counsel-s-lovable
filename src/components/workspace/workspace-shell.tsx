@@ -2594,6 +2594,7 @@ function Inspector({
   file,
   replaceFile,
   editorDispatch,
+  otherTabs,
 }: {
   open: boolean;
   activeTool: RailTool | null;
@@ -2601,6 +2602,7 @@ function Inspector({
   file: File | null;
   replaceFile: (f: File) => void;
   editorDispatch: React.Dispatch<EditorAction>;
+  otherTabs: Array<{ id: string; name: string; file: File }>;
 }) {
   return (
     <aside
