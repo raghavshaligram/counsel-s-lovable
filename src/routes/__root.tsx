@@ -141,6 +141,11 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   useEffect(() => {
+    // Ask the browser to make our IndexedDB durable. Logs the outcome.
+    void requestPersistentStorage();
+  }, []);
+
+  useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (import.meta.env.DEV) return; // skip SW in dev to avoid stale chunks
     void navigator.serviceWorker.register("/sw.js").catch(() => {});
