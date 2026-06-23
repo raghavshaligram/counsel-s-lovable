@@ -60,6 +60,31 @@ function groupStyledLines(items: StyledItem[]): StyledLine[] {
   return rows;
 }
 
+function timeoutMsFor(mode: ToWordMode, includeImages: boolean): number {
+  if (mode === "fidelity") return 30_000;
+  return includeImages ? 25_000 : 12_000;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: () => T | Promise<T>,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => {
+          void Promise.resolve(fallback()).then(resolve);
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function encodeCanvas(
   canvas: HTMLCanvasElement,
   hasAlpha: boolean,
@@ -195,12 +220,12 @@ async function runWithConcurrency<T>(
 }
 
 function pickConcurrency(override?: number): number {
-  if (typeof override === "number" && override > 0) return Math.min(8, Math.max(1, override));
+  if (typeof override === "number" && override > 0) return Math.min(4, Math.max(1, override));
   const hw =
     typeof navigator !== "undefined" && typeof navigator.hardwareConcurrency === "number"
       ? navigator.hardwareConcurrency
       : 4;
-  return Math.max(2, Math.min(8, hw));
+  return Math.max(2, Math.min(4, hw));
 }
 
 export async function convertPdfToWordBlob(
@@ -212,6 +237,7 @@ export async function convertPdfToWordBlob(
   const fidelityScale = options.fidelityScale ?? 1.5;
   const concurrency = pickConcurrency(options.concurrency);
   const onProgress = options.onProgress;
+  const pageTimeoutMs = timeoutMsFor(mode, includeImages);
 
   const pdfjs = await loadPdfjs();
   const { Document, Packer, Paragraph, TextRun, PageBreak, HeadingLevel, ImageRun, AlignmentType } =
@@ -224,14 +250,44 @@ export async function convertPdfToWordBlob(
   const tick = () => {
     completed++;
     onProgress?.(
-      Math.round((completed / numPages) * 100),
+      Math.min(90, Math.round((completed / numPages) * 90)),
       `Reading pages… ${completed}/${numPages}`,
     );
   };
 
+  const timeoutFallback = async (pageNumber: number): Promise<any[]> => {
+    try {
+      const page = await withTimeout(doc.getPage(pageNumber), 3_000, () => null as any);
+      if (!page) return [new Paragraph({ children: [new TextRun("")] })];
+      const img = await withTimeout(renderPageToImage(page, 1.15), 6_000, () => null);
+      if (!img) return [new Paragraph({ children: [new TextRun("")] })];
+      const ratio = img.height / img.width;
+      const wPt = Math.min(MAX_IMG_W_PT, img.width);
+      return [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new ImageRun({
+              type: img.type,
+              data: img.data,
+              transformation: { width: wPt, height: wPt * ratio },
+            } as any),
+          ],
+        }),
+      ];
+    } catch {
+      return [new Paragraph({ children: [new TextRun("")] })];
+    }
+  };
+
   const buildPage = async (pageIndex: number): Promise<any[]> => {
     const pageNumber = pageIndex + 1;
-    const page = await doc.getPage(pageNumber);
+    const page = await withTimeout(
+      doc.getPage(pageNumber),
+      5_000,
+      () => null as any,
+    );
+    if (!page) return timeoutFallback(pageNumber);
     const out: any[] = [];
 
     if (pageIndex > 0 && (mode === "page" || mode === "fidelity")) {
@@ -247,7 +303,11 @@ export async function convertPdfToWordBlob(
     }
 
     if (mode === "fidelity") {
-      const img = await renderPageToImage(page, fidelityScale);
+      const img = await withTimeout(
+        renderPageToImage(page, fidelityScale),
+        pageTimeoutMs,
+        () => null,
+      );
       if (img) {
         const viewport = page.getViewport({ scale: 1 });
         const ratio = img.height / img.width;
@@ -270,10 +330,17 @@ export async function convertPdfToWordBlob(
     }
 
     // Concurrent text + image extraction.
-    const [content, images] = await Promise.all([
-      page.getTextContent(),
-      includeImages ? extractPageImages(page) : Promise.resolve([]),
-    ]);
+    const timedOut = Symbol("timed-out");
+    const result = await withTimeout<any>(
+      Promise.all([
+        page.getTextContent(),
+        includeImages ? extractPageImages(page) : Promise.resolve([]),
+      ]),
+      pageTimeoutMs,
+      () => timedOut,
+    );
+    if (result === timedOut) return timeoutFallback(pageNumber);
+    const [content, images] = result;
 
     const styles: Record<string, any> = (content as any).styles ?? {};
     const items: StyledItem[] = (content.items as any[])
@@ -353,7 +420,7 @@ export async function convertPdfToWordBlob(
   const perPage = await runWithConcurrency(numPages, concurrency, buildPage, tick);
   const allChildren: any[] = perPage.flat();
 
-  onProgress?.(100, "Packing .docx…");
+  onProgress?.(95, "Packing .docx…");
 
   const docx = new Document({
     styles: {
@@ -362,5 +429,7 @@ export async function convertPdfToWordBlob(
     sections: [{ children: allChildren }],
   });
 
-  return Packer.toBlob(docx);
+  const blob = await Packer.toBlob(docx);
+  onProgress?.(100, "Done");
+  return blob;
 }
