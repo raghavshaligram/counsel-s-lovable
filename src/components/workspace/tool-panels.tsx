@@ -1536,6 +1536,158 @@ function ComingSoonPanel({ label }: { label: string }) {
   );
 }
 
+/* ============================ Make Searchable (OCR) ============================ */
+
+function OcrPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, ocr } = ctx;
+  const [languages, setLanguages] = useState<string[]>(() => ocr?.defaults.languages ?? ["eng"]);
+  const [highAccuracy, setHighAccuracy] = useState<boolean>(() => ocr?.defaults.highAccuracy ?? false);
+  const [langs, setLangs] = useState<{ code: string; label: string; sizeMb: number }[] | null>(null);
+  const [estimateMb, setEstimateMb] = useState<number>(0);
+
+  useEffect(() => {
+    let alive = true;
+    void import("@/lib/pdf/ocr-languages").then((m) => {
+      if (!alive) return;
+      setLangs(m.OCR_LANGUAGES as { code: string; label: string; sizeMb: number }[]);
+      setEstimateMb(m.estimateDownloadMb(languages));
+    });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!langs) return;
+    void import("@/lib/pdf/ocr-languages").then((m) => setEstimateMb(m.estimateDownloadMb(languages)));
+    if (ocr) ocr.defaults.languages = languages;
+  }, [languages, langs, ocr]);
+
+  useEffect(() => {
+    if (ocr) ocr.defaults.highAccuracy = highAccuracy;
+  }, [highAccuracy, ocr]);
+
+  const toggleLang = (code: string) =>
+    setLanguages((prev) =>
+      prev.includes(code)
+        ? prev.length === 1
+          ? prev
+          : prev.filter((c) => c !== code)
+        : [...prev, code],
+    );
+
+  if (!file) {
+    return (
+      <p className="text-[11.5px] leading-snug text-text-2">
+        Open a document to run on-device OCR.
+      </p>
+    );
+  }
+  if (!ocr) return null;
+
+  const summary =
+    languages.length === 1
+      ? langs?.find((l) => l.code === languages[0])?.label ?? languages[0]
+      : `${languages.length} languages`;
+
+  const hasResume = ocr.scannedRemainingCount > 0 && (ocr.ocrPagesCount > 0 || ocr.ocrPagesCopiedCount > 0 || ocr.isPartial);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Language" icon={<FileText className="h-3 w-3" />}>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              disabled={ocr.running}
+              className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/50 disabled:opacity-60"
+            >
+              <span className="truncate">{summary}</span>
+              <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-64 p-0 max-h-72 overflow-y-auto">
+            <div className="p-1.5">
+              {(langs ?? []).map((l) => {
+                const checked = languages.includes(l.code);
+                return (
+                  <label
+                    key={l.code}
+                    className="flex items-center gap-2 px-2 py-1 rounded hover:bg-surface-2 cursor-pointer text-[12px]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleLang(l.code)}
+                      className="h-3 w-3 accent-[var(--vault)]"
+                    />
+                    <span className="flex-1 truncate">{l.label}</span>
+                    <span className="text-[10px] text-text-muted">~{l.sizeMb} MB</span>
+                  </label>
+                );
+              })}
+            </div>
+          </PopoverContent>
+        </Popover>
+        <p className="mt-1.5 text-[10.5px] leading-snug text-text-muted">
+          Pick one for best accuracy. First use downloads ~{estimateMb} MB to your browser, then cached.
+        </p>
+      </Section>
+
+      <Section title="Quality" icon={<Sparkles className="h-3 w-3" />}>
+        <label className="flex items-start gap-2 text-[11.5px] text-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={highAccuracy}
+            disabled={ocr.running}
+            onChange={(e) => setHighAccuracy(e.target.checked)}
+            className="mt-0.5 h-3 w-3 accent-[var(--vault)]"
+          />
+          <span>
+            <span className="font-medium">High accuracy</span>
+            <span className="text-text-muted"> — render at 2× instead of 1.5×. Better on small fonts; ~80% slower.</span>
+          </span>
+        </label>
+      </Section>
+
+      <Section title="Status" icon={<Info className="h-3 w-3" />}>
+        <ul className="space-y-0.5 text-[11.5px] text-text-2">
+          <li>Already searchable: <span className="text-foreground">{ocr.ocrPagesCopiedCount}</span></li>
+          <li>OCR added: <span className="text-foreground">{ocr.ocrPagesCount}</span></li>
+          <li>Scanned pages waiting: <span className="text-foreground">{ocr.scannedRemainingCount}</span></li>
+        </ul>
+        {ocr.running && ocr.progressText && (
+          <p className="mt-1.5 text-[10.5px] text-text-muted">{ocr.progressText}</p>
+        )}
+      </Section>
+
+      {ocr.running ? (
+        <button
+          type="button"
+          onClick={ocr.stop}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] font-medium hover:bg-surface-3"
+        >
+          Stop
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => ocr.run({ languages, highAccuracy })}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90"
+        >
+          <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {hasResume ? "Resume OCR" : "Run OCR"}
+        </button>
+      )}
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+
+
 /* ----------------------------- Section ------------------------------ */
 
 function Section({
