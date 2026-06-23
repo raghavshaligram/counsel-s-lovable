@@ -73,6 +73,7 @@ import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-stor
 import { buildPdfFromCells } from "@/lib/pdf/organize";
 import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
+import { useCompare } from "@/lib/workspace/compare-store";
 
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
