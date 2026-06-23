@@ -30,6 +30,7 @@ import {
   Info,
   ChevronDown,
   GitCompare,
+  Hash,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
