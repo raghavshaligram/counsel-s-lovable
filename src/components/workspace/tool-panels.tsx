@@ -129,6 +129,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ComparePanel ctx={ctx} />;
     case "ocr":
       return <OcrPanel ctx={ctx} />;
+    case "to-word":
+      return <ToWordPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
