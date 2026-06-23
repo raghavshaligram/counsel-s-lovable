@@ -3514,18 +3514,22 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const onPick = (files: FileList | null) => {
     if (!files || !files.length) return;
     const arr = Array.from(files);
-    // If a PDF or DOCX is picked, only the first counts.
     const first = arr[0];
     if (/\.pdf$/i.test(first.name) || /\.docx$/i.test(first.name)) {
       setPicked([first]);
     } else {
-      // Images: accept all image files.
       const imgs = arr.filter((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name));
       if (!imgs.length) {
         toast.error("Drop a PDF, a .docx, or one-or-more image files.");
         return;
       }
-      setPicked(imgs);
+      // Append when current picked are already images, otherwise replace.
+      setPicked((prev) => {
+        const prevAllImages =
+          prev.length > 0 &&
+          prev.every((f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name));
+        return prevAllImages ? [...prev, ...imgs] : imgs;
+      });
     }
     setUsingActive(false);
   };
