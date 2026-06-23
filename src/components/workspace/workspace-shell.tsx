@@ -2611,6 +2611,7 @@ function Inspector({
   replaceFile,
   editorDispatch,
   otherTabs,
+  ocr,
 }: {
   open: boolean;
   activeTool: RailTool | null;
@@ -2619,6 +2620,7 @@ function Inspector({
   replaceFile: (f: File) => void;
   editorDispatch: React.Dispatch<EditorAction>;
   otherTabs: Array<{ id: string; name: string; file: File }>;
+  ocr: import("./tool-panels").OcrCtx;
 }) {
   return (
     <aside
