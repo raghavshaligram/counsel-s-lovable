@@ -1708,20 +1708,21 @@ function ToolbarBtn({
   onClick: () => void;
 }) {
   return (
-    <Tip label={label} kbd={kbd} placement="bottom">
+    <Tip label={kbd ? `${label} (${kbd})` : label} kbd={kbd} placement="bottom">
       <button
         type="button"
         onClick={onClick}
         aria-label={label}
         aria-pressed={active}
         className={cn(
-          "grid h-7 w-7 place-items-center rounded-md text-text-2 transition-colors",
+          "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-text-2 transition-colors",
           "hover:text-foreground hover:bg-surface-2",
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground",
         )}
       >
         {children}
+        <span className="text-[11px] font-medium leading-none tracking-tight">{label}</span>
       </button>
     </Tip>
   );
