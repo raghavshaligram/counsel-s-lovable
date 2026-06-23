@@ -207,28 +207,6 @@ function CanvasFrame({ label, children }: { label: string; children: React.React
   );
 }
 
-function HiddenRefs({
-  keepMounted,
-  refA,
-  refB,
-  refDiff,
-}: {
-  keepMounted: boolean;
-  refA: React.RefObject<HTMLCanvasElement>;
-  refB: React.RefObject<HTMLCanvasElement>;
-  refDiff: React.RefObject<HTMLCanvasElement>;
-}) {
-  // In overlay mode the canvases live inside the overlay block already, so
-  // we don't render duplicates. In side/diff modes the OTHER canvases are
-  // unmounted by CSS hidden — that's fine because the active branch keeps
-  // the refs bound. This component is intentionally a no-op for now; left
-  // in place so the rendering branches above can rely on stable refs.
-  void keepMounted;
-  void refA;
-  void refB;
-  void refDiff;
-  return null;
-}
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
