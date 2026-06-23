@@ -5,9 +5,9 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
-import { PDFDocument } from "pdf-lib";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import { convertWordToPdfBlob, type WordToPdfPageSize } from "@/lib/pdf/word-to-pdf";
 
 export const Route = createFileRoute("/word-to-pdf")({
   head: () => ({
