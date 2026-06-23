@@ -869,7 +869,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [ocrPagesCopiedArr],
   );
 
-  const onRequestOcr = useCallback(async () => {
+  const ocrOptionsRef = useRef<{ languages: string[]; highAccuracy: boolean }>({
+    languages: ["eng"],
+    highAccuracy: false,
+  });
+  const onRequestOcr = useCallback(async (opts?: { languages?: string[]; highAccuracy?: boolean }) => {
+    if (opts?.languages) ocrOptionsRef.current.languages = opts.languages;
+    if (typeof opts?.highAccuracy === "boolean") ocrOptionsRef.current.highAccuracy = opts.highAccuracy;
     const f = active.file;
     if (!f || f.size === 0) {
       toast.error("No document to OCR");
@@ -919,6 +925,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         {
           returnPartialOnAbort: true,
           skipPageIndices: [...skipPrev],
+          languages: ocrOptionsRef.current.languages,
+          highAccuracy: ocrOptionsRef.current.highAccuracy,
         },
       );
       const aborted = ctrl.signal.aborted;
@@ -1231,7 +1239,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                         <div className="mt-2 flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={onRequestOcr}
+                            onClick={() => onRequestOcr()}
                             className="rounded-md bg-vault px-2.5 py-1 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
                           >
                             {hasResumePoint
@@ -1384,6 +1392,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             otherTabs={tabs
               .filter((t) => t.id !== active.id && t.file)
               .map((t) => ({ id: t.id, name: t.file!.name, file: t.file! }))}
+            ocr={{
+              run: onRequestOcr,
+              stop: () => ocrAbortRef.current?.abort(),
+              running: ocrRunning,
+              progressText: ocrProgressText,
+              ocrPagesCount: ocrPagesArr.length,
+              ocrPagesCopiedCount: ocrPagesCopiedArr.length,
+              scannedRemainingCount: unprocessedScannedSet.size,
+              isPartial: !!active.ocrIsPartial,
+              defaults: ocrOptionsRef.current,
+            }}
           />
         </div>
       </div>
@@ -2603,6 +2622,7 @@ function Inspector({
   replaceFile,
   editorDispatch,
   otherTabs,
+  ocr,
 }: {
   open: boolean;
   activeTool: RailTool | null;
@@ -2611,6 +2631,7 @@ function Inspector({
   replaceFile: (f: File) => void;
   editorDispatch: React.Dispatch<EditorAction>;
   otherTabs: Array<{ id: string; name: string; file: File }>;
+  ocr: import("./tool-panels").OcrCtx;
 }) {
   return (
     <aside
@@ -2646,7 +2667,7 @@ function Inspector({
             </button>
           </header>
           <div className="flex-1 overflow-auto px-3 py-3">
-            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch, otherTabs }} />
+            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch, otherTabs, ocr }} />
           </div>
         </div>
       ) : (
