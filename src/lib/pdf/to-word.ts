@@ -331,7 +331,7 @@ export async function convertPdfToWordBlob(
 
     // Concurrent text + image extraction.
     const timedOut = Symbol("timed-out");
-    const result = await withTimeout(
+    const result = await withTimeout<any>(
       Promise.all([
         page.getTextContent(),
         includeImages ? extractPageImages(page) : Promise.resolve([]),

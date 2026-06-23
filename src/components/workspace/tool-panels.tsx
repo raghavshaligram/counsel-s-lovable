@@ -3550,7 +3550,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const blob = await convertPdfToWordBlob(prepared, {
           mode: wordMode,
           includeImages: wordIncludeImages,
-          onProgress: (pct) => setProgress(`Reading pages… ${pct}%`),
+          onProgress: (pct, stage) => setProgress(stage ?? `Reading pages… ${pct}%`),
         });
         const base = file.name.replace(/\.pdf$/i, "");
         downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.docx`);

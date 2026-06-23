@@ -63,7 +63,7 @@ function ToWordPage() {
     setBusy(true);
     setProgress(0);
     try {
-      const blob = await convertPdfToWordBlob(file, { mode, onProgress: setProgress });
+      const blob = await convertPdfToWordBlob(file, { mode, onProgress: (pct) => setProgress(pct) });
       const base = file.name.replace(/\.pdf$/i, "");
       downloadBlob(blob, `${base}.docx`);
       toast.success("Word document downloaded");
