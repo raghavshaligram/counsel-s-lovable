@@ -135,63 +135,46 @@ export function CompareCanvas({ activeFile }: { activeFile: File | null }) {
 
   return (
     <div className="flex h-full flex-col items-center gap-3 overflow-auto px-6 py-6">
-      {/* The three canvases always exist (refs stay stable); CSS hides the
-          ones the active view mode doesn't show. */}
-      <div
-        className={cn(
-          "flex w-full max-w-[1500px] gap-3",
-          viewMode === "side" ? "items-start justify-center" : "hidden",
-        )}
-      >
-        <CanvasFrame label={`A — ${activeFile.name}`}>
-          <canvas ref={canvasARef} className="block max-w-full h-auto bg-white" />
-        </CanvasFrame>
-        <CanvasFrame label={`B — ${labelOfB(bSource)}`}>
-          <canvas ref={canvasBRef} className="block max-w-full h-auto bg-white" />
-        </CanvasFrame>
-      </div>
+      {viewMode === "side" && (
+        <div className="flex w-full max-w-[1500px] items-start justify-center gap-3">
+          <CanvasFrame label={`A — ${activeFile.name}`}>
+            <canvas ref={canvasARef} className="block max-w-full h-auto bg-white" />
+          </CanvasFrame>
+          <CanvasFrame label={`B — ${labelOfB(bSource)}`}>
+            <canvas ref={canvasBRef} className="block max-w-full h-auto bg-white" />
+          </CanvasFrame>
+          {/* Keep diff canvas mounted (hidden) so its ref is always bound. */}
+          <canvas ref={canvasDiffRef} className="hidden" aria-hidden />
+        </div>
+      )}
 
-      <div
-        className={cn(
-          "flex w-full max-w-[900px] flex-col items-center",
-          viewMode === "diff" ? "" : "hidden",
-        )}
-      >
-        <CanvasFrame label="Diff — pink = differences">
-          <canvas ref={canvasDiffRef} className="block max-w-full h-auto bg-white" />
-        </CanvasFrame>
-      </div>
+      {viewMode === "diff" && (
+        <div className="flex w-full max-w-[900px] flex-col items-center">
+          <CanvasFrame label="Diff — pink = differences">
+            <canvas ref={canvasDiffRef} className="block max-w-full h-auto bg-white" />
+          </CanvasFrame>
+          <canvas ref={canvasARef} className="hidden" aria-hidden />
+          <canvas ref={canvasBRef} className="hidden" aria-hidden />
+        </div>
+      )}
 
-      <div
-        className={cn(
-          "relative w-full max-w-[900px]",
-          viewMode === "overlay" ? "" : "hidden",
-        )}
-      >
-        <CanvasFrame label="Overlay — B over A with diff highlight">
-          <div className="relative">
-            <canvas ref={canvasARef} className="block w-full h-auto bg-white" />
-            <canvas
-              ref={canvasBRef}
-              className="absolute inset-0 w-full h-full opacity-40 mix-blend-difference"
-            />
-            <canvas
-              ref={canvasDiffRef}
-              className="absolute inset-0 w-full h-full opacity-70 mix-blend-screen"
-            />
-          </div>
-        </CanvasFrame>
-      </div>
-
-      {/* When viewMode is overlay, the side/diff branches above are hidden so
-          the canvas refs would be detached. We keep hidden copies mounted so
-          refs always resolve to a real element. */}
-      <HiddenRefs
-        keepMounted={viewMode === "overlay"}
-        refA={canvasARef}
-        refB={canvasBRef}
-        refDiff={canvasDiffRef}
-      />
+      {viewMode === "overlay" && (
+        <div className="relative w-full max-w-[900px]">
+          <CanvasFrame label="Overlay — B over A with diff highlight">
+            <div className="relative">
+              <canvas ref={canvasARef} className="block w-full h-auto bg-white" />
+              <canvas
+                ref={canvasBRef}
+                className="absolute inset-0 w-full h-full opacity-40 mix-blend-difference"
+              />
+              <canvas
+                ref={canvasDiffRef}
+                className="absolute inset-0 w-full h-full opacity-70 mix-blend-screen"
+              />
+            </div>
+          </CanvasFrame>
+        </div>
+      )}
 
       {busy && (
         <div className="pointer-events-none fixed bottom-20 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[11.5px] text-text-2 shadow-md">
