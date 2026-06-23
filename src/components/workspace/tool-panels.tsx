@@ -80,6 +80,8 @@ export type ToolPanelCtx = {
   replaceFile: (f: File) => void;
   /** Dispatch into the active tab's editor state. */
   editorDispatch: (a: EditorAction) => void;
+  /** Other open workspace tabs (excludes the active one). Used by Compare. */
+  otherTabs?: Array<{ id: string; name: string; file: File }>;
 };
 
 type PanelProps = { toolId: string; ctx: ToolPanelCtx };
@@ -106,6 +108,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ProtectPanel ctx={ctx} />;
     case "unlock":
       return <UnlockPanel ctx={ctx} />;
+    case "compare":
+      return <ComparePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
