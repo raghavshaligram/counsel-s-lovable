@@ -75,6 +75,18 @@ import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
 import { useCompare } from "@/lib/workspace/compare-store";
 
+export type OcrCtx = {
+  run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
+  stop: () => void;
+  running: boolean;
+  progressText: string;
+  ocrPagesCount: number;
+  ocrPagesCopiedCount: number;
+  scannedRemainingCount: number;
+  isPartial: boolean;
+  defaults: { languages: string[]; highAccuracy: boolean };
+};
+
 export type ToolPanelCtx = {
   /** The active tab's PDF file (or null when none open). */
   file: File | null;
@@ -84,6 +96,8 @@ export type ToolPanelCtx = {
   editorDispatch: (a: EditorAction) => void;
   /** Other open workspace tabs (excludes the active one). Used by Compare. */
   otherTabs?: Array<{ id: string; name: string; file: File }>;
+  /** Workspace-managed OCR controls. */
+  ocr?: OcrCtx;
 };
 
 type PanelProps = { toolId: string; ctx: ToolPanelCtx };
@@ -112,11 +126,14 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <UnlockPanel ctx={ctx} />;
     case "compare":
       return <ComparePanel ctx={ctx} />;
+    case "ocr":
+      return <OcrPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
 
 }
+
 
 /* ============================ Sign & Fill ============================ */
 
