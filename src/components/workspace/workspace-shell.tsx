@@ -60,6 +60,7 @@ import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
 import { EditorCanvas } from "./editor-canvas";
 import { OrganizeGrid } from "./organize-grid";
+import { CompareCanvas, CompareFloatingBar } from "./compare-canvas";
 import { TabStrip } from "./tab-strip";
 import {
   loadUIState,
@@ -1156,7 +1157,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         <div className="relative flex min-w-0 flex-1">
           {/* CANVAS */}
           <main className="relative flex min-w-0 flex-1 flex-col bg-background">
-            {file && activeToolId !== "organize" && (
+            {activeToolId === "compare" ? (
+              <CompareFloatingBar />
+            ) : file && activeToolId !== "organize" ? (
               <>
                 <FloatingToolbar
                   activeToolId={activeToolId}
@@ -1167,7 +1170,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 />
                 <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
               </>
-            )}
+            ) : null}
 
             {/* OCR offer — single chip pinned below the floating toolbar so
                 it never hides behind it. Appears only when Edit text is the
@@ -1283,7 +1286,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 className="pointer-events-none absolute inset-0 transition-colors"
                 style={{ backgroundColor: THEME_TINT[theme] }}
               />
-              {activeToolId === "organize" ? (
+              {activeToolId === "compare" ? (
+                <CompareCanvas activeFile={file} />
+              ) : activeToolId === "organize" ? (
                 <OrganizeGrid activeTabId={active.id} activeFile={file} onOpenFile={openFile} />
               ) : file ? (
                 editorState.doc && editorState.doc.pages.length > 0 ? (
@@ -1376,6 +1381,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
             editorDispatch={editorDispatch}
+            otherTabs={tabs
+              .filter((t) => t.id !== active.id && t.file)
+              .map((t) => ({ id: t.id, name: t.file!.name, file: t.file! }))}
           />
         </div>
       </div>
@@ -2594,6 +2602,7 @@ function Inspector({
   file,
   replaceFile,
   editorDispatch,
+  otherTabs,
 }: {
   open: boolean;
   activeTool: RailTool | null;
@@ -2601,6 +2610,7 @@ function Inspector({
   file: File | null;
   replaceFile: (f: File) => void;
   editorDispatch: React.Dispatch<EditorAction>;
+  otherTabs: Array<{ id: string; name: string; file: File }>;
 }) {
   return (
     <aside
@@ -2636,7 +2646,7 @@ function Inspector({
             </button>
           </header>
           <div className="flex-1 overflow-auto px-3 py-3">
-            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch }} />
+            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch, otherTabs }} />
           </div>
         </div>
       ) : (
