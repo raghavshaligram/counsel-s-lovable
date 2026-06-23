@@ -1522,7 +1522,7 @@ function Tip({
 }: {
   label: string;
   kbd?: string;
-  placement?: "right" | "left" | "top" | "bottom";
+  placement?: "right" | "left" | "top" | "bottom" | "bottom-end";
   children: React.ReactNode;
   className?: string;
   alwaysShow?: boolean;
@@ -1534,7 +1534,9 @@ function Tip({
         ? "right-[calc(100%+6px)] top-1/2 -translate-y-1/2"
         : placement === "top"
           ? "bottom-[calc(100%+6px)] left-1/2 -translate-x-1/2"
-          : "top-[calc(100%+6px)] left-1/2 -translate-x-1/2";
+          : placement === "bottom-end"
+            ? "top-[calc(100%+6px)] right-0"
+            : "top-[calc(100%+6px)] left-1/2 -translate-x-1/2";
   return (
     <span className={cn("group/tip relative inline-flex", className)}>
       {children}
