@@ -2481,7 +2481,7 @@ function EmptyStart({
           <ShortcutChip
             icon={<FileType className="h-[14px] w-[14px]" />}
             label="Word → PDF"
-            onClick={() => navigate({ to: "/word-to-pdf" })}
+            onClick={() => navigate({ to: "/workspace", search: { tool: "convert" } as any })}
           />
         </div>
 
