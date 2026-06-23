@@ -186,7 +186,8 @@ export async function listRecents(): Promise<RecentMeta[]> {
         });
     }
     return out.sort((a, b) => b.addedAt - a.addedAt);
-  } catch {
+  } catch (err) {
+    console.warn("[persistence] listRecents failed", err);
     return [];
   }
 }
@@ -195,8 +196,12 @@ export async function getRecent(id: string): Promise<RecentDoc | null> {
   const d = db();
   if (!d) return null;
   try {
-    return ((await (await d).get(DOC_STORE, id)) as RecentDoc) ?? null;
-  } catch {
+    const conn = await d;
+    const rec = (await conn.get(DOC_STORE, id)) as RecentDoc | undefined;
+    // 'not found / evicted' is normal — return null cleanly.
+    return rec ?? null;
+  } catch (err) {
+    console.warn("[persistence] getRecent failed", err);
     return null;
   }
 }
