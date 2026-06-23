@@ -105,9 +105,12 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <WatermarkPanel ctx={ctx} />;
     case "protect":
       return <ProtectPanel ctx={ctx} />;
+    case "unlock":
+      return <UnlockPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
+
 }
 
 /* ============================ Sign & Fill ============================ */
