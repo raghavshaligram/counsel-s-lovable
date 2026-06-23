@@ -8,6 +8,7 @@ import { FileText, Info } from "lucide-react";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { convertPdfToWordBlob } from "@/lib/pdf/to-word";
 
 export const Route = createFileRoute("/to-word")({
   head: () => ({
