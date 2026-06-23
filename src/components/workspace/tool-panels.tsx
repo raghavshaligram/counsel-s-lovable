@@ -3498,6 +3498,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   // Settings per target.
   const [wordMode, setWordMode] = useState<"flow" | "page" | "fidelity">("flow");
+  const [wordIncludeImages, setWordIncludeImages] = useState(true);
   const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
   const [imgDpi, setImgDpi] = useState<number>(150);
   const [imgQuality, setImgQuality] = useState<number>(0.92);
