@@ -3548,6 +3548,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
         const blob = await convertPdfToWordBlob(prepared, {
           mode: wordMode,
+          includeImages: wordIncludeImages,
           onProgress: (pct) => setProgress(`Reading pages… ${pct}%`),
         });
         const base = file.name.replace(/\.pdf$/i, "");
