@@ -869,7 +869,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [ocrPagesCopiedArr],
   );
 
-  const onRequestOcr = useCallback(async () => {
+  const ocrOptionsRef = useRef<{ languages: string[]; highAccuracy: boolean }>({
+    languages: ["eng"],
+    highAccuracy: false,
+  });
+  const onRequestOcr = useCallback(async (opts?: { languages?: string[]; highAccuracy?: boolean }) => {
+    if (opts?.languages) ocrOptionsRef.current.languages = opts.languages;
+    if (typeof opts?.highAccuracy === "boolean") ocrOptionsRef.current.highAccuracy = opts.highAccuracy;
     const f = active.file;
     if (!f || f.size === 0) {
       toast.error("No document to OCR");
