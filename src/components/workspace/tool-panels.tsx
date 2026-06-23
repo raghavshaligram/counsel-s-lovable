@@ -74,6 +74,7 @@ import { buildPdfFromCells } from "@/lib/pdf/organize";
 import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
 import { useCompare } from "@/lib/workspace/compare-store";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
