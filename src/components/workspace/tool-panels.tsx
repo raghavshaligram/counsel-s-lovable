@@ -3973,3 +3973,353 @@ async function ensureSearchablePdf(
   }
 }
 
+/* ============================ Image Convert ============================ */
+/**
+ * Dedicated Image ⇄ PDF tool. Detects input:
+ *   • PDF (active tab or picked) → PDF → Images (PNG/JPG, dpi, page range)
+ *   • Image file(s) picked       → Images → PDF (page size, fit, margin, order)
+ * Reuses the same underlying functions as the unified Convert tool. No new logic.
+ */
+function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const [picked, setPicked] = useState<File[]>([]);
+  const [usingActive, setUsingActive] = useState(true);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const isImage = (f: File) =>
+    /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name);
+  const isPdf = (f: File) => /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+
+  // Effective source: picked files override the active tab.
+  const sources: File[] =
+    picked.length > 0 ? picked : usingActive && ctx.file ? [ctx.file] : [];
+
+  const direction: "pdf-to-images" | "images-to-pdf" | null =
+    sources.length === 0
+      ? null
+      : sources.every(isImage)
+      ? "images-to-pdf"
+      : sources.length === 1 && isPdf(sources[0])
+      ? "pdf-to-images"
+      : null;
+
+  // PDF → Images settings
+  const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
+  const [imgDpi, setImgDpi] = useState<number>(150);
+  const [imgQuality, setImgQuality] = useState<number>(0.92);
+  const [imgPages, setImgPages] = useState<string>("");
+
+  // Images → PDF settings
+  const [imagesPageSize, setImagesPageSize] = useState<"auto" | "letter" | "a4">("auto");
+  const [imagesFit, setImagesFit] = useState<"fit" | "fill">("fit");
+  const [imagesMargin, setImagesMargin] = useState<number>(24);
+
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string>("");
+
+  const onPick = (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const arr = Array.from(files);
+    const first = arr[0];
+    if (isPdf(first)) {
+      setPicked([first]);
+    } else {
+      const imgs = arr.filter(isImage);
+      if (!imgs.length) {
+        toast.error("Drop a PDF or one-or-more image files.");
+        return;
+      }
+      setPicked((prev) => {
+        const prevAllImages = prev.length > 0 && prev.every(isImage);
+        return prevAllImages ? [...prev, ...imgs] : imgs;
+      });
+    }
+    setUsingActive(false);
+  };
+
+  const clearPicked = () => {
+    setPicked([]);
+    setUsingActive(true);
+  };
+
+  const run = async () => {
+    if (!direction || !sources.length) return;
+    setBusy(true);
+    setProgress("Starting…");
+    const tid = "wsx-image-convert";
+    toast.loading("Converting…", { id: tid });
+    try {
+      if (direction === "pdf-to-images") {
+        const file = sources[0];
+        const { convertPdfToImages } = await import("@/lib/pdf/to-images");
+        const res = await convertPdfToImages(file, {
+          format: imgFormat,
+          dpi: imgDpi,
+          quality: imgQuality,
+          pages: imgPages.trim() || undefined,
+          onProgress: (pct) => setProgress(`Rendering pages… ${pct}%`),
+        });
+        downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
+        toast.success(`Exported ${res.pages} page${res.pages === 1 ? "" : "s"}`, { id: tid });
+      } else {
+        const { buildPdfFromImages } = await import("@/lib/pdf/images-to-pdf");
+        const res = await buildPdfFromImages(sources, {
+          pageSize: imagesPageSize,
+          fit: imagesFit,
+          margin: imagesMargin,
+          onProgress: (pct) => setProgress(`Building PDF… ${pct}%`),
+        });
+        downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
+        toast.success(`Built PDF from ${res.pages} image${res.pages === 1 ? "" : "s"}`, { id: tid });
+      }
+    } catch (err) {
+      console.error("[image-convert] failed", err);
+      toast.error("Conversion failed", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,application/pdf,image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          onPick(e.target.files);
+          if (inputRef.current) inputRef.current.value = "";
+        }}
+      />
+
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        {sources.length > 0 ? (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12px] text-foreground">
+                {sources.length === 1 ? sources[0].name : `${sources.length} images`}
+              </div>
+              <div className="text-[10.5px] text-text-muted">
+                {direction === "pdf-to-images" && (picked.length ? "PDF · picked" : "PDF · active tab")}
+                {direction === "images-to-pdf" && `${sources.length} image${sources.length === 1 ? "" : "s"}`}
+                {!direction && "Mixed input — pick a PDF or images only"}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="rounded-md border border-border px-2 py-1 text-[10.5px] text-text-2 hover:border-vault/40 hover:text-foreground"
+              >
+                Replace
+              </button>
+              {picked.length > 0 && ctx.file && (
+                <button
+                  type="button"
+                  onClick={clearPicked}
+                  className="rounded-md border border-border px-2 py-1 text-[10.5px] text-text-2 hover:border-vault/40 hover:text-foreground"
+                >
+                  Use active
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[12px] text-text-2 hover:border-vault/40 hover:text-foreground"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Drop a PDF or images…
+          </button>
+        )}
+      </Section>
+
+      {direction === "images-to-pdf" && (
+        <Section title={`Order (${sources.length})`} icon={<Info className="h-3 w-3" />}>
+          <div className="text-[10.5px] text-text-muted mb-1.5">
+            Order = page order in the PDF.
+          </div>
+          <ul className="space-y-1">
+            {picked.map((f, i) => (
+              <li
+                key={`${f.name}-${i}-${f.size}`}
+                className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5"
+              >
+                <span className="w-5 text-center font-mono text-[10.5px] text-text-muted">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[11.5px] text-foreground">
+                  {f.name}
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-label="Move up"
+                    disabled={i === 0}
+                    onClick={() =>
+                      setPicked((prev) => {
+                        if (i === 0) return prev;
+                        const next = prev.slice();
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        return next;
+                      })
+                    }
+                    className="rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move down"
+                    disabled={i === picked.length - 1}
+                    onClick={() =>
+                      setPicked((prev) => {
+                        if (i === prev.length - 1) return prev;
+                        const next = prev.slice();
+                        [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                        return next;
+                      })
+                    }
+                    className="rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Remove"
+                    onClick={() =>
+                      setPicked((prev) => prev.filter((_, j) => j !== i))
+                    }
+                    className="ml-0.5 rounded border border-border px-1.5 py-0.5 text-[10px] text-text-2 hover:border-vault/40 hover:text-foreground"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="mt-2 w-full rounded-md border border-dashed border-border bg-surface-2 px-2 py-1.5 text-[11px] text-text-2 hover:border-vault/40 hover:text-foreground"
+          >
+            + Add more images
+          </button>
+        </Section>
+      )}
+
+      {direction === "pdf-to-images" && (
+        <>
+          <Section title="Format" icon={<Info className="h-3 w-3" />}>
+            <div className="grid grid-cols-2 gap-1.5">
+              <ModeRow active={imgFormat === "png"} onClick={() => setImgFormat("png")} label="PNG" hint="Lossless" />
+              <ModeRow active={imgFormat === "jpg"} onClick={() => setImgFormat("jpg")} label="JPG" hint="Smaller files" />
+            </div>
+          </Section>
+          <Section title="Resolution" icon={<Info className="h-3 w-3" />}>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[72, 150, 300].map((d) => (
+                <ModeRow key={d} active={imgDpi === d} onClick={() => setImgDpi(d)}
+                  label={`${d} dpi`}
+                  hint={d === 72 ? "Screen" : d === 150 ? "Standard" : "Print"} />
+              ))}
+            </div>
+            {imgFormat === "jpg" && (
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-[10.5px] text-text-muted mb-1">
+                  <span>JPG quality</span>
+                  <span className="font-mono text-foreground/80">{Math.round(imgQuality * 100)}%</span>
+                </div>
+                <input type="range" min={0.4} max={1} step={0.02} value={imgQuality}
+                  onChange={(e) => setImgQuality(parseFloat(e.target.value))}
+                  className="w-full accent-vault" />
+              </div>
+            )}
+          </Section>
+          <Section title="Pages" icon={<Info className="h-3 w-3" />}>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={imgPages}
+              onChange={(e) => setImgPages(e.target.value)}
+              placeholder="All pages — or e.g. 1-3, 7, 10-12"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+            <div className="mt-1.5 text-[10.5px] text-text-muted">
+              Leave empty to export every page.
+            </div>
+          </Section>
+        </>
+      )}
+
+      {direction === "images-to-pdf" && (
+        <>
+          <Section title="Page size" icon={<Info className="h-3 w-3" />}>
+            <div className="grid grid-cols-3 gap-1.5">
+              <ModeRow active={imagesPageSize === "auto"} onClick={() => setImagesPageSize("auto")}
+                label="Match" hint="Image size" />
+              <ModeRow active={imagesPageSize === "letter"} onClick={() => setImagesPageSize("letter")}
+                label="Letter" hint="8.5×11" />
+              <ModeRow active={imagesPageSize === "a4"} onClick={() => setImagesPageSize("a4")}
+                label="A4" hint="210×297" />
+            </div>
+          </Section>
+          {imagesPageSize !== "auto" && (
+            <Section title="Fit" icon={<Info className="h-3 w-3" />}>
+              <div className="grid grid-cols-2 gap-1.5">
+                <ModeRow active={imagesFit === "fit"} onClick={() => setImagesFit("fit")}
+                  label="Fit" hint="Whole image" />
+                <ModeRow active={imagesFit === "fill"} onClick={() => setImagesFit("fill")}
+                  label="Fill" hint="No borders" />
+              </div>
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-[10.5px] text-text-muted mb-1">
+                  <span>Margin</span>
+                  <span className="font-mono text-foreground/80">{imagesMargin}pt</span>
+                </div>
+                <input type="range" min={0} max={72} step={2} value={imagesMargin}
+                  onChange={(e) => setImagesMargin(parseInt(e.target.value, 10))}
+                  className="w-full accent-vault" />
+              </div>
+            </Section>
+          )}
+        </>
+      )}
+
+      {busy && (
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[10.5px] text-text-muted">
+          {progress || "Working…"}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy || !direction}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+          (busy || !direction) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy
+          ? "Converting…"
+          : direction === "pdf-to-images"
+          ? "Export images"
+          : direction === "images-to-pdf"
+          ? "Build PDF"
+          : "Pick a PDF or images"}
+      </button>
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
