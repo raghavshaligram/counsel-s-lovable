@@ -358,38 +358,73 @@ export async function loadSidecar(name: string, size: number): Promise<SidecarRe
   const d = db();
   if (!d) return null;
   try {
-    return ((await (await d).get(SIDECAR_STORE, sidecarKey(name, size))) as SidecarRecord) ?? null;
-  } catch {
+    const conn = await d;
+    const rec = (await conn.get(SIDECAR_STORE, sidecarKey(name, size))) as
+      | SidecarRecord
+      | undefined;
+    return rec ?? null;
+  } catch (err) {
+    console.warn("[persistence] loadSidecar failed", err);
     return null;
   }
 }
 
 const sidecarTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const sidecarPending = new Map<string, Omit<SidecarRecord, "savedAt">>();
 export function saveSidecarDebounced(name: string, size: number, rec: Omit<SidecarRecord, "savedAt">) {
   const d = db();
   if (!d) return;
   const key = sidecarKey(name, size);
+  sidecarPending.set(key, rec);
   const t = sidecarTimers.get(key);
   if (t) clearTimeout(t);
   sidecarTimers.set(
     key,
     setTimeout(async () => {
+      const snapshot = sidecarPending.get(key);
+      sidecarPending.delete(key);
+      if (!snapshot) return;
       try {
-        const full: SidecarRecord = { ...rec, savedAt: Date.now() };
-        (await d).put(SIDECAR_STORE, full, key);
-      } catch {
-        /* ignore */
+        const conn = await d;
+        const full: SidecarRecord = { ...snapshot, savedAt: Date.now() };
+        // Await the put — resolves on transaction commit.
+        await conn.put(SIDECAR_STORE, full, key);
+      } catch (err) {
+        console.error("[persistence] saveSidecar failed", err);
       }
     }, 400),
   );
+}
+
+// Flush all pending sidecar writes immediately. Call before unload / tab close
+// so debounced writes are actually committed.
+export async function flushSidecars(): Promise<void> {
+  const d = db();
+  if (!d) return;
+  const pending = Array.from(sidecarPending.entries());
+  sidecarPending.clear();
+  for (const [, t] of sidecarTimers) clearTimeout(t);
+  sidecarTimers.clear();
+  if (pending.length === 0) return;
+  try {
+    const conn = await d;
+    await Promise.all(
+      pending.map(([key, rec]) =>
+        conn.put(SIDECAR_STORE, { ...rec, savedAt: Date.now() } satisfies SidecarRecord, key),
+      ),
+    );
+  } catch (err) {
+    console.error("[persistence] flushSidecars failed", err);
+  }
 }
 
 export async function deleteSidecar(name: string, size: number): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).delete(SIDECAR_STORE, sidecarKey(name, size));
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.delete(SIDECAR_STORE, sidecarKey(name, size));
+  } catch (err) {
+    console.warn("[persistence] deleteSidecar failed", err);
   }
 }
