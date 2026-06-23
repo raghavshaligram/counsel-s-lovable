@@ -137,33 +137,3 @@ function ToWordPage() {
   );
 }
 
-// Group pdfjs text items into lines using their y-position.
-function groupIntoLines(items: any[]): { text: string; size: number; y: number }[] {
-  const rows: { y: number; size: number; parts: { x: number; str: string }[] }[] = [];
-  for (const it of items) {
-    if (!it.str) continue;
-    const tr = it.transform as number[];
-    const x = tr[4];
-    const y = tr[5];
-    const size = Math.hypot(tr[2], tr[3]) || it.height || 10;
-    let row = rows.find((r) => Math.abs(r.y - y) < Math.max(2, size * 0.4));
-    if (!row) {
-      row = { y, size, parts: [] };
-      rows.push(row);
-    }
-    row.parts.push({ x, str: it.str });
-    if (it.hasEOL) {
-      row.parts.push({ x: x + 9999, str: "\n__EOL__" });
-    }
-  }
-  rows.sort((a, b) => b.y - a.y);
-  const out: { text: string; size: number; y: number }[] = [];
-  for (const r of rows) {
-    r.parts.sort((a, b) => a.x - b.x);
-    const raw = r.parts.map((p) => p.str).join(" ").replace(/\s*\n__EOL__\s*/g, "\n");
-    for (const line of raw.split("\n")) {
-      out.push({ text: line.replace(/\s+/g, " ").trim(), size: r.size, y: r.y });
-    }
-  }
-  return out;
-}
