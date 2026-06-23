@@ -68,6 +68,17 @@ function db() {
           d.createObjectStore(SIDECAR_STORE);
         }
       },
+      blocked() {
+        console.warn("[persistence] DB upgrade blocked by another tab");
+      },
+      terminated() {
+        console.warn("[persistence] DB connection terminated — will reopen");
+        dbp = null;
+      },
+    }).catch((err) => {
+      console.error("[persistence] openDB failed", err);
+      dbp = null;
+      throw err;
     });
   }
   return dbp;
@@ -80,22 +91,31 @@ export async function loadUIState(): Promise<Partial<WorkspaceUIState> | null> {
   const d = db();
   if (!d) return null;
   try {
-    return ((await (await d).get(UI_STORE, "state")) as Partial<WorkspaceUIState>) ?? null;
-  } catch {
+    const conn = await d;
+    return ((await conn.get(UI_STORE, "state")) as Partial<WorkspaceUIState>) ?? null;
+  } catch (err) {
+    console.warn("[persistence] loadUIState failed", err);
     return null;
   }
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingUIState: Partial<WorkspaceUIState> | null = null;
 export function saveUIStateDebounced(state: Partial<WorkspaceUIState>) {
   const d = db();
   if (!d) return;
+  pendingUIState = state;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
+    const snapshot = pendingUIState;
+    pendingUIState = null;
+    if (!snapshot) return;
     try {
-      (await d).put(UI_STORE, state, "state");
-    } catch {
-      /* ignore */
+      const conn = await d;
+      // .put() returns a promise that resolves when the transaction commits.
+      await conn.put(UI_STORE, snapshot, "state");
+    } catch (err) {
+      console.error("[persistence] saveUIState failed", err);
     }
   }, 250);
 }
@@ -108,9 +128,10 @@ export async function saveOpenTabs(tabs: OpenTabMeta[]): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).put(UI_STORE, tabs, "openTabs");
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.put(UI_STORE, tabs, "openTabs");
+  } catch (err) {
+    console.error("[persistence] saveOpenTabs failed", err);
   }
 }
 
@@ -118,8 +139,10 @@ export async function loadOpenTabs(): Promise<OpenTabMeta[]> {
   const d = db();
   if (!d) return [];
   try {
-    return ((await (await d).get(UI_STORE, "openTabs")) as OpenTabMeta[]) ?? [];
-  } catch {
+    const conn = await d;
+    return ((await conn.get(UI_STORE, "openTabs")) as OpenTabMeta[]) ?? [];
+  } catch (err) {
+    console.warn("[persistence] loadOpenTabs failed", err);
     return [];
   }
 }
@@ -128,9 +151,10 @@ export async function clearOpenTabs(): Promise<void> {
   const d = db();
   if (!d) return;
   try {
-    (await d).delete(UI_STORE, "openTabs");
-  } catch {
-    /* ignore */
+    const conn = await d;
+    await conn.delete(UI_STORE, "openTabs");
+  } catch (err) {
+    console.warn("[persistence] clearOpenTabs failed", err);
   }
 }
 
