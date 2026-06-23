@@ -263,6 +263,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     activeIdRef.current = activeId;
   }, [activeId]);
 
+  // Flush any debounced sidecar writes before the tab is hidden / unloaded so
+  // pending edits actually commit to IndexedDB.
+  useEffect(() => {
+    const flush = () => {
+      void flushSidecars();
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
   // Pending close (for the unsaved-changes guard).
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
   const [pendingHomeClose, setPendingHomeClose] = useState(false); // legacy guard
