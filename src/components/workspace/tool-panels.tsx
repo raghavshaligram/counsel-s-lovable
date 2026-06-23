@@ -3498,6 +3498,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   // Settings per target.
   const [wordMode, setWordMode] = useState<"flow" | "page" | "fidelity">("flow");
+  const [wordIncludeImages, setWordIncludeImages] = useState(true);
   const [imgFormat, setImgFormat] = useState<"png" | "jpg">("png");
   const [imgDpi, setImgDpi] = useState<number>(150);
   const [imgQuality, setImgQuality] = useState<number>(0.92);
@@ -3548,6 +3549,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
         const blob = await convertPdfToWordBlob(prepared, {
           mode: wordMode,
+          includeImages: wordIncludeImages,
           onProgress: (pct) => setProgress(`Reading pages… ${pct}%`),
         });
         const base = file.name.replace(/\.pdf$/i, "");
@@ -3710,6 +3712,22 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
             <ModeRow active={wordMode === "fidelity"} onClick={() => setWordMode("fidelity")}
               label="High fidelity (page images)" hint="Preserves layout exactly by embedding each page as an image. Not editable as text." />
           </div>
+          {wordMode !== "fidelity" && (
+            <label className="mt-3 flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2 text-[12px] cursor-pointer">
+              <span>
+                <span className="text-foreground">Include images</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Off = faster, text-only export.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={wordIncludeImages}
+                onChange={(e) => setWordIncludeImages(e.target.checked)}
+                className="h-4 w-4 accent-vault"
+              />
+            </label>
+          )}
         </Section>
       )}
 
