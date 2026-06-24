@@ -152,7 +152,7 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
   }
 }
 
-}
+
 
 
 /* ============================ Sign & Fill ============================ */
