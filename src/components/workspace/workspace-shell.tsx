@@ -133,6 +133,7 @@ const TOOLS: RailTool[] = [
   { id: "ocr", label: "Make Searchable", icon: ScanText, group: "convert", groupLabel: "Convert" },
   // Edit
   { id: "sign", label: "Sign & Fill", icon: PenLine, group: "sign", groupLabel: "Edit" },
+  { id: "comments", label: "Comments", icon: MessageSquare, group: "sign", groupLabel: "Edit" },
   { id: "watermark", label: "Watermark", icon: Stamp, group: "secure", groupLabel: "Edit" },
   { id: "compress", label: "Compress", icon: PackageOpen, group: "secure", groupLabel: "Edit" },
   // Redact
