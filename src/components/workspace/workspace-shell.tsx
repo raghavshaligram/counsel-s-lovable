@@ -2675,6 +2675,8 @@ function Inspector({
   file,
   replaceFile,
   editorDispatch,
+  editorState,
+  closeInspector,
   otherTabs,
   ocr,
 }: {
@@ -2684,6 +2686,8 @@ function Inspector({
   file: File | null;
   replaceFile: (f: File) => void;
   editorDispatch: React.Dispatch<EditorAction>;
+  editorState: ReturnType<typeof reducer>;
+  closeInspector: () => void;
   otherTabs: Array<{ id: string; name: string; file: File }>;
   ocr: import("./tool-panels").OcrCtx;
 }) {
@@ -2721,7 +2725,10 @@ function Inspector({
             </button>
           </header>
           <div className="flex-1 overflow-auto px-3 py-3">
-            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch, otherTabs, ocr }} />
+            <ToolPanel
+              toolId={activeTool.id}
+              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr }}
+            />
           </div>
         </div>
       ) : (
