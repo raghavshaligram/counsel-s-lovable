@@ -714,6 +714,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       } else if (meta && e.key === "\\") {
         e.preventDefault();
         patchActive({ inspectorOpen: !inspectorOpen });
+      } else if (meta && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setNavOpen((v) => !v);
       } else if (meta && e.key.toLowerCase() === "t") {
         e.preventDefault();
         openNewStartTab();
