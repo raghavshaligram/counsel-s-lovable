@@ -1193,10 +1193,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   onChange={setEditorTool}
                   onUndo={() => editorDispatch({ type: "UNDO" })}
                   onRedo={() => editorDispatch({ type: "REDO" })}
+                  onToggleNav={() => setNavOpen((v) => !v)}
+                  navOpen={navOpen}
                 />
                 <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
+                <NavOverlay
+                  open={navOpen}
+                  defaultTab={navTab}
+                  fileName={file?.name ?? null}
+                  bytes={editorState.doc?.srcBytes ?? null}
+                  pageCount={editorState.doc?.pages.length ?? 0}
+                  annotations={editorState.doc?.annotations ?? []}
+                  currentPage={editorState.current}
+                  onJumpPage={(n) => editorDispatch({ type: "SET_PAGE", n })}
+                  onJumpAnno={(a) => {
+                    editorDispatch({ type: "SET_PAGE", n: a.page });
+                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
+                  }}
+                  onEditComment={(a) => {
+                    editorDispatch({ type: "SET_PAGE", n: a.page });
+                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
+                    patchActive({ activeToolId: "comments", inspectorOpen: true });
+                  }}
+                  onClose={() => setNavOpen(false)}
+                />
               </>
             ) : null}
+
 
             {/* OCR offer — single chip pinned below the floating toolbar so
                 it never hides behind it. Appears only when Edit text is the
