@@ -36,7 +36,11 @@ import { toast } from "sonner";
 import JSZip from "jszip";
 import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
-import type { Action as EditorAction } from "@/lib/editor/state";
+import type { Action as EditorAction, State as EditorState } from "@/lib/editor/state";
+import type { Anno, Reply } from "@/lib/editor/types";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Check, CornerDownRight, MessageSquare } from "lucide-react";
 import {
   detectFormFields,
   applyFormFill,
