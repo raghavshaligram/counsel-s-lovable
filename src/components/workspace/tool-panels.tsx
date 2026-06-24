@@ -100,6 +100,11 @@ export type ToolPanelCtx = {
   replaceFile: (f: File) => void;
   /** Dispatch into the active tab's editor state. */
   editorDispatch: (a: EditorAction) => void;
+  /** Active editor state (annotations, current page, selection). Optional —
+   *  only panels that read editor data need it. */
+  editorState?: EditorState;
+  /** Close the inspector (used by panels that finish a task and want to dismiss). */
+  closeInspector?: () => void;
   /** Other open workspace tabs (excludes the active one). Used by Compare. */
   otherTabs?: Array<{ id: string; name: string; file: File }>;
   /** Workspace-managed OCR controls. */
