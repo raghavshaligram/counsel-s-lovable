@@ -1681,6 +1681,9 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   [
     { id: "image", label: "Insert image", Icon: ImageIcon },
     { id: "rect", label: "Rectangle", Icon: Square },
+    { id: "ellipse", label: "Ellipse", Icon: Circle },
+    { id: "line", label: "Line", Icon: Minus },
+    { id: "arrow", label: "Arrow", Icon: ArrowRight },
     { id: "freehand", label: "Freehand", Icon: Pencil },
   ],
 ];
