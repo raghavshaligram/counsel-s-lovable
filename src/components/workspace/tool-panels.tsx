@@ -145,9 +145,12 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ImageConvertPanel ctx={ctx} />;
     case "page-numbers":
       return <PageNumbersPanel ctx={ctx} />;
+    case "comments":
+      return <CommentsInspectorPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
+}
 
 }
 
