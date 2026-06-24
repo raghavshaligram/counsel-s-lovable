@@ -2058,6 +2058,95 @@ function hexToRgb(hex: string): RGB {
 }
 
 // Stub bars for non-text tools (unchanged from previous behaviour).
+// Functional properties bar for shape annotations / shape draw tools.
+function ShapePropsBar({
+  state,
+  dispatch,
+  sel,
+  showFill,
+}: {
+  state: ReturnType<typeof reducer>;
+  dispatch: React.Dispatch<EditorAction>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sel: any | null;
+  showFill: boolean;
+}) {
+  const color: RGB = sel?.color ?? state.color;
+  const stroke: number = sel?.stroke ?? state.stroke;
+  const opacity: number = sel?.opacity ?? state.opacity;
+  const fill: boolean = sel?.fill ?? state.fillShape;
+  const setColor = (c: RGB) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { color: c } as never }) : dispatch({ type: "SET_COLOR", c });
+  const setStroke = (v: number) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { stroke: v } as never }) : dispatch({ type: "SET_STROKE", v });
+  const setOpacity = (v: number) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { opacity: v } as never }) : dispatch({ type: "SET_OPACITY", v });
+  const setFill = (v: boolean) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { fill: v } as never }) : dispatch({ type: "SET_FILL", v });
+  return (
+    <>
+      <ColorPicker value={color} onChange={setColor} />
+      <input
+        aria-label="Stroke"
+        type="number"
+        min={0.5}
+        max={20}
+        step={0.5}
+        value={stroke}
+        onChange={(e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v > 0) setStroke(v); }}
+        className="w-14 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
+        title="Stroke (px)"
+      />
+      <input
+        aria-label="Opacity"
+        type="range"
+        min={0.1}
+        max={1}
+        step={0.05}
+        value={opacity}
+        onChange={(e) => setOpacity(parseFloat(e.target.value))}
+        className="w-20 accent-vault"
+        title={`Opacity ${Math.round(opacity * 100)}%`}
+      />
+      {showFill && (
+        <PropToggle active={!!fill} onClick={() => setFill(!fill)} title="Fill">
+          Fill
+        </PropToggle>
+      )}
+    </>
+  );
+}
+
+// Highlight / underline / strikethrough props.
+function MarkPropsBar({
+  state,
+  dispatch,
+  sel,
+}: {
+  state: ReturnType<typeof reducer>;
+  dispatch: React.Dispatch<EditorAction>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sel: any | null;
+}) {
+  const color: RGB = sel?.color ?? state.color;
+  const opacity: number = sel?.opacity ?? state.opacity;
+  const setColor = (c: RGB) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { color: c } as never }) : dispatch({ type: "SET_COLOR", c });
+  const setOpacity = (v: number) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { opacity: v } as never }) : dispatch({ type: "SET_OPACITY", v });
+  return (
+    <>
+      <ColorPicker value={color} onChange={setColor} />
+      <input
+        aria-label="Opacity"
+        type="range"
+        min={0.1}
+        max={1}
+        step={0.05}
+        value={opacity}
+        onChange={(e) => setOpacity(parseFloat(e.target.value))}
+        className="w-20 accent-vault"
+        title={`Opacity ${Math.round(opacity * 100)}%`}
+      />
+      <span className="text-text-muted">Drag across text to mark.</span>
+    </>
+  );
+}
+
 function contextStub(tool: EditorTool): React.ReactNode | null {
   switch (tool) {
     case "highlight":
