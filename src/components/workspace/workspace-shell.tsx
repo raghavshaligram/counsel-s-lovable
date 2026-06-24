@@ -356,6 +356,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // When true, the next file selection opens in a NEW tab instead of
+  // replacing the active tab's document. Used by the "+" button so users
+  // get a file picker rather than an invisible blank tab.
+  const openInNewTabRef = useRef(false);
   // After a LOAD on a given tab, switch its editor tool to this value. Used
   // by OCR pause: the file swap triggers LOAD (which resets tool to "select"),
   // so we re-apply "edit-text" immediately after so the user lands on the
