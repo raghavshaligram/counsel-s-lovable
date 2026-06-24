@@ -1430,6 +1430,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
             editorDispatch={editorDispatch}
+            editorState={editorState}
+            closeInspector={() => patchActive({ inspectorOpen: false })}
             otherTabs={tabs
               .filter((t) => t.id !== active.id && t.file)
               .map((t) => ({ id: t.id, name: t.file!.name, file: t.file! }))}
