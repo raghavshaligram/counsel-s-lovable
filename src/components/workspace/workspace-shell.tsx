@@ -356,6 +356,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // When true, the next file selection opens in a NEW tab instead of
+  // replacing the active tab's document. Used by the "+" button so users
+  // get a file picker rather than an invisible blank tab.
+  const openInNewTabRef = useRef(false);
   // After a LOAD on a given tab, switch its editor tool to this value. Used
   // by OCR pause: the file swap triggers LOAD (which resets tool to "select"),
   // so we re-apply "edit-text" immediately after so the user lands on the
@@ -525,17 +529,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   );
 
   // ----------------- Tab operations -----------------------------------
+  // The "+" button opens a file picker; once a file is chosen we create
+  // a new tab for it. We intentionally don't spawn a visible empty tab —
+  // the TabStrip only renders document tabs, so an empty tab would be
+  // invisible and feel broken.
   const openNewStartTab = useCallback(() => {
-    setTabs((ts) => {
-      if (ts.length >= TAB_CAP) {
-        toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
-        return ts;
-      }
-      const next = makeBlankTab();
-      setActiveId(next.id);
-      return [...ts, next];
-    });
-  }, []);
+    const docCount = tabs.filter((t) => t.file !== null).length;
+    if (docCount >= TAB_CAP) {
+      toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+      return;
+    }
+    openInNewTabRef.current = true;
+    // Reset value so picking the same file twice still fires `change`.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fileInputRef.current?.click();
+  }, [tabs]);
+
 
   const closeTab = useCallback(
     (id: string, opts?: { force?: boolean }) => {
@@ -570,8 +579,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const onFiles = useCallback(
     (files: FileList | null) => {
       const f = files?.[0];
+      const inNewTab = openInNewTabRef.current;
+      openInNewTabRef.current = false;
       if (!f) return;
-      patchActive({ file: f, isDirty: false });
+      if (inNewTab) {
+        setTabs((ts) => {
+          const docCount = ts.filter((t) => t.file !== null).length;
+          if (docCount >= TAB_CAP) {
+            toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+            return ts;
+          }
+          const next = makeBlankTab({ file: f, isDirty: false });
+          setActiveId(next.id);
+          // Drop a leading blank tab so we don't accumulate invisible tabs.
+          const cleaned = ts.filter((t) => t.file !== null);
+          return [...cleaned, next];
+        });
+      } else {
+        patchActive({ file: f, isDirty: false });
+      }
       void (async () => {
         const meta = await addRecent(f);
         if (meta) {
@@ -582,6 +608,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     },
     [patchActive],
   );
+
 
   const resumeRecent = useCallback(
     async (id: string) => {
