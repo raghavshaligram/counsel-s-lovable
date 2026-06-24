@@ -232,7 +232,7 @@ function PagesTab({
     (async () => {
       const pdfjs = await loadPdfjs();
       const d = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-      if (cancelled) { try { d.destroy?.(); } catch { /* ignore */ } return; }
+      if (cancelled) { try { (d as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ } return; }
       pdfDoc = d as unknown as { destroy?: () => Promise<void> };
       setDoc({ numPages: d.numPages, getPage: (n) => d.getPage(n) });
     })().catch(() => { /* ignore */ });
