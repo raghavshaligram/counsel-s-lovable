@@ -336,6 +336,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [viewOpen, setViewOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
+  const [navOpen, setNavOpen] = useState(false);
+  const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
   const [fitNonce, setFitNonce] = useState(0);
   // Auto-fit zoom for the active tab; cheap because EditorPages computes it.
