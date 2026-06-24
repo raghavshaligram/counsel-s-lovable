@@ -1843,14 +1843,43 @@ function ContextualBar({
     sel &&
     (sel.kind === "text-edit" || sel.kind === "text");
 
-  // Render either the wired text-edit bar OR the generic stub for other tools.
-  const inner = isTextLike
-    ? <TextEditPropsBar anno={sel as Extract<typeof sel, { kind: "text-edit" | "text" }>} dispatch={dispatch} />
-    : (tool === "edit-text" || tool === "text")
-      ? <span className="text-text-muted">{tool === "edit-text"
-          ? "Click any text on the page to edit — font is auto-detected."
-          : "Click on the page to add a text box."}</span>
-      : contextStub(tool);
+  // Functional shape/highlight props when a matching annotation is selected,
+  // OR when a draw tool is active with no selection (controls the next draw).
+  const shapeKinds: Array<EditorTool> = ["rect", "ellipse", "line", "arrow", "freehand"];
+  const markKinds: Array<EditorTool> = ["highlight", "underline", "strikethrough"];
+  const selKind = sel?.kind as EditorTool | undefined;
+  const isShapeSel = sel && shapeKinds.includes(selKind as EditorTool);
+  const isMarkSel = sel && markKinds.includes(selKind as EditorTool);
+  const isShapeTool = shapeKinds.includes(tool);
+  const isMarkTool = markKinds.includes(tool);
+
+  let inner: React.ReactNode = null;
+  if (isTextLike) {
+    inner = <TextEditPropsBar anno={sel as Extract<typeof sel, { kind: "text-edit" | "text" }>} dispatch={dispatch} />;
+  } else if (tool === "edit-text" || tool === "text") {
+    inner = <span className="text-text-muted">{tool === "edit-text"
+      ? "Click any text on the page to edit — font is auto-detected."
+      : "Click on the page to add a text box."}</span>;
+  } else if (isShapeSel || isShapeTool) {
+    inner = (
+      <ShapePropsBar
+        state={state}
+        dispatch={dispatch}
+        sel={isShapeSel ? (sel as never) : null}
+        showFill={(isShapeSel && (selKind === "rect" || selKind === "ellipse")) || tool === "rect" || tool === "ellipse"}
+      />
+    );
+  } else if (isMarkSel || isMarkTool) {
+    inner = (
+      <MarkPropsBar
+        state={state}
+        dispatch={dispatch}
+        sel={isMarkSel ? (sel as never) : null}
+      />
+    );
+  } else {
+    inner = contextStub(tool);
+  }
   if (!inner) return null;
   return (
     <div
