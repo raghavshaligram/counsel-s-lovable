@@ -3313,11 +3313,18 @@ function EditorPages({
   }, [pageLayout, sizes, srcBytes, containerWidth, containerHeight, fitNonce, zoomMode]);
 
 
-  // Load doc once per srcBytes.
+  // Load doc once per srcBytes. Measure pages in CHUNKS, yielding to the UI
+  // between chunks. pdf.js getDocument() and getPage() are async (the parse
+  // runs in pdf.js's own worker), but `await`ing N pages in a tight loop
+  // still flooded the main thread with microtasks on large docs. Chunking
+  // + setTimeout(0) lets layout/paint run, so we never trip Chrome's
+  // "Page Unresponsive" dialog. Sizes are pushed incrementally so the first
+  // pages can render while the rest are still being measured.
   useEffect(() => {
     if (!srcBytes) { setPdfDoc(null); setSizes([]); return; }
     let cancelled = false;
     setProgress({ loaded: 0, total: 0 });
+    setSizes([]);
     (async () => {
       try {
         const pdfjs = await loadPdfjs();
@@ -3327,17 +3334,24 @@ function EditorPages({
         };
         const doc = await task.promise;
         if (cancelled) return;
-        // Measure all pages (cheap — getPage doesn't render).
+        setPdfDoc(doc);
+
         const measured: Array<{ width: number; height: number }> = [];
+        const CHUNK = 8;
+        const yieldToUI = () => new Promise<void>((r) => setTimeout(r, 0));
         for (let i = 1; i <= doc.numPages; i++) {
           const page = await doc.getPage(i);
           if (cancelled) return;
           const vp = page.getViewport({ scale: 1 });
           measured.push({ width: vp.width, height: vp.height });
+          if (i % CHUNK === 0 || i === doc.numPages) {
+            // Commit a snapshot so already-measured pages can paint while we
+            // keep measuring the rest in the background.
+            setSizes(measured.slice());
+            await yieldToUI();
+            if (cancelled) return;
+          }
         }
-        if (cancelled) return;
-        setSizes(measured);
-        setPdfDoc(doc);
         setProgress(null);
       } catch (err) {
         console.error("[EditorPages] doc load failed", err);
