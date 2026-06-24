@@ -579,8 +579,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const onFiles = useCallback(
     (files: FileList | null) => {
       const f = files?.[0];
+      const inNewTab = openInNewTabRef.current;
+      openInNewTabRef.current = false;
       if (!f) return;
-      patchActive({ file: f, isDirty: false });
+      if (inNewTab) {
+        setTabs((ts) => {
+          const docCount = ts.filter((t) => t.file !== null).length;
+          if (docCount >= TAB_CAP) {
+            toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+            return ts;
+          }
+          const next = makeBlankTab({ file: f, isDirty: false });
+          setActiveId(next.id);
+          // Drop a leading blank tab so we don't accumulate invisible tabs.
+          const cleaned = ts.filter((t) => t.file !== null);
+          return [...cleaned, next];
+        });
+      } else {
+        patchActive({ file: f, isDirty: false });
+      }
       void (async () => {
         const meta = await addRecent(f);
         if (meta) {
@@ -591,6 +608,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     },
     [patchActive],
   );
+
 
   const resumeRecent = useCallback(
     async (id: string) => {
