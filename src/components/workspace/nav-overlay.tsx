@@ -198,6 +198,15 @@ function OutlineRow({ node, depth, onJump }: { node: OutlineNode; depth: number;
 }
 
 /* ----------------------------- Pages ----------------------------- */
+/**
+ * Thumbnails. Parse the PDF ONCE per overlay open and share the doc across
+ * all thumbnails. Render each thumbnail only when it scrolls into view, and
+ * funnel renders through a single-slot queue so a 400-page doc doesn't fire
+ * 400 concurrent pdf.js render jobs (which is what caused the main thread
+ * to lock up and trigger "Page Unresponsive").
+ */
+
+type ThumbDoc = { numPages: number; getPage: (n: number) => Promise<unknown> };
 
 function PagesTab({
   bytes,
@@ -210,32 +219,96 @@ function PagesTab({
   current: number;
   onJump: (n: number) => void;
 }) {
+  const [doc, setDoc] = useState<ThumbDoc | null>(null);
+  // Serialise thumbnail renders. pdf.js runs in its own worker, but every
+  // render still posts work onto the main thread to paint into a canvas.
+  // One-at-a-time keeps the UI responsive even on 1000-page documents.
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    if (!bytes) { setDoc(null); return; }
+    let cancelled = false;
+    let pdfDoc: { destroy?: () => Promise<void> } | null = null;
+    (async () => {
+      const pdfjs = await loadPdfjs();
+      const d = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+      if (cancelled) { try { (d as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ } return; }
+      pdfDoc = d as unknown as { destroy?: () => Promise<void> };
+      setDoc({ numPages: d.numPages, getPage: (n) => d.getPage(n) });
+    })().catch(() => { /* ignore */ });
+    return () => {
+      cancelled = true;
+      try { pdfDoc?.destroy?.(); } catch { /* ignore */ }
+    };
+  }, [bytes]);
+
   if (!bytes || pageCount === 0) return <Empty label="No document loaded." />;
+  if (!doc) return <Empty label="Loading thumbnails…" />;
+
   return (
     <ul className="grid grid-cols-2 gap-2">
       {Array.from({ length: pageCount }, (_, i) => (
-        <PageThumb key={i} bytes={bytes} index={i} active={i === current} onClick={() => onJump(i)} />
+        <PageThumb
+          key={i}
+          doc={doc}
+          queueRef={queueRef}
+          index={i}
+          active={i === current}
+          onClick={() => onJump(i)}
+        />
       ))}
     </ul>
   );
 }
 
-function PageThumb({ bytes, index, active, onClick }: { bytes: Uint8Array; index: number; active: boolean; onClick: () => void }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+function PageThumb({
+  doc,
+  queueRef,
+  index,
+  active,
+  onClick,
+}: {
+  doc: ThumbDoc;
+  queueRef: React.MutableRefObject<Promise<void>>;
+  index: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const wrapRef = useRef<HTMLLIElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [inView, setInView] = useState(false);
   const [ready, setReady] = useState(false);
 
+  // Render only when scrolled into view.
   useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || inView) return;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { setInView(true); io.disconnect(); break; }
+      }
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [inView]);
+
+  useEffect(() => {
+    if (!inView) return;
     let cancelled = false;
-    (async () => {
-      const pdfjs = await loadPdfjs();
-      const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    // Append to the shared single-slot queue.
+    queueRef.current = queueRef.current.then(async () => {
+      if (cancelled) return;
       try {
-        const page = await doc.getPage(index + 1);
-        const viewport = page.getViewport({ scale: 1 });
+        const page = await doc.getPage(index + 1) as {
+          getViewport: (o: { scale: number }) => { width: number; height: number };
+          render: (o: { canvas: HTMLCanvasElement; canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void> };
+        };
+        if (cancelled) return;
+        const vp1 = page.getViewport({ scale: 1 });
         const targetW = 130;
-        const scale = targetW / viewport.width;
+        const scale = targetW / vp1.width;
         const v2 = page.getViewport({ scale });
-        const c = ref.current;
+        const c = canvasRef.current;
         if (!c || cancelled) return;
         c.width = v2.width;
         c.height = v2.height;
@@ -243,15 +316,13 @@ function PageThumb({ bytes, index, active, onClick }: { bytes: Uint8Array; index
         if (!ctx) return;
         await page.render({ canvas: c, canvasContext: ctx, viewport: v2 }).promise;
         if (!cancelled) setReady(true);
-      } finally {
-        try { (doc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
-      }
-    })().catch(() => { /* ignore */ });
+      } catch { /* ignore — overlay may have closed */ }
+    });
     return () => { cancelled = true; };
-  }, [bytes, index]);
+  }, [inView, doc, index, queueRef]);
 
   return (
-    <li>
+    <li ref={wrapRef}>
       <button
         type="button"
         onClick={onClick}
@@ -261,7 +332,7 @@ function PageThumb({ bytes, index, active, onClick }: { bytes: Uint8Array; index
         )}
       >
         <div className="relative w-full overflow-hidden rounded-sm bg-surface-3" style={{ aspectRatio: "0.77 / 1" }}>
-          <canvas ref={ref} className={cn("h-full w-full object-contain", !ready && "opacity-0")} />
+          <canvas ref={canvasRef} className={cn("h-full w-full object-contain", !ready && "opacity-0")} />
         </div>
         <span className="tabular-nums">{index + 1}</span>
       </button>
