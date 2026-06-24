@@ -529,17 +529,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   );
 
   // ----------------- Tab operations -----------------------------------
+  // The "+" button opens a file picker; once a file is chosen we create
+  // a new tab for it. We intentionally don't spawn a visible empty tab —
+  // the TabStrip only renders document tabs, so an empty tab would be
+  // invisible and feel broken.
   const openNewStartTab = useCallback(() => {
-    setTabs((ts) => {
-      if (ts.length >= TAB_CAP) {
-        toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
-        return ts;
-      }
-      const next = makeBlankTab();
-      setActiveId(next.id);
-      return [...ts, next];
-    });
-  }, []);
+    const docCount = tabs.filter((t) => t.file !== null).length;
+    if (docCount >= TAB_CAP) {
+      toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+      return;
+    }
+    openInNewTabRef.current = true;
+    // Reset value so picking the same file twice still fires `change`.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fileInputRef.current?.click();
+  }, [tabs]);
+
 
   const closeTab = useCallback(
     (id: string, opts?: { force?: boolean }) => {
