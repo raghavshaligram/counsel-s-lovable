@@ -21,7 +21,9 @@ import {
   Image as ImageIcon,
   Crop,
   Square,
+  Circle,
   Pencil,
+  Bookmark,
   Undo2,
   Redo2,
   SlidersHorizontal,
@@ -62,6 +64,7 @@ import { EditorCanvas } from "./editor-canvas";
 import { OrganizeGrid } from "./organize-grid";
 import { CompareCanvas, CompareFloatingBar } from "./compare-canvas";
 import { TabStrip } from "./tab-strip";
+import { NavOverlay } from "./nav-overlay";
 import {
   loadUIState,
   saveUIStateDebounced,
@@ -131,6 +134,7 @@ const TOOLS: RailTool[] = [
   { id: "ocr", label: "Make Searchable", icon: ScanText, group: "convert", groupLabel: "Convert" },
   // Edit
   { id: "sign", label: "Sign & Fill", icon: PenLine, group: "sign", groupLabel: "Edit" },
+  { id: "comments", label: "Comments", icon: MessageSquare, group: "sign", groupLabel: "Edit" },
   { id: "watermark", label: "Watermark", icon: Stamp, group: "secure", groupLabel: "Edit" },
   { id: "compress", label: "Compress", icon: PackageOpen, group: "secure", groupLabel: "Edit" },
   // Redact
@@ -332,6 +336,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [viewOpen, setViewOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
+  const [navOpen, setNavOpen] = useState(false);
+  const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
   const [fitNonce, setFitNonce] = useState(0);
   // Auto-fit zoom for the active tab; cheap because EditorPages computes it.
@@ -711,6 +717,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       } else if (meta && e.key === "\\") {
         e.preventDefault();
         patchActive({ inspectorOpen: !inspectorOpen });
+      } else if (meta && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setNavOpen((v) => !v);
       } else if (meta && e.key.toLowerCase() === "t") {
         e.preventDefault();
         openNewStartTab();
@@ -1184,10 +1193,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   onChange={setEditorTool}
                   onUndo={() => editorDispatch({ type: "UNDO" })}
                   onRedo={() => editorDispatch({ type: "REDO" })}
+                  onToggleNav={() => setNavOpen((v) => !v)}
+                  navOpen={navOpen}
                 />
                 <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
+                <NavOverlay
+                  open={navOpen}
+                  defaultTab={navTab}
+                  fileName={file?.name ?? null}
+                  bytes={editorState.doc?.srcBytes ?? null}
+                  pageCount={editorState.doc?.pages.length ?? 0}
+                  annotations={editorState.doc?.annotations ?? []}
+                  currentPage={editorState.current}
+                  onJumpPage={(n) => editorDispatch({ type: "SET_PAGE", n })}
+                  onJumpAnno={(a) => {
+                    editorDispatch({ type: "SET_PAGE", n: a.page });
+                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
+                  }}
+                  onEditComment={(a) => {
+                    editorDispatch({ type: "SET_PAGE", n: a.page });
+                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
+                    patchActive({ activeToolId: "comments", inspectorOpen: true });
+                  }}
+                  onClose={() => setNavOpen(false)}
+                />
               </>
             ) : null}
+
 
             {/* OCR offer — single chip pinned below the floating toolbar so
                 it never hides behind it. Appears only when Edit text is the
@@ -1398,6 +1430,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
             editorDispatch={editorDispatch}
+            editorState={editorState}
+            closeInspector={() => patchActive({ inspectorOpen: false })}
             otherTabs={tabs
               .filter((t) => t.id !== active.id && t.file)
               .map((t) => ({ id: t.id, name: t.file!.name, file: t.file! }))}
@@ -1678,6 +1712,9 @@ const EDITOR_GROUPS: Array<Array<{ id: EditorTool; label: string; Icon: React.Co
   [
     { id: "image", label: "Insert image", Icon: ImageIcon },
     { id: "rect", label: "Rectangle", Icon: Square },
+    { id: "ellipse", label: "Ellipse", Icon: Circle },
+    { id: "line", label: "Line", Icon: Minus },
+    { id: "arrow", label: "Arrow", Icon: ArrowRight },
     { id: "freehand", label: "Freehand", Icon: Pencil },
   ],
 ];
@@ -1704,12 +1741,16 @@ function FloatingToolbar({
   onChange,
   onUndo,
   onRedo,
+  onToggleNav,
+  navOpen,
 }: {
   activeToolId: string | null;
   active: EditorTool;
   onChange: (t: EditorTool) => void;
   onUndo: () => void;
   onRedo: () => void;
+  onToggleNav: () => void;
+  navOpen: boolean;
 }) {
   const contextual = activeToolId ? CONTEXTUAL_GROUPS[activeToolId] : null;
   const groups = contextual ?? EDITOR_GROUPS;
@@ -1721,6 +1762,10 @@ function FloatingToolbar({
       role="toolbar"
       aria-label={label}
     >
+      <ToolbarBtn label="Bookmarks & pages" kbd="⌘B" active={navOpen} onClick={onToggleNav}>
+        <Bookmark className="h-[15px] w-[15px]" />
+      </ToolbarBtn>
+      <span className="mx-1 h-5 w-px bg-border" />
       {groups.map((group, gi) => (
         <div key={gi} className="flex items-center gap-0.5">
           {gi > 0 && <span className="mx-1 h-5 w-px bg-border" />}
@@ -1798,14 +1843,43 @@ function ContextualBar({
     sel &&
     (sel.kind === "text-edit" || sel.kind === "text");
 
-  // Render either the wired text-edit bar OR the generic stub for other tools.
-  const inner = isTextLike
-    ? <TextEditPropsBar anno={sel as Extract<typeof sel, { kind: "text-edit" | "text" }>} dispatch={dispatch} />
-    : (tool === "edit-text" || tool === "text")
-      ? <span className="text-text-muted">{tool === "edit-text"
-          ? "Click any text on the page to edit — font is auto-detected."
-          : "Click on the page to add a text box."}</span>
-      : contextStub(tool);
+  // Functional shape/highlight props when a matching annotation is selected,
+  // OR when a draw tool is active with no selection (controls the next draw).
+  const shapeKinds: Array<EditorTool> = ["rect", "ellipse", "line", "arrow", "freehand"];
+  const markKinds: Array<EditorTool> = ["highlight", "underline", "strikethrough"];
+  const selKind = sel?.kind as EditorTool | undefined;
+  const isShapeSel = sel && shapeKinds.includes(selKind as EditorTool);
+  const isMarkSel = sel && markKinds.includes(selKind as EditorTool);
+  const isShapeTool = shapeKinds.includes(tool);
+  const isMarkTool = markKinds.includes(tool);
+
+  let inner: React.ReactNode = null;
+  if (isTextLike) {
+    inner = <TextEditPropsBar anno={sel as Extract<typeof sel, { kind: "text-edit" | "text" }>} dispatch={dispatch} />;
+  } else if (tool === "edit-text" || tool === "text") {
+    inner = <span className="text-text-muted">{tool === "edit-text"
+      ? "Click any text on the page to edit — font is auto-detected."
+      : "Click on the page to add a text box."}</span>;
+  } else if (isShapeSel || isShapeTool) {
+    inner = (
+      <ShapePropsBar
+        state={state}
+        dispatch={dispatch}
+        sel={isShapeSel ? (sel as never) : null}
+        showFill={(isShapeSel && (selKind === "rect" || selKind === "ellipse")) || tool === "rect" || tool === "ellipse"}
+      />
+    );
+  } else if (isMarkSel || isMarkTool) {
+    inner = (
+      <MarkPropsBar
+        state={state}
+        dispatch={dispatch}
+        sel={isMarkSel ? (sel as never) : null}
+      />
+    );
+  } else {
+    inner = contextStub(tool);
+  }
   if (!inner) return null;
   return (
     <div
@@ -1984,6 +2058,95 @@ function hexToRgb(hex: string): RGB {
 }
 
 // Stub bars for non-text tools (unchanged from previous behaviour).
+// Functional properties bar for shape annotations / shape draw tools.
+function ShapePropsBar({
+  state,
+  dispatch,
+  sel,
+  showFill,
+}: {
+  state: ReturnType<typeof reducer>;
+  dispatch: React.Dispatch<EditorAction>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sel: any | null;
+  showFill: boolean;
+}) {
+  const color: RGB = sel?.color ?? state.color;
+  const stroke: number = sel?.stroke ?? state.stroke;
+  const opacity: number = sel?.opacity ?? state.opacity;
+  const fill: boolean = sel?.fill ?? state.fillShape;
+  const setColor = (c: RGB) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { color: c } as never }) : dispatch({ type: "SET_COLOR", c });
+  const setStroke = (v: number) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { stroke: v } as never }) : dispatch({ type: "SET_STROKE", v });
+  const setOpacity = (v: number) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { opacity: v } as never }) : dispatch({ type: "SET_OPACITY", v });
+  const setFill = (v: boolean) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { fill: v } as never }) : dispatch({ type: "SET_FILL", v });
+  return (
+    <>
+      <ColorPicker value={color} onChange={setColor} />
+      <input
+        aria-label="Stroke"
+        type="number"
+        min={0.5}
+        max={20}
+        step={0.5}
+        value={stroke}
+        onChange={(e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v > 0) setStroke(v); }}
+        className="w-14 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
+        title="Stroke (px)"
+      />
+      <input
+        aria-label="Opacity"
+        type="range"
+        min={0.1}
+        max={1}
+        step={0.05}
+        value={opacity}
+        onChange={(e) => setOpacity(parseFloat(e.target.value))}
+        className="w-20 accent-vault"
+        title={`Opacity ${Math.round(opacity * 100)}%`}
+      />
+      {showFill && (
+        <PropToggle active={!!fill} onClick={() => setFill(!fill)} title="Fill">
+          Fill
+        </PropToggle>
+      )}
+    </>
+  );
+}
+
+// Highlight / underline / strikethrough props.
+function MarkPropsBar({
+  state,
+  dispatch,
+  sel,
+}: {
+  state: ReturnType<typeof reducer>;
+  dispatch: React.Dispatch<EditorAction>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sel: any | null;
+}) {
+  const color: RGB = sel?.color ?? state.color;
+  const opacity: number = sel?.opacity ?? state.opacity;
+  const setColor = (c: RGB) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { color: c } as never }) : dispatch({ type: "SET_COLOR", c });
+  const setOpacity = (v: number) => sel ? dispatch({ type: "UPDATE_ANNO", id: sel.id, patch: { opacity: v } as never }) : dispatch({ type: "SET_OPACITY", v });
+  return (
+    <>
+      <ColorPicker value={color} onChange={setColor} />
+      <input
+        aria-label="Opacity"
+        type="range"
+        min={0.1}
+        max={1}
+        step={0.05}
+        value={opacity}
+        onChange={(e) => setOpacity(parseFloat(e.target.value))}
+        className="w-20 accent-vault"
+        title={`Opacity ${Math.round(opacity * 100)}%`}
+      />
+      <span className="text-text-muted">Drag across text to mark.</span>
+    </>
+  );
+}
+
 function contextStub(tool: EditorTool): React.ReactNode | null {
   switch (tool) {
     case "highlight":
@@ -2630,6 +2793,8 @@ function Inspector({
   file,
   replaceFile,
   editorDispatch,
+  editorState,
+  closeInspector,
   otherTabs,
   ocr,
 }: {
@@ -2639,6 +2804,8 @@ function Inspector({
   file: File | null;
   replaceFile: (f: File) => void;
   editorDispatch: React.Dispatch<EditorAction>;
+  editorState: ReturnType<typeof reducer>;
+  closeInspector: () => void;
   otherTabs: Array<{ id: string; name: string; file: File }>;
   ocr: import("./tool-panels").OcrCtx;
 }) {
@@ -2676,7 +2843,10 @@ function Inspector({
             </button>
           </header>
           <div className="flex-1 overflow-auto px-3 py-3">
-            <ToolPanel toolId={activeTool.id} ctx={{ file, replaceFile, editorDispatch, otherTabs, ocr }} />
+            <ToolPanel
+              toolId={activeTool.id}
+              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr }}
+            />
           </div>
         </div>
       ) : (

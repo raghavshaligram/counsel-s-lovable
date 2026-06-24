@@ -36,7 +36,11 @@ import { toast } from "sonner";
 import JSZip from "jszip";
 import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
-import type { Action as EditorAction } from "@/lib/editor/state";
+import type { Action as EditorAction, State as EditorState } from "@/lib/editor/state";
+import type { Anno, Reply } from "@/lib/editor/types";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Check, CornerDownRight, MessageSquare } from "lucide-react";
 import {
   detectFormFields,
   applyFormFill,
@@ -96,6 +100,11 @@ export type ToolPanelCtx = {
   replaceFile: (f: File) => void;
   /** Dispatch into the active tab's editor state. */
   editorDispatch: (a: EditorAction) => void;
+  /** Active editor state (annotations, current page, selection). Optional —
+   *  only panels that read editor data need it. */
+  editorState?: EditorState;
+  /** Close the inspector (used by panels that finish a task and want to dismiss). */
+  closeInspector?: () => void;
   /** Other open workspace tabs (excludes the active one). Used by Compare. */
   otherTabs?: Array<{ id: string; name: string; file: File }>;
   /** Workspace-managed OCR controls. */
@@ -136,11 +145,14 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ImageConvertPanel ctx={ctx} />;
     case "page-numbers":
       return <PageNumbersPanel ctx={ctx} />;
+    case "comments":
+      return <CommentsInspectorPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
-
 }
+
+
 
 
 /* ============================ Sign & Fill ============================ */
@@ -4505,4 +4517,189 @@ function NumberField({
   );
 }
 
+/* =========================== Comments inspector =========================== */
+/**
+ * Native rebuild of the editor Comments panel for the workspace right
+ * inspector. Reuses the same Anno/Reply model from src/lib/editor/types,
+ * dispatches into the active tab's editor state.
+ */
+function CommentsInspectorPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { editorState, editorDispatch } = ctx;
+  const annos = editorState?.doc?.annotations ?? [];
+  const [author, setAuthor] = useState<string>(() => {
+    if (typeof window === "undefined") return "Me";
+    return window.localStorage.getItem("vaultpdf:comment-author") || "Me";
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem("vaultpdf:comment-author", author); } catch { /* ignore */ }
+  }, [author]);
+
+  const grouped = useMemo(() => {
+    const m = new Map<number, Anno[]>();
+    for (const a of annos) {
+      const arr = m.get(a.page) ?? [];
+      arr.push(a);
+      m.set(a.page, arr);
+    }
+    return [...m.entries()].sort(([a], [b]) => a - b);
+  }, [annos]);
+
+  return (
+    <div className="flex h-full flex-col gap-2 text-[12px]">
+      <div className="flex items-center gap-2">
+        <MessageSquare className="h-3.5 w-3.5 text-text-2" />
+        <span className="text-text-2">Author</span>
+        <input
+          value={author}
+          onChange={(e) => setAuthor(e.target.value)}
+          className="flex-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px] text-foreground outline-none focus:border-vault/50"
+        />
+      </div>
+      {annos.length === 0 ? (
+        <p className="px-1 py-4 text-[11.5px] italic text-text-muted">
+          No annotations yet. Add a highlight, sticky note, or any markup — it will appear here.
+        </p>
+      ) : (
+        <div className="flex-1 space-y-3 overflow-auto">
+          {grouped.map(([page, list]) => (
+            <div key={page}>
+              <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-text-muted">Page {page + 1}</div>
+              <div className="space-y-1.5">
+                {list.map((a) => (
+                  <CommentInspectorCard
+                    key={a.id}
+                    a={a}
+                    author={author}
+                    onJump={() => {
+                      editorDispatch({ type: "SET_PAGE", n: a.page });
+                      editorDispatch({ type: "SELECT_ANNO", id: a.id });
+                    }}
+                    onPatch={(p) => editorDispatch({ type: "UPDATE_ANNO", id: a.id, patch: p as never })}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommentInspectorCard({
+  a,
+  author,
+  onJump,
+  onPatch,
+}: {
+  a: Anno;
+  author: string;
+  onJump: () => void;
+  onPatch: (p: Partial<Anno>) => void;
+}) {
+  const [reply, setReply] = useState("");
+  const [editing, setEditing] = useState(!a.contents);
+  const [draft, setDraft] = useState(a.contents ?? "");
+
+  const addReply = () => {
+    const text = reply.trim();
+    if (!text) return;
+    const next: Reply = { id: Math.random().toString(36).slice(2, 10), author, text, createdAt: Date.now() };
+    onPatch({ replies: [...(a.replies ?? []), next] });
+    setReply("");
+  };
+
+  const save = () => {
+    onPatch({
+      contents: draft,
+      author: a.author ?? author,
+      createdAt: a.createdAt ?? Date.now(),
+    });
+    setEditing(false);
+  };
+
+  return (
+    <div className={cn("rounded-md border border-border bg-surface-2 p-2", a.resolved && "opacity-60")}>
+      <div className="mb-1 flex items-center justify-between text-[11px]">
+        <button type="button" onClick={onJump} className="truncate text-vault hover:underline">
+          {a.kind}
+          {"text" in a && (a as { text?: string }).text ? ` · "${(a as { text: string }).text.slice(0, 24)}"` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => onPatch({ resolved: !a.resolved })}
+          title={a.resolved ? "Reopen" : "Resolve"}
+          className={cn("rounded p-1 hover:bg-surface-3", a.resolved && "text-emerald-500")}
+        >
+          <Check className="h-3 w-3" />
+        </button>
+      </div>
+      {editing ? (
+        <div className="space-y-1">
+          <Textarea
+            autoFocus
+            rows={2}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Add a comment…"
+            className="text-[12px]"
+          />
+          <div className="flex gap-1">
+            <Button size="sm" className="h-6 px-2 text-[11.5px]" onClick={save}>Save</Button>
+            {a.contents && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[11.5px]"
+                onClick={() => { setDraft(a.contents ?? ""); setEditing(false); }}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setEditing(true)} className="block w-full text-left">
+          <p className="whitespace-pre-wrap text-[12px]">{a.contents}</p>
+          {a.author && (
+            <p className="mt-1 text-[10px] text-text-muted">
+              {a.author} · {new Date(a.createdAt ?? 0).toLocaleString()}
+            </p>
+          )}
+        </button>
+      )}
+      {(a.replies?.length ?? 0) > 0 && (
+        <div className="mt-2 space-y-1 border-l border-border pl-2">
+          {a.replies!.map((r) => (
+            <div key={r.id} className="text-[11.5px]">
+              <div className="text-[10px] text-text-muted">
+                {r.author} · {new Date(r.createdAt).toLocaleString()}
+              </div>
+              <div className="whitespace-pre-wrap">{r.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!a.resolved && (
+        <div className="mt-2 flex items-start gap-1">
+          <CornerDownRight className="mt-1.5 h-3 w-3 text-text-muted" />
+          <Textarea
+            rows={1}
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                addReply();
+              }
+            }}
+            placeholder="Reply… (⌘↵)"
+            className="min-h-[28px] flex-1 text-[12px]"
+          />
+          <Button size="sm" variant="outline" className="h-6 px-2 text-[11.5px]" onClick={addReply}>Reply</Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
