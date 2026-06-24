@@ -64,6 +64,7 @@ import { EditorCanvas } from "./editor-canvas";
 import { OrganizeGrid } from "./organize-grid";
 import { CompareCanvas, CompareFloatingBar } from "./compare-canvas";
 import { TabStrip } from "./tab-strip";
+import { NavOverlay } from "./nav-overlay";
 import {
   loadUIState,
   saveUIStateDebounced,
