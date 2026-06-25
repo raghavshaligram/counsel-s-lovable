@@ -1211,6 +1211,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </span>
           <button
             type="button"
+            onClick={() => setDocSettingsOpen(true)}
+            title="Document Settings — page numbers, header & footer"
+            aria-label="Document Settings"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors",
+              (pageNumbersSettings.enabled || headerFooterSettings.enabled) && "text-vault border-vault/40 bg-vault/5 hover:bg-vault/10 hover:text-vault",
+            )}
+          >
+            <Settings2 className="h-3.5 w-3.5" strokeWidth={2.5} />
+            <span className="hidden sm:inline">Document Settings</span>
+            {(pageNumbersSettings.enabled || headerFooterSettings.enabled) && (
+              <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-vault" aria-hidden />
+            )}
+          </button>
+          <button
+            type="button"
             onClick={onExport}
             className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 transition-opacity"
           >
