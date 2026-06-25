@@ -1621,6 +1621,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           onCancel={() => setPendingCloseId(null)}
         />
       )}
+
+      <DocumentSettingsDialog
+        open={docSettingsOpen}
+        onOpenChange={setDocSettingsOpen}
+        pageNumbers={pageNumbersSettings}
+        headerFooter={headerFooterSettings}
+        onSave={({ pageNumbers, headerFooter }) => {
+          setPageNumbersSettings(pageNumbers);
+          setHeaderFooterSettings(headerFooter);
+        }}
+      />
     </div>
   );
 }
