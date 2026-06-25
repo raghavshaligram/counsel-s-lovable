@@ -3510,7 +3510,6 @@ function EditorPages({
   // against the last value we acted on so user-driven scrolling (which
   // updates state.current via the IntersectionObserver above) doesn't fight
   // the smooth scroll.
-  const lastScrolledRef = useRef<number>(-1);
   useEffect(() => {
     const target = state.current;
     if (target == null || target < 0) return;
