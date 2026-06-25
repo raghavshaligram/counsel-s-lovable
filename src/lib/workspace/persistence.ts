@@ -62,12 +62,15 @@ let dbp: Promise<IDBPDatabase> | null = null;
 function db() {
   if (typeof indexedDB === "undefined") return null;
   if (!dbp) {
-    dbp = openDB(DB_NAME, 2, {
+    dbp = openDB(DB_NAME, 3, {
       upgrade(d, oldVersion) {
         if (!d.objectStoreNames.contains(UI_STORE)) d.createObjectStore(UI_STORE);
         if (!d.objectStoreNames.contains(DOC_STORE)) d.createObjectStore(DOC_STORE);
         if (oldVersion < 2 && !d.objectStoreNames.contains(SIDECAR_STORE)) {
           d.createObjectStore(SIDECAR_STORE);
+        }
+        if (oldVersion < 3 && !d.objectStoreNames.contains(BOOKMARKS_STORE)) {
+          d.createObjectStore(BOOKMARKS_STORE);
         }
       },
       blocked() {
