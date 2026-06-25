@@ -133,8 +133,13 @@ export function reducer(s: State, a: Action): State {
         annotations: a.annotations ?? s.doc.annotations,
         pages: a.pages && a.pages.length === s.doc.pages.length ? a.pages : s.doc.pages,
         ocrLayer: a.ocrLayer ?? s.doc.ocrLayer,
+        outline: a.outline ?? s.doc.outline,
       };
       return { ...s, doc: next, past: [], future: [] };
+    }
+    case "SET_OUTLINE": {
+      if (!s.doc) return s;
+      return commit(s, { ...s.doc, outline: a.outline });
     }
     case "ADD_ANNO": {
       if (!s.doc) return s;
