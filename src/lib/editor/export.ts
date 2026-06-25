@@ -9,11 +9,52 @@
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
+import type {
+  Anno, EditorDoc, ExportSettings, HeaderFooterSettings, PageNumberSettings,
+  PageOp, RGB, WatermarkSettings,
+} from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
+
+function toRoman(num: number): string {
+  const map: [number, string][] = [
+    [1000,"M"],[900,"CM"],[500,"D"],[400,"CD"],
+    [100,"C"],[90,"XC"],[50,"L"],[40,"XL"],
+    [10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"],
+  ];
+  let out = "";
+  for (const [v, s] of map) { while (num >= v) { out += s; num -= v; } }
+  return out.toLowerCase();
+}
+
+function formatPageNumber(n: number, total: number, fmt: PageNumberSettings["format"]): string {
+  switch (fmt) {
+    case "n":      return String(n);
+    case "page-n": return `Page ${n}`;
+    case "n-of-m": return `${n} of ${total}`;
+    case "roman":  return toRoman(n);
+  }
+}
+
+function applyHFTokens(s: string, page: number, pages: number, filename: string): string {
+  const date = new Date().toISOString().slice(0, 10);
+  return s
+    .replace(/\{page\}/g, String(page))
+    .replace(/\{pages\}/g, String(pages))
+    .replace(/\{date\}/g, date)
+    .replace(/\{filename\}/g, filename);
+}
+
+function hfShouldDraw(rule: HeaderFooterSettings["rule"], i: number): boolean {
+  if (rule === "all") return true;
+  if (rule === "no-first") return i > 0;
+  const oneBased = i + 1;
+  if (rule === "even") return oneBased % 2 === 0;
+  if (rule === "odd")  return oneBased % 2 === 1;
+  return true;
+}
 
 export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
   const srcDoc = await PDFDocument.load(doc.srcBytes);
@@ -117,6 +158,40 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     if (settings?.watermark && settings.watermark.text.trim()) {
       drawWatermark(outPage, settings.watermark, font, pw, ph);
     }
+
+    // Doc-level page numbers (persistent per-document setting, stamped at export).
+    const pn = doc.docSettings?.pageNumbers;
+    if (pn?.enabled && i >= pn.skipFirst) {
+      const totalNumbered = Math.max(0, doc.pages.length - pn.skipFirst);
+      const n = pn.startAt + (i - pn.skipFirst);
+      const lastN = pn.startAt + totalNumbered - 1;
+      const text = (pn.prefix ?? "") + formatPageNumber(n, lastN, pn.format);
+      const tw = font.widthOfTextAtSize(text, pn.fontSize);
+      const th = pn.fontSize;
+      const m = pn.margin;
+      let px = m, py = m;
+      if (pn.anchor.endsWith("center")) px = (pw - tw) / 2;
+      if (pn.anchor.endsWith("right"))  px = pw - m - tw;
+      if (pn.anchor.startsWith("top"))  py = ph - m - th;
+      outPage.drawText(text, { x: px, y: py, size: pn.fontSize, font, color: rgb(0.1, 0.1, 0.1) });
+    }
+
+    // Doc-level header/footer (persistent per-document setting).
+    const hf = doc.docSettings?.headerFooter;
+    if (hf?.enabled && hfShouldDraw(hf.rule, i)) {
+      const totalP = doc.pages.length;
+      const drawHF = (raw: string, y: number) => {
+        const text = applyHFTokens(raw, i + 1, totalP, doc.fileName);
+        const tw = font.widthOfTextAtSize(text, hf.fontSize);
+        let x = hf.margin;
+        if (hf.align === "center") x = (pw - tw) / 2;
+        if (hf.align === "right")  x = pw - hf.margin - tw;
+        outPage.drawText(text, { x, y, size: hf.fontSize, font, color: rgb(0.15, 0.15, 0.15) });
+      };
+      if (hf.headerText) drawHF(hf.headerText, ph - hf.margin - hf.fontSize);
+      if (hf.footerText) drawHF(hf.footerText, hf.margin);
+    }
+
 
     // Page crop — convert top-left rect to PDF bottom-left, set CropBox + MediaBox.
     if (op.cropBox && !op.blank) {

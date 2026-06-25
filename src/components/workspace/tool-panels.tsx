@@ -143,8 +143,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ConvertPanel ctx={ctx} />;
     case "image-convert":
       return <ImageConvertPanel ctx={ctx} />;
-    case "page-numbers":
-      return <PageNumbersPanel ctx={ctx} />;
+    case "doc-settings":
+      return <DocumentSettingsPanel ctx={ctx} />;
     case "comments":
       return <CommentsInspectorPanel ctx={ctx} />;
     default:
@@ -4344,147 +4344,233 @@ function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
  * `addPageNumbers` op. Exposes exactly what `PageNumbersOpts` accepts:
  * anchor, format, startAt, skipFirst, fontSize, margin, prefix.
  */
-function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
-  const { file, replaceFile } = ctx;
+/* =========================== Document Settings =========================== *
+ * Persistent per-document settings (page numbers, header/footer) saved with
+ * the sidecar and applied automatically by exportEditedPdf. Editing here
+ * never re-stamps the live file — it just stores intent.
+ */
+function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { editorState, editorDispatch } = ctx;
+  const doc = editorState?.doc ?? null;
 
-  const [anchor, setAnchor] = useState<
-    "top-left" | "top-center" | "top-right" |
-    "bottom-left" | "bottom-center" | "bottom-right"
-  >("bottom-center");
-  const [format, setFormat] = useState<"n" | "page-n" | "n-of-m" | "roman">("page-n");
-  const [startAt, setStartAt] = useState<number>(1);
-  const [skipFirst, setSkipFirst] = useState<number>(0);
-  const [fontSize, setFontSize] = useState<number>(11);
-  const [margin, setMargin] = useState<number>(24);
-  const [prefix, setPrefix] = useState<string>("");
-  const [busy, setBusy] = useState(false);
+  type DS = NonNullable<typeof doc>["docSettings"];
+  type PN = NonNullable<NonNullable<DS>["pageNumbers"]>;
+  type HF = NonNullable<NonNullable<DS>["headerFooter"]>;
 
-  const run = useCallback(async (apply: "download" | "replace") => {
-    if (!file) return;
-    setBusy(true);
-    const tid = "wsx-page-numbers";
-    toast.loading("Stamping page numbers…", { id: tid });
-    try {
-      const { addPageNumbers } = await import("@/lib/batch/ops/page-numbers");
-      const out = await addPageNumbers(new Uint8Array(await file.arrayBuffer()), {
-        anchor, format, startAt, skipFirst, fontSize, margin,
-        prefix: prefix || undefined,
-      });
-      if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf", "application/pdf");
-        toast.success("Page numbers added", { id: tid });
-      } else {
-        replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
-        toast.success("Page numbers applied to active tab", { id: tid });
-      }
-    } catch (err) {
-      console.error("[page-numbers] failed", err);
-      toast.error("Failed to add page numbers", { id: tid, description: (err as Error).message });
-    } finally {
-      setBusy(false);
-    }
-  }, [file, anchor, format, startAt, skipFirst, fontSize, margin, prefix, replaceFile]);
+  const PN_DEFAULTS: PN = {
+    enabled: false,
+    anchor: "bottom-center",
+    format: "page-n",
+    startAt: 1,
+    skipFirst: 0,
+    fontSize: 11,
+    margin: 24,
+    prefix: "",
+  };
+  const HF_DEFAULTS: HF = {
+    enabled: false,
+    headerText: "",
+    footerText: "",
+    align: "center",
+    fontSize: 10,
+    margin: 24,
+    rule: "all",
+  };
 
-  if (!file) {
+  const pn: PN = { ...PN_DEFAULTS, ...(doc?.docSettings?.pageNumbers ?? {}) };
+  const hf: HF = { ...HF_DEFAULTS, ...(doc?.docSettings?.headerFooter ?? {}) };
+
+  const update = useCallback((next: Partial<{ pageNumbers: PN; headerFooter: HF }>) => {
+    if (!doc) return;
+    editorDispatch({
+      type: "SET_DOC_SETTINGS",
+      settings: {
+        pageNumbers: next.pageNumbers ?? doc.docSettings?.pageNumbers,
+        headerFooter: next.headerFooter ?? doc.docSettings?.headerFooter,
+      },
+    });
+  }, [doc, editorDispatch]);
+
+  const setPN = (patch: Partial<PN>) => update({ pageNumbers: { ...pn, ...patch } });
+  const setHF = (patch: Partial<HF>) => update({ headerFooter: { ...hf, ...patch } });
+
+  if (!doc) {
     return (
       <p className="text-[11.5px] leading-snug text-text-2">
-        Open a PDF to stamp page numbers.
+        Open a PDF to configure document settings.
       </p>
     );
   }
 
-  const anchors: Array<typeof anchor> = [
+  const anchors: PN["anchor"][] = [
     "top-left", "top-center", "top-right",
     "bottom-left", "bottom-center", "bottom-right",
   ];
-  const formats: Array<{ id: typeof format; label: string; hint: string }> = [
+  const formats: Array<{ id: PN["format"]; label: string; hint: string }> = [
     { id: "n", label: "1", hint: "Plain" },
     { id: "page-n", label: "Page 1", hint: "Prefixed" },
     { id: "n-of-m", label: "1 of N", hint: "With total" },
     { id: "roman", label: "i", hint: "Lower roman" },
   ];
+  const aligns: HF["align"][] = ["left", "center", "right"];
+  const rules: Array<{ id: HF["rule"]; label: string }> = [
+    { id: "all", label: "All" },
+    { id: "no-first", label: "Skip first" },
+    { id: "even", label: "Even only" },
+    { id: "odd", label: "Odd only" },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Position" icon={<Hash className="h-3 w-3" />}>
-        <div className="grid grid-cols-3 gap-1.5">
-          {anchors.map((a) => (
-            <ModeRow
-              key={a}
-              active={anchor === a}
-              onClick={() => setAnchor(a)}
-              label={a.startsWith("top") ? "Top" : "Bottom"}
-              hint={a.endsWith("left") ? "Left" : a.endsWith("right") ? "Right" : "Center"}
-            />
-          ))}
-        </div>
+      <p className="text-[11px] leading-snug text-text-2">
+        These settings are saved with the document and applied automatically
+        whenever you export. Nothing is stamped until you export.
+      </p>
+
+      {/* ---------- Page numbers ---------- */}
+      <Section title="Page numbers" icon={<Hash className="h-3 w-3" />}>
+        <label className="flex items-center justify-between rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[12px] text-foreground">
+          <span>Stamp page numbers on export</span>
+          <input
+            type="checkbox"
+            checked={pn.enabled}
+            onChange={(e) => setPN({ enabled: e.target.checked })}
+            className="h-3.5 w-3.5 accent-vault"
+          />
+        </label>
+
+        {pn.enabled && (
+          <div className="mt-3 flex flex-col gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-text-muted mb-1.5">Position</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {anchors.map((a) => (
+                  <ModeRow
+                    key={a}
+                    active={pn.anchor === a}
+                    onClick={() => setPN({ anchor: a })}
+                    label={a.startsWith("top") ? "Top" : "Bottom"}
+                    hint={a.endsWith("left") ? "Left" : a.endsWith("right") ? "Right" : "Center"}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-text-muted mb-1.5">Format</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {formats.map((f) => (
+                  <ModeRow
+                    key={f.id}
+                    active={pn.format === f.id}
+                    onClick={() => setPN({ format: f.id })}
+                    label={f.label}
+                    hint={f.hint}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <NumberField label="Start at" value={pn.startAt} min={1} onChange={(v) => setPN({ startAt: v })} />
+              <NumberField label="Skip first" value={pn.skipFirst} min={0} onChange={(v) => setPN({ skipFirst: v })} />
+              <NumberField label="Font size" value={pn.fontSize} min={6} max={48} onChange={(v) => setPN({ fontSize: v })} />
+              <NumberField label="Margin (pt)" value={pn.margin} min={0} max={144} onChange={(v) => setPN({ margin: v })} />
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Prefix (optional)</span>
+              <input
+                type="text"
+                value={pn.prefix ?? ""}
+                onChange={(e) => setPN({ prefix: e.target.value })}
+                placeholder="e.g. — "
+                className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+              />
+            </label>
+          </div>
+        )}
       </Section>
 
-      <Section title="Format" icon={<Info className="h-3 w-3" />}>
-        <div className="grid grid-cols-2 gap-1.5">
-          {formats.map((f) => (
-            <ModeRow
-              key={f.id}
-              active={format === f.id}
-              onClick={() => setFormat(f.id)}
-              label={f.label}
-              hint={f.hint}
-            />
-          ))}
-        </div>
-      </Section>
+      {/* ---------- Header & footer ---------- */}
+      <Section title="Header & footer" icon={<Info className="h-3 w-3" />}>
+        <label className="flex items-center justify-between rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[12px] text-foreground">
+          <span>Stamp header / footer on export</span>
+          <input
+            type="checkbox"
+            checked={hf.enabled}
+            onChange={(e) => setHF({ enabled: e.target.checked })}
+            className="h-3.5 w-3.5 accent-vault"
+          />
+        </label>
 
-      <Section title="Numbering" icon={<Info className="h-3 w-3" />}>
-        <div className="grid grid-cols-2 gap-2">
-          <NumberField label="Start at" value={startAt} min={1} onChange={setStartAt} />
-          <NumberField label="Skip first" value={skipFirst} min={0} onChange={setSkipFirst} />
-          <NumberField label="Font size" value={fontSize} min={6} max={48} onChange={setFontSize} />
-          <NumberField label="Margin (pt)" value={margin} min={0} max={144} onChange={setMargin} />
-        </div>
-      </Section>
+        {hf.enabled && (
+          <div className="mt-3 flex flex-col gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Header text</span>
+              <input
+                type="text"
+                value={hf.headerText ?? ""}
+                onChange={(e) => setHF({ headerText: e.target.value })}
+                placeholder="Empty = no header"
+                className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Footer text</span>
+              <input
+                type="text"
+                value={hf.footerText ?? ""}
+                onChange={(e) => setHF({ footerText: e.target.value })}
+                placeholder="Empty = no footer"
+                className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+              />
+            </label>
+            <div className="text-[10.5px] text-text-muted -mt-1">
+              Tokens: <code>{"{page}"}</code> <code>{"{pages}"}</code> <code>{"{date}"}</code> <code>{"{filename}"}</code>
+            </div>
 
-      <Section title="Prefix" icon={<Info className="h-3 w-3" />}>
-        <input
-          type="text"
-          value={prefix}
-          onChange={(e) => setPrefix(e.target.value)}
-          placeholder="Optional — e.g. — "
-          className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
-        />
-        <div className="mt-1.5 text-[10.5px] text-text-muted">
-          Prepended to every stamped number.
-        </div>
-      </Section>
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-text-muted mb-1.5">Alignment</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {aligns.map((a) => (
+                  <ModeRow
+                    key={a}
+                    active={hf.align === a}
+                    onClick={() => setHF({ align: a })}
+                    label={a[0].toUpperCase() + a.slice(1)}
+                    hint=""
+                  />
+                ))}
+              </div>
+            </div>
 
-      <div className="flex flex-col gap-1.5">
-        <button
-          type="button"
-          onClick={() => run("download")}
-          disabled={busy}
-          className={cn(
-            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-            busy && "cursor-not-allowed opacity-60",
-          )}
-        >
-          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {busy ? "Working…" : "Stamp & download"}
-        </button>
-        <button
-          type="button"
-          onClick={() => run("replace")}
-          disabled={busy}
-          className={cn(
-            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
-            busy && "cursor-not-allowed opacity-60",
-          )}
-        >
-          Apply to active tab
-        </button>
-      </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-text-muted mb-1.5">Apply on</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {rules.map((r) => (
+                  <ModeRow
+                    key={r.id}
+                    active={hf.rule === r.id}
+                    onClick={() => setHF({ rule: r.id })}
+                    label={r.label}
+                    hint=""
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <NumberField label="Font size" value={hf.fontSize} min={6} max={48} onChange={(v) => setHF({ fontSize: v })} />
+              <NumberField label="Margin (pt)" value={hf.margin} min={0} max={144} onChange={(v) => setHF({ margin: v })} />
+            </div>
+          </div>
+        )}
+      </Section>
 
       <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
-        On-device · nothing leaves your browser
+        Saved with this document · stamped on export
       </div>
     </div>
   );

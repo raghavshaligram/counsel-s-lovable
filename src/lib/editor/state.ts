@@ -7,6 +7,7 @@
  */
 import type {
   Anno,
+  DocSettings,
   EditorDoc,
   OcrPageLayer,
   PageOp,
@@ -59,12 +60,14 @@ export type Action =
   | { type: "SET_PROTECT"; p: ProtectSettings | null }
   | { type: "SET_OCR_LAYER"; pages: OcrPageLayer[] }
   | { type: "SET_OUTLINE"; outline: import("../outline/types").OutlineNode[] }
+  | { type: "SET_DOC_SETTINGS"; settings: DocSettings }
   | {
       type: "LOAD_SIDECAR";
       annotations?: Anno[];
       pages?: PageOp[];
       ocrLayer?: OcrPageLayer[];
       outline?: import("../outline/types").OutlineNode[];
+      docSettings?: DocSettings;
     }
   | { type: "UNDO" }
   | { type: "REDO" };
@@ -134,12 +137,17 @@ export function reducer(s: State, a: Action): State {
         pages: a.pages && a.pages.length === s.doc.pages.length ? a.pages : s.doc.pages,
         ocrLayer: a.ocrLayer ?? s.doc.ocrLayer,
         outline: a.outline ?? s.doc.outline,
+        docSettings: a.docSettings ?? s.doc.docSettings,
       };
       return { ...s, doc: next, past: [], future: [] };
     }
     case "SET_OUTLINE": {
       if (!s.doc) return s;
       return commit(s, { ...s.doc, outline: a.outline });
+    }
+    case "SET_DOC_SETTINGS": {
+      if (!s.doc) return s;
+      return commit(s, { ...s.doc, docSettings: a.settings });
     }
     case "ADD_ANNO": {
       if (!s.doc) return s;

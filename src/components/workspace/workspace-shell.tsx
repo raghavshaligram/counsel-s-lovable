@@ -148,8 +148,7 @@ const TOOLS: RailTool[] = [
   { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
   { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
-  { id: "page-numbers", label: "Page Numbers", icon: Hash, group: "layout", groupLabel: "Layout" },
-  { id: "header-footer", label: "Header & Footer", icon: Layout, group: "layout", groupLabel: "Layout" },
+  { id: "doc-settings", label: "Document Settings", icon: Layout, group: "layout", groupLabel: "Layout" },
   { id: "flatten", label: "Flatten", icon: Layers, group: "layout", groupLabel: "Layout" },
   // Legal
   { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
@@ -870,6 +869,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             pages: side.pages,
             ocrLayer: side.ocrLayer,
             outline: side.outline,
+            docSettings: side.docSettings,
           });
         }
         const pendingTool = postLoadToolRef.current.get(tabId);
@@ -905,6 +905,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       pages: d.pages,
       ocrLayer: d.ocrLayer,
       outline: d.outline,
+      docSettings: d.docSettings,
     });
   }, [
     active.file,
@@ -912,6 +913,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     active.editor.doc?.pages,
     active.editor.doc?.ocrLayer,
     active.editor.doc?.outline,
+    active.editor.doc?.docSettings,
     active.editor.doc?.fileName,
   ]);
 
