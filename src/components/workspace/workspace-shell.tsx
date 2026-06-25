@@ -3521,7 +3521,7 @@ function EditorPages({
           {progress.total > 0
             ? `Loading document… ${Math.round((progress.loaded / progress.total) * 100)}%`
             : "Loading document…"}
-          {sizes.length === 0 && srcBytes && srcBytes.byteLength > 20_000_000 && (
+          {sizes.size === 0 && srcBytes && srcBytes.byteLength > 20_000_000 && (
             <span className="ml-2 opacity-70">Large file — optimizing…</span>
           )}
         </div>
