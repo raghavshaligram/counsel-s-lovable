@@ -918,6 +918,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   ]);
 
 
+  // Document Settings (page numbers + header/footer) — pure config, applied at export only.
+  const [docSettingsOpen, setDocSettingsOpen] = useState(false);
+  const [pageNumbersSettings, setPageNumbersSettings] = useState<PageNumbersSettings>(DEFAULT_PAGE_NUMBERS);
+  const [headerFooterSettings, setHeaderFooterSettings] = useState<HeaderFooterSettings>(DEFAULT_HEADER_FOOTER);
+
   const onExport = useCallback(async () => {
     if (!editorState.doc || editorState.doc.pages.length === 0) {
       toast.error("Nothing to export yet");
@@ -925,7 +930,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }
     try {
       toast.loading("Building PDF…", { id: "wsx" });
-      const bytes = await exportEditedPdf(editorState.doc);
+      const bytes = await exportEditedPdf(editorState.doc, {
+        pageNumbers: pageNumbersSettings,
+        headerFooter: headerFooterSettings,
+      });
       toast.success("Saved", { id: "wsx" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
