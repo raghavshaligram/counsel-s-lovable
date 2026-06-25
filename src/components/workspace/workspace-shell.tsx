@@ -906,6 +906,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       pages: d.pages,
       ocrLayer: d.ocrLayer,
       outline: d.outline,
+      docSettings: d.docSettings,
     });
   }, [
     active.file,
@@ -913,6 +914,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     active.editor.doc?.pages,
     active.editor.doc?.ocrLayer,
     active.editor.doc?.outline,
+    active.editor.doc?.docSettings,
     active.editor.doc?.fileName,
   ]);
 
