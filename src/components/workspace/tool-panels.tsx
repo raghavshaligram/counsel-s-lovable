@@ -4551,7 +4551,7 @@ function DisclosureToggle({
         on ? "border-vault/40" : "border-border hover:border-vault/30",
       )}
     >
-      <span dangerouslySetInnerHTML={{ __html: label }} />
+      <span>{label}</span>
       <span
         aria-hidden
         className={cn(
