@@ -3495,12 +3495,17 @@ function EditorPages({
       return next;
     });
     if (dominant >= 0 && dominant !== state.current) {
+      // Suppress dominant-page updates while a programmatic scroll is in
+      // flight; otherwise the smooth scroll's intermediate frames would
+      // dispatch SET_PAGE back to the page we're leaving and cancel the jump.
+      if (Date.now() < programmaticUntilRef.current) return;
       // Mark as "already in view" so the scroll-into-view effect below
       // doesn't smooth-scroll us back to the top of the page we're reading.
       lastScrolledRef.current = dominant;
       dispatch({ type: "SET_PAGE", n: dominant });
     }
   }, [pages, dispatch, state.current]);
+
 
 
   useEffect(() => {
