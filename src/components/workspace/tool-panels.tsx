@@ -4490,6 +4490,167 @@ function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
+/* ======================= Document Settings ============================ */
+/**
+ * Document-level properties — page numbers and header/footer — accessed
+ * from the gear icon in the top bar (NOT the tool palette). These stamp
+ * at export-time onto a copy of the PDF; the source bytes are never
+ * mutated unless the user picks "Apply to active tab".
+ */
+function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  if (!ctx.file) {
+    return (
+      <p className="text-[11.5px] leading-snug text-text-2">
+        Open a PDF to configure document settings.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="text-[11.5px] leading-snug text-text-2">
+        Document-level settings. Stamped onto the exported PDF — your source bytes stay intact.
+      </p>
+      <div>
+        <div className="mb-2 px-0.5 text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
+          Page numbers
+        </div>
+        <PageNumbersPanel ctx={ctx} />
+      </div>
+      <div className="border-t border-border pt-4">
+        <div className="mb-2 px-0.5 text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
+          Header &amp; footer
+        </div>
+        <HeaderFooterSection ctx={ctx} />
+      </div>
+    </div>
+  );
+}
+
+/* ============================ Header & Footer ============================ */
+/**
+ * Header/footer editor. Mirrors the standalone /header-footer route but
+ * lives inside the Document Settings inspector. Supports tokens
+ * {page}, {pages}, {date}, {filename}, alignment, even/odd/no-first rules.
+ */
+function HeaderFooterSection({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [headerText, setHeaderText] = useState<string>("{filename}");
+  const [footerText, setFooterText] = useState<string>("Page {page} of {pages}");
+  const [align, setAlign] = useState<"left" | "center" | "right">("center");
+  const [rule, setRule] = useState<"all" | "even" | "odd" | "no-first">("all");
+  const [fontSize, setFontSize] = useState<number>(9);
+  const [margin, setMargin] = useState<number>(24);
+  const [busy, setBusy] = useState(false);
+
+  const run = useCallback(async (apply: "download" | "replace") => {
+    if (!file) return;
+    setBusy(true);
+    const tid = "wsx-header-footer";
+    toast.loading("Stamping header/footer…", { id: tid });
+    try {
+      const { addHeaderFooter } = await import("@/lib/batch/ops/header-footer");
+      const out = await addHeaderFooter(new Uint8Array(await file.arrayBuffer()), {
+        headerText: headerText || undefined,
+        footerText: footerText || undefined,
+        align, rule, fontSize, margin,
+        filename: file.name,
+      });
+      if (apply === "download") {
+        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf", "application/pdf");
+        toast.success("Header/footer added", { id: tid });
+      } else {
+        replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
+        toast.success("Header/footer applied to active tab", { id: tid });
+      }
+    } catch (err) {
+      console.error("[header-footer] failed", err);
+      toast.error("Failed to stamp header/footer", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, headerText, footerText, align, rule, fontSize, margin, replaceFile]);
+
+  const aligns: Array<typeof align> = ["left", "center", "right"];
+  const rules: Array<typeof rule> = ["all", "even", "odd", "no-first"];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Header" icon={<Info className="h-3 w-3" />}>
+        <input
+          type="text"
+          value={headerText}
+          onChange={(e) => setHeaderText(e.target.value)}
+          placeholder="Leave blank for none"
+          className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+        />
+      </Section>
+      <Section title="Footer" icon={<Info className="h-3 w-3" />}>
+        <input
+          type="text"
+          value={footerText}
+          onChange={(e) => setFooterText(e.target.value)}
+          placeholder="Leave blank for none"
+          className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+        />
+        <div className="mt-1.5 text-[10.5px] text-text-muted">
+          Tokens: <code>{"{page}"}</code> <code>{"{pages}"}</code> <code>{"{date}"}</code> <code>{"{filename}"}</code>
+        </div>
+      </Section>
+
+      <Section title="Alignment" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-3 gap-1.5">
+          {aligns.map((a) => (
+            <ModeRow key={a} active={align === a} onClick={() => setAlign(a)} label={a[0].toUpperCase() + a.slice(1)} hint="" />
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Apply to" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-1.5">
+          {rules.map((r) => (
+            <ModeRow key={r} active={rule === r} onClick={() => setRule(r)} label={r === "no-first" ? "Skip first" : r[0].toUpperCase() + r.slice(1)} hint="" />
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Type" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-2">
+          <NumberField label="Font size" value={fontSize} min={6} max={48} onChange={setFontSize} />
+          <NumberField label="Margin (pt)" value={margin} min={0} max={144} onChange={setMargin} />
+        </div>
+      </Section>
+
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => run("download")}
+          disabled={busy}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            busy && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy ? "Working…" : "Stamp & download"}
+        </button>
+        <button
+          type="button"
+          onClick={() => run("replace")}
+          disabled={busy}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+            busy && "cursor-not-allowed opacity-60",
+          )}
+        >
+          Apply to active tab
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+
 function NumberField({
   label, value, onChange, min, max,
 }: {
