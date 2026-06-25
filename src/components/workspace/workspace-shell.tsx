@@ -1130,6 +1130,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const hasResumePoint = ocrPagesArr.length > 0 || ocrPagesCopiedArr.length > 0;
   const showOcrBanner =
     !!file && editorTool === "edit-text" && (ocrRunning || (unprocessedScannedSet.size > 0 && !ocrBannerDismissed));
+  // Persistent, quiet indicator: visible whenever there ARE scanned pages
+  // we haven't OCR'd, but the proactive banner above isn't showing. So
+  // "Not now" hides the loud prompt but leaves OCR one click away.
+  const showQuietOcrChip =
+    !!file && !ocrRunning && unprocessedScannedSet.size > 0 && !showOcrBanner;
 
 
 
@@ -1388,6 +1393,26 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {showQuietOcrChip && (
+              <div className="pointer-events-none absolute left-1/2 top-[102px] z-30 -translate-x-1/2">
+                <button
+                  type="button"
+                  onClick={() => onRequestOcr()}
+                  title={
+                    unprocessedScannedSet.size === 1
+                      ? `Page ${[...unprocessedScannedSet][0] + 1} is scanned. Run OCR on-device to make it editable.`
+                      : `${unprocessedScannedSet.size} scanned pages. Run OCR on-device to make them editable.`
+                  }
+                  className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-1/95 px-2.5 py-1 text-[11px] text-text-2 shadow-[0_4px_14px_rgba(0,0,0,0.25)] backdrop-blur-md hover:border-vault/50 hover:text-foreground"
+                >
+                  <ScanText className="h-3 w-3 text-vault" />
+                  <span>
+                    Scanned · <span className="text-vault">Run OCR</span>
+                  </span>
+                </button>
               </div>
             )}
 
