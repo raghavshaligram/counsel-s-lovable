@@ -350,6 +350,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // Refit whenever the active tab changes.
   useEffect(() => { setFitNonce((n) => n + 1); }, [activeId]);
 
+  // Invariant: activeId must always reference a tab that exists. If a tab
+  // was removed (or an id mismatch sneaks in), snap the highlight to the
+  // most recent document tab so the strip is never left with zero active.
+  useEffect(() => {
+    if (tabs.some((t) => t.id === activeId)) return;
+    const docTabs = tabs.filter((t) => t.file !== null);
+    const fallback = docTabs[docTabs.length - 1] ?? tabs[tabs.length - 1];
+    if (fallback) setActiveId(fallback.id);
+  }, [tabs, activeId]);
+
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [manualPins, setManualPins] = useState<string[]>([]);
