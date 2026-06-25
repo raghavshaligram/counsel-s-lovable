@@ -1229,17 +1229,30 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Lock className="h-3 w-3" strokeWidth={2.5} />
             100% in your browser
           </span>
-          {file && (
-            <button
-              type="button"
-              onClick={() => patchActive({ activeToolId: "doc-settings", inspectorOpen: true })}
-              title="Document Settings — page numbers, header & footer"
-              aria-label="Document Settings"
-              className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors"
-            >
-              <SettingsIcon className="h-[15px] w-[15px]" />
-            </button>
-          )}
+          {file && (() => {
+            const isOpen = activeToolId === "doc-settings" && inspectorOpen;
+            return (
+              <button
+                type="button"
+                onClick={() =>
+                  isOpen
+                    ? patchActive({ inspectorOpen: false })
+                    : patchActive({ activeToolId: "doc-settings", inspectorOpen: true })
+                }
+                title={isOpen ? "Close Document Settings" : "Document Settings — page numbers, header & footer"}
+                aria-label="Document Settings"
+                aria-pressed={isOpen}
+                className={cn(
+                  "grid h-7 w-7 place-items-center rounded-md transition-colors",
+                  isOpen
+                    ? "bg-surface-2 text-vault"
+                    : "text-text-2 hover:bg-surface-2 hover:text-foreground",
+                )}
+              >
+                <SettingsIcon className="h-[15px] w-[15px]" />
+              </button>
+            );
+          })()}
           <button
             type="button"
             onClick={onExport}
