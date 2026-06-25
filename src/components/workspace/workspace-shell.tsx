@@ -369,6 +369,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // text-editing tool, not Select.
   const postLoadToolRef = useRef<Map<string, EditorTool>>(new Map());
 
+  // Parsed pdf.js docs, keyed by tab id. Held in a ref (not React state) so
+  // we can destroy() on tab close / new file load without the doc identity
+  // being captured into reducer state. setPdfDocVersion bumps a render-only
+  // counter so EditorPages re-renders when the active tab's pdfDoc changes.
+  const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
+  const [, setPdfDocVersion] = useState(0);
+
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
   useEffect(() => {
