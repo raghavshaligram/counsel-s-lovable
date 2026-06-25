@@ -813,12 +813,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     let cancelled = false;
     (async () => {
       try {
+        // Open path — pdf.js only, no pdf-lib, no double parse.
+        // pdf.js parses inside its Web Worker so the main thread stays free
+        // even on 400-page docs. We grab numPages + page-1 viewport for
+        // placeholder dims, hand the parsed pdfDoc to EditorPages via ref
+        // (so it can render without re-parsing), and let EditorPages refine
+        // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
-        const lib = await PDFDocument.load(bytes, { ignoreEncryption: true });
-        const pages: PageOp[] = lib.getPages().map((p, i) => {
-          const { width, height } = p.getSize();
-          return { srcPage: i, rotation: 0, width, height };
-        });
+        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const pdfjs = await loadPdfjs();
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        if (cancelled) {
+          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          return;
+        }
+        const p1 = await doc.getPage(1);
+        const vp = p1.getViewport({ scale: 1 });
+        const numPages = doc.numPages;
+        // Replace any prior pdfDoc for this tab.
+        const prior = pdfDocsRef.current.get(tabId);
+        if (prior && prior !== doc) {
+          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        }
+        pdfDocsRef.current.set(tabId, doc);
+        setPdfDocVersion((v) => v + 1);
+        const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
+          srcPage: i, rotation: 0, width: vp.width, height: vp.height,
+        }));
         if (cancelled) return;
         dispatchEditorFor(tabId, {
           type: "LOAD",
@@ -842,7 +863,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         }
 
       } catch (err) {
-        console.error("[workspace] PDFDocument.load failed", err);
+        console.error("[workspace] open failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
       }
 
