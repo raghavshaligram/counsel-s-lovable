@@ -56,7 +56,10 @@ import {
   FileCheck2,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
-import { PDFDocument } from "pdf-lib";
+// pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
+// PDFDocument.load() blocks the main thread for seconds. The open path now
+// uses pdf.js (Web Worker) only; pdf-lib is dynamic-imported inside the
+// export pipeline (src/lib/editor/export.ts).
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
@@ -366,6 +369,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // text-editing tool, not Select.
   const postLoadToolRef = useRef<Map<string, EditorTool>>(new Map());
 
+  // Parsed pdf.js docs, keyed by tab id. Held in a ref (not React state) so
+  // we can destroy() on tab close / new file load without the doc identity
+  // being captured into reducer state. setPdfDocVersion bumps a render-only
+  // counter so EditorPages re-renders when the active tab's pdfDoc changes.
+  const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
+  const [, setPdfDocVersion] = useState(0);
+
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
   useEffect(() => {
@@ -553,6 +563,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (!opts?.force && target.isDirty && target.file) {
         setPendingCloseId(id);
         return;
+      }
+      // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
+      const doc = pdfDocsRef.current.get(id);
+      if (doc) {
+        try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        pdfDocsRef.current.delete(id);
       }
       setTabs((ts) => {
         const next = ts.filter((t) => t.id !== id);
@@ -810,12 +826,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     let cancelled = false;
     (async () => {
       try {
+        // Open path — pdf.js only, no pdf-lib, no double parse.
+        // pdf.js parses inside its Web Worker so the main thread stays free
+        // even on 400-page docs. We grab numPages + page-1 viewport for
+        // placeholder dims, hand the parsed pdfDoc to EditorPages via ref
+        // (so it can render without re-parsing), and let EditorPages refine
+        // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
-        const lib = await PDFDocument.load(bytes, { ignoreEncryption: true });
-        const pages: PageOp[] = lib.getPages().map((p, i) => {
-          const { width, height } = p.getSize();
-          return { srcPage: i, rotation: 0, width, height };
-        });
+        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const pdfjs = await loadPdfjs();
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        if (cancelled) {
+          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          return;
+        }
+        const p1 = await doc.getPage(1);
+        const vp = p1.getViewport({ scale: 1 });
+        const numPages = doc.numPages;
+        // Replace any prior pdfDoc for this tab.
+        const prior = pdfDocsRef.current.get(tabId);
+        if (prior && prior !== doc) {
+          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        }
+        pdfDocsRef.current.set(tabId, doc);
+        setPdfDocVersion((v) => v + 1);
+        const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
+          srcPage: i, rotation: 0, width: vp.width, height: vp.height,
+        }));
         if (cancelled) return;
         dispatchEditorFor(tabId, {
           type: "LOAD",
@@ -839,7 +876,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         }
 
       } catch (err) {
-        console.error("[workspace] PDFDocument.load failed", err);
+        console.error("[workspace] open failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
       }
 
@@ -1383,6 +1420,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onAutoFit={autoFit}
                     fitNonce={fitNonce}
                     zoomMode={zoomMode}
+                    pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
                   />
 
 
@@ -3223,7 +3261,7 @@ const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
   ocrPages, ocrPagesCopied, showOcrTags, pageLayout = "single",
-  onAutoFit, fitNonce, zoomMode = "actual",
+  onAutoFit, fitNonce, zoomMode = "actual", pdfDoc,
 }: {
   state: EditorState;
   dispatch: ReactDispatch<EditorAction>;
@@ -3239,21 +3277,36 @@ function EditorPages({
   onAutoFit?: (zoom: number) => void;
   fitNonce?: number;
   zoomMode?: "smart" | "fit-width" | "fit-page" | "actual" | "custom";
+  // Already-parsed pdf.js doc, owned by WorkspaceShell. EditorPages NEVER
+  // re-parses srcBytes — the open path already paid that cost once.
+  pdfDoc: unknown | null;
 }) {
 
 
   const scale = (zoom / 100) * 1.3;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [sizes, setSizes] = useState<Array<{ width: number; height: number }>>([]);
-  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
   const srcBytes = state.doc?.srcBytes;
   const pages = state.doc?.pages;
+
+  // Seed `sizes` from the placeholder dims already on each PageOp (set by
+  // the open path from page-1's viewport). The wrapper layout is therefore
+  // correct from frame 1 — no upfront measurement of N pages required.
+  // Real per-page dims are refined lazily as pages scroll into view below.
+  const [sizes, setSizes] = useState<Array<{ width: number; height: number }>>(() =>
+    (pages ?? []).map((p) => ({ width: p.width || 612, height: p.height || 792 })),
+  );
+  const measuredRef = useRef<Set<number>>(new Set());
+
+  // Reset measurement state when the document changes.
+  useEffect(() => {
+    measuredRef.current = new Set();
+    setSizes((pages ?? []).map((p) => ({ width: p.width || 612, height: p.height || 792 })));
+  }, [srcBytes, pages]);
 
   // Observe the scroll-area size so we can auto-fit on resize.
   useEffect(() => {
@@ -3297,9 +3350,6 @@ function EditorPages({
       next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
     } else {
       // smart: large-format → fit-page, otherwise fit-width.
-      // Letter=612x792, A4=595x842, Legal=612x1008, Tabloid=792x1224.
-      // Anything wider/taller (A3=842x1191, A2=1191x1684, posters, plans)
-      // is "large-format" → fit the whole page.
       const isLargeFormat = first.width > 900 || first.height > 1300;
       if (isLargeFormat) {
         next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
@@ -3312,54 +3362,55 @@ function EditorPages({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageLayout, sizes, srcBytes, containerWidth, containerHeight, fitNonce, zoomMode]);
 
-
-  // Load doc once per srcBytes. Measure pages in CHUNKS, yielding to the UI
-  // between chunks. pdf.js getDocument() and getPage() are async (the parse
-  // runs in pdf.js's own worker), but `await`ing N pages in a tight loop
-  // still flooded the main thread with microtasks on large docs. Chunking
-  // + setTimeout(0) lets layout/paint run, so we never trip Chrome's
-  // "Page Unresponsive" dialog. Sizes are pushed incrementally so the first
-  // pages can render while the rest are still being measured.
+  // Lazy per-page measurement. Only the visible pages get their true
+  // viewport measured against pdfDoc — the rest keep page-1 placeholder
+  // dims until they scroll into view. This keeps the open cost O(visible),
+  // not O(numPages). Refinements are coalesced into a single setSizes call.
   useEffect(() => {
-    if (!srcBytes) { setPdfDoc(null); setSizes([]); return; }
+    const doc = pdfDoc as {
+      getPage: (n: number) => Promise<{ getViewport: (opts: { scale: number }) => { width: number; height: number } }>;
+    } | null;
+    if (!doc || !pages) return;
     let cancelled = false;
-    setProgress({ loaded: 0, total: 0 });
-    setSizes([]);
+    const todo: number[] = [];
+    for (const i of visible) {
+      const op = pages[i];
+      if (!op || op.blank) continue;
+      const src = op.srcPage;
+      if (src < 0) continue;
+      if (measuredRef.current.has(src)) continue;
+      todo.push(src);
+    }
+    if (todo.length === 0) return;
     (async () => {
-      try {
-        const pdfjs = await loadPdfjs();
-        const task = pdfjs.getDocument({ data: srcBytes.slice() });
-        task.onProgress = (p: { loaded: number; total: number }) => {
-          if (!cancelled) setProgress({ loaded: p.loaded, total: p.total });
-        };
-        const doc = await task.promise;
+      const updates: Array<[number, { width: number; height: number }]> = [];
+      for (const src of todo) {
         if (cancelled) return;
-        setPdfDoc(doc);
-
-        const measured: Array<{ width: number; height: number }> = [];
-        const CHUNK = 8;
-        const yieldToUI = () => new Promise<void>((r) => setTimeout(r, 0));
-        for (let i = 1; i <= doc.numPages; i++) {
-          const page = await doc.getPage(i);
+        try {
+          const page = await doc.getPage(src + 1);
           if (cancelled) return;
           const vp = page.getViewport({ scale: 1 });
-          measured.push({ width: vp.width, height: vp.height });
-          if (i % CHUNK === 0 || i === doc.numPages) {
-            // Commit a snapshot so already-measured pages can paint while we
-            // keep measuring the rest in the background.
-            setSizes(measured.slice());
-            await yieldToUI();
-            if (cancelled) return;
+          measuredRef.current.add(src);
+          updates.push([src, { width: vp.width, height: vp.height }]);
+        } catch (err) {
+          console.warn("[EditorPages] getPage failed", src + 1, err);
+        }
+      }
+      if (cancelled || updates.length === 0) return;
+      setSizes((prev) => {
+        const next = prev.slice();
+        for (const [src, dim] of updates) {
+          // Only commit if the new dim actually differs from the placeholder.
+          const cur = next[src];
+          if (!cur || cur.width !== dim.width || cur.height !== dim.height) {
+            next[src] = dim;
           }
         }
-        setProgress(null);
-      } catch (err) {
-        console.error("[EditorPages] doc load failed", err);
-        setProgress(null);
-      }
+        return next;
+      });
     })();
     return () => { cancelled = true; };
-  }, [srcBytes]);
+  }, [pdfDoc, pages, visible]);
 
   // Recompute which pages are within viewport+buffer.
   const recompute = useCallback(() => {
@@ -3473,15 +3524,8 @@ function EditorPages({
       className="mx-auto flex flex-col items-center py-6 px-4"
       style={{ gap }}
     >
-      {progress && (
-        <div className="text-[12px] text-text-muted">
-          {progress.total > 0
-            ? `Loading document… ${Math.round((progress.loaded / progress.total) * 100)}%`
-            : "Loading document…"}
-          {sizes.length === 0 && srcBytes && srcBytes.byteLength > 20_000_000 && (
-            <span className="ml-2 opacity-70">Large file — optimizing…</span>
-          )}
-        </div>
+      {!pdfDoc && srcBytes && (
+        <div className="text-[12px] text-text-muted">Loading document…</div>
       )}
       {pageLayout === "double"
         ? (() => {
