@@ -151,9 +151,10 @@ const TOOLS: RailTool[] = [
   { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
   { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
-  { id: "page-numbers", label: "Page Numbers", icon: Hash, group: "layout", groupLabel: "Layout" },
-  { id: "header-footer", label: "Header & Footer", icon: Layout, group: "layout", groupLabel: "Layout" },
   { id: "flatten", label: "Flatten", icon: Layers, group: "layout", groupLabel: "Layout" },
+  // Document settings — page numbers + header/footer. Accessed from the
+  // top-bar gear next to Export (document-level property, not a tool).
+  { id: "doc-settings", label: "Document Settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
   // Legal
   { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal" },
