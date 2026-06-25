@@ -3315,6 +3315,8 @@ function EditorPages({
   const scale = (zoom / 100) * 1.3;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const lastScrolledRef = useRef<number>(-1);
+
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
