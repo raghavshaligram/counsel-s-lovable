@@ -3484,7 +3484,33 @@ function EditorPages({
     };
   }, [recompute, sizes.length, zoom]);
 
+  // Scroll the active page (state.current) into view whenever it changes.
+  // This is what wires NavOverlay clicks (thumbnails / bookmarks) — and any
+  // other SET_PAGE dispatcher — to actual canvas navigation. We compare
+  // against the last value we acted on so user-driven scrolling (which
+  // updates state.current via the IntersectionObserver above) doesn't fight
+  // the smooth scroll.
+  const lastScrolledRef = useRef<number>(-1);
+  useEffect(() => {
+    const target = state.current;
+    if (target == null || target < 0) return;
+    if (target === lastScrolledRef.current) return;
+    const el = pageRefs.current[target];
+    const root = containerRef.current?.parentElement;
+    if (!el || !root) return;
+    // Only smooth-scroll when the target isn't already mostly in view, so
+    // scroll-driven page changes don't trigger a redundant animation.
+    const rRoot = root.getBoundingClientRect();
+    const rEl = el.getBoundingClientRect();
+    const fullyVisible = rEl.top >= rRoot.top - 4 && rEl.bottom <= rRoot.bottom + 4;
+    if (!fullyVisible) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    lastScrolledRef.current = target;
+  }, [state.current]);
+
   if (!state.doc) return null;
+
 
   const renderPage = (op: NonNullable<typeof pages>[number], i: number) => {
     const meta = sizes[op.srcPage] ?? { width: op.width || 612, height: op.height || 792 };
