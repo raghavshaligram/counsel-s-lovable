@@ -42,9 +42,40 @@ export interface ProtectSettings {
   permissions: ProtectPermissions;
 }
 
+export type PageNumberAnchor =
+  | "top-left" | "top-center" | "top-right"
+  | "bottom-left" | "bottom-center" | "bottom-right";
+export type PageNumberFormat = "n" | "page-n" | "n-of-m" | "roman";
+
+export interface PageNumbersSettings {
+  enabled: boolean;
+  anchor: PageNumberAnchor;
+  format: PageNumberFormat;
+  startAt: number;
+  skipFirst: number;
+  fontSize: number;
+  margin: number;
+  prefix?: string;
+}
+
+export type HFAlign = "left" | "center" | "right";
+export type HFRule = "all" | "even" | "odd" | "no-first";
+
+export interface HeaderFooterSettings {
+  enabled: boolean;
+  headerText?: string;
+  footerText?: string;
+  align: HFAlign;
+  fontSize: number;
+  margin: number;
+  rule: HFRule;
+}
+
 export interface ExportSettings {
   watermark?: WatermarkSettings;
   protect?: ProtectSettings;
+  pageNumbers?: PageNumbersSettings;
+  headerFooter?: HeaderFooterSettings;
 }
 
 export type RGB = { r: number; g: number; b: number };

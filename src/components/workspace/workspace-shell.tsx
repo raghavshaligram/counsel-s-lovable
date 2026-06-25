@@ -54,6 +54,7 @@ import {
   Pin,
   PinOff,
   FileCheck2,
+  Settings2,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
@@ -90,6 +91,12 @@ import {
 import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/lib/editor/state";
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { exportEditedPdf } from "@/lib/editor/export";
+import {
+  DocumentSettingsDialog,
+  DEFAULT_PAGE_NUMBERS,
+  DEFAULT_HEADER_FOOTER,
+} from "./document-settings-dialog";
+import type { PageNumbersSettings, HeaderFooterSettings } from "@/lib/editor/types";
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 
@@ -911,6 +918,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   ]);
 
 
+  // Document Settings (page numbers + header/footer) — pure config, applied at export only.
+  const [docSettingsOpen, setDocSettingsOpen] = useState(false);
+  const [pageNumbersSettings, setPageNumbersSettings] = useState<PageNumbersSettings>(DEFAULT_PAGE_NUMBERS);
+  const [headerFooterSettings, setHeaderFooterSettings] = useState<HeaderFooterSettings>(DEFAULT_HEADER_FOOTER);
+
   const onExport = useCallback(async () => {
     if (!editorState.doc || editorState.doc.pages.length === 0) {
       toast.error("Nothing to export yet");
@@ -918,7 +930,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }
     try {
       toast.loading("Building PDF…", { id: "wsx" });
-      const bytes = await exportEditedPdf(editorState.doc);
+      const bytes = await exportEditedPdf(editorState.doc, {
+        pageNumbers: pageNumbersSettings,
+        headerFooter: headerFooterSettings,
+      });
       toast.success("Saved", { id: "wsx" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -930,7 +945,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch (err) {
       toast.error("Export failed", { id: "wsx", description: (err as Error).message });
     }
-  }, [editorState.doc]);
+  }, [editorState.doc, pageNumbersSettings, headerFooterSettings]);
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
@@ -1194,6 +1209,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Lock className="h-3 w-3" strokeWidth={2.5} />
             100% in your browser
           </span>
+          <button
+            type="button"
+            onClick={() => setDocSettingsOpen(true)}
+            title="Document Settings — page numbers, header & footer"
+            aria-label="Document Settings"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors",
+              (pageNumbersSettings.enabled || headerFooterSettings.enabled) && "text-vault border-vault/40 bg-vault/5 hover:bg-vault/10 hover:text-vault",
+            )}
+          >
+            <Settings2 className="h-3.5 w-3.5" strokeWidth={2.5} />
+            <span className="hidden sm:inline">Document Settings</span>
+            {(pageNumbersSettings.enabled || headerFooterSettings.enabled) && (
+              <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-vault" aria-hidden />
+            )}
+          </button>
           <button
             type="button"
             onClick={onExport}
@@ -1590,6 +1621,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           onCancel={() => setPendingCloseId(null)}
         />
       )}
+
+      <DocumentSettingsDialog
+        open={docSettingsOpen}
+        onOpenChange={setDocSettingsOpen}
+        pageNumbers={pageNumbersSettings}
+        headerFooter={headerFooterSettings}
+        onSave={({ pageNumbers, headerFooter }) => {
+          setPageNumbersSettings(pageNumbers);
+          setHeaderFooterSettings(headerFooter);
+        }}
+      />
     </div>
   );
 }
