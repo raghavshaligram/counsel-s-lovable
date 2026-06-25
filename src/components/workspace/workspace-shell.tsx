@@ -54,6 +54,7 @@ import {
   Pin,
   PinOff,
   FileCheck2,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
@@ -926,7 +927,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     try {
       toast.loading("Building PDF…", { id: "wsx" });
       const bytes = await exportEditedPdf(editorState.doc);
-      toast.success("Saved", { id: "wsx" });
+      const s = editorState.doc.docSettings;
+      const stamped: string[] = [];
+      if (s?.pageNumbers?.enabled) stamped.push("page numbers");
+      if (s?.headerFooter?.enabled) stamped.push("header/footer");
+      const description = stamped.length
+        ? `Stamped: ${stamped.join(" + ")}.`
+        : "Tip: add page numbers or header/footer in Document Settings.";
+      toast.success("Saved", {
+        id: "wsx",
+        description,
+        action: {
+          label: "Document Settings",
+          onClick: () => patchActive({ activeToolId: "doc-settings", inspectorOpen: true }),
+        },
+      });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -937,7 +952,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch (err) {
       toast.error("Export failed", { id: "wsx", description: (err as Error).message });
     }
-  }, [editorState.doc]);
+  }, [editorState.doc, patchActive]);
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
@@ -1201,6 +1216,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Lock className="h-3 w-3" strokeWidth={2.5} />
             100% in your browser
           </span>
+          {file && (
+            <button
+              type="button"
+              onClick={() => patchActive({ activeToolId: "doc-settings", inspectorOpen: true })}
+              title="Document Settings — page numbers, header & footer"
+              aria-label="Document Settings"
+              className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors"
+            >
+              <SettingsIcon className="h-[15px] w-[15px]" />
+            </button>
+          )}
           <button
             type="button"
             onClick={onExport}
