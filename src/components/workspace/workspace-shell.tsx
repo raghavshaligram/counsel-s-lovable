@@ -923,7 +923,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     try {
       toast.loading("Building PDF…", { id: "wsx" });
       const bytes = await exportEditedPdf(editorState.doc);
-      toast.success("Saved", { id: "wsx" });
+      toast.success("Saved", {
+        id: "wsx",
+        description: "Need page numbers or a header/footer? Open Document Settings.",
+        action: {
+          label: "Document Settings",
+          onClick: () => openTool("doc-settings"),
+        },
+      });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
