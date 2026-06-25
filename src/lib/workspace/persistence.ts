@@ -433,3 +433,55 @@ export async function deleteSidecar(name: string, size: number): Promise<void> {
     console.warn("[persistence] deleteSidecar failed", err);
   }
 }
+
+/* ----------------------------- Bookmarks ----------------------------- */
+// User-managed bookmarks per document, separate from the PDF's own outline.
+// Keyed by `${name}::${size}` — on-device only.
+
+export type UserBookmark = {
+  id: string;
+  title: string;
+  page: number; // 0-based
+  createdAt: number;
+};
+
+export async function loadBookmarks(name: string, size: number): Promise<UserBookmark[]> {
+  const d = db();
+  if (!d) return [];
+  try {
+    const conn = await d;
+    const rec = (await conn.get(BOOKMARKS_STORE, sidecarKey(name, size))) as
+      | UserBookmark[]
+      | undefined;
+    return rec ?? [];
+  } catch (err) {
+    console.warn("[persistence] loadBookmarks failed", err);
+    return [];
+  }
+}
+
+const bmTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const bmPending = new Map<string, UserBookmark[]>();
+export function saveBookmarksDebounced(name: string, size: number, list: UserBookmark[]) {
+  const d = db();
+  if (!d) return;
+  const key = sidecarKey(name, size);
+  bmPending.set(key, list);
+  const t = bmTimers.get(key);
+  if (t) clearTimeout(t);
+  bmTimers.set(
+    key,
+    setTimeout(async () => {
+      const snap = bmPending.get(key);
+      bmPending.delete(key);
+      if (!snap) return;
+      try {
+        const conn = await d;
+        await conn.put(BOOKMARKS_STORE, snap, key);
+      } catch (err) {
+        console.error("[persistence] saveBookmarks failed", err);
+      }
+    }, 300),
+  );
+}
+
