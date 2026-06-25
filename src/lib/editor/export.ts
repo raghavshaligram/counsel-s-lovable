@@ -148,6 +148,11 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   }
   if (rewrites.size) await rewriteDocument(out, rewrites);
 
+  // Persist editable outline (bookmarks managed in the workspace).
+  if (doc.outline && doc.outline.length) {
+    const { writeOutline } = await import("../outline/write");
+    writeOutline(out, doc.outline);
+  }
 
   let bytes = await out.save();
 
