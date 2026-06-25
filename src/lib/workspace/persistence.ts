@@ -13,6 +13,7 @@ const DB_NAME = "vaultpdf-workspace";
 const UI_STORE = "ui";
 const DOC_STORE = "docs";
 const SIDECAR_STORE = "sidecars";
+const BOOKMARKS_STORE = "bookmarks";
 
 export const MAX_RECENT_COUNT = 10;
 export const MAX_RECENT_SIZE = 25 * 1024 * 1024; // 25 MB per doc
@@ -24,6 +25,7 @@ export function sidecarKey(name: string, size: number) {
 function identityKey(name: string, size: number) {
   return sidecarKey(name, size);
 }
+
 
 
 export type WorkspaceUIState = {
