@@ -54,6 +54,7 @@ import {
   Pin,
   PinOff,
   FileCheck2,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
