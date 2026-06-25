@@ -4523,7 +4523,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
       <DisclosureToggle
-        label="Add header &amp; footer on export"
+        label="Add header & footer on export"
         on={hfOn}
         onChange={setHfOn}
       />
