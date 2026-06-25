@@ -3268,11 +3268,13 @@ function EditorPages({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [sizes, setSizes] = useState<Array<{ width: number; height: number }>>([]);
+  const [sizes, setSizes] = useState<Map<number, { width: number; height: number }>>(() => new Map());
+  const [defaultSize, setDefaultSize] = useState<{ width: number; height: number } | null>(null);
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
+  const measureQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const srcBytes = state.doc?.srcBytes;
   const pages = state.doc?.pages;
@@ -3291,16 +3293,15 @@ function EditorPages({
     return () => ro.disconnect();
   }, []);
 
-  // Auto-fit zoom based on zoomMode. "custom" → never override the user.
-  // "smart" picks fit-width for standard docs (≤ Legal+slack), fit-page for
-  // posters / large-format pages so the whole page is visible at open.
+  // Auto-fit zoom based on zoomMode. Uses defaultSize (= page 1 dims) so we
+  // can auto-fit as soon as page 1 is measured, without waiting for the rest.
   useEffect(() => {
     if (!onAutoFit) return;
     if (zoomMode === "custom") return;
-    if (sizes.length === 0 || containerWidth <= 0) return;
-    const first = sizes[0];
-    const second = sizes[1] ?? first;
-    const horizontalPadding = 48; // px-4 + scrollbar slack
+    if (!defaultSize || containerWidth <= 0) return;
+    const first = defaultSize;
+    const second = sizes.get(1) ?? first;
+    const horizontalPadding = 48;
     const verticalPadding = 48;
     const availW = Math.max(100, containerWidth - horizontalPadding);
     const availH = Math.max(100, containerHeight - verticalPadding);
@@ -3318,10 +3319,6 @@ function EditorPages({
     } else if (zoomMode === "fit-page") {
       next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
     } else {
-      // smart: large-format → fit-page, otherwise fit-width.
-      // Letter=612x792, A4=595x842, Legal=612x1008, Tabloid=792x1224.
-      // Anything wider/taller (A3=842x1191, A2=1191x1684, posters, plans)
-      // is "large-format" → fit the whole page.
       const isLargeFormat = first.width > 900 || first.height > 1300;
       if (isLargeFormat) {
         next = Math.round(Math.min(availW / naturalW, availH / naturalH) * 100);
@@ -3332,48 +3329,39 @@ function EditorPages({
     next = Math.max(25, Math.min(400, next));
     onAutoFit(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageLayout, sizes, srcBytes, containerWidth, containerHeight, fitNonce, zoomMode]);
+  }, [pageLayout, defaultSize, sizes, srcBytes, containerWidth, containerHeight, fitNonce, zoomMode]);
 
 
-  // Load doc once per srcBytes. Measure pages in CHUNKS, yielding to the UI
-  // between chunks. pdf.js getDocument() and getPage() are async (the parse
-  // runs in pdf.js's own worker), but `await`ing N pages in a tight loop
-  // still flooded the main thread with microtasks on large docs. Chunking
-  // + setTimeout(0) lets layout/paint run, so we never trip Chrome's
-  // "Page Unresponsive" dialog. Sizes are pushed incrementally so the first
-  // pages can render while the rest are still being measured.
+  // Load doc ONCE per srcBytes, measure ONLY page 1. Per-page dims for the
+  // rest are filled in lazily as they scroll into view (see effect below).
+  // This makes open-time independent of page count: a 400-page doc opens as
+  // fast as a 4-page doc because we never touch pages 2..N up front.
   useEffect(() => {
-    if (!srcBytes) { setPdfDoc(null); setSizes([]); return; }
+    if (!srcBytes) { setPdfDoc(null); setSizes(new Map()); setDefaultSize(null); return; }
     let cancelled = false;
     setProgress({ loaded: 0, total: 0 });
-    setSizes([]);
+    setSizes(new Map());
+    setDefaultSize(null);
     (async () => {
       try {
+        console.time("[EditorPages] pdfjs.getDocument");
         const pdfjs = await loadPdfjs();
         const task = pdfjs.getDocument({ data: srcBytes.slice() });
         task.onProgress = (p: { loaded: number; total: number }) => {
           if (!cancelled) setProgress({ loaded: p.loaded, total: p.total });
         };
         const doc = await task.promise;
-        if (cancelled) return;
+        console.timeEnd("[EditorPages] pdfjs.getDocument");
+        if (cancelled) { try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ } return; }
         setPdfDoc(doc);
-
-        const measured: Array<{ width: number; height: number }> = [];
-        const CHUNK = 8;
-        const yieldToUI = () => new Promise<void>((r) => setTimeout(r, 0));
-        for (let i = 1; i <= doc.numPages; i++) {
-          const page = await doc.getPage(i);
-          if (cancelled) return;
-          const vp = page.getViewport({ scale: 1 });
-          measured.push({ width: vp.width, height: vp.height });
-          if (i % CHUNK === 0 || i === doc.numPages) {
-            // Commit a snapshot so already-measured pages can paint while we
-            // keep measuring the rest in the background.
-            setSizes(measured.slice());
-            await yieldToUI();
-            if (cancelled) return;
-          }
-        }
+        console.time("[EditorPages] measure page 1");
+        const page1 = await doc.getPage(1);
+        const vp = page1.getViewport({ scale: 1 });
+        console.timeEnd("[EditorPages] measure page 1");
+        if (cancelled) return;
+        const fallback = { width: vp.width, height: vp.height };
+        setDefaultSize(fallback);
+        setSizes((prev) => { const m = new Map(prev); m.set(0, fallback); return m; });
         setProgress(null);
       } catch (err) {
         console.error("[EditorPages] doc load failed", err);
@@ -3382,6 +3370,39 @@ function EditorPages({
     })();
     return () => { cancelled = true; };
   }, [srcBytes]);
+
+  // Lazy per-page measurement. Whenever the visible set changes, queue
+  // measurements for any unmeasured visible pages through a single-slot
+  // queue so we never flood pdf.js with concurrent requests.
+  useEffect(() => {
+    if (!pdfDoc || !pages) return;
+    let cancelled = false;
+    const need: number[] = [];
+    for (const i of visible) {
+      const op = pages[i];
+      if (!op || op.blank) continue;
+      if (!sizes.has(op.srcPage)) need.push(i);
+    }
+    if (need.length === 0) return;
+    measureQueueRef.current = measureQueueRef.current.then(async () => {
+      for (const i of need) {
+        if (cancelled) return;
+        const op = pages[i]; if (!op) continue;
+        try {
+          const page = await (pdfDoc as { getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number } }> }).getPage(op.srcPage + 1);
+          if (cancelled) return;
+          const vp = page.getViewport({ scale: 1 });
+          const meta = { width: vp.width, height: vp.height };
+          setSizes((prev) => {
+            if (prev.has(op.srcPage)) return prev;
+            const m = new Map(prev); m.set(op.srcPage, meta); return m;
+          });
+          await new Promise<void>((r) => setTimeout(r, 0));
+        } catch { /* ignore — doc may have been swapped */ }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [visible, pdfDoc, pages, sizes]);
 
   // Recompute which pages are within viewport+buffer.
   const recompute = useCallback(() => {
