@@ -1,23 +1,39 @@
 /**
- * Navigation overlay — single dismissible floating surface over the canvas.
- * Three tabs: Bookmarks (outline), Pages (thumbnails), Comments (annotation
- * list). Pure navigation: clicking jumps to the page (and selects the anno
- * for comments). Editing surfaces stay in the right inspector.
+ * Navigation + action overlay — single dismissible floating surface over
+ * the canvas. Three tabs: Bookmarks (user-managed + PDF outline), Pages
+ * (thumbnails), Comments (annotation list with inline add/edit/reply/resolve).
+ *
+ * Single-click on a bookmark or thumbnail JUMPS but keeps the overlay open.
+ * Double-click jumps and closes. Dismiss only via Esc, outside click, or X.
+ * Outside-click ignores any element marked [data-nav-toggle] so the toolbar
+ * button can toggle the overlay open/closed.
  *
  * IMPORTANT: this overlay reuses the already-parsed `pdfDoc` instance owned
- * by the workspace shell. It must NOT call `pdf-lib`'s `parsePdf` and must
- * NOT call `pdfjs.getDocument` a second time — a second parse on a 400-page
- * document freezes the main thread ("Page Unresponsive").
+ * by the workspace shell — no second pdfjs.getDocument and no pdf-lib parse.
+ * Per-page work (thumbnails) is lazy via IntersectionObserver.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bookmark, FileText, MessageSquare, X } from "lucide-react";
+import {
+  Bookmark,
+  Check,
+  CornerDownRight,
+  FileText,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Anno } from "@/lib/editor/types";
+import type { Anno, NoteAnno } from "@/lib/editor/types";
+import {
+  loadBookmarks,
+  saveBookmarksDebounced,
+  type UserBookmark,
+} from "@/lib/workspace/persistence";
 
 type Tab = "bookmarks" | "pages" | "comments";
 
-// Minimal structural type for the pdf.js document we receive from the shell.
-// We intentionally type only what we touch to avoid pulling pdfjs types here.
 type PdfJsDoc = {
   numPages: number;
   getOutline: () => Promise<OutlineItem[] | null>;
@@ -38,13 +54,16 @@ type Props = {
   open: boolean;
   defaultTab?: Tab;
   fileName: string | null;
+  fileSize: number | null;
   pdfDoc: unknown | null;
   pageCount: number;
   annotations: Anno[];
   currentPage: number;
   onJumpPage: (n: number) => void;
   onJumpAnno: (a: Anno) => void;
-  onEditComment: (a: Anno) => void;
+  onAddComment: (anno: Anno) => void;
+  onUpdateAnno: (id: string, patch: Partial<Anno>) => void;
+  onDeleteAnno: (id: string) => void;
   onClose: () => void;
 };
 
@@ -64,7 +83,13 @@ export function NavOverlay(props: Props) {
       if (e.key === "Escape") onClose();
     };
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      // The toolbar trigger toggles the overlay itself; ignore its clicks so
+      // the trigger can close-then-open. Otherwise outside-click would close
+      // first and the trigger would immediately reopen (or vice versa).
+      if (t.closest("[data-nav-toggle]")) return;
+      if (ref.current && !ref.current.contains(t)) onClose();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onClick);
@@ -76,12 +101,16 @@ export function NavOverlay(props: Props) {
 
   if (!open) return null;
 
+  // jump-and-stay; double-click closes
+  const jumpStay = (n: number) => props.onJumpPage(n);
+  const jumpAnnoStay = (a: Anno) => props.onJumpAnno(a);
+
   return (
     <div
       ref={ref}
       role="dialog"
       aria-label="Document navigation"
-      className="absolute right-3 top-14 z-40 flex w-[320px] flex-col border border-border bg-surface-1"
+      className="absolute right-3 top-14 z-40 flex w-[340px] flex-col border border-border bg-surface-1"
       style={{ borderRadius: 12, boxShadow: "var(--shadow-float)", maxHeight: "calc(100% - 80px)" }}
     >
       <header className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1.5">
@@ -99,21 +128,32 @@ export function NavOverlay(props: Props) {
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {tab === "bookmarks" && (
-          <BookmarksTab doc={doc} onJump={(n) => { props.onJumpPage(n); onClose(); }} />
+          <BookmarksTab
+            doc={doc}
+            fileName={props.fileName}
+            fileSize={props.fileSize}
+            currentPage={props.currentPage}
+            onJump={jumpStay}
+            onJumpAndClose={(n) => { props.onJumpPage(n); onClose(); }}
+          />
         )}
         {tab === "pages" && (
           <PagesTab
             doc={doc}
             pageCount={props.pageCount}
             current={props.currentPage}
-            onJump={(n) => { props.onJumpPage(n); onClose(); }}
+            onJump={jumpStay}
+            onJumpAndClose={(n) => { props.onJumpPage(n); onClose(); }}
           />
         )}
         {tab === "comments" && (
           <CommentsTab
             annos={props.annotations}
-            onJump={(a) => { props.onJumpAnno(a); onClose(); }}
-            onEdit={(a) => { props.onEditComment(a); onClose(); }}
+            currentPage={props.currentPage}
+            onJump={jumpAnnoStay}
+            onAdd={props.onAddComment}
+            onUpdate={props.onUpdateAnno}
+            onDelete={props.onDeleteAnno}
           />
         )}
       </div>
@@ -140,55 +180,79 @@ function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: ()
 
 /* --------------------------- Bookmarks --------------------------- */
 
-type FlatNode = {
+type OutlineFlat = {
   id: string;
   title: string;
   bold?: boolean;
   italic?: boolean;
   depth: number;
-  pageIndex: number | null; // resolved 0-based page index, or null if unresolved
-  children: FlatNode[];
+  pageIndex: number | null;
+  children: OutlineFlat[];
 };
 
-function BookmarksTab({ doc, onJump }: { doc: PdfJsDoc | null; onJump: (n: number) => void }) {
-  const [outline, setOutline] = useState<FlatNode[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+function BookmarksTab({
+  doc,
+  fileName,
+  fileSize,
+  currentPage,
+  onJump,
+  onJumpAndClose,
+}: {
+  doc: PdfJsDoc | null;
+  fileName: string | null;
+  fileSize: number | null;
+  currentPage: number;
+  onJump: (n: number) => void;
+  onJumpAndClose: (n: number) => void;
+}) {
+  const [outline, setOutline] = useState<OutlineFlat[] | null>(null);
+  const [outlineErr, setOutlineErr] = useState<string | null>(null);
+  const [userBms, setUserBms] = useState<UserBookmark[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
 
+  // Load user bookmarks for this document.
+  useEffect(() => {
+    let cancelled = false;
+    if (!fileName || fileSize == null) { setUserBms([]); return; }
+    loadBookmarks(fileName, fileSize).then((list) => {
+      if (!cancelled) setUserBms(list);
+    });
+    return () => { cancelled = true; };
+  }, [fileName, fileSize]);
+
+  // Persist on change.
+  useEffect(() => {
+    if (!fileName || fileSize == null || userBms === null) return;
+    saveBookmarksDebounced(fileName, fileSize, userBms);
+  }, [userBms, fileName, fileSize]);
+
+  // Read PDF outline (read-only, from the SAME already-loaded pdfDoc).
   useEffect(() => {
     let cancelled = false;
     if (!doc) { setOutline([]); return; }
     setOutline(null);
-    setErr(null);
-
+    setOutlineErr(null);
     (async () => {
       try {
         const items = await doc.getOutline();
         if (cancelled) return;
         if (!items || items.length === 0) { setOutline([]); return; }
-
-        // Resolve destinations to page indices, reusing the SAME pdfDoc.
-        // No second parse, no bytes.slice().
         let counter = 0;
-        const resolve = async (list: OutlineItem[], depth: number): Promise<FlatNode[]> => {
-          const out: FlatNode[] = [];
+        const resolve = async (list: OutlineItem[], depth: number): Promise<OutlineFlat[]> => {
+          const out: OutlineFlat[] = [];
           for (const it of list) {
             let pageIndex: number | null = null;
             try {
               let destArray: unknown[] | null = null;
-              if (Array.isArray(it.dest)) {
-                destArray = it.dest;
-              } else if (typeof it.dest === "string") {
-                destArray = await doc.getDestination(it.dest);
-              }
-              if (destArray && destArray.length > 0) {
-                pageIndex = await doc.getPageIndex(destArray[0]);
-              }
-            } catch {
-              pageIndex = null;
-            }
-            const children = it.items && it.items.length > 0
-              ? await resolve(it.items, depth + 1)
-              : [];
+              if (Array.isArray(it.dest)) destArray = it.dest;
+              else if (typeof it.dest === "string") destArray = await doc.getDestination(it.dest);
+              if (destArray && destArray.length > 0) pageIndex = await doc.getPageIndex(destArray[0]);
+            } catch { pageIndex = null; }
+            const children = it.items && it.items.length > 0 ? await resolve(it.items, depth + 1) : [];
             out.push({
               id: `o-${counter++}`,
               title: it.title || "(untitled)",
@@ -201,32 +265,189 @@ function BookmarksTab({ doc, onJump }: { doc: PdfJsDoc | null; onJump: (n: numbe
           }
           return out;
         };
-
         const resolved = await resolve(items, 0);
         if (!cancelled) setOutline(resolved);
       } catch (e) {
-        if (!cancelled) setErr((e as Error).message);
+        if (!cancelled) setOutlineErr((e as Error).message);
       }
     })();
-
     return () => { cancelled = true; };
   }, [doc]);
 
-  if (!doc) return <Empty label="No document loaded." />;
-  if (err) return <Empty label={`Could not read outline — ${err}`} />;
-  if (outline === null) return <Empty label="Reading bookmarks…" />;
-  if (outline.length === 0) return <Empty label="No bookmarks in this document." />;
+  const addBookmark = () => {
+    const title = draft.trim() || `Page ${currentPage + 1}`;
+    const bm: UserBookmark = {
+      id: crypto.randomUUID(),
+      title,
+      page: currentPage,
+      createdAt: Date.now(),
+    };
+    setUserBms((cur) => [...(cur ?? []), bm]);
+    setDraft("");
+    setAdding(false);
+  };
+
+  const renameBookmark = (id: string, title: string) => {
+    setUserBms((cur) => (cur ?? []).map((b) => (b.id === id ? { ...b, title } : b)));
+  };
+  const deleteBookmark = (id: string) => {
+    setUserBms((cur) => (cur ?? []).filter((b) => b.id !== id));
+  };
+
+  const onDragStart = (id: string) => setDragId(id);
+  const onDropOn = (id: string) => {
+    if (!dragId || dragId === id) return;
+    setUserBms((cur) => {
+      const list = [...(cur ?? [])];
+      const from = list.findIndex((b) => b.id === dragId);
+      const to = list.findIndex((b) => b.id === id);
+      if (from < 0 || to < 0) return list;
+      const [m] = list.splice(from, 1);
+      list.splice(to, 0, m);
+      return list;
+    });
+    setDragId(null);
+  };
 
   return (
-    <ul className="space-y-0.5 text-[12.5px]">
-      {outline.map((n) => (
-        <OutlineRow key={n.id} node={n} onJump={onJump} />
-      ))}
-    </ul>
+    <div className="space-y-3">
+      {/* User bookmarks — editable */}
+      <section>
+        <div className="mb-1.5 flex items-center justify-between px-1">
+          <h3 className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">My bookmarks</h3>
+          <button
+            type="button"
+            onClick={() => setAdding((v) => !v)}
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-vault hover:bg-surface-2"
+          >
+            <Plus className="h-3 w-3" />
+            Add
+          </button>
+        </div>
+
+        {adding && (
+          <div className="mb-1.5 flex items-center gap-1 rounded-md border border-border bg-surface-2 p-1">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addBookmark();
+                if (e.key === "Escape") { setDraft(""); setAdding(false); }
+              }}
+              placeholder={`Bookmark page ${currentPage + 1}…`}
+              className="min-w-0 flex-1 bg-transparent px-1.5 py-1 text-[12px] text-foreground outline-none placeholder:text-text-muted"
+            />
+            <button
+              type="button"
+              onClick={addBookmark}
+              className="rounded px-1.5 py-0.5 text-[11px] text-vault hover:bg-surface-1"
+            >
+              Save
+            </button>
+          </div>
+        )}
+
+        {userBms === null ? (
+          <Empty label="Loading…" />
+        ) : userBms.length === 0 ? (
+          <div className="px-2 py-3 text-center text-[11.5px] text-text-muted">
+            No bookmarks yet. Click <span className="text-vault">Add</span> to mark page {currentPage + 1}.
+          </div>
+        ) : (
+          <ul className="space-y-0.5">
+            {userBms.map((b) => (
+              <li
+                key={b.id}
+                draggable
+                onDragStart={() => onDragStart(b.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => onDropOn(b.id)}
+                className={cn(
+                  "group flex items-center gap-1 rounded-md hover:bg-surface-2",
+                  dragId === b.id && "opacity-50",
+                )}
+              >
+                {editingId === b.id ? (
+                  <input
+                    autoFocus
+                    value={editingTitle}
+                    onChange={(e) => setEditingTitle(e.target.value)}
+                    onBlur={() => {
+                      renameBookmark(b.id, editingTitle.trim() || b.title);
+                      setEditingId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        renameBookmark(b.id, editingTitle.trim() || b.title);
+                        setEditingId(null);
+                      }
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                    className="min-w-0 flex-1 bg-transparent px-2 py-1 text-[12.5px] text-foreground outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onJump(b.page)}
+                    onDoubleClick={() => onJumpAndClose(b.page)}
+                    className="min-w-0 flex-1 truncate px-2 py-1 text-left text-[12.5px] text-foreground"
+                    title={`${b.title} · page ${b.page + 1}`}
+                  >
+                    {b.title}
+                  </button>
+                )}
+                <span className="shrink-0 px-1 text-[11px] tabular-nums text-text-muted">{b.page + 1}</span>
+                <button
+                  type="button"
+                  aria-label="Rename"
+                  onClick={() => { setEditingId(b.id); setEditingTitle(b.title); }}
+                  className="opacity-0 group-hover:opacity-100 mr-0.5 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete"
+                  onClick={() => deleteBookmark(b.id)}
+                  className="opacity-0 group-hover:opacity-100 mr-1 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* PDF outline — read-only navigation aid */}
+      {outline && outline.length > 0 && (
+        <section>
+          <h3 className="mb-1.5 px-1 text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
+            PDF outline
+          </h3>
+          <ul className="space-y-0.5 text-[12.5px]">
+            {outline.map((n) => (
+              <OutlineRow key={n.id} node={n} onJump={onJump} onJumpClose={onJumpAndClose} />
+            ))}
+          </ul>
+        </section>
+      )}
+      {outlineErr && <Empty label={`Could not read PDF outline — ${outlineErr}`} />}
+      {outline === null && <Empty label="Reading PDF outline…" />}
+    </div>
   );
 }
 
-function OutlineRow({ node, onJump }: { node: FlatNode; onJump: (n: number) => void }) {
+function OutlineRow({
+  node,
+  onJump,
+  onJumpClose,
+}: {
+  node: OutlineFlat;
+  onJump: (n: number) => void;
+  onJumpClose: (n: number) => void;
+}) {
   const [open, setOpen] = useState(true);
   const hasChildren = node.children.length > 0;
   return (
@@ -247,6 +468,7 @@ function OutlineRow({ node, onJump }: { node: FlatNode; onJump: (n: number) => v
         <button
           type="button"
           onClick={() => node.pageIndex !== null && onJump(node.pageIndex)}
+          onDoubleClick={() => node.pageIndex !== null && onJumpClose(node.pageIndex)}
           disabled={node.pageIndex === null}
           className={cn(
             "min-w-0 flex-1 truncate py-1 text-left text-foreground",
@@ -265,7 +487,7 @@ function OutlineRow({ node, onJump }: { node: FlatNode; onJump: (n: number) => v
       {hasChildren && open && (
         <ul className="space-y-0.5">
           {node.children.map((c) => (
-            <OutlineRow key={c.id} node={c} onJump={onJump} />
+            <OutlineRow key={c.id} node={c} onJump={onJump} onJumpClose={onJumpClose} />
           ))}
         </ul>
       )}
@@ -274,23 +496,19 @@ function OutlineRow({ node, onJump }: { node: FlatNode; onJump: (n: number) => v
 }
 
 /* ----------------------------- Pages ----------------------------- */
-/**
- * Thumbnails reuse the already-parsed pdfDoc — no second getDocument call.
- * Each thumbnail renders only when scrolled into view, and all renders are
- * funnelled through a single-slot queue so a 400-page doc never fires 400
- * concurrent pdf.js render jobs.
- */
 
 function PagesTab({
   doc,
   pageCount,
   current,
   onJump,
+  onJumpAndClose,
 }: {
   doc: PdfJsDoc | null;
   pageCount: number;
   current: number;
   onJump: (n: number) => void;
+  onJumpAndClose: (n: number) => void;
 }) {
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -306,6 +524,7 @@ function PagesTab({
           index={i}
           active={i === current}
           onClick={() => onJump(i)}
+          onDoubleClick={() => onJumpAndClose(i)}
         />
       ))}
     </ul>
@@ -318,12 +537,14 @@ function PageThumb({
   index,
   active,
   onClick,
+  onDoubleClick,
 }: {
   doc: PdfJsDoc;
   queueRef: React.MutableRefObject<Promise<void>>;
   index: number;
   active: boolean;
   onClick: () => void;
+  onDoubleClick: () => void;
 }) {
   const wrapRef = useRef<HTMLLIElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -365,7 +586,7 @@ function PageThumb({
         if (!ctx) return;
         await page.render({ canvas: c, canvasContext: ctx, viewport: v2 }).promise;
         if (!cancelled) setReady(true);
-      } catch { /* ignore — overlay may have closed */ }
+      } catch { /* ignore */ }
     });
     return () => { cancelled = true; };
   }, [inView, doc, index, queueRef]);
@@ -375,6 +596,7 @@ function PageThumb({
       <button
         type="button"
         onClick={onClick}
+        onDoubleClick={onDoubleClick}
         className={cn(
           "flex w-full flex-col items-center gap-1 rounded-md border p-1 text-[11px] text-text-2 hover:border-vault/50 hover:bg-surface-2",
           active ? "border-vault text-vault" : "border-border",
@@ -393,19 +615,49 @@ function PageThumb({
 
 function CommentsTab({
   annos,
+  currentPage,
   onJump,
-  onEdit,
+  onAdd,
+  onUpdate,
+  onDelete,
 }: {
   annos: Anno[];
+  currentPage: number;
   onJump: (a: Anno) => void;
-  onEdit: (a: Anno) => void;
+  onAdd: (a: Anno) => void;
+  onUpdate: (id: string, patch: Partial<Anno>) => void;
+  onDelete: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<"all" | "open">("open");
+  const [drafting, setDrafting] = useState(false);
+  const [draft, setDraft] = useState("");
   const list = useMemo(() => {
     const commented = annos.filter((a) => a.contents);
     if (filter === "open") return commented.filter((a) => !a.resolved);
     return commented;
   }, [annos, filter]);
+
+  const addComment = () => {
+    const text = draft.trim();
+    if (!text) { setDrafting(false); return; }
+    const note: NoteAnno = {
+      id: crypto.randomUUID(),
+      kind: "note",
+      page: currentPage,
+      x: 24,
+      y: 24,
+      w: 180,
+      h: 28,
+      color: { r: 1, g: 0.85, b: 0 },
+      opacity: 1,
+      text: "",
+      contents: text,
+      createdAt: Date.now(),
+    };
+    onAdd(note);
+    setDraft("");
+    setDrafting(false);
+  };
 
   return (
     <div className="space-y-2">
@@ -413,37 +665,208 @@ function CommentsTab({
         <FilterChip active={filter === "open"} onClick={() => setFilter("open")} label="Open" />
         <FilterChip active={filter === "all"} onClick={() => setFilter("all")} label="All" />
         <span className="ml-auto text-text-muted">{list.length}</span>
+        <button
+          type="button"
+          onClick={() => setDrafting((v) => !v)}
+          className="ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-vault hover:bg-surface-2"
+        >
+          <Plus className="h-3 w-3" /> Add
+        </button>
       </div>
+
+      {drafting && (
+        <div className="rounded-md border border-border bg-surface-2 p-2">
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { setDraft(""); setDrafting(false); }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addComment();
+            }}
+            placeholder={`Comment on page ${currentPage + 1}…`}
+            className="block w-full resize-none bg-transparent text-[12px] text-foreground outline-none placeholder:text-text-muted"
+            rows={3}
+          />
+          <div className="mt-1 flex items-center justify-end gap-1 text-[11px]">
+            <button
+              type="button"
+              onClick={() => { setDraft(""); setDrafting(false); }}
+              className="rounded px-2 py-0.5 text-text-muted hover:bg-surface-1 hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={addComment}
+              disabled={!draft.trim()}
+              className="rounded bg-vault px-2 py-0.5 text-vault-foreground disabled:opacity-50"
+            >
+              Add comment
+            </button>
+          </div>
+        </div>
+      )}
+
       {list.length === 0 ? (
-        <Empty label="No comments yet. Add one from the Comments inspector." />
+        !drafting ? (
+          <div className="px-2 py-6 text-center text-[12px] text-text-muted">
+            No comments yet.{" "}
+            <button type="button" onClick={() => setDrafting(true)} className="text-vault hover:underline">
+              Add the first one
+            </button>{" "}
+            on page {currentPage + 1}.
+          </div>
+        ) : null
       ) : (
         <ul className="space-y-1.5">
           {list.map((a) => (
-            <li key={a.id}>
-              <div
-                className={cn(
-                  "rounded-md border border-border bg-surface-2 p-2 text-[12px]",
-                  a.resolved && "opacity-60",
-                )}
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <button type="button" onClick={() => onJump(a)} className="text-[11px] text-vault hover:underline">
-                    Page {a.page + 1} · {a.kind}
-                  </button>
-                  <button type="button" onClick={() => onEdit(a)} className="text-[11px] text-text-muted hover:text-foreground">
-                    Edit
-                  </button>
-                </div>
-                <p className="mt-1 whitespace-pre-wrap text-foreground">{a.contents}</p>
-                {a.author && (
-                  <p className="mt-1 text-[10.5px] text-text-muted">{a.author}</p>
-                )}
-              </div>
-            </li>
+            <CommentItem
+              key={a.id}
+              anno={a}
+              onJump={() => onJump(a)}
+              onUpdate={(patch) => onUpdate(a.id, patch)}
+              onDelete={() => onDelete(a.id)}
+            />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function CommentItem({
+  anno,
+  onJump,
+  onUpdate,
+  onDelete,
+}: {
+  anno: Anno;
+  onJump: () => void;
+  onUpdate: (patch: Partial<Anno>) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(anno.contents ?? "");
+  const [reply, setReply] = useState<string | null>(null);
+
+  const save = () => {
+    onUpdate({ contents: text.trim() || anno.contents });
+    setEditing(false);
+  };
+
+  const addReply = () => {
+    const t = (reply ?? "").trim();
+    if (!t) { setReply(null); return; }
+    const next = [
+      ...(anno.replies ?? []),
+      { id: crypto.randomUUID(), author: "You", text: t, createdAt: Date.now() },
+    ];
+    onUpdate({ replies: next });
+    setReply(null);
+  };
+
+  return (
+    <li>
+      <div className={cn("rounded-md border border-border bg-surface-2 p-2 text-[12px]", anno.resolved && "opacity-60")}>
+        <div className="flex items-baseline justify-between gap-2">
+          <button type="button" onClick={onJump} className="text-[11px] text-vault hover:underline">
+            Page {anno.page + 1} · {anno.kind}
+          </button>
+          <div className="flex items-center gap-0.5 text-text-muted">
+            <button
+              type="button"
+              onClick={() => onUpdate({ resolved: !anno.resolved })}
+              title={anno.resolved ? "Reopen" : "Resolve"}
+              className="grid h-6 w-6 place-items-center rounded hover:bg-surface-1 hover:text-foreground"
+            >
+              <Check className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEditing((v) => !v); setText(anno.contents ?? ""); }}
+              title="Edit"
+              className="grid h-6 w-6 place-items-center rounded hover:bg-surface-1 hover:text-foreground"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Delete"
+              className="grid h-6 w-6 place-items-center rounded hover:bg-surface-1 hover:text-foreground"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+
+        {editing ? (
+          <div className="mt-1">
+            <textarea
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setEditing(false);
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
+              }}
+              className="block w-full resize-none rounded border border-border bg-surface-1 p-1.5 text-[12px] text-foreground outline-none"
+              rows={3}
+            />
+            <div className="mt-1 flex justify-end gap-1 text-[11px]">
+              <button type="button" onClick={() => setEditing(false)} className="rounded px-2 py-0.5 text-text-muted hover:bg-surface-1 hover:text-foreground">Cancel</button>
+              <button type="button" onClick={save} className="rounded bg-vault px-2 py-0.5 text-vault-foreground">Save</button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-1 whitespace-pre-wrap text-foreground">{anno.contents}</p>
+        )}
+
+        {anno.author && !editing && (
+          <p className="mt-1 text-[10.5px] text-text-muted">{anno.author}</p>
+        )}
+
+        {anno.replies && anno.replies.length > 0 && (
+          <ul className="mt-2 space-y-1 border-l border-border pl-2">
+            {anno.replies.map((r) => (
+              <li key={r.id} className="text-[11.5px]">
+                <span className="text-text-muted">{r.author}: </span>
+                <span className="text-foreground whitespace-pre-wrap">{r.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {reply !== null ? (
+          <div className="mt-2 flex items-center gap-1">
+            <CornerDownRight className="h-3 w-3 text-text-muted" />
+            <input
+              autoFocus
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addReply();
+                if (e.key === "Escape") setReply(null);
+              }}
+              placeholder="Reply…"
+              className="min-w-0 flex-1 rounded border border-border bg-surface-1 px-1.5 py-1 text-[11.5px] text-foreground outline-none"
+            />
+            <button type="button" onClick={addReply} className="rounded px-1.5 py-0.5 text-[11px] text-vault hover:bg-surface-2">Reply</button>
+          </div>
+        ) : (
+          !editing && (
+            <button
+              type="button"
+              onClick={() => setReply("")}
+              className="mt-1.5 flex items-center gap-1 text-[11px] text-text-muted hover:text-foreground"
+            >
+              <CornerDownRight className="h-3 w-3" /> Reply
+            </button>
+          )
+        )}
+      </div>
+    </li>
   );
 }
 

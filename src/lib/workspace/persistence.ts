@@ -13,6 +13,7 @@ const DB_NAME = "vaultpdf-workspace";
 const UI_STORE = "ui";
 const DOC_STORE = "docs";
 const SIDECAR_STORE = "sidecars";
+const BOOKMARKS_STORE = "bookmarks";
 
 export const MAX_RECENT_COUNT = 10;
 export const MAX_RECENT_SIZE = 25 * 1024 * 1024; // 25 MB per doc
@@ -24,6 +25,7 @@ export function sidecarKey(name: string, size: number) {
 function identityKey(name: string, size: number) {
   return sidecarKey(name, size);
 }
+
 
 
 export type WorkspaceUIState = {
@@ -60,12 +62,15 @@ let dbp: Promise<IDBPDatabase> | null = null;
 function db() {
   if (typeof indexedDB === "undefined") return null;
   if (!dbp) {
-    dbp = openDB(DB_NAME, 2, {
+    dbp = openDB(DB_NAME, 3, {
       upgrade(d, oldVersion) {
         if (!d.objectStoreNames.contains(UI_STORE)) d.createObjectStore(UI_STORE);
         if (!d.objectStoreNames.contains(DOC_STORE)) d.createObjectStore(DOC_STORE);
         if (oldVersion < 2 && !d.objectStoreNames.contains(SIDECAR_STORE)) {
           d.createObjectStore(SIDECAR_STORE);
+        }
+        if (oldVersion < 3 && !d.objectStoreNames.contains(BOOKMARKS_STORE)) {
+          d.createObjectStore(BOOKMARKS_STORE);
         }
       },
       blocked() {
@@ -428,3 +433,55 @@ export async function deleteSidecar(name: string, size: number): Promise<void> {
     console.warn("[persistence] deleteSidecar failed", err);
   }
 }
+
+/* ----------------------------- Bookmarks ----------------------------- */
+// User-managed bookmarks per document, separate from the PDF's own outline.
+// Keyed by `${name}::${size}` — on-device only.
+
+export type UserBookmark = {
+  id: string;
+  title: string;
+  page: number; // 0-based
+  createdAt: number;
+};
+
+export async function loadBookmarks(name: string, size: number): Promise<UserBookmark[]> {
+  const d = db();
+  if (!d) return [];
+  try {
+    const conn = await d;
+    const rec = (await conn.get(BOOKMARKS_STORE, sidecarKey(name, size))) as
+      | UserBookmark[]
+      | undefined;
+    return rec ?? [];
+  } catch (err) {
+    console.warn("[persistence] loadBookmarks failed", err);
+    return [];
+  }
+}
+
+const bmTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const bmPending = new Map<string, UserBookmark[]>();
+export function saveBookmarksDebounced(name: string, size: number, list: UserBookmark[]) {
+  const d = db();
+  if (!d) return;
+  const key = sidecarKey(name, size);
+  bmPending.set(key, list);
+  const t = bmTimers.get(key);
+  if (t) clearTimeout(t);
+  bmTimers.set(
+    key,
+    setTimeout(async () => {
+      const snap = bmPending.get(key);
+      bmPending.delete(key);
+      if (!snap) return;
+      try {
+        const conn = await d;
+        await conn.put(BOOKMARKS_STORE, snap, key);
+      } catch (err) {
+        console.error("[persistence] saveBookmarks failed", err);
+      }
+    }, 300),
+  );
+}
+
