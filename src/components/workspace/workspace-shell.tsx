@@ -3455,6 +3455,22 @@ function EditorPages({
     };
   }, [recompute, sizes.length, zoom]);
 
+  // Scroll the active page into view whenever `state.current` changes
+  // (bookmark / thumbnail / annotation jumps dispatch SET_PAGE).
+  const lastJumpRef = useRef<number>(-1);
+  useEffect(() => {
+    const i = state.current;
+    if (i === lastJumpRef.current) return;
+    lastJumpRef.current = i;
+    const root = containerRef.current?.parentElement;
+    const el = pageRefs.current[i];
+    if (!root || !el) return;
+    const rRect = root.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const delta = eRect.top - rRect.top - 12;
+    root.scrollBy({ top: delta, behavior: "smooth" });
+  }, [state.current]);
+
   if (!state.doc) return null;
 
   const renderPage = (op: NonNullable<typeof pages>[number], i: number) => {
