@@ -603,18 +603,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       openInNewTabRef.current = false;
       if (!f) return;
       if (inNewTab) {
+        const docCount = tabs.filter((t) => t.file !== null).length;
+        if (docCount >= TAB_CAP) {
+          toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+          return;
+        }
+        // Build the new tab OUTSIDE the setState updater. Updaters can run
+        // twice (StrictMode), and makeBlankTab generates a fresh id each
+        // call — calling it inside would let setActiveId latch onto a
+        // discarded id, leaving zero tabs highlighted.
+        const next = makeBlankTab({ file: f, isDirty: false });
         setTabs((ts) => {
-          const docCount = ts.filter((t) => t.file !== null).length;
-          if (docCount >= TAB_CAP) {
-            toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
-            return ts;
-          }
-          const next = makeBlankTab({ file: f, isDirty: false });
-          setActiveId(next.id);
-          // Drop a leading blank tab so we don't accumulate invisible tabs.
           const cleaned = ts.filter((t) => t.file !== null);
           return [...cleaned, next];
         });
+        setActiveId(next.id);
       } else {
         patchActive({ file: f, isDirty: false });
       }
@@ -696,15 +699,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       toast.error("Couldn't restore — the previous files are no longer in local storage.");
       return;
     }
-    setTabs((ts) => {
-      // Replace the first blank tab if present; otherwise append.
-      const firstIsBlank = ts.length === 1 && !ts[0].file;
-      const base = firstIsBlank ? [] : ts;
-      const combined = [...base, ...restored].slice(0, TAB_CAP);
-      setActiveId(combined[base.length].id);
-      return combined;
-    });
-  }, [pendingResume]);
+    const firstIsBlank = tabs.length === 1 && !tabs[0].file;
+    const base = firstIsBlank ? [] : tabs;
+    const combined = [...base, ...restored].slice(0, TAB_CAP);
+    setTabs(combined);
+    setActiveId(combined[base.length].id);
+  }, [pendingResume, tabs]);
 
   const dismissResume = useCallback(() => {
     setPendingResume([]);
