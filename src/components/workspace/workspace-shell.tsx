@@ -3547,12 +3547,10 @@ function EditorPages({
     const rEl = el.getBoundingClientRect();
     const fullyVisible = rEl.top >= rRoot.top - 4 && rEl.bottom <= rRoot.bottom + 4;
     if (!fullyVisible) {
-      // Use instant scroll: smooth scrolling on a virtualized doc lets lazy
-      // page renders shift layout mid-animation, so we'd land on the wrong
-      // page and the user has to click again. Instant scroll lands exactly
-      // on the target and the dominant-page tracker locks on immediately.
-      programmaticUntilRef.current = Date.now() + 250;
-      el.scrollIntoView({ behavior: "auto", block: "start" });
+      // Open a window during which scroll-driven dominant-page updates are
+      // suppressed (smooth scrolling takes ~300-500ms on long jumps).
+      programmaticUntilRef.current = Date.now() + 800;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     lastScrolledRef.current = target;
   }, [state.current]);
