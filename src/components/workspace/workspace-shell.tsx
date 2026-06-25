@@ -3445,12 +3445,12 @@ function EditorPages({
       window.removeEventListener("resize", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [recompute, sizes.length, zoom]);
+  }, [recompute, sizes.size, zoom]);
 
   if (!state.doc) return null;
 
   const renderPage = (op: NonNullable<typeof pages>[number], i: number) => {
-    const meta = sizes[op.srcPage] ?? { width: op.width || 612, height: op.height || 792 };
+    const meta = sizes.get(op.srcPage) ?? defaultSize ?? { width: op.width || 612, height: op.height || 792 };
     const w = Math.ceil(meta.width * scale);
     const h = Math.ceil(meta.height * scale);
     const inView = visible.has(i);
