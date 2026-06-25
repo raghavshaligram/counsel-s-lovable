@@ -143,8 +143,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ConvertPanel ctx={ctx} />;
     case "image-convert":
       return <ImageConvertPanel ctx={ctx} />;
-    case "page-numbers":
-      return <PageNumbersPanel ctx={ctx} />;
+    case "doc-settings":
+      return <DocumentSettingsPanel ctx={ctx} />;
     case "comments":
       return <CommentsInspectorPanel ctx={ctx} />;
     default:
