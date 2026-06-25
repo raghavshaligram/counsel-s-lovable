@@ -1130,6 +1130,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const hasResumePoint = ocrPagesArr.length > 0 || ocrPagesCopiedArr.length > 0;
   const showOcrBanner =
     !!file && editorTool === "edit-text" && (ocrRunning || (unprocessedScannedSet.size > 0 && !ocrBannerDismissed));
+  // Persistent, quiet indicator: visible whenever there ARE scanned pages
+  // we haven't OCR'd, but the proactive banner above isn't showing. So
+  // "Not now" hides the loud prompt but leaves OCR one click away.
+  const showQuietOcrChip =
+    !!file && !ocrRunning && unprocessedScannedSet.size > 0 && !showOcrBanner;
 
 
 
