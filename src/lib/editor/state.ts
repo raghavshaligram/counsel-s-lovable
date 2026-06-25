@@ -7,6 +7,7 @@
  */
 import type {
   Anno,
+  DocSettings,
   EditorDoc,
   OcrPageLayer,
   PageOp,
