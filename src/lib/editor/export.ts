@@ -159,6 +159,40 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       drawWatermark(outPage, settings.watermark, font, pw, ph);
     }
 
+    // Doc-level page numbers (persistent per-document setting, stamped at export).
+    const pn = doc.docSettings?.pageNumbers;
+    if (pn?.enabled && i >= pn.skipFirst) {
+      const totalNumbered = Math.max(0, doc.pages.length - pn.skipFirst);
+      const n = pn.startAt + (i - pn.skipFirst);
+      const lastN = pn.startAt + totalNumbered - 1;
+      const text = (pn.prefix ?? "") + formatPageNumber(n, lastN, pn.format);
+      const tw = font.widthOfTextAtSize(text, pn.fontSize);
+      const th = pn.fontSize;
+      const m = pn.margin;
+      let px = m, py = m;
+      if (pn.anchor.endsWith("center")) px = (pw - tw) / 2;
+      if (pn.anchor.endsWith("right"))  px = pw - m - tw;
+      if (pn.anchor.startsWith("top"))  py = ph - m - th;
+      outPage.drawText(text, { x: px, y: py, size: pn.fontSize, font, color: rgb(0.1, 0.1, 0.1) });
+    }
+
+    // Doc-level header/footer (persistent per-document setting).
+    const hf = doc.docSettings?.headerFooter;
+    if (hf?.enabled && hfShouldDraw(hf.rule, i)) {
+      const totalP = doc.pages.length;
+      const drawHF = (raw: string, y: number) => {
+        const text = applyHFTokens(raw, i + 1, totalP, doc.fileName);
+        const tw = font.widthOfTextAtSize(text, hf.fontSize);
+        let x = hf.margin;
+        if (hf.align === "center") x = (pw - tw) / 2;
+        if (hf.align === "right")  x = pw - hf.margin - tw;
+        outPage.drawText(text, { x, y, size: hf.fontSize, font, color: rgb(0.15, 0.15, 0.15) });
+      };
+      if (hf.headerText) drawHF(hf.headerText, ph - hf.margin - hf.fontSize);
+      if (hf.footerText) drawHF(hf.footerText, hf.margin);
+    }
+
+
     // Page crop — convert top-left rect to PDF bottom-left, set CropBox + MediaBox.
     if (op.cropBox && !op.blank) {
       const r = op.cropBox;
