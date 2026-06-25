@@ -2541,7 +2541,9 @@ function PagesPlaceholder({
         const { loadPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        // pdf.js transfers the data buffer into its worker (detaches it),
+        // so hand it a copy and keep `bytes` intact for srcBytes/render reuse.
+        const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
         if (cancelled) return;
         const n = continuous ? doc.numPages : Math.min(1, doc.numPages);
         const sizes: Array<{ width: number; height: number }> = [];
