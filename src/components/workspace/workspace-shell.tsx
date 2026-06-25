@@ -1557,7 +1557,24 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       {/* BOTTOM BAR */}
       <footer className="flex h-[38px] shrink-0 items-center justify-between border-t border-border bg-surface-1 px-3 text-[11.5px]">
         <div className="font-mono text-text-muted truncate">
-          {file ? `${file.name} · — pages · ${sizeLabel}` : "No document loaded"}
+          {file ? (
+            <>
+              {file.name}
+              {editorState.doc ? (
+                <>
+                  {" · "}
+                  <span className="tabular-nums text-text-2">
+                    Page {editorState.current + 1} of {editorState.doc.pages.length}
+                  </span>
+                </>
+              ) : (
+                " · — pages"
+              )}
+              {" · "}{sizeLabel}
+            </>
+          ) : (
+            "No document loaded"
+          )}
         </div>
         <div className="flex items-center gap-1">
           <ZoomButton
