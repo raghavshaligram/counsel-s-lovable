@@ -147,6 +147,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <DocumentSettingsPanel ctx={ctx} />;
     case "comments":
       return <CommentsInspectorPanel ctx={ctx} />;
+    case "outline":
+      return <OutlinePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -4932,3 +4934,421 @@ function CommentInspectorCard({
   );
 }
 
+
+/* ============================== Outline & Links ============================== */
+
+function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, editorState, editorDispatch } = ctx;
+  const [parsed, setParsed] = useState<import("@/lib/outline/types").ParsedDoc | null>(null);
+  const [outline, setOutline] = useState<import("@/lib/outline/types").OutlineNode[]>([]);
+  const [links, setLinks] = useState<import("@/lib/outline/types").LinkAnnot[]>([]);
+  const [bytes, setBytes] = useState<Uint8Array | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const currentPage = editorState?.current ?? 0;
+  const fileKey = file ? `${file.name}:${file.size}:${file.lastModified}` : "";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!file) { setParsed(null); setOutline([]); setLinks([]); setBytes(null); return; }
+    setLoading(true);
+    (async () => {
+      try {
+        const { parsePdf } = await import("@/lib/outline/parse");
+        const buf = new Uint8Array(await file.arrayBuffer());
+        const { parsed } = await parsePdf(buf);
+        if (cancelled) return;
+        setBytes(buf);
+        setParsed(parsed);
+        setOutline(parsed.outline);
+        setLinks(parsed.links);
+        setSelectedNodeId(null);
+      } catch (err) {
+        console.error("[outline] parse failed", err);
+        toast.error("Couldn't read outline", { description: (err as Error).message });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileKey]);
+
+  const findNode = useCallback((id: string, nodes = outline): import("@/lib/outline/types").OutlineNode | null => {
+    for (const n of nodes) {
+      if (n.id === id) return n;
+      const f = findNode(id, n.children); if (f) return f;
+    }
+    return null;
+  }, [outline]);
+
+  const updateNode = useCallback((id: string, patch: Partial<import("@/lib/outline/types").OutlineNode>) => {
+    setOutline((tree) => {
+      const walk = (nodes: import("@/lib/outline/types").OutlineNode[]): import("@/lib/outline/types").OutlineNode[] =>
+        nodes.map((n) => (n.id === id ? { ...n, ...patch } : { ...n, children: walk(n.children) }));
+      return walk(tree);
+    });
+  }, []);
+
+  const removeNode = useCallback((id: string) => {
+    setOutline((tree) => {
+      const walk = (nodes: import("@/lib/outline/types").OutlineNode[]): import("@/lib/outline/types").OutlineNode[] =>
+        nodes.filter((n) => n.id !== id).map((n) => ({ ...n, children: walk(n.children) }));
+      return walk(tree);
+    });
+    setSelectedNodeId((s) => (s === id ? null : s));
+  }, []);
+
+  const moveNode = useCallback((id: string, dir: -1 | 1) => {
+    setOutline((tree) => {
+      const walk = (nodes: import("@/lib/outline/types").OutlineNode[]): import("@/lib/outline/types").OutlineNode[] => {
+        const idx = nodes.findIndex((n) => n.id === id);
+        if (idx >= 0) {
+          const t = idx + dir;
+          if (t < 0 || t >= nodes.length) return nodes;
+          const next = nodes.slice();
+          const [m] = next.splice(idx, 1);
+          next.splice(t, 0, m);
+          return next;
+        }
+        return nodes.map((n) => ({ ...n, children: walk(n.children) }));
+      };
+      return walk(tree);
+    });
+  }, []);
+
+  const indentNode = useCallback((id: string) => {
+    setOutline((tree) => {
+      const walk = (nodes: import("@/lib/outline/types").OutlineNode[]): import("@/lib/outline/types").OutlineNode[] => {
+        const idx = nodes.findIndex((n) => n.id === id);
+        if (idx > 0) {
+          const moved = nodes[idx];
+          const prev = nodes[idx - 1];
+          const next = nodes.slice();
+          next.splice(idx, 1);
+          next[idx - 1] = { ...prev, expanded: true, children: [...prev.children, moved] };
+          return next;
+        }
+        return nodes.map((n) => ({ ...n, children: walk(n.children) }));
+      };
+      return walk(tree);
+    });
+  }, []);
+
+  const outdentNode = useCallback((id: string) => {
+    setOutline((tree) => {
+      const walk = (nodes: import("@/lib/outline/types").OutlineNode[], parentIdx: number | null, parentArr: import("@/lib/outline/types").OutlineNode[] | null): import("@/lib/outline/types").OutlineNode[] => {
+        for (let i = 0; i < nodes.length; i++) {
+          if (nodes[i].id === id && parentArr && parentIdx !== null) {
+            const moved = nodes[i];
+            const newChildren = nodes.slice(0, i).concat(nodes.slice(i + 1));
+            const newParent = { ...parentArr[parentIdx], children: newChildren };
+            const out = parentArr.slice();
+            out[parentIdx] = newParent;
+            out.splice(parentIdx + 1, 0, moved);
+            return out;
+          }
+        }
+        return nodes.map((n, i) => ({ ...n, children: walk(n.children, i, nodes) }));
+      };
+      if (tree.some((n) => n.id === id)) return tree; // already root
+      return walk(tree, null, null);
+    });
+  }, []);
+
+  const addAtRoot = useCallback(() => {
+    const newId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+    const node = {
+      id: newId("o"),
+      title: "New bookmark",
+      dest: { page: currentPage, x: null, y: null, zoom: null },
+      style: { bold: false, italic: false },
+      color: null as [number, number, number] | null,
+      expanded: true,
+      children: [],
+    };
+    setOutline((tree) => [...tree, node]);
+    setSelectedNodeId(node.id);
+  }, [currentPage]);
+
+  const runLinkify = useCallback(async () => {
+    if (!bytes) return;
+    setBusy(true);
+    try {
+      const { linkifyPage } = await import("@/lib/outline/linkify");
+      const found = await linkifyPage(bytes, currentPage, links);
+      if (found.length === 0) toast.message(`No new URLs on page ${currentPage + 1}`);
+      else {
+        setLinks((arr) => [...arr, ...found]);
+        toast.success(`Linkified ${found.length} URL${found.length === 1 ? "" : "s"} on page ${currentPage + 1}`);
+      }
+    } catch (err) {
+      console.error("[outline] linkify failed", err);
+      toast.error("Linkify failed", { description: (err as Error).message });
+    } finally { setBusy(false); }
+  }, [bytes, currentPage, links]);
+
+  const exportPdf = useCallback(async () => {
+    if (!bytes || !file) return;
+    setBusy(true);
+    try {
+      const { exportPdf } = await import("@/lib/outline/write");
+      const out = await exportPdf(bytes, outline, links);
+      const base = file.name.replace(/\.pdf$/i, "");
+      downloadBytes(out, `${base}-outline.pdf`, "application/pdf");
+      toast.success("Exported PDF with updated outline & links");
+    } catch (err) {
+      console.error("[outline] export failed", err);
+      toast.error("Export failed", { description: (err as Error).message });
+    } finally { setBusy(false); }
+  }, [bytes, file, outline, links]);
+
+  const selectedNode = selectedNodeId ? findNode(selectedNodeId) : null;
+  const pageCount = parsed?.pageCount ?? 1;
+  const linksOnCurrent = links.filter((l) => l.page === currentPage);
+
+  if (!file) {
+    return <p className="text-[11.5px] leading-snug text-text-2">Open a document to edit its outline & links.</p>;
+  }
+  if (loading || !parsed) {
+    return <p className="text-[11.5px] text-text-muted">Reading outline…</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section
+        title="Bookmarks"
+        icon={<ChevronDown className="h-3 w-3" />}
+        right={
+          <button
+            type="button"
+            onClick={addAtRoot}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            <Plus className="h-3 w-3" /> Add
+          </button>
+        }
+      >
+        {outline.length === 0 ? (
+          <p className="text-[11.5px] text-text-muted">No bookmarks. Add one to get started.</p>
+        ) : (
+          <OutlineTree
+            nodes={outline}
+            level={0}
+            selectedId={selectedNodeId}
+            onSelect={(id) => {
+              setSelectedNodeId(id);
+              const n = findNode(id);
+              if (n?.dest) editorDispatch({ type: "SET_PAGE", n: n.dest.page });
+            }}
+            onToggle={(id, expanded) => updateNode(id, { expanded })}
+          />
+        )}
+      </Section>
+
+      {selectedNode && (
+        <Section title="Edit bookmark" icon={<PenLine className="h-3 w-3" />}>
+          <div className="flex flex-col gap-2">
+            <input
+              value={selectedNode.title}
+              onChange={(e) => updateNode(selectedNode.id, { title: e.target.value })}
+              className="w-full rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
+              placeholder="Title"
+            />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10.5px] uppercase tracking-[0.12em] text-text-muted">Page</span>
+              <input
+                type="number"
+                min={1}
+                max={pageCount}
+                value={(selectedNode.dest?.page ?? 0) + 1}
+                onChange={(e) => {
+                  const n = Math.max(1, Math.min(pageCount, Number(e.target.value) || 1));
+                  updateNode(selectedNode.id, { dest: { page: n - 1, x: null, y: null, zoom: null } });
+                }}
+                className="w-16 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12px] text-foreground focus:outline-none focus:border-vault/50"
+              />
+              <span className="text-[10.5px] text-text-muted">of {pageCount}</span>
+              <button
+                type="button"
+                onClick={() => updateNode(selectedNode.id, { dest: { page: currentPage, x: null, y: null, zoom: null } })}
+                className="ml-auto rounded-md border border-border px-1.5 py-0.5 text-[10.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+              >
+                Use p.{currentPage + 1}
+              </button>
+            </div>
+            <div className="flex items-center gap-2 text-[11px]">
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" className="h-3 w-3 accent-[var(--vault)]"
+                  checked={selectedNode.style.bold}
+                  onChange={(e) => updateNode(selectedNode.id, { style: { ...selectedNode.style, bold: e.target.checked } })} />
+                <span className="font-bold">Bold</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" className="h-3 w-3 accent-[var(--vault)]"
+                  checked={selectedNode.style.italic}
+                  onChange={(e) => updateNode(selectedNode.id, { style: { ...selectedNode.style, italic: e.target.checked } })} />
+                <span className="italic">Italic</span>
+              </label>
+              <div className="ml-auto flex items-center gap-0.5">
+                <button type="button" onClick={() => moveNode(selectedNode.id, -1)} className="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-2 hover:text-foreground" aria-label="Move up">↑</button>
+                <button type="button" onClick={() => moveNode(selectedNode.id, 1)} className="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-2 hover:text-foreground" aria-label="Move down">↓</button>
+                <button type="button" onClick={() => outdentNode(selectedNode.id)} className="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-2 hover:text-foreground" aria-label="Outdent">⇤</button>
+                <button type="button" onClick={() => indentNode(selectedNode.id)} className="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-2 hover:text-foreground" aria-label="Indent">⇥</button>
+                <button type="button" onClick={() => removeNode(selectedNode.id)} className="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-2 hover:text-foreground" aria-label="Delete">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      <Section
+        title={`Links · page ${currentPage + 1}`}
+        icon={<MessageSquare className="h-3 w-3" />}
+        right={
+          <button
+            type="button"
+            onClick={runLinkify}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-text-2 hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+          >
+            <Wand2 className="h-3 w-3" /> Linkify URLs
+          </button>
+        }
+      >
+        {linksOnCurrent.length === 0 ? (
+          <p className="text-[11.5px] text-text-muted">No link annotations on this page. Use Linkify to auto-detect URLs.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {linksOnCurrent.map((l) => (
+              <li key={l.id} className="rounded-md border border-border bg-surface-2 p-1.5 flex flex-col gap-1">
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={l.target.kind}
+                    onChange={(e) => {
+                      const kind = e.target.value as "url" | "goto";
+                      setLinks((arr) => arr.map((x) => x.id === l.id ? {
+                        ...x,
+                        target: kind === "url"
+                          ? { kind: "url", url: l.target.kind === "url" ? l.target.url : "https://" }
+                          : { kind: "goto", dest: l.target.kind === "goto" ? l.target.dest : { page: l.page, x: null, y: null, zoom: null } },
+                      } : x));
+                    }}
+                    className="rounded border border-border bg-surface-1 px-1 py-0.5 text-[11px] text-foreground focus:outline-none"
+                  >
+                    <option value="url">URL</option>
+                    <option value="goto">Page</option>
+                  </select>
+                  {l.target.kind === "url" ? (
+                    <input
+                      value={l.target.url}
+                      onChange={(e) => setLinks((arr) => arr.map((x) => x.id === l.id ? { ...x, target: { kind: "url", url: e.target.value } } : x))}
+                      className="min-w-0 flex-1 rounded border border-border bg-surface-1 px-1.5 py-0.5 text-[11.5px] text-foreground focus:outline-none focus:border-vault/50"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      min={1}
+                      max={pageCount}
+                      value={l.target.dest.page + 1}
+                      onChange={(e) => {
+                        const n = Math.max(1, Math.min(pageCount, Number(e.target.value) || 1));
+                        setLinks((arr) => arr.map((x) => x.id === l.id ? { ...x, target: { kind: "goto", dest: { page: n - 1, x: null, y: null, zoom: null } } } : x));
+                      }}
+                      className="w-16 rounded border border-border bg-surface-1 px-1.5 py-0.5 text-[11.5px] text-foreground focus:outline-none focus:border-vault/50"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setLinks((arr) => arr.filter((x) => x.id !== l.id))}
+                    className="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-3 hover:text-foreground"
+                    aria-label="Delete link"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="text-[10px] font-mono text-text-muted tabular-nums">
+                  rect {l.rect.map((n) => Math.round(n)).join(", ")}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <button
+        type="button"
+        onClick={exportPdf}
+        disabled={busy || !bytes}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+          (busy || !bytes) && "opacity-60 cursor-wait",
+        )}
+      >
+        <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy ? "Working…" : "Export PDF"}
+      </button>
+      <p className="inline-flex items-center gap-1 text-[10.5px] text-text-muted">
+        <Lock className="h-2.5 w-2.5" /> Outline edits stay on this device until you export.
+      </p>
+    </div>
+  );
+}
+
+function OutlineTree({
+  nodes,
+  level,
+  selectedId,
+  onSelect,
+  onToggle,
+}: {
+  nodes: import("@/lib/outline/types").OutlineNode[];
+  level: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onToggle: (id: string, expanded: boolean) => void;
+}) {
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {nodes.map((n) => (
+        <li key={n.id}>
+          <div
+            className={cn(
+              "flex items-center gap-1 rounded px-1 py-0.5 cursor-pointer text-[12px]",
+              selectedId === n.id ? "bg-vault/15 text-vault" : "hover:bg-surface-2",
+            )}
+            style={{ paddingLeft: 4 + level * 10 }}
+            onClick={() => onSelect(n.id)}
+          >
+            {n.children.length > 0 ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggle(n.id, !n.expanded); }}
+                className="grid h-4 w-4 place-items-center text-text-muted hover:text-foreground"
+                aria-label={n.expanded ? "Collapse" : "Expand"}
+              >
+                {n.expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronDown className="h-3 w-3 -rotate-90" />}
+              </button>
+            ) : (
+              <span className="inline-block h-4 w-4" />
+            )}
+            <span
+              className={cn("truncate flex-1", n.style.bold && "font-semibold", n.style.italic && "italic")}
+            >
+              {n.title || "Untitled"}
+            </span>
+            {n.dest && (
+              <span className="text-[10px] font-mono text-text-muted tabular-nums">p.{n.dest.page + 1}</span>
+            )}
+          </div>
+          {n.expanded && n.children.length > 0 && (
+            <OutlineTree nodes={n.children} level={level + 1} selectedId={selectedId} onSelect={onSelect} onToggle={onToggle} />
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
