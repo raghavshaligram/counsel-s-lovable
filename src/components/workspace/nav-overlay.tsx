@@ -4,24 +4,41 @@
  * list). Pure navigation: clicking jumps to the page (and selects the anno
  * for comments). Editing surfaces stay in the right inspector.
  *
- * No second rail. Opens via the floating-toolbar button or ⌘B. Closes on
- * Esc / outside click / toggle. Design tokens only. On-device only.
+ * IMPORTANT: this overlay reuses the already-parsed `pdfDoc` instance owned
+ * by the workspace shell. It must NOT call `pdf-lib`'s `parsePdf` and must
+ * NOT call `pdfjs.getDocument` a second time — a second parse on a 400-page
+ * document freezes the main thread ("Page Unresponsive").
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bookmark, FileText, MessageSquare, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parsePdf } from "@/lib/outline/parse";
-import { loadPdfjs } from "@/lib/pdf/worker";
-import type { OutlineNode } from "@/lib/outline/types";
 import type { Anno } from "@/lib/editor/types";
 
 type Tab = "bookmarks" | "pages" | "comments";
+
+// Minimal structural type for the pdf.js document we receive from the shell.
+// We intentionally type only what we touch to avoid pulling pdfjs types here.
+type PdfJsDoc = {
+  numPages: number;
+  getOutline: () => Promise<OutlineItem[] | null>;
+  getPageIndex: (ref: unknown) => Promise<number>;
+  getDestination: (name: string) => Promise<unknown[] | null>;
+  getPage: (n: number) => Promise<unknown>;
+};
+
+type OutlineItem = {
+  title: string;
+  bold?: boolean;
+  italic?: boolean;
+  dest?: string | unknown[] | null;
+  items?: OutlineItem[];
+};
 
 type Props = {
   open: boolean;
   defaultTab?: Tab;
   fileName: string | null;
-  bytes: Uint8Array | null;
+  pdfDoc: unknown | null;
   pageCount: number;
   annotations: Anno[];
   currentPage: number;
@@ -35,6 +52,7 @@ export function NavOverlay(props: Props) {
   const { open, defaultTab = "bookmarks", onClose } = props;
   const [tab, setTab] = useState<Tab>(defaultTab);
   const ref = useRef<HTMLDivElement>(null);
+  const doc = props.pdfDoc as PdfJsDoc | null;
 
   useEffect(() => {
     if (open) setTab(defaultTab);
@@ -81,11 +99,11 @@ export function NavOverlay(props: Props) {
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {tab === "bookmarks" && (
-          <BookmarksTab bytes={props.bytes} onJump={(n) => { props.onJumpPage(n); onClose(); }} />
+          <BookmarksTab doc={doc} onJump={(n) => { props.onJumpPage(n); onClose(); }} />
         )}
         {tab === "pages" && (
           <PagesTab
-            bytes={props.bytes}
+            doc={doc}
             pageCount={props.pageCount}
             current={props.currentPage}
             onJump={(n) => { props.onJumpPage(n); onClose(); }}
@@ -122,40 +140,98 @@ function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: ()
 
 /* --------------------------- Bookmarks --------------------------- */
 
-function BookmarksTab({ bytes, onJump }: { bytes: Uint8Array | null; onJump: (n: number) => void }) {
-  const [outline, setOutline] = useState<OutlineNode[] | null>(null);
+type FlatNode = {
+  id: string;
+  title: string;
+  bold?: boolean;
+  italic?: boolean;
+  depth: number;
+  pageIndex: number | null; // resolved 0-based page index, or null if unresolved
+  children: FlatNode[];
+};
+
+function BookmarksTab({ doc, onJump }: { doc: PdfJsDoc | null; onJump: (n: number) => void }) {
+  const [outline, setOutline] = useState<FlatNode[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    if (!bytes) { setOutline([]); return; }
+    if (!doc) { setOutline([]); return; }
     setOutline(null);
     setErr(null);
-    parsePdf(bytes.slice())
-      .then(({ parsed }) => { if (!cancelled) setOutline(parsed.outline); })
-      .catch((e) => { if (!cancelled) setErr((e as Error).message); });
-    return () => { cancelled = true; };
-  }, [bytes]);
 
+    (async () => {
+      try {
+        const items = await doc.getOutline();
+        if (cancelled) return;
+        if (!items || items.length === 0) { setOutline([]); return; }
+
+        // Resolve destinations to page indices, reusing the SAME pdfDoc.
+        // No second parse, no bytes.slice().
+        let counter = 0;
+        const resolve = async (list: OutlineItem[], depth: number): Promise<FlatNode[]> => {
+          const out: FlatNode[] = [];
+          for (const it of list) {
+            let pageIndex: number | null = null;
+            try {
+              let destArray: unknown[] | null = null;
+              if (Array.isArray(it.dest)) {
+                destArray = it.dest;
+              } else if (typeof it.dest === "string") {
+                destArray = await doc.getDestination(it.dest);
+              }
+              if (destArray && destArray.length > 0) {
+                pageIndex = await doc.getPageIndex(destArray[0]);
+              }
+            } catch {
+              pageIndex = null;
+            }
+            const children = it.items && it.items.length > 0
+              ? await resolve(it.items, depth + 1)
+              : [];
+            out.push({
+              id: `o-${counter++}`,
+              title: it.title || "(untitled)",
+              bold: it.bold,
+              italic: it.italic,
+              depth,
+              pageIndex,
+              children,
+            });
+          }
+          return out;
+        };
+
+        const resolved = await resolve(items, 0);
+        if (!cancelled) setOutline(resolved);
+      } catch (e) {
+        if (!cancelled) setErr((e as Error).message);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [doc]);
+
+  if (!doc) return <Empty label="No document loaded." />;
   if (err) return <Empty label={`Could not read outline — ${err}`} />;
   if (outline === null) return <Empty label="Reading bookmarks…" />;
-  if (outline.length === 0) return <Empty label="No bookmarks. Add bookmarks in the Outline & Links inspector." />;
+  if (outline.length === 0) return <Empty label="No bookmarks in this document." />;
 
   return (
     <ul className="space-y-0.5 text-[12.5px]">
       {outline.map((n) => (
-        <OutlineRow key={n.id} node={n} depth={0} onJump={onJump} />
+        <OutlineRow key={n.id} node={n} onJump={onJump} />
       ))}
     </ul>
   );
 }
 
-function OutlineRow({ node, depth, onJump }: { node: OutlineNode; depth: number; onJump: (n: number) => void }) {
-  const [open, setOpen] = useState(node.expanded ?? true);
+function OutlineRow({ node, onJump }: { node: FlatNode; onJump: (n: number) => void }) {
+  const [open, setOpen] = useState(true);
   const hasChildren = node.children.length > 0;
   return (
     <li>
-      <div className="flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: depth * 12 }}>
+      <div className="flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: node.depth * 12 }}>
         {hasChildren ? (
           <button
             type="button"
@@ -170,26 +246,26 @@ function OutlineRow({ node, depth, onJump }: { node: OutlineNode; depth: number;
         )}
         <button
           type="button"
-          onClick={() => node.dest && onJump(node.dest.page)}
-          disabled={!node.dest}
+          onClick={() => node.pageIndex !== null && onJump(node.pageIndex)}
+          disabled={node.pageIndex === null}
           className={cn(
             "min-w-0 flex-1 truncate py-1 text-left text-foreground",
-            !node.dest && "text-text-muted",
-            node.style?.bold && "font-semibold",
-            node.style?.italic && "italic",
+            node.pageIndex === null && "text-text-muted",
+            node.bold && "font-semibold",
+            node.italic && "italic",
           )}
           title={node.title}
         >
-          {node.title || "(untitled)"}
+          {node.title}
         </button>
-        {node.dest && (
-          <span className="shrink-0 px-1 text-[11px] tabular-nums text-text-muted">{node.dest.page + 1}</span>
+        {node.pageIndex !== null && (
+          <span className="shrink-0 px-1 text-[11px] tabular-nums text-text-muted">{node.pageIndex + 1}</span>
         )}
       </div>
       {hasChildren && open && (
         <ul className="space-y-0.5">
           {node.children.map((c) => (
-            <OutlineRow key={c.id} node={c} depth={depth + 1} onJump={onJump} />
+            <OutlineRow key={c.id} node={c} onJump={onJump} />
           ))}
         </ul>
       )}
@@ -199,51 +275,26 @@ function OutlineRow({ node, depth, onJump }: { node: OutlineNode; depth: number;
 
 /* ----------------------------- Pages ----------------------------- */
 /**
- * Thumbnails. Parse the PDF ONCE per overlay open and share the doc across
- * all thumbnails. Render each thumbnail only when it scrolls into view, and
- * funnel renders through a single-slot queue so a 400-page doc doesn't fire
- * 400 concurrent pdf.js render jobs (which is what caused the main thread
- * to lock up and trigger "Page Unresponsive").
+ * Thumbnails reuse the already-parsed pdfDoc — no second getDocument call.
+ * Each thumbnail renders only when scrolled into view, and all renders are
+ * funnelled through a single-slot queue so a 400-page doc never fires 400
+ * concurrent pdf.js render jobs.
  */
 
-type ThumbDoc = { numPages: number; getPage: (n: number) => Promise<unknown> };
-
 function PagesTab({
-  bytes,
+  doc,
   pageCount,
   current,
   onJump,
 }: {
-  bytes: Uint8Array | null;
+  doc: PdfJsDoc | null;
   pageCount: number;
   current: number;
   onJump: (n: number) => void;
 }) {
-  const [doc, setDoc] = useState<ThumbDoc | null>(null);
-  // Serialise thumbnail renders. pdf.js runs in its own worker, but every
-  // render still posts work onto the main thread to paint into a canvas.
-  // One-at-a-time keeps the UI responsive even on 1000-page documents.
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
-  useEffect(() => {
-    if (!bytes) { setDoc(null); return; }
-    let cancelled = false;
-    let pdfDoc: { destroy?: () => Promise<void> } | null = null;
-    (async () => {
-      const pdfjs = await loadPdfjs();
-      const d = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-      if (cancelled) { try { (d as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ } return; }
-      pdfDoc = d as unknown as { destroy?: () => Promise<void> };
-      setDoc({ numPages: d.numPages, getPage: (n) => d.getPage(n) });
-    })().catch(() => { /* ignore */ });
-    return () => {
-      cancelled = true;
-      try { pdfDoc?.destroy?.(); } catch { /* ignore */ }
-    };
-  }, [bytes]);
-
-  if (!bytes || pageCount === 0) return <Empty label="No document loaded." />;
-  if (!doc) return <Empty label="Loading thumbnails…" />;
+  if (!doc || pageCount === 0) return <Empty label="No document loaded." />;
 
   return (
     <ul className="grid grid-cols-2 gap-2">
@@ -268,7 +319,7 @@ function PageThumb({
   active,
   onClick,
 }: {
-  doc: ThumbDoc;
+  doc: PdfJsDoc;
   queueRef: React.MutableRefObject<Promise<void>>;
   index: number;
   active: boolean;
@@ -279,7 +330,6 @@ function PageThumb({
   const [inView, setInView] = useState(false);
   const [ready, setReady] = useState(false);
 
-  // Render only when scrolled into view.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el || inView) return;
@@ -295,7 +345,6 @@ function PageThumb({
   useEffect(() => {
     if (!inView) return;
     let cancelled = false;
-    // Append to the shared single-slot queue.
     queueRef.current = queueRef.current.then(async () => {
       if (cancelled) return;
       try {
