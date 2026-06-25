@@ -1200,6 +1200,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </span>
           <button
             type="button"
+            onClick={() => file && openTool("doc-settings")}
+            disabled={!file}
+            title="Document Settings — page numbers, header &amp; footer"
+            aria-label="Document Settings"
+            className={cn(
+              "inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2 transition-colors hover:bg-surface-2 hover:text-foreground",
+              activeToolId === "doc-settings" && inspectorOpen && "bg-accent-soft text-vault",
+              !file && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-text-2",
+            )}
+          >
+            <SettingsIcon className="h-4 w-4" strokeWidth={2} />
+          </button>
+          <button
+            type="button"
             onClick={onExport}
             className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 transition-opacity"
           >
