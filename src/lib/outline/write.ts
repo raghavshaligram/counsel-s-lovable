@@ -85,7 +85,7 @@ function buildOutlineItems(
   return { items, descendants };
 }
 
-export function writeOutline(doc: PDFDocument, nodes: OutlineNode[]): void {
+function writeOutline(doc: PDFDocument, nodes: OutlineNode[]): void {
   const ctx = doc.context;
   // Remove existing outlines outright (we rebuild fresh).
   doc.catalog.delete(PDFName.of("Outlines"));

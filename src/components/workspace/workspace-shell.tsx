@@ -54,7 +54,6 @@ import {
   Pin,
   PinOff,
   FileCheck2,
-  Settings as SettingsIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
@@ -149,7 +148,8 @@ const TOOLS: RailTool[] = [
   { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
   { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
-  { id: "doc-settings", label: "Document Settings", icon: Layout, group: "layout", groupLabel: "Layout" },
+  { id: "page-numbers", label: "Page Numbers", icon: Hash, group: "layout", groupLabel: "Layout" },
+  { id: "header-footer", label: "Header & Footer", icon: Layout, group: "layout", groupLabel: "Layout" },
   { id: "flatten", label: "Flatten", icon: Layers, group: "layout", groupLabel: "Layout" },
   // Legal
   { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
@@ -349,16 +349,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, [patchTab]);
   // Refit whenever the active tab changes.
   useEffect(() => { setFitNonce((n) => n + 1); }, [activeId]);
-
-  // Invariant: activeId must always reference a tab that exists. If a tab
-  // was removed (or an id mismatch sneaks in), snap the highlight to the
-  // most recent document tab so the strip is never left with zero active.
-  useEffect(() => {
-    if (tabs.some((t) => t.id === activeId)) return;
-    const docTabs = tabs.filter((t) => t.file !== null);
-    const fallback = docTabs[docTabs.length - 1] ?? tabs[tabs.length - 1];
-    if (fallback) setActiveId(fallback.id);
-  }, [tabs, activeId]);
 
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [usage, setUsage] = useState<Record<string, number>>({});
@@ -609,21 +599,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       openInNewTabRef.current = false;
       if (!f) return;
       if (inNewTab) {
-        let next: TabState | null = null;
         setTabs((ts) => {
           const docCount = ts.filter((t) => t.file !== null).length;
           if (docCount >= TAB_CAP) {
             toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
             return ts;
           }
-          // Reuse the tab created on the first StrictMode invocation so the
-          // id we hand to setActiveId always matches a tab in state.
-          if (!next) next = makeBlankTab({ file: f, isDirty: false });
-          // Drop any leading blank tabs so we don't accumulate invisible tabs.
+          const next = makeBlankTab({ file: f, isDirty: false });
+          setActiveId(next.id);
+          // Drop a leading blank tab so we don't accumulate invisible tabs.
           const cleaned = ts.filter((t) => t.file !== null);
           return [...cleaned, next];
         });
-        if (next) setActiveId((next as TabState).id);
       } else {
         patchActive({ file: f, isDirty: false });
       }
@@ -848,9 +835,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const bytes = new Uint8Array(await f.arrayBuffer());
         const { loadPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await loadPdfjs();
-        // pdf.js transfers the data buffer into its worker (detaches it),
-        // so hand it a copy and keep `bytes` intact as srcBytes.
-        const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
@@ -873,7 +858,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
-        // Replay the on-device sidecar (annotations + page-ops + ocrLayer + outline)
+        // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
         // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
         if (!cancelled && side) {
@@ -882,8 +867,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             annotations: side.annotations,
             pages: side.pages,
             ocrLayer: side.ocrLayer,
-            outline: side.outline,
-            docSettings: side.docSettings,
           });
         }
         const pendingTool = postLoadToolRef.current.get(tabId);
@@ -918,16 +901,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       annotations: d.annotations,
       pages: d.pages,
       ocrLayer: d.ocrLayer,
-      outline: d.outline,
-      docSettings: d.docSettings,
     });
   }, [
     active.file,
     active.editor.doc?.annotations,
     active.editor.doc?.pages,
     active.editor.doc?.ocrLayer,
-    active.editor.doc?.outline,
-    active.editor.doc?.docSettings,
     active.editor.doc?.fileName,
   ]);
 
@@ -940,21 +919,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     try {
       toast.loading("Building PDF…", { id: "wsx" });
       const bytes = await exportEditedPdf(editorState.doc);
-      const s = editorState.doc.docSettings;
-      const stamped: string[] = [];
-      if (s?.pageNumbers?.enabled) stamped.push("page numbers");
-      if (s?.headerFooter?.enabled) stamped.push("header/footer");
-      const description = stamped.length
-        ? `Stamped: ${stamped.join(" + ")}.`
-        : "Tip: add page numbers or header/footer in Document Settings.";
-      toast.success("Saved", {
-        id: "wsx",
-        description,
-        action: {
-          label: "Document Settings",
-          onClick: () => patchActive({ activeToolId: "doc-settings", inspectorOpen: true }),
-        },
-      });
+      toast.success("Saved", { id: "wsx" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -965,7 +930,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch (err) {
       toast.error("Export failed", { id: "wsx", description: (err as Error).message });
     }
-  }, [editorState.doc, patchActive]);
+  }, [editorState.doc]);
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
@@ -1229,17 +1194,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Lock className="h-3 w-3" strokeWidth={2.5} />
             100% in your browser
           </span>
-          {file && (
-            <button
-              type="button"
-              onClick={() => patchActive({ activeToolId: "doc-settings", inspectorOpen: true })}
-              title="Document Settings — page numbers, header & footer"
-              aria-label="Document Settings"
-              className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground transition-colors"
-            >
-              <SettingsIcon className="h-[15px] w-[15px]" />
-            </button>
-          )}
           <button
             type="button"
             onClick={onExport}
@@ -1313,25 +1267,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   fileName={file?.name ?? null}
                   bytes={editorState.doc?.srcBytes ?? null}
                   pageCount={editorState.doc?.pages.length ?? 0}
-                  pageSize={(() => {
-                    const p = editorState.doc?.pages[editorState.current];
-                    return p?.width && p?.height ? { w: p.width, h: p.height } : null;
-                  })()}
                   annotations={editorState.doc?.annotations ?? []}
-                  outline={editorState.doc?.outline}
                   currentPage={editorState.current}
-                  onOutlineChange={(outline) => editorDispatch({ type: "SET_OUTLINE", outline })}
                   onJumpPage={(n) => editorDispatch({ type: "SET_PAGE", n })}
                   onJumpAnno={(a) => {
                     editorDispatch({ type: "SET_PAGE", n: a.page });
                     editorDispatch({ type: "SELECT_ANNO", id: a.id });
                   }}
-                  onAddComment={(a) => editorDispatch({ type: "ADD_ANNO", a })}
-                  onPatchComment={(id, patch) => editorDispatch({ type: "UPDATE_ANNO", id, patch })}
-                  onDeleteComment={(id) => editorDispatch({ type: "DELETE_ANNO", id })}
+                  onEditComment={(a) => {
+                    editorDispatch({ type: "SET_PAGE", n: a.page });
+                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
+                    patchActive({ activeToolId: "comments", inspectorOpen: true });
+                  }}
                   onClose={() => setNavOpen(false)}
                 />
-
               </>
             ) : null}
 
@@ -2541,9 +2490,7 @@ function PagesPlaceholder({
         const { loadPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await file.arrayBuffer());
-        // pdf.js transfers the data buffer into its worker (detaches it),
-        // so hand it a copy and keep `bytes` intact for srcBytes/render reuse.
-        const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) return;
         const n = continuous ? doc.numPages : Math.min(1, doc.numPages);
         const sizes: Array<{ width: number; height: number }> = [];
@@ -3507,22 +3454,6 @@ function EditorPages({
       if (raf) cancelAnimationFrame(raf);
     };
   }, [recompute, sizes.length, zoom]);
-
-  // Scroll the active page into view whenever `state.current` changes
-  // (bookmark / thumbnail / annotation jumps dispatch SET_PAGE).
-  const lastJumpRef = useRef<number>(-1);
-  useEffect(() => {
-    const i = state.current;
-    if (i === lastJumpRef.current) return;
-    lastJumpRef.current = i;
-    const root = containerRef.current?.parentElement;
-    const el = pageRefs.current[i];
-    if (!root || !el) return;
-    const rRect = root.getBoundingClientRect();
-    const eRect = el.getBoundingClientRect();
-    const delta = eRect.top - rRect.top - 12;
-    root.scrollBy({ top: delta, behavior: "smooth" });
-  }, [state.current]);
 
   if (!state.doc) return null;
 
