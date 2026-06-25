@@ -1396,6 +1396,26 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               </div>
             )}
 
+            {showQuietOcrChip && (
+              <div className="pointer-events-none absolute left-1/2 top-[102px] z-30 -translate-x-1/2">
+                <button
+                  type="button"
+                  onClick={() => onRequestOcr()}
+                  title={
+                    unprocessedScannedSet.size === 1
+                      ? `Page ${[...unprocessedScannedSet][0] + 1} is scanned. Run OCR on-device to make it editable.`
+                      : `${unprocessedScannedSet.size} scanned pages. Run OCR on-device to make them editable.`
+                  }
+                  className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-1/95 px-2.5 py-1 text-[11px] text-text-2 shadow-[0_4px_14px_rgba(0,0,0,0.25)] backdrop-blur-md hover:border-vault/50 hover:text-foreground"
+                >
+                  <ScanText className="h-3 w-3 text-vault" />
+                  <span>
+                    Scanned · <span className="text-vault">Run OCR</span>
+                  </span>
+                </button>
+              </div>
+            )}
+
             <div className="absolute right-10 top-3 z-30 flex items-center gap-1.5">
               <CanvasIconButton label="Thumbnails" onClick={() => openTool("organize")}>
                 <LayoutGrid className="h-[15px] w-[15px]" />
