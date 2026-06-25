@@ -60,12 +60,14 @@ export type Action =
   | { type: "SET_PROTECT"; p: ProtectSettings | null }
   | { type: "SET_OCR_LAYER"; pages: OcrPageLayer[] }
   | { type: "SET_OUTLINE"; outline: import("../outline/types").OutlineNode[] }
+  | { type: "SET_DOC_SETTINGS"; settings: DocSettings }
   | {
       type: "LOAD_SIDECAR";
       annotations?: Anno[];
       pages?: PageOp[];
       ocrLayer?: OcrPageLayer[];
       outline?: import("../outline/types").OutlineNode[];
+      docSettings?: DocSettings;
     }
   | { type: "UNDO" }
   | { type: "REDO" };
