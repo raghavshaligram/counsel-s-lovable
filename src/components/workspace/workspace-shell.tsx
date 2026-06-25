@@ -3524,15 +3524,8 @@ function EditorPages({
       className="mx-auto flex flex-col items-center py-6 px-4"
       style={{ gap }}
     >
-      {progress && (
-        <div className="text-[12px] text-text-muted">
-          {progress.total > 0
-            ? `Loading document… ${Math.round((progress.loaded / progress.total) * 100)}%`
-            : "Loading document…"}
-          {sizes.length === 0 && srcBytes && srcBytes.byteLength > 20_000_000 && (
-            <span className="ml-2 opacity-70">Large file — optimizing…</span>
-          )}
-        </div>
+      {!pdfDoc && srcBytes && (
+        <div className="text-[12px] text-text-muted">Loading document…</div>
       )}
       {pageLayout === "double"
         ? (() => {
