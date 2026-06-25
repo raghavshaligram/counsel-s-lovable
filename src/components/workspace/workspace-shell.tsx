@@ -56,7 +56,10 @@ import {
   FileCheck2,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
-import { PDFDocument } from "pdf-lib";
+// pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
+// PDFDocument.load() blocks the main thread for seconds. The open path now
+// uses pdf.js (Web Worker) only; pdf-lib is dynamic-imported inside the
+// export pipeline (src/lib/editor/export.ts).
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ToolPanel } from "./tool-panels";
