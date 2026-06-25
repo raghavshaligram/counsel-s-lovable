@@ -4510,28 +4510,45 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[11.5px] leading-snug text-text-2">
-        Document-level settings. Stamped onto the exported PDF — your source bytes stay intact.
+        These settings are saved with the document and applied automatically whenever you export. Nothing is stamped until you export.
       </p>
-      <DisclosureToggle
-        label="Stamp page numbers on export"
-        on={pnOn}
-        onChange={setPnOn}
-      />
+
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
+          # Page Numbers
+        </div>
+        <DisclosureToggle
+          label="Stamp page numbers on export"
+          on={pnOn}
+          onChange={setPnOn}
+        />
+      </div>
       {pnOn && (
         <div className="rounded-md border border-border bg-surface-2/40 p-3">
           <PageNumbersPanel ctx={ctx} />
         </div>
       )}
-      <DisclosureToggle
-        label="Add header & footer on export"
-        on={hfOn}
-        onChange={setHfOn}
-      />
+
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
+          ⓘ Header &amp; Footer
+        </div>
+        <DisclosureToggle
+          label="Stamp header / footer on export"
+          on={hfOn}
+          onChange={setHfOn}
+        />
+      </div>
       {hfOn && (
         <div className="rounded-md border border-border bg-surface-2/40 p-3">
           <HeaderFooterSection ctx={ctx} />
         </div>
       )}
+
+      <div className="mt-1 flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <Info className="h-3 w-3" />
+        Saved with this document · stamped on export
+      </div>
     </div>
   );
 }
@@ -4547,7 +4564,7 @@ function DisclosureToggle({
       aria-checked={on}
       onClick={() => onChange(!on)}
       className={cn(
-        "flex w-full items-center justify-between gap-2 rounded-md border bg-surface-2 px-3 py-2 text-left text-[12.5px] text-foreground transition-colors",
+        "flex w-full items-center justify-between gap-3 rounded-md border bg-surface-2 px-3 py-2.5 text-left text-[12.5px] text-foreground transition-colors",
         on ? "border-vault/40" : "border-border hover:border-vault/30",
       )}
     >
@@ -4555,16 +4572,23 @@ function DisclosureToggle({
       <span
         aria-hidden
         className={cn(
-          "relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors",
-          on ? "bg-vault" : "bg-surface-3",
+          "grid h-4 w-4 shrink-0 place-items-center rounded-sm border transition-colors",
+          on
+            ? "border-vault bg-vault text-vault-foreground"
+            : "border-text-muted/40 bg-transparent",
         )}
       >
-        <span
-          className={cn(
-            "inline-block h-3 w-3 transform rounded-full bg-background transition-transform",
-            on ? "translate-x-3.5" : "translate-x-0.5",
-          )}
-        />
+        {on && (
+          <svg className="h-2.5 w-2.5" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M3 8.5l3 3 7-7"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
       </span>
     </button>
   );
