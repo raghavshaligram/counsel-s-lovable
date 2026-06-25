@@ -904,12 +904,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       annotations: d.annotations,
       pages: d.pages,
       ocrLayer: d.ocrLayer,
+      outline: d.outline,
     });
   }, [
     active.file,
     active.editor.doc?.annotations,
     active.editor.doc?.pages,
     active.editor.doc?.ocrLayer,
+    active.editor.doc?.outline,
     active.editor.doc?.fileName,
   ]);
 
