@@ -487,6 +487,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.id, active.activeToolId]);
 
+  // Auto-open Document Settings whenever a tab first receives a file. Keyed
+  // by tab id + file identity so it fires once per opened document and
+  // doesn't fight the user closing the panel afterwards.
+  const autoOpenedDocSettingsRef = useRef<WeakSet<File>>(new WeakSet());
+  useEffect(() => {
+    if (!active.file) return;
+    if (autoOpenedDocSettingsRef.current.has(active.file)) return;
+    autoOpenedDocSettingsRef.current.add(active.file);
+    patchTab(active.id, { activeToolId: "doc-settings", inspectorOpen: true });
+  }, [active.id, active.file, patchTab]);
+
   const setEditorTool = useCallback(
     (t: EditorTool) => {
       editorDispatch({ type: "SET_TOOL", t });
