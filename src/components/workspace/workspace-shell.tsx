@@ -599,18 +599,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       openInNewTabRef.current = false;
       if (!f) return;
       if (inNewTab) {
+        let next: TabState | null = null;
         setTabs((ts) => {
           const docCount = ts.filter((t) => t.file !== null).length;
           if (docCount >= TAB_CAP) {
             toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
             return ts;
           }
-          const next = makeBlankTab({ file: f, isDirty: false });
-          setActiveId(next.id);
-          // Drop a leading blank tab so we don't accumulate invisible tabs.
+          // Reuse the tab created on the first StrictMode invocation so the
+          // id we hand to setActiveId always matches a tab in state.
+          if (!next) next = makeBlankTab({ file: f, isDirty: false });
+          // Drop any leading blank tabs so we don't accumulate invisible tabs.
           const cleaned = ts.filter((t) => t.file !== null);
           return [...cleaned, next];
         });
+        if (next) setActiveId((next as TabState).id);
       } else {
         patchActive({ file: f, isDirty: false });
       }
