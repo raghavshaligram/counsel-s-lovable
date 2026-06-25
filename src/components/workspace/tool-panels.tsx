@@ -4505,24 +4505,68 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
       </p>
     );
   }
+  const [pnOn, setPnOn] = useState(false);
+  const [hfOn, setHfOn] = useState(false);
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <p className="text-[11.5px] leading-snug text-text-2">
         Document-level settings. Stamped onto the exported PDF — your source bytes stay intact.
       </p>
-      <div>
-        <div className="mb-2 px-0.5 text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
-          Page numbers
+      <DisclosureToggle
+        label="Stamp page numbers on export"
+        on={pnOn}
+        onChange={setPnOn}
+      />
+      {pnOn && (
+        <div className="rounded-md border border-border bg-surface-2/40 p-3">
+          <PageNumbersPanel ctx={ctx} />
         </div>
-        <PageNumbersPanel ctx={ctx} />
-      </div>
-      <div className="border-t border-border pt-4">
-        <div className="mb-2 px-0.5 text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
-          Header &amp; footer
+      )}
+      <DisclosureToggle
+        label="Add header & footer on export"
+        on={hfOn}
+        onChange={setHfOn}
+      />
+      {hfOn && (
+        <div className="rounded-md border border-border bg-surface-2/40 p-3">
+          <HeaderFooterSection ctx={ctx} />
         </div>
-        <HeaderFooterSection ctx={ctx} />
-      </div>
+      )}
     </div>
+  );
+}
+
+/* Compact on/off row used by Document Settings to gate detailed config. */
+function DisclosureToggle({
+  label, on, onChange,
+}: { label: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      className={cn(
+        "flex w-full items-center justify-between gap-2 rounded-md border bg-surface-2 px-3 py-2 text-left text-[12.5px] text-foreground transition-colors",
+        on ? "border-vault/40" : "border-border hover:border-vault/30",
+      )}
+    >
+      <span>{label}</span>
+      <span
+        aria-hidden
+        className={cn(
+          "relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors",
+          on ? "bg-vault" : "bg-surface-3",
+        )}
+      >
+        <span
+          className={cn(
+            "inline-block h-3 w-3 transform rounded-full bg-background transition-transform",
+            on ? "translate-x-3.5" : "translate-x-0.5",
+          )}
+        />
+      </span>
+    </button>
   );
 }
 
