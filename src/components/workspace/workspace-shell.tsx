@@ -699,15 +699,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       toast.error("Couldn't restore — the previous files are no longer in local storage.");
       return;
     }
-    setTabs((ts) => {
-      // Replace the first blank tab if present; otherwise append.
-      const firstIsBlank = ts.length === 1 && !ts[0].file;
-      const base = firstIsBlank ? [] : ts;
-      const combined = [...base, ...restored].slice(0, TAB_CAP);
-      setActiveId(combined[base.length].id);
-      return combined;
-    });
-  }, [pendingResume]);
+    const firstIsBlank = tabs.length === 1 && !tabs[0].file;
+    const base = firstIsBlank ? [] : tabs;
+    const combined = [...base, ...restored].slice(0, TAB_CAP);
+    setTabs(combined);
+    setActiveId(combined[base.length].id);
+  }, [pendingResume, tabs]);
 
   const dismissResume = useCallback(() => {
     setPendingResume([]);
