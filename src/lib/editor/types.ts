@@ -318,5 +318,8 @@ export interface EditorDoc {
   // Editable bookmark tree. Seeded from the source PDF outline on open, then
   // mutated in-place by the Bookmarks panel and rewritten on export.
   outline?: import("../outline/types").OutlineNode[];
+  // Persistent document-level settings (page numbers, header/footer) applied
+  // automatically by exportEditedPdf. Edited via the Document Settings tool.
+  docSettings?: DocSettings;
 }
 
