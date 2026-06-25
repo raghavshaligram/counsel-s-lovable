@@ -58,11 +58,13 @@ export type Action =
   | { type: "SET_WATERMARK"; w: WatermarkSettings | null }
   | { type: "SET_PROTECT"; p: ProtectSettings | null }
   | { type: "SET_OCR_LAYER"; pages: OcrPageLayer[] }
+  | { type: "SET_OUTLINE"; outline: import("../outline/types").OutlineNode[] }
   | {
       type: "LOAD_SIDECAR";
       annotations?: Anno[];
       pages?: PageOp[];
       ocrLayer?: OcrPageLayer[];
+      outline?: import("../outline/types").OutlineNode[];
     }
   | { type: "UNDO" }
   | { type: "REDO" };
