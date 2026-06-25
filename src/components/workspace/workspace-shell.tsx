@@ -3441,12 +3441,18 @@ function EditorPages({
     return () => { cancelled = true; };
   }, [pdfDoc, pages, visible]);
 
-  // Recompute which pages are within viewport+buffer.
+  // Recompute which pages are within viewport+buffer, AND which page is
+  // dominant (occupies the largest portion of the viewport). The dominant
+  // page becomes state.current — that's what drives the page indicator and
+  // the "Bookmark page N" button. No extra per-page work: reuses the same
+  // rects we already measure for virtualization.
   const recompute = useCallback(() => {
     const root = containerRef.current?.parentElement; // the scrollable area
     if (!root || !pages) return;
     const rootRect = root.getBoundingClientRect();
     const next = new Set<number>();
+    let dominant = -1;
+    let dominantArea = 0;
     for (let i = 0; i < pageRefs.current.length; i++) {
       const el = pageRefs.current[i];
       if (!el) continue;
@@ -3454,6 +3460,11 @@ function EditorPages({
       const above = rootRect.top - r.bottom;
       const below = r.top - rootRect.bottom;
       if (above <= VIRT_BUFFER_PX && below <= VIRT_BUFFER_PX) next.add(i);
+      // Vertical intersection with the viewport.
+      const visTop = Math.max(rootRect.top, r.top);
+      const visBot = Math.min(rootRect.bottom, r.bottom);
+      const vis = visBot - visTop;
+      if (vis > dominantArea) { dominantArea = vis; dominant = i; }
     }
     if (next.size === 0 && pages.length > 0) next.add(0);
     setVisible((prev) => {
@@ -3464,7 +3475,14 @@ function EditorPages({
       }
       return next;
     });
-  }, [pages]);
+    if (dominant >= 0 && dominant !== state.current) {
+      // Mark as "already in view" so the scroll-into-view effect below
+      // doesn't smooth-scroll us back to the top of the page we're reading.
+      lastScrolledRef.current = dominant;
+      dispatch({ type: "SET_PAGE", n: dominant });
+    }
+  }, [pages, dispatch, state.current]);
+
 
   useEffect(() => {
     const root = containerRef.current?.parentElement;
