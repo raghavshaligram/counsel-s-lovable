@@ -870,6 +870,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             pages: side.pages,
             ocrLayer: side.ocrLayer,
             outline: side.outline,
+            docSettings: side.docSettings,
           });
         }
         const pendingTool = postLoadToolRef.current.get(tabId);
