@@ -3547,6 +3547,9 @@ function EditorPages({
     const rEl = el.getBoundingClientRect();
     const fullyVisible = rEl.top >= rRoot.top - 4 && rEl.bottom <= rRoot.bottom + 4;
     if (!fullyVisible) {
+      // Open a window during which scroll-driven dominant-page updates are
+      // suppressed (smooth scrolling takes ~300-500ms on long jumps).
+      programmaticUntilRef.current = Date.now() + 800;
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     lastScrolledRef.current = target;
