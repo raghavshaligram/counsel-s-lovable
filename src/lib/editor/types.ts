@@ -47,6 +47,45 @@ export interface ExportSettings {
   protect?: ProtectSettings;
 }
 
+/* -------------------- Document-level settings -------------------- */
+// Persistent per-document settings applied automatically at export.
+// Lives on EditorDoc and is saved into the sidecar so it survives
+// close/reopen. Edited from the "Document Settings" inspector tool.
+
+export type PageNumberAnchor =
+  | "top-left" | "top-center" | "top-right"
+  | "bottom-left" | "bottom-center" | "bottom-right";
+export type PageNumberFormat = "n" | "page-n" | "n-of-m" | "roman";
+
+export interface PageNumberSettings {
+  enabled: boolean;
+  anchor: PageNumberAnchor;
+  format: PageNumberFormat;
+  startAt: number;
+  skipFirst: number;
+  fontSize: number;
+  margin: number;
+  prefix?: string;
+}
+
+export type HFAlign = "left" | "center" | "right";
+export type HFRule = "all" | "even" | "odd" | "no-first";
+
+export interface HeaderFooterSettings {
+  enabled: boolean;
+  headerText?: string;
+  footerText?: string;
+  align: HFAlign;
+  fontSize: number;
+  margin: number;
+  rule: HFRule;
+}
+
+export interface DocSettings {
+  pageNumbers?: PageNumberSettings;
+  headerFooter?: HeaderFooterSettings;
+}
+
 export type RGB = { r: number; g: number; b: number };
 
 // Quad covering a single line of text (PDF points, top-left origin).
