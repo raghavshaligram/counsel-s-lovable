@@ -1420,6 +1420,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onAutoFit={autoFit}
                     fitNonce={fitNonce}
                     zoomMode={zoomMode}
+                    pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
                   />
 
 
