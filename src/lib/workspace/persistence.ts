@@ -8,6 +8,7 @@
  */
 import { openDB, type IDBPDatabase } from "idb";
 import type { Anno, OcrPageLayer, PageOp } from "@/lib/editor/types";
+import type { OutlineNode } from "@/lib/outline/types";
 
 const DB_NAME = "vaultpdf-workspace";
 const UI_STORE = "ui";
