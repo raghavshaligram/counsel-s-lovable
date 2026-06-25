@@ -148,8 +148,7 @@ const TOOLS: RailTool[] = [
   { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
   { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
-  { id: "page-numbers", label: "Page Numbers", icon: Hash, group: "layout", groupLabel: "Layout" },
-  { id: "header-footer", label: "Header & Footer", icon: Layout, group: "layout", groupLabel: "Layout" },
+  { id: "doc-settings", label: "Document Settings", icon: Layout, group: "layout", groupLabel: "Layout" },
   { id: "flatten", label: "Flatten", icon: Layers, group: "layout", groupLabel: "Layout" },
   // Legal
   { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
