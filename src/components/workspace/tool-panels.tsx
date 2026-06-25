@@ -5059,7 +5059,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
   }, []);
 
   const addAtRoot = useCallback(() => {
-    const { newId } = require("@/lib/outline/types") as typeof import("@/lib/outline/types");
+    const newId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
     const node = {
       id: newId("o"),
       title: "New bookmark",
