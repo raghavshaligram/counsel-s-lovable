@@ -1272,20 +1272,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   fileName={file?.name ?? null}
                   bytes={editorState.doc?.srcBytes ?? null}
                   pageCount={editorState.doc?.pages.length ?? 0}
+                  pageSize={(() => {
+                    const p = editorState.doc?.pages[editorState.current];
+                    return p?.width && p?.height ? { w: p.width, h: p.height } : null;
+                  })()}
                   annotations={editorState.doc?.annotations ?? []}
+                  outline={editorState.doc?.outline}
                   currentPage={editorState.current}
+                  onOutlineChange={(outline) => editorDispatch({ type: "SET_OUTLINE", outline })}
                   onJumpPage={(n) => editorDispatch({ type: "SET_PAGE", n })}
                   onJumpAnno={(a) => {
                     editorDispatch({ type: "SET_PAGE", n: a.page });
                     editorDispatch({ type: "SELECT_ANNO", id: a.id });
                   }}
-                  onEditComment={(a) => {
-                    editorDispatch({ type: "SET_PAGE", n: a.page });
-                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
-                    patchActive({ activeToolId: "comments", inspectorOpen: true });
-                  }}
+                  onAddComment={(a) => editorDispatch({ type: "ADD_ANNO", a })}
+                  onPatchComment={(id, patch) => editorDispatch({ type: "UPDATE_ANNO", id, patch })}
+                  onDeleteComment={(id) => editorDispatch({ type: "DELETE_ANNO", id })}
                   onClose={() => setNavOpen(false)}
                 />
+
               </>
             ) : null}
 
