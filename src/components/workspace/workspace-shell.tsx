@@ -945,7 +945,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch (err) {
       toast.error("Export failed", { id: "wsx", description: (err as Error).message });
     }
-  }, [editorState.doc]);
+  }, [editorState.doc, pageNumbersSettings, headerFooterSettings]);
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
