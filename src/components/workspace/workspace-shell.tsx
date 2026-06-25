@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   Lock,
   Download,
@@ -3498,11 +3498,17 @@ function EditorPages({
     });
     if (dominant >= 0 && dominant !== state.current) {
       // Suppress dominant-page updates while a programmatic scroll is in
-      // flight; otherwise the smooth scroll's intermediate frames would
-      // dispatch SET_PAGE back to the page we're leaving and cancel the jump.
+      // flight; otherwise an intermediate frame would dispatch SET_PAGE back
+      // to the page we're leaving and cancel the jump.
       if (Date.now() < programmaticUntilRef.current) return;
-      // Mark as "already in view" so the scroll-into-view effect below
-      // doesn't smooth-scroll us back to the top of the page we're reading.
+      // If state.current sits well outside the viewport, a fresh navigation
+      // was just requested and the layout effect below hasn't scrolled yet —
+      // don't fight it.
+      const targetEl = pageRefs.current[state.current];
+      if (targetEl) {
+        const tr = targetEl.getBoundingClientRect();
+        if (tr.bottom < rootRect.top - 200 || tr.top > rootRect.bottom + 200) return;
+      }
       lastScrolledRef.current = dominant;
       dispatch({ type: "SET_PAGE", n: dominant });
     }
@@ -3529,31 +3535,47 @@ function EditorPages({
   }, [recompute, sizes.length, zoom]);
 
   // Scroll the active page (state.current) into view whenever it changes.
-  // This is what wires NavOverlay clicks (thumbnails / bookmarks) — and any
-  // other SET_PAGE dispatcher — to actual canvas navigation. We compare
-  // against the last value we acted on so user-driven scrolling (which
-  // updates state.current via the IntersectionObserver above) doesn't fight
-  // the smooth scroll.
-  useEffect(() => {
+  // Runs as a layout effect so the scroll lands BEFORE the recompute-rebind
+  // effect fires its initial recompute(), which would otherwise see the
+  // OLD dominant page and dispatch SET_PAGE back — eating the click.
+  useLayoutEffect(() => {
     const target = state.current;
     if (target == null || target < 0) return;
     if (target === lastScrolledRef.current) return;
     const el = pageRefs.current[target];
     const root = containerRef.current?.parentElement;
     if (!el || !root) return;
-    // Only smooth-scroll when the target isn't already mostly in view, so
-    // scroll-driven page changes don't trigger a redundant animation.
     const rRoot = root.getBoundingClientRect();
     const rEl = el.getBoundingClientRect();
     const fullyVisible = rEl.top >= rRoot.top - 4 && rEl.bottom <= rRoot.bottom + 4;
     if (!fullyVisible) {
-      // Open a window during which scroll-driven dominant-page updates are
-      // suppressed (smooth scrolling takes ~300-500ms on long jumps).
-      programmaticUntilRef.current = Date.now() + 800;
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Block dominant-page tracker through the jump + the frames after it,
+      // while virtualized pages mount and shift layout around the target.
+      programmaticUntilRef.current = Date.now() + 1200;
+      // Compute absolute scroll target from the wrapper's current offset
+      // (all page wrappers are always mounted as height placeholders, so
+      // the position is known even for far, never-rendered pages). Use
+      // "auto" — instant — so far jumps (page 1 → page 300) land on the
+      // first click. Smooth scrolling on a 400-page doc fights the layout
+      // shifts that happen as pages mount into the new viewport.
+      const top = rEl.top - rRoot.top + root.scrollTop;
+      root.scrollTo({ top, behavior: "auto" });
+      // After the just-mounted page measures its real height, the wrappers
+      // around it can shift — re-snap once to keep the target at the top.
+      requestAnimationFrame(() => {
+        const el2 = pageRefs.current[target];
+        const root2 = containerRef.current?.parentElement;
+        if (!el2 || !root2) return;
+        const rR = root2.getBoundingClientRect();
+        const rE = el2.getBoundingClientRect();
+        if (Math.abs(rE.top - rR.top) > 4) {
+          root2.scrollTo({ top: rE.top - rR.top + root2.scrollTop, behavior: "auto" });
+        }
+      });
     }
     lastScrolledRef.current = target;
   }, [state.current]);
+
 
   if (!state.doc) return null;
 
