@@ -2961,9 +2961,11 @@ function ToolModal({
   }, [onClose]);
 
   const q = query.trim().toLowerCase();
+  const visible = TOOLS.filter((t) => !t.hidden);
   const filtered = q
-    ? TOOLS.filter((t) => t.label.toLowerCase().includes(q))
-    : TOOLS;
+    ? visible.filter((t) => t.label.toLowerCase().includes(q))
+    : visible;
+
 
   return (
     <div
