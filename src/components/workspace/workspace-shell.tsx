@@ -1290,6 +1290,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   open={navOpen}
                   defaultTab={navTab}
                   fileName={file?.name ?? null}
+                  fileSize={file?.size ?? null}
                   pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
                   pageCount={editorState.doc?.pages.length ?? 0}
                   annotations={editorState.doc?.annotations ?? []}
@@ -1299,13 +1300,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     editorDispatch({ type: "SET_PAGE", n: a.page });
                     editorDispatch({ type: "SELECT_ANNO", id: a.id });
                   }}
-                  onEditComment={(a) => {
-                    editorDispatch({ type: "SET_PAGE", n: a.page });
-                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
-                    patchActive({ activeToolId: "comments", inspectorOpen: true });
-                  }}
+                  onAddComment={(a) => editorDispatch({ type: "ADD_ANNO", a })}
+                  onUpdateAnno={(id, patch) => editorDispatch({ type: "UPDATE_ANNO", id, patch })}
+                  onDeleteAnno={(id) => editorDispatch({ type: "DELETE_ANNO", id })}
                   onClose={() => setNavOpen(false)}
                 />
+
               </>
             ) : null}
 
