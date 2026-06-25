@@ -354,6 +354,7 @@ export type SidecarRecord = {
   pages: PageOp[];
   ocrLayer?: OcrPageLayer[];
   outline?: OutlineNode[];
+  docSettings?: DocSettings;
 };
 
 export async function loadSidecar(name: string, size: number): Promise<SidecarRecord | null> {
