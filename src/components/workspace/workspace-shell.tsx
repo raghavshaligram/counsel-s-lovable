@@ -1265,7 +1265,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   open={navOpen}
                   defaultTab={navTab}
                   fileName={file?.name ?? null}
-                  bytes={editorState.doc?.srcBytes ?? null}
+                  pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
                   pageCount={editorState.doc?.pages.length ?? 0}
                   annotations={editorState.doc?.annotations ?? []}
                   currentPage={editorState.current}
