@@ -156,6 +156,38 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       drawWatermark(outPage, settings.watermark, font, pw, ph);
     }
 
+    // Header / footer stamping (export-only, reuses already-embedded font)
+    const hf = settings?.headerFooter;
+    if (hf?.enabled && (hf.headerText || hf.footerText) && hfShouldDraw(hf.rule, i)) {
+      const filename = doc.fileName || "document.pdf";
+      const drawHF = (raw: string, yPos: number) => {
+        const text = applyHFTokens(raw, i + 1, doc.pages.length, filename);
+        const tw = font.widthOfTextAtSize(text, hf.fontSize);
+        let x = hf.margin;
+        if (hf.align === "center") x = (pw - tw) / 2;
+        else if (hf.align === "right") x = pw - hf.margin - tw;
+        outPage.drawText(text, { x, y: yPos, size: hf.fontSize, font, color: rgb(0.15, 0.15, 0.15) });
+      };
+      if (hf.headerText) drawHF(hf.headerText, ph - hf.margin - hf.fontSize);
+      if (hf.footerText) drawHF(hf.footerText, hf.margin);
+    }
+
+    // Page numbers stamping (export-only)
+    const pn = settings?.pageNumbers;
+    if (pn?.enabled && i >= pn.skipFirst) {
+      const totalNumbered = Math.max(0, doc.pages.length - pn.skipFirst);
+      const num = pn.startAt + (i - pn.skipFirst);
+      const text = (pn.prefix ?? "") + formatPageNumber(num, pn.startAt + totalNumbered - 1, pn.format);
+      const tw = font.widthOfTextAtSize(text, pn.fontSize);
+      const th = pn.fontSize;
+      let x = pn.margin, y = pn.margin;
+      if (pn.anchor.endsWith("center")) x = (pw - tw) / 2;
+      else if (pn.anchor.endsWith("right")) x = pw - pn.margin - tw;
+      if (pn.anchor.startsWith("top")) y = ph - pn.margin - th;
+      outPage.drawText(text, { x, y, size: pn.fontSize, font, color: rgb(0.1, 0.1, 0.1) });
+    }
+
+
     // Page crop — convert top-left rect to PDF bottom-left, set CropBox + MediaBox.
     if (op.cropBox && !op.blank) {
       const r = op.cropBox;
