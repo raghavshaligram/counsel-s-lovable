@@ -3333,6 +3333,8 @@ function EditorPages({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   const lastScrolledRef = useRef<number>(-1);
+  const programmaticUntilRef = useRef<number>(0);
+
 
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
   const [containerWidth, setContainerWidth] = useState(0);
