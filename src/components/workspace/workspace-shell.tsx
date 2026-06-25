@@ -1418,10 +1418,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
 
                 ) : (
-                  <div className="grid h-full place-items-center text-[12.5px] text-text-muted">
-                    {file.size === 0 ? "Empty document" : "Loading document…"}
+                  <div className="grid h-full place-items-center">
+                    {file.size === 0 ? (
+                      <div className="text-[12.5px] text-text-muted">Empty document</div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 text-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-vault" aria-hidden />
+                        <div className="text-[13px] font-medium text-foreground">Opening {file.name}…</div>
+                        <div className="text-[11.5px] text-text-muted">
+                          Processing on-device. Nothing uploads.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
+
               ) : (
                 <div className="relative h-full">
                   {pendingResume.length > 0 && (
