@@ -927,7 +927,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     try {
       toast.loading("Building PDF…", { id: "wsx" });
       const bytes = await exportEditedPdf(editorState.doc);
-      const s = editorState.doc.settings;
+      const s = editorState.doc.docSettings;
       const stamped: string[] = [];
       if (s?.pageNumbers?.enabled) stamped.push("page numbers");
       if (s?.headerFooter?.enabled) stamped.push("header/footer");
