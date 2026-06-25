@@ -1852,9 +1852,11 @@ function FloatingToolbar({
       role="toolbar"
       aria-label={label}
     >
-      <ToolbarBtn label="Bookmarks & pages" kbd="⌘B" active={navOpen} onClick={onToggleNav}>
-        <Bookmark className="h-[15px] w-[15px]" />
-      </ToolbarBtn>
+      <span data-nav-toggle className="contents">
+        <ToolbarBtn label="Bookmarks & pages" kbd="⌘B" active={navOpen} onClick={onToggleNav}>
+          <Bookmark className="h-[15px] w-[15px]" />
+        </ToolbarBtn>
+      </span>
       <span className="mx-1 h-5 w-px bg-border" />
       {groups.map((group, gi) => (
         <div key={gi} className="flex items-center gap-0.5">
