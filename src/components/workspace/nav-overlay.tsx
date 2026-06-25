@@ -318,10 +318,11 @@ function BookmarksTab({
           <button
             type="button"
             onClick={() => setAdding((v) => !v)}
+            title={`Bookmark page ${currentPage + 1} (the page you're viewing)`}
             className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-vault hover:bg-surface-2"
           >
             <Plus className="h-3 w-3" />
-            Add
+            Bookmark page {currentPage + 1}
           </button>
         </div>
 
