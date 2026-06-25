@@ -1,4 +1,4 @@
-import { X, Plus } from "lucide-react";
+import { X, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TabState } from "@/lib/workspace/tabs";
 
@@ -8,16 +8,23 @@ import type { TabState } from "@/lib/workspace/tabs";
  * nothing and the Start screen fills the canvas. The "+" button opens a
  * fresh Start tab so the user can pick another document; existing tabs
  * stay put.
+ *
+ * The active tab gets an amber accent (surface lift + amber underline +
+ * amber label) so it's unmistakable which document the user is on.
+ * Loading tabs show a spinner in place of the dirty dot until parse
+ * completes, so the user always sees forward progress on heavy docs.
  */
 export function TabStrip({
   tabs,
   activeId,
+  loadingIds,
   onActivate,
   onClose,
   onNew,
 }: {
   tabs: TabState[];
   activeId: string;
+  loadingIds?: Set<string>;
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
   onNew: () => void;
@@ -33,6 +40,7 @@ export function TabStrip({
     >
       {docTabs.map((t) => {
         const active = t.id === activeId;
+        const loading = loadingIds?.has(t.id) ?? false;
         const label = t.file?.name ?? "";
         return (
           <div
@@ -47,20 +55,27 @@ export function TabStrip({
                 onActivate(t.id);
               }
             }}
-            title={label}
+            title={loading ? `Loading ${label}…` : label}
             className={cn(
-              "group relative flex h-[32px] min-w-[120px] max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[12px] transition-colors",
+              "group relative flex h-[32px] min-w-[140px] max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[12px] transition-colors",
               active
-                ? "text-vault"
-                : "text-text-2 hover:bg-surface-2 hover:text-foreground",
+                ? "bg-surface-2 text-vault font-medium"
+                : "text-text-2 hover:bg-surface-2/60 hover:text-foreground",
             )}
           >
+            {loading ? (
+              <Loader2
+                className="h-3 w-3 shrink-0 animate-spin text-vault"
+                aria-label="Loading"
+              />
+            ) : t.isDirty ? (
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-vault"
+                aria-label="Unsaved changes"
+                title="Unsaved changes"
+              />
+            ) : null}
             <span className="truncate flex-1">{label}</span>
-            {t.isDirty && (
-              <span className="text-vault" aria-label="Unsaved changes" title="Unsaved changes">
-                •
-              </span>
-            )}
             <button
               type="button"
               onClick={(e) => {
@@ -80,7 +95,7 @@ export function TabStrip({
             {active && (
               <span
                 aria-hidden
-                className="pointer-events-none absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-vault"
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-vault"
               />
             )}
           </div>
