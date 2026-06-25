@@ -7,7 +7,7 @@
  *           and total size; oldest evicted first.
  */
 import { openDB, type IDBPDatabase } from "idb";
-import type { Anno, OcrPageLayer, PageOp } from "@/lib/editor/types";
+import type { Anno, DocSettings, OcrPageLayer, PageOp } from "@/lib/editor/types";
 import type { OutlineNode } from "@/lib/outline/types";
 
 const DB_NAME = "vaultpdf-workspace";
