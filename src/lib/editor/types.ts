@@ -276,5 +276,8 @@ export interface EditorDoc {
   // embedded as invisible text by exportEditedPdf. The base PDF (srcBytes)
   // is never mutated.
   ocrLayer?: OcrPageLayer[];
+  // Editable bookmark tree. Seeded from the source PDF outline on open, then
+  // mutated in-place by the Bookmarks panel and rewritten on export.
+  outline?: import("../outline/types").OutlineNode[];
 }
 
