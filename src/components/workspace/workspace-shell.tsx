@@ -927,7 +927,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     try {
       toast.loading("Building PDF…", { id: "wsx" });
       const bytes = await exportEditedPdf(editorState.doc);
-      toast.success("Saved", { id: "wsx" });
+      const s = editorState.doc.settings;
+      const stamped: string[] = [];
+      if (s?.pageNumbers?.enabled) stamped.push("page numbers");
+      if (s?.headerFooter?.enabled) stamped.push("header/footer");
+      const description = stamped.length
+        ? `Stamped: ${stamped.join(" + ")}.`
+        : "Tip: add page numbers or header/footer in Document Settings.";
+      toast.success("Saved", {
+        id: "wsx",
+        description,
+        action: {
+          label: "Document Settings",
+          onClick: () => patchActive({ activeToolId: "doc-settings", inspectorOpen: true }),
+        },
+      });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -938,7 +952,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch (err) {
       toast.error("Export failed", { id: "wsx", description: (err as Error).message });
     }
-  }, [editorState.doc]);
+  }, [editorState.doc, patchActive]);
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
