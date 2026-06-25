@@ -3333,6 +3333,8 @@ function EditorPages({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   const lastScrolledRef = useRef<number>(-1);
+  const programmaticUntilRef = useRef<number>(0);
+
 
   const [visible, setVisible] = useState<Set<number>>(() => new Set([0, 1, 2]));
   const [containerWidth, setContainerWidth] = useState(0);
@@ -3495,12 +3497,17 @@ function EditorPages({
       return next;
     });
     if (dominant >= 0 && dominant !== state.current) {
+      // Suppress dominant-page updates while a programmatic scroll is in
+      // flight; otherwise the smooth scroll's intermediate frames would
+      // dispatch SET_PAGE back to the page we're leaving and cancel the jump.
+      if (Date.now() < programmaticUntilRef.current) return;
       // Mark as "already in view" so the scroll-into-view effect below
       // doesn't smooth-scroll us back to the top of the page we're reading.
       lastScrolledRef.current = dominant;
       dispatch({ type: "SET_PAGE", n: dominant });
     }
   }, [pages, dispatch, state.current]);
+
 
 
   useEffect(() => {
@@ -3540,6 +3547,9 @@ function EditorPages({
     const rEl = el.getBoundingClientRect();
     const fullyVisible = rEl.top >= rRoot.top - 4 && rEl.bottom <= rRoot.bottom + 4;
     if (!fullyVisible) {
+      // Open a window during which scroll-driven dominant-page updates are
+      // suppressed (smooth scrolling takes ~300-500ms on long jumps).
+      programmaticUntilRef.current = Date.now() + 800;
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     lastScrolledRef.current = target;

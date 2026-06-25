@@ -365,10 +365,11 @@ function BookmarksTab({
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => onDropOn(b.id)}
                 className={cn(
-                  "group flex items-center gap-1 rounded-md hover:bg-surface-2",
+                  "group flex items-center gap-1 rounded-md pl-1.5 hover:bg-surface-2",
                   dragId === b.id && "opacity-50",
                 )}
               >
+                <Bookmark className="h-3 w-3 shrink-0 text-vault" aria-hidden />
                 {editingId === b.id ? (
                   <input
                     autoFocus
