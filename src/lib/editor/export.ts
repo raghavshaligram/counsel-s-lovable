@@ -9,11 +9,49 @@
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
+import type {
+  Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings,
+  PageNumberFormat, PageNumbersSettings, HeaderFooterSettings,
+} from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
+
+function toRoman(num: number): string {
+  const map: [number, string][] = [
+    [1000,"M"],[900,"CM"],[500,"D"],[400,"CD"],
+    [100,"C"],[90,"XC"],[50,"L"],[40,"XL"],
+    [10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"],
+  ];
+  let out = ""; let n = num;
+  for (const [v, s] of map) { while (n >= v) { out += s; n -= v; } }
+  return out.toLowerCase();
+}
+function formatPageNumber(n: number, total: number, fmt: PageNumberFormat): string {
+  switch (fmt) {
+    case "n": return String(n);
+    case "page-n": return `Page ${n}`;
+    case "n-of-m": return `${n} of ${total}`;
+    case "roman": return toRoman(n);
+  }
+}
+function applyHFTokens(s: string, page: number, pages: number, filename: string): string {
+  const date = new Date().toISOString().slice(0, 10);
+  return s
+    .replace(/\{page\}/g, String(page))
+    .replace(/\{pages\}/g, String(pages))
+    .replace(/\{date\}/g, date)
+    .replace(/\{filename\}/g, filename);
+}
+function hfShouldDraw(rule: HeaderFooterSettings["rule"], i: number): boolean {
+  if (rule === "all") return true;
+  if (rule === "no-first") return i > 0;
+  const k = i + 1;
+  if (rule === "even") return k % 2 === 0;
+  if (rule === "odd") return k % 2 === 1;
+  return true;
+}
 
 export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
   const srcDoc = await PDFDocument.load(doc.srcBytes);
