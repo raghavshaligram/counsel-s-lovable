@@ -54,6 +54,7 @@ import {
   Pin,
   PinOff,
   FileCheck2,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
@@ -120,6 +121,8 @@ type RailTool = {
   icon: React.ComponentType<{ className?: string }>;
   group: ToolId;
   groupLabel: ToolGroupLabel;
+  /** Hidden from the left rail and All-tools modal (still openable by id). */
+  hidden?: boolean;
 };
 
 const TOOLS: RailTool[] = [
@@ -148,9 +151,10 @@ const TOOLS: RailTool[] = [
   { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
   { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
-  { id: "page-numbers", label: "Page Numbers", icon: Hash, group: "layout", groupLabel: "Layout" },
-  { id: "header-footer", label: "Header & Footer", icon: Layout, group: "layout", groupLabel: "Layout" },
   { id: "flatten", label: "Flatten", icon: Layers, group: "layout", groupLabel: "Layout" },
+  // Document settings — page numbers + header/footer. Accessed from the
+  // top-bar gear next to Export (document-level property, not a tool).
+  { id: "doc-settings", label: "Document Settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
   // Legal
   { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal" },
@@ -919,7 +923,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     try {
       toast.loading("Building PDF…", { id: "wsx" });
       const bytes = await exportEditedPdf(editorState.doc);
-      toast.success("Saved", { id: "wsx" });
+      toast.success("Saved", {
+        id: "wsx",
+        description: "Need page numbers or a header/footer? Open Document Settings.",
+        action: {
+          label: "Document Settings",
+          onClick: () => openTool("doc-settings"),
+        },
+      });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -930,7 +941,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     } catch (err) {
       toast.error("Export failed", { id: "wsx", description: (err as Error).message });
     }
-  }, [editorState.doc]);
+  }, [editorState.doc, openTool]);
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
@@ -1194,6 +1205,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Lock className="h-3 w-3" strokeWidth={2.5} />
             100% in your browser
           </span>
+          <button
+            type="button"
+            onClick={() => file && openTool("doc-settings")}
+            disabled={!file}
+            title="Document Settings — page numbers, header &amp; footer"
+            aria-label="Document Settings"
+            className={cn(
+              "inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2 transition-colors hover:bg-surface-2 hover:text-foreground",
+              activeToolId === "doc-settings" && inspectorOpen && "bg-accent-soft text-vault",
+              !file && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-text-2",
+            )}
+          >
+            <SettingsIcon className="h-4 w-4" strokeWidth={2} />
+          </button>
           <button
             type="button"
             onClick={onExport}
@@ -2957,9 +2982,11 @@ function ToolModal({
   }, [onClose]);
 
   const q = query.trim().toLowerCase();
+  const visible = TOOLS.filter((t) => !t.hidden);
   const filtered = q
-    ? TOOLS.filter((t) => t.label.toLowerCase().includes(q))
-    : TOOLS;
+    ? visible.filter((t) => t.label.toLowerCase().includes(q))
+    : visible;
+
 
   return (
     <div
