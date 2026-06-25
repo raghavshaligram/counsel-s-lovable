@@ -860,7 +860,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
-        // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
+        // Replay the on-device sidecar (annotations + page-ops + ocrLayer + outline)
         // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
         if (!cancelled && side) {
@@ -869,6 +869,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             annotations: side.annotations,
             pages: side.pages,
             ocrLayer: side.ocrLayer,
+            outline: side.outline,
           });
         }
         const pendingTool = postLoadToolRef.current.get(tabId);
@@ -903,12 +904,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       annotations: d.annotations,
       pages: d.pages,
       ocrLayer: d.ocrLayer,
+      outline: d.outline,
     });
   }, [
     active.file,
     active.editor.doc?.annotations,
     active.editor.doc?.pages,
     active.editor.doc?.ocrLayer,
+    active.editor.doc?.outline,
     active.editor.doc?.fileName,
   ]);
 
@@ -1269,20 +1272,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   fileName={file?.name ?? null}
                   bytes={editorState.doc?.srcBytes ?? null}
                   pageCount={editorState.doc?.pages.length ?? 0}
+                  pageSize={(() => {
+                    const p = editorState.doc?.pages[editorState.current];
+                    return p?.width && p?.height ? { w: p.width, h: p.height } : null;
+                  })()}
                   annotations={editorState.doc?.annotations ?? []}
+                  outline={editorState.doc?.outline}
                   currentPage={editorState.current}
+                  onOutlineChange={(outline) => editorDispatch({ type: "SET_OUTLINE", outline })}
                   onJumpPage={(n) => editorDispatch({ type: "SET_PAGE", n })}
                   onJumpAnno={(a) => {
                     editorDispatch({ type: "SET_PAGE", n: a.page });
                     editorDispatch({ type: "SELECT_ANNO", id: a.id });
                   }}
-                  onEditComment={(a) => {
-                    editorDispatch({ type: "SET_PAGE", n: a.page });
-                    editorDispatch({ type: "SELECT_ANNO", id: a.id });
-                    patchActive({ activeToolId: "comments", inspectorOpen: true });
-                  }}
+                  onAddComment={(a) => editorDispatch({ type: "ADD_ANNO", a })}
+                  onPatchComment={(id, patch) => editorDispatch({ type: "UPDATE_ANNO", id, patch })}
+                  onDeleteComment={(id) => editorDispatch({ type: "DELETE_ANNO", id })}
                   onClose={() => setNavOpen(false)}
                 />
+
               </>
             ) : null}
 

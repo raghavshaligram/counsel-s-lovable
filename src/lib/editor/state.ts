@@ -58,11 +58,13 @@ export type Action =
   | { type: "SET_WATERMARK"; w: WatermarkSettings | null }
   | { type: "SET_PROTECT"; p: ProtectSettings | null }
   | { type: "SET_OCR_LAYER"; pages: OcrPageLayer[] }
+  | { type: "SET_OUTLINE"; outline: import("../outline/types").OutlineNode[] }
   | {
       type: "LOAD_SIDECAR";
       annotations?: Anno[];
       pages?: PageOp[];
       ocrLayer?: OcrPageLayer[];
+      outline?: import("../outline/types").OutlineNode[];
     }
   | { type: "UNDO" }
   | { type: "REDO" };
@@ -131,8 +133,13 @@ export function reducer(s: State, a: Action): State {
         annotations: a.annotations ?? s.doc.annotations,
         pages: a.pages && a.pages.length === s.doc.pages.length ? a.pages : s.doc.pages,
         ocrLayer: a.ocrLayer ?? s.doc.ocrLayer,
+        outline: a.outline ?? s.doc.outline,
       };
       return { ...s, doc: next, past: [], future: [] };
+    }
+    case "SET_OUTLINE": {
+      if (!s.doc) return s;
+      return commit(s, { ...s.doc, outline: a.outline });
     }
     case "ADD_ANNO": {
       if (!s.doc) return s;
