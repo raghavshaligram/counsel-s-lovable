@@ -353,6 +353,7 @@ export type SidecarRecord = {
   annotations: Anno[];
   pages: PageOp[];
   ocrLayer?: OcrPageLayer[];
+  outline?: OutlineNode[];
 };
 
 export async function loadSidecar(name: string, size: number): Promise<SidecarRecord | null> {
