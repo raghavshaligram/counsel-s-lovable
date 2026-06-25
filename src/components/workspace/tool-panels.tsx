@@ -147,6 +147,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <DocumentSettingsPanel ctx={ctx} />;
     case "comments":
       return <CommentsInspectorPanel ctx={ctx} />;
+    case "outline":
+      return <OutlinePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
