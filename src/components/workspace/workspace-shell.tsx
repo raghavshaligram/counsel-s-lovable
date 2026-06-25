@@ -860,7 +860,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
-        // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
+        // Replay the on-device sidecar (annotations + page-ops + ocrLayer + outline)
         // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
         if (!cancelled && side) {
@@ -869,6 +869,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             annotations: side.annotations,
             pages: side.pages,
             ocrLayer: side.ocrLayer,
+            outline: side.outline,
           });
         }
         const pendingTool = postLoadToolRef.current.get(tabId);
