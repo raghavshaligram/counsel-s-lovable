@@ -1194,10 +1194,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       <TabStrip
         tabs={tabs}
         activeId={activeId}
+        loadingIds={
+          new Set(
+            tabs
+              .filter((t) => t.file !== null && t.file.size > 0 && !t.editor.doc)
+              .map((t) => t.id),
+          )
+        }
         onActivate={setActiveId}
         onClose={(id) => closeTab(id)}
         onNew={openNewStartTab}
       />
+
 
       {/* MAIN ROW */}
       <div className="flex min-h-0 flex-1">
