@@ -121,6 +121,8 @@ type RailTool = {
   icon: React.ComponentType<{ className?: string }>;
   group: ToolId;
   groupLabel: ToolGroupLabel;
+  /** Hidden from the left rail and All-tools modal (still openable by id). */
+  hidden?: boolean;
 };
 
 const TOOLS: RailTool[] = [
