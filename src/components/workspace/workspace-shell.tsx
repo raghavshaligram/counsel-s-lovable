@@ -810,17 +810,39 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     let cancelled = false;
     (async () => {
       try {
+        // OPEN PATH — fast & off-main-thread.
+        // pdf-lib parses synchronously on the main thread and froze the UI
+        // for the full open duration on large docs (400p = several seconds
+        // of "Page Unresponsive"). pdf.js parses in its Web Worker, so we
+        // use it for both numPages and the first-page placeholder size.
+        // pdf-lib is only loaded later when the user actually exports.
+        console.time(`[open ${f.name}] total`);
+        console.time(`[open ${f.name}] arrayBuffer`);
         const bytes = new Uint8Array(await f.arrayBuffer());
-        const lib = await PDFDocument.load(bytes, { ignoreEncryption: true });
-        const pages: PageOp[] = lib.getPages().map((p, i) => {
-          const { width, height } = p.getSize();
-          return { srcPage: i, rotation: 0, width, height };
-        });
+        console.timeEnd(`[open ${f.name}] arrayBuffer`);
+        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const pdfjs = await loadPdfjs();
+        console.time(`[open ${f.name}] pdfjs.getDocument`);
+        const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+        console.timeEnd(`[open ${f.name}] pdfjs.getDocument`);
+        if (cancelled) { try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ } return; }
+        console.time(`[open ${f.name}] first page size`);
+        const p1 = await doc.getPage(1);
+        const vp = p1.getViewport({ scale: 1 });
+        console.timeEnd(`[open ${f.name}] first page size`);
+        const numPages = doc.numPages;
+        try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        // Build pages with page-1 dims as placeholders. EditorPages will
+        // lazily measure real per-page dims as pages scroll into view.
+        const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
+          srcPage: i, rotation: 0, width: vp.width, height: vp.height,
+        }));
         if (cancelled) return;
         dispatchEditorFor(tabId, {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
+        console.timeEnd(`[open ${f.name}] total`);
         // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
         // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
@@ -839,7 +861,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         }
 
       } catch (err) {
-        console.error("[workspace] PDFDocument.load failed", err);
+        console.error("[workspace] open failed", err);
         toast.error("Could not open this PDF", { description: (err as Error).message });
       }
 
