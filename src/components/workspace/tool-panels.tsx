@@ -5970,15 +5970,67 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
       </button>
 
       {result?.kind === "ok" ? (
-        <Section title="Result" icon={<CheckCircle2 className="h-3 w-3 text-vault" />}>
+        <Section
+          title="Result"
+          icon={
+            result.outcome === "full" ? (
+              <CheckCircle2 className="h-3 w-3 text-vault" />
+            ) : (
+              <AlertTriangle className="h-3 w-3 text-amber-500" />
+            )
+          }
+        >
           <div className="space-y-2 rounded-md border border-border bg-surface-2 px-2.5 py-2">
-            <div className="text-[12px] text-foreground">
-              {result.dropped === 0 ? "Repaired successfully." : "Partially repaired."}
+            <div className="flex items-center gap-1.5 text-[12px] text-foreground">
+              {result.outcome === "full" ? (
+                <>
+                  <span aria-hidden>✅</span>
+                  <span>Status: Fully repaired</span>
+                </>
+              ) : (
+                <>
+                  <span aria-hidden>⚠️</span>
+                  <span>Status: Partially repaired</span>
+                </>
+              )}
             </div>
-            <div className="text-[11px] text-text-muted">
-              {result.recovered} page{result.recovered === 1 ? "" : "s"} recovered
-              {result.dropped > 0 ? ` · ${result.dropped} dropped` : ""}.
-            </div>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-text-muted">
+              <dt>Pages recovered</dt>
+              <dd className="text-foreground">
+                {result.recovered}/{result.expected}
+              </dd>
+              {result.outcome === "full" ? (
+                <>
+                  <dt>Content recovered</dt>
+                  <dd className="text-foreground">Yes</dd>
+                </>
+              ) : (
+                <>
+                  {result.dropped > 0 ? (
+                    <>
+                      <dt>Pages dropped</dt>
+                      <dd className="text-foreground">{result.dropped}</dd>
+                    </>
+                  ) : null}
+                  <dt>Pages with missing content</dt>
+                  <dd className="text-foreground">
+                    {result.missingContent.length}
+                  </dd>
+                  {result.missingContent.length > 0 &&
+                  result.missingContent.length <= 20 ? (
+                    <>
+                      <dt>Which pages</dt>
+                      <dd
+                        className="text-foreground truncate"
+                        title={result.missingContent.join(", ")}
+                      >
+                        {result.missingContent.join(", ")}
+                      </dd>
+                    </>
+                  ) : null}
+                </>
+              )}
+            </dl>
             <div className="flex gap-1.5 pt-1">
               <button
                 type="button"
@@ -5998,9 +6050,12 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
           </div>
         </Section>
       ) : result?.kind === "fail" ? (
-        <Section title="Result" icon={<AlertTriangle className="h-3 w-3 text-amber-500" />}>
+        <Section title="Result" icon={<AlertTriangle className="h-3 w-3 text-destructive" />}>
           <div className="space-y-1 rounded-md border border-border bg-surface-2 px-2.5 py-2">
-            <div className="text-[12px] text-foreground">Couldn&apos;t repair this file.</div>
+            <div className="flex items-center gap-1.5 text-[12px] text-foreground">
+              <span aria-hidden>❌</span>
+              <span>Status: Unable to repair</span>
+            </div>
             <div className="text-[11px] text-text-muted">{result.message}</div>
           </div>
         </Section>
