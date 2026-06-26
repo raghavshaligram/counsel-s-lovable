@@ -1212,7 +1212,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </span>
           <button
             type="button"
-            onClick={() => file && openTool("doc-settings")}
+            onClick={() => {
+              if (!file) return;
+              if (activeToolId === "doc-settings" && inspectorOpen) {
+                patchActive({ inspectorOpen: false });
+              } else {
+                openTool("doc-settings");
+              }
+            }}
             disabled={!file}
             title="Document Settings — page numbers, header &amp; footer"
             aria-label="Document Settings"
