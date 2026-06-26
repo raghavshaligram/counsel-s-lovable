@@ -17,11 +17,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Download, Hash, Type, Layers, Loader2 } from "lucide-react";
+import { Download, Hash, Type, Layers, Loader2, Stamp } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
+import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 
 type Props = {
   open: boolean;
@@ -36,6 +37,13 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
   const [flOn, setFlOn] = useState(false);
+
+  // Bates settings persist per-document via the shared store. The toggle
+  // here is mirrored into the same store so the Document Settings inspector
+  // and this dialog always agree.
+  const [bates, updateBates] = useBatesSettings(batesDocKey(file));
+  const batesOn = bates.on;
+  const setBatesOn = (on: boolean) => updateBates({ on });
 
   // Light, sensible defaults for the three ops.
   const [pnFormat, setPnFormat] = useState<"n" | "page-n" | "n-of-m">("n-of-m");
@@ -93,6 +101,15 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         bytes = await flatten(bytes, { forms: true, annotations: true });
       }
 
+      if (batesOn) {
+        const { addBates } = await import("@/lib/batch/ops/bates");
+        bytes = await addBates(bytes, {
+          prefix: bates.prefix, suffix: bates.suffix, startAt: bates.startAt,
+          digits: bates.digits, position: bates.position,
+          fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
+        });
+      }
+
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -110,9 +127,11 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [doc, file, pnOn, hfOn, flOn, pnFormat, headerText, footerText, onOpenChange]);
+  }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, pnFormat, headerText, footerText, onOpenChange]);
 
-  const anyOn = pnOn || hfOn || flOn;
+  const anyOn = pnOn || hfOn || flOn || batesOn;
+
+  const batesPreview = `${bates.prefix}${String(bates.startAt).padStart(bates.digits, "0")}${bates.suffix ?? ""}`;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o); }}>
@@ -150,6 +169,80 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
             </div>
             <p className="text-[10.5px] text-text-muted">Centered, bottom of every page.</p>
           </OptionRow>
+
+          <OptionRow
+            icon={<Stamp className="h-3.5 w-3.5" />}
+            label="Bates numbering"
+            on={batesOn}
+            onChange={setBatesOn}
+          >
+            <div className="grid grid-cols-3 gap-1.5">
+              <label className="col-span-2 flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Prefix</span>
+                <input
+                  type="text"
+                  value={bates.prefix}
+                  onChange={(e) => updateBates({ prefix: e.target.value })}
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Digits</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={bates.digits}
+                  onChange={(e) => updateBates({ digits: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) })}
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Start</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={bates.startAt}
+                  onChange={(e) => updateBates({ startAt: Math.max(0, parseInt(e.target.value || "0", 10)) })}
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+              <label className="col-span-2 flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Suffix</span>
+                <input
+                  type="text"
+                  value={bates.suffix ?? ""}
+                  onChange={(e) => updateBates({ suffix: e.target.value })}
+                  placeholder="(optional)"
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: "tl", l: "TL" }, { id: "tc", l: "TC" }, { id: "tr", l: "TR" },
+                { id: "bl", l: "BL" }, { id: "bc", l: "BC" }, { id: "br", l: "BR" },
+              ] as const).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => updateBates({ position: p.id })}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] transition-colors",
+                    bates.position === p.id
+                      ? "border-vault/50 bg-accent-soft text-vault"
+                      : "border-border bg-surface-2 text-text-2 hover:border-vault/30",
+                  )}
+                >
+                  {p.l}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10.5px] text-text-muted">
+              Preview: <span className="font-mono text-foreground">{batesPreview}</span> · sequential on every page. Full options in Document Settings.
+            </p>
+          </OptionRow>
+
 
           <OptionRow
             icon={<Type className="h-3.5 w-3.5" />}
@@ -196,7 +289,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         <div className="mt-2 flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => { setPnOn(false); setHfOn(false); setFlOn(false); void run(); }}
+            onClick={() => { setPnOn(false); setHfOn(false); setFlOn(false); setBatesOn(false); void run(); }}
             disabled={busy}
             className="text-[12px] text-text-2 underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
           >

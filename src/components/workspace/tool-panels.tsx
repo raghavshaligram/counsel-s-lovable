@@ -80,6 +80,7 @@ import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
 import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -109,6 +110,12 @@ export type ToolPanelCtx = {
   otherTabs?: Array<{ id: string; name: string; file: File }>;
   /** Workspace-managed OCR controls. */
   ocr?: OcrCtx;
+  /** When a panel has multiple sections, deep-link to one of them.
+   *  E.g. searching "Bates" in the command bar sets this to "bates"
+   *  so the Document Settings panel auto-opens that disclosure. */
+  focusSection?: string | null;
+  /** Clear focusSection after the consumer has acted on it. */
+  clearFocusSection?: () => void;
 };
 
 type PanelProps = { toolId: string; ctx: ToolPanelCtx };
@@ -4510,6 +4517,20 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
   const [flOn, setFlOn] = useState(false);
+  const [batesOn, setBatesOn] = useState(false);
+  const batesRef = useRef<HTMLDivElement | null>(null);
+
+  // Deep-link from the command bar ("search Bates") opens the Bates
+  // disclosure and scrolls it into view.
+  useEffect(() => {
+    if (ctx.focusSection !== "bates") return;
+    setBatesOn(true);
+    requestAnimationFrame(() => {
+      batesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    ctx.clearFocusSection?.();
+  }, [ctx.focusSection, ctx]);
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[11.5px] leading-snug text-text-2">
@@ -4529,6 +4550,25 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
       {pnOn && (
         <div className="rounded-md border border-border bg-surface-2/40 p-3">
           <PageNumbersPanel ctx={ctx} />
+        </div>
+      )}
+
+      <div ref={batesRef} className="flex flex-col gap-2" id="doc-settings-bates">
+        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
+          # Bates Numbering
+        </div>
+        <DisclosureToggle
+          label="Stamp Bates numbers on export"
+          on={batesOn}
+          onChange={setBatesOn}
+        />
+        <p className="text-[10.5px] leading-snug text-text-muted">
+          Sequential discovery stamps (e.g. <code>ABC000123</code>) on every page. Court-ready.
+        </p>
+      </div>
+      {batesOn && (
+        <div className="rounded-md border border-border bg-surface-2/40 p-3">
+          <BatesSection ctx={ctx} />
         </div>
       )}
 
@@ -4570,6 +4610,166 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
       <div className="mt-1 flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <Info className="h-3 w-3" />
         Saved with this document · stamped on export
+      </div>
+    </div>
+  );
+}
+
+/* ============================== Bates ============================== */
+/**
+ * Bates configuration — prefix/suffix, start number, zero-padding, and
+ * stamp position. Settings persist per-document via the shared bates store
+ * so the Export dialog reflects the same config the user sees here. The
+ * actual stamp happens at export time only (see ExportDialog).
+ *
+ * "Apply to active tab" and "Stamp & download" buttons also reuse the same
+ * `addBates` op so the inspector can do a quick one-off when needed.
+ */
+function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [s, update] = useBatesSettings(batesDocKey(file));
+  const [busy, setBusy] = useState(false);
+
+  const sample = `${s.prefix}${String(s.startAt).padStart(s.digits, "0")}${s.suffix ?? ""}`;
+
+  const run = useCallback(async (apply: "download" | "replace") => {
+    if (!file) return;
+    setBusy(true);
+    const tid = "wsx-bates";
+    toast.loading("Stamping Bates numbers…", { id: tid });
+    try {
+      const { addBates } = await import("@/lib/batch/ops/bates");
+      const out = await addBates(new Uint8Array(await file.arrayBuffer()), {
+        prefix: s.prefix, suffix: s.suffix, startAt: s.startAt, digits: s.digits,
+        position: s.position, fontSize: s.fontSize, color: s.color, margin: s.margin,
+      });
+      if (apply === "download") {
+        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-bates.pdf", "application/pdf");
+        toast.success("Bates numbers added", { id: tid });
+      } else {
+        replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
+        toast.success("Bates applied to active tab", { id: tid });
+      }
+    } catch (err) {
+      console.error("[bates] failed", err);
+      toast.error("Failed to stamp Bates", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, s, replaceFile]);
+
+  const positions: Array<{ id: typeof s.position; row: "top" | "bottom"; col: "left" | "center" | "right" }> = [
+    { id: "tl", row: "top", col: "left" },
+    { id: "tc", row: "top", col: "center" },
+    { id: "tr", row: "top", col: "right" },
+    { id: "bl", row: "bottom", col: "left" },
+    { id: "bc", row: "bottom", col: "center" },
+    { id: "br", row: "bottom", col: "right" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Stamp" icon={<Hash className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Prefix</span>
+            <input
+              type="text"
+              value={s.prefix}
+              onChange={(e) => update({ prefix: e.target.value })}
+              placeholder="ABC"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Suffix</span>
+            <input
+              type="text"
+              value={s.suffix ?? ""}
+              onChange={(e) => update({ suffix: e.target.value })}
+              placeholder="(optional)"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+          </label>
+          <NumberField label="Start at" value={s.startAt} min={0} onChange={(n) => update({ startAt: n })} />
+          <NumberField label="Digits" value={s.digits} min={1} max={10} onChange={(n) => update({ digits: n })} />
+        </div>
+      </Section>
+
+      <Section title="Position" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-3 gap-1.5">
+          {positions.map((p) => (
+            <ModeRow
+              key={p.id}
+              active={s.position === p.id}
+              onClick={() => update({ position: p.id })}
+              label={p.row === "top" ? "Top" : "Bottom"}
+              hint={p.col === "left" ? "Left" : p.col === "right" ? "Right" : "Center"}
+            />
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Type" icon={<Info className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-2">
+          <NumberField label="Font size" value={s.fontSize} min={6} max={32} onChange={(n) => update({ fontSize: n })} />
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Color</span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["black", "red", "blue"] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => update({ color: c })}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] capitalize transition-colors",
+                    s.color === c
+                      ? "border-vault/50 bg-accent-soft text-vault"
+                      : "border-border bg-surface-2 text-text-2 hover:border-vault/30",
+                  )}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </label>
+        </div>
+      </Section>
+
+      <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2 text-[11.5px]">
+        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Preview</div>
+        <div className="mt-1 font-mono text-foreground">{sample}</div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => run("download")}
+          disabled={busy || !s.prefix}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            (busy || !s.prefix) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy ? "Working…" : "Stamp & download"}
+        </button>
+        <button
+          type="button"
+          onClick={() => run("replace")}
+          disabled={busy || !s.prefix}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+            (busy || !s.prefix) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          Apply to active tab
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <Info className="h-3 w-3" />
+        Settings saved with this document · also offered at export
       </div>
     </div>
   );

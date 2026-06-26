@@ -354,6 +354,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => { setFitNonce((n) => n + 1); }, [activeId]);
 
   const [toolModalOpen, setToolModalOpen] = useState(false);
+  // Deep-link target for a sub-section of the active panel. Consumed by
+  // panels with multiple disclosures (e.g. Document Settings → Bates).
+  const [focusSection, setFocusSection] = useState<string | null>(null);
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [manualPins, setManualPins] = useState<string[]>([]);
   const manualPinSet = useMemo(() => new Set(manualPins), [manualPins]);
@@ -531,10 +534,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, []);
 
   const openTool = useCallback(
-    (toolId: string, opts?: { bump?: boolean }) => {
+    (toolId: string, opts?: { bump?: boolean; focusSection?: string }) => {
+      // Bates lives inside Document Settings now (next to Page Numbers).
+      // Selecting "Bates" anywhere (rail, all-tools search) deep-links into
+      // that panel and scrolls to the Bates section.
+      if (toolId === "bates") {
+        const target = toolById("doc-settings");
+        if (!target) return;
+        patchActive({ activeToolId: target.id, inspectorOpen: true });
+        setFocusSection("bates");
+        setToolModalOpen(false);
+        if (opts?.bump !== false) bumpUsage("bates");
+        return;
+      }
       const tool = toolById(toolId);
       if (!tool) return;
       patchActive({ activeToolId: tool.id, inspectorOpen: true });
+      if (opts?.focusSection) setFocusSection(opts.focusSection);
       setToolModalOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
@@ -1552,6 +1568,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               isPartial: !!active.ocrIsPartial,
               defaults: ocrOptionsRef.current,
             }}
+            focusSection={focusSection}
+            clearFocusSection={() => setFocusSection(null)}
           />
         </div>
       </div>
@@ -2929,6 +2947,8 @@ function Inspector({
   closeInspector,
   otherTabs,
   ocr,
+  focusSection,
+  clearFocusSection,
 }: {
   open: boolean;
   activeTool: RailTool | null;
@@ -2940,6 +2960,8 @@ function Inspector({
   closeInspector: () => void;
   otherTabs: Array<{ id: string; name: string; file: File }>;
   ocr: import("./tool-panels").OcrCtx;
+  focusSection: string | null;
+  clearFocusSection: () => void;
 }) {
   return (
     <aside
@@ -2977,7 +2999,7 @@ function Inspector({
           <div className="flex-1 overflow-auto px-3 py-3">
             <ToolPanel
               toolId={activeTool.id}
-              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr }}
+              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
             />
           </div>
         </div>
