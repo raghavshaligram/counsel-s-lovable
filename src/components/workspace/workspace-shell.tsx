@@ -1653,6 +1653,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         open={exportOpen}
         onOpenChange={setExportOpen}
         doc={editorState.doc ?? null}
+        file={active.file ?? null}
       />
     </div>
   );
