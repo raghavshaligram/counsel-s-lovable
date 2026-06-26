@@ -20,6 +20,7 @@
 // string and the rewrite is silently skipped (visual overlay still hides it).
 
 import type { PDFDocument } from "pdf-lib";
+import { unzlibSync, zlibSync } from "fflate";
 import type { TextEditAnno, RedactAnno } from "./types";
 
 type Edit = { original: string; replacement: string };
