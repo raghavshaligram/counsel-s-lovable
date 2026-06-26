@@ -5848,15 +5848,18 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
       });
       if (out.pagesDropped > 0) {
         toast.warning(
-          `Recovered ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"} · ${out.pagesDropped} dropped`,
+          `Repaired — recovered ${out.pagesRecovered} of ${out.pagesRecovered + out.pagesDropped} pages; ${out.pagesDropped} were too damaged and removed`,
         );
       } else {
-        toast.success(`Repaired ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"}`);
+        toast.success(
+          `Repaired — recovered all ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"}`,
+        );
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const { friendlyRepairReason } = await import("@/lib/pdf/repair");
+      const message = friendlyRepairReason(err, { fileSize: source.size });
       setResult({ kind: "fail", message });
-      toast.error("Could not fully repair this file", { description: message });
+      toast.error("Couldn't repair this file", { description: message });
     } finally {
       setBusy(false);
     }
