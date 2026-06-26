@@ -1568,6 +1568,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               isPartial: !!active.ocrIsPartial,
               defaults: ocrOptionsRef.current,
             }}
+            focusSection={focusSection}
+            clearFocusSection={() => setFocusSection(null)}
           />
         </div>
       </div>
