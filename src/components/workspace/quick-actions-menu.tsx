@@ -261,11 +261,30 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           <Wrench className="h-4 w-4" />
           <span className="flex-1">Repair PDF</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={runCompress} disabled={busy || noFile}>
-          <Archive className="h-4 w-4" />
-          <span className="flex-1">Compress</span>
-          <span className="text-[10px] text-text-2">medium</span>
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={busy || noFile}>
+            <Archive className="h-4 w-4" />
+            <span className="flex-1">Compress</span>
+            <ChevronRight className="h-3.5 w-3.5 text-text-2" />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuSubContent className="w-44">
+              <DropdownMenuItem onSelect={() => void runCompress("light")} disabled={busy}>
+                <span className="flex-1">Light</span>
+                <span className="text-[10px] text-text-2">best quality</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void runCompress("medium")} disabled={busy}>
+                <span className="flex-1">Medium</span>
+                <span className="text-[10px] text-text-2">balanced</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void runCompress("strong")} disabled={busy}>
+                <span className="flex-1">Strong</span>
+                <span className="text-[10px] text-text-2">smallest</span>
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuPortal>
+        </DropdownMenuSub>
+
         <DropdownMenuItem onSelect={runSanitize} disabled={busy || noFile}>
           <ShieldOff className="h-4 w-4" />
           <span className="flex-1">Sanitize</span>
