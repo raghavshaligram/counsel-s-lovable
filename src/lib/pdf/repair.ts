@@ -41,7 +41,7 @@ export type RepairResult = {
   /** True when at least one page was recovered. */
   ok: boolean;
   /** Which parser succeeded — useful for the UI ("rasterised fallback"). */
-  method: "pdf-lib" | "pdf.js-rasterise";
+  method: "pdf-lib" | "pdf.js-rasterise" | "qpdf-wasm";
 };
 
 export type RepairOptions = {
