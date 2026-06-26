@@ -94,6 +94,9 @@ import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/l
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
+import { useHotkey } from "@/lib/use-hotkey";
+import { exportEditedPdf } from "@/lib/editor/export";
+import { printPdfBytes } from "@/lib/workspace/print";
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 
