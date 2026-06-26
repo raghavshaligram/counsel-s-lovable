@@ -238,7 +238,7 @@ export async function repairPdfBytes(
               [
                 OPS?.paintImageXObject,
                 OPS?.paintInlineImageXObject,
-                OPS?.paintJpegXObject,
+                OPS?.paintXObject,
                 OPS?.paintImageMaskXObject,
                 OPS?.showText,
                 OPS?.showSpacedText,
