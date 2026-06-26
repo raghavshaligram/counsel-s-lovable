@@ -145,12 +145,54 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
   }
 
 
-  async function runCompress() {
-    await withFile("Compress", "compressed", async (bytes) => {
-      const { compress } = await import("@/lib/batch/ops/compress");
-      return compress(bytes, { preset: "medium", grayscale: false });
-    });
+  async function runCompress(level: "light" | "medium" | "strong" = "medium") {
+    if (!file) return;
+    setBusy(true);
+    const toastId = "qa-compress";
+    const label =
+      level === "light" ? "Light" : level === "strong" ? "Strong" : "Medium";
+    toast.loading(`Compressing (${label})…`, { id: toastId });
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const { compressSmart } = await import("@/lib/batch/ops/compress");
+      const preset = level === "light" ? "low" : level === "strong" ? "high" : "medium";
+      const res = await compressSmart(bytes, { preset, grayscale: false });
+      const fmt = (n: number) =>
+        n >= 1_000_000
+          ? `${(n / 1_000_000).toFixed(1)} MB`
+          : n >= 1_000
+            ? `${(n / 1_000).toFixed(0)} KB`
+            : `${n} B`;
+      if (res.keptOriginal) {
+        toast.message("Already optimized", {
+          id: toastId,
+          description: `No further compression possible at this level (${fmt(res.originalSize)}). The original was kept — no larger file was returned.`,
+        });
+        return;
+      }
+      const pct = Math.round(
+        (1 - res.outputSize / res.originalSize) * 100,
+      );
+      downloadBytes(
+        res.bytes,
+        `${baseName(file.name)}-compressed.pdf`,
+        "application/pdf",
+      );
+      toast.success(
+        `Compressed — ${fmt(res.originalSize)} → ${fmt(res.outputSize)} (${pct}% smaller)`,
+        { id: toastId },
+      );
+    } catch (err) {
+      console.error("[quick-actions] Compress failed", err);
+      toast.error("Compress failed", {
+        id: toastId,
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
   }
+
 
   async function runSanitize() {
     await withFile("Sanitize", "sanitized", async (bytes) => {
@@ -219,11 +261,30 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           <Wrench className="h-4 w-4" />
           <span className="flex-1">Repair PDF</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={runCompress} disabled={busy || noFile}>
-          <Archive className="h-4 w-4" />
-          <span className="flex-1">Compress</span>
-          <span className="text-[10px] text-text-2">medium</span>
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={busy || noFile}>
+            <Archive className="h-4 w-4" />
+            <span className="flex-1">Compress</span>
+            <ChevronRight className="h-3.5 w-3.5 text-text-2" />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuSubContent className="w-44">
+              <DropdownMenuItem onSelect={() => void runCompress("light")} disabled={busy}>
+                <span className="flex-1">Light</span>
+                <span className="text-[10px] text-text-2">best quality</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void runCompress("medium")} disabled={busy}>
+                <span className="flex-1">Medium</span>
+                <span className="text-[10px] text-text-2">balanced</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void runCompress("strong")} disabled={busy}>
+                <span className="flex-1">Strong</span>
+                <span className="text-[10px] text-text-2">smallest</span>
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuPortal>
+        </DropdownMenuSub>
+
         <DropdownMenuItem onSelect={runSanitize} disabled={busy || noFile}>
           <ShieldOff className="h-4 w-4" />
           <span className="flex-1">Sanitize</span>
