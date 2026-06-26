@@ -289,7 +289,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         <div className="mt-2 flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => { setPnOn(false); setHfOn(false); setFlOn(false); void run(); }}
+            onClick={() => { setPnOn(false); setHfOn(false); setFlOn(false); setBatesOn(false); void run(); }}
             disabled={busy}
             className="text-[12px] text-text-2 underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
           >
