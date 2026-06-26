@@ -19,7 +19,6 @@ export type QpdfModule = {
     writeFile: (path: string, data: Uint8Array) => void;
     readFile: (path: string) => Uint8Array;
     readdir: (path: string) => string[];
-    analyzePath: (path: string) => { exists: boolean };
     unlink: (path: string) => void;
   };
   callMain: (args: string[]) => number;
