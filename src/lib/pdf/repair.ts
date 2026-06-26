@@ -72,7 +72,7 @@ function findHeader(bytes: Uint8Array): number {
 /** Attempt #1 — lenient pdf-lib copy-pages rebuild. */
 async function repairWithPdfLib(
   bytes: Uint8Array,
-): Promise<{ out: PDFDocument; recovered: number; dropped: number } | null> {
+): Promise<{ out: PDFDocument; recovered: number; dropped: number; expected: number } | null> {
   let src: PDFDocument;
   try {
     src = await PDFDocument.load(bytes, {
