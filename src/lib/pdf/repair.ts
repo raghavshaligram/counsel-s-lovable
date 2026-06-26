@@ -84,7 +84,12 @@ async function repairWithPdfLib(
     return null;
   }
 
-  const total = src.getPageCount();
+  let total = 0;
+  try {
+    total = src.getPageCount();
+  } catch {
+    return null;
+  }
   const out = await PDFDocument.create();
   let dropped = 0;
   for (let i = 0; i < total; i++) {
@@ -95,7 +100,7 @@ async function repairWithPdfLib(
       dropped += 1;
     }
   }
-  return { out, recovered: out.getPageCount(), dropped };
+  return { out, recovered: out.getPageCount(), dropped, expected: total };
 }
 
 /** Attempt #2 — pdf.js parses what it can, rasterise each page into a fresh PDF. */
