@@ -101,6 +101,15 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         bytes = await flatten(bytes, { forms: true, annotations: true });
       }
 
+      if (batesOn) {
+        const { addBates } = await import("@/lib/batch/ops/bates");
+        bytes = await addBates(bytes, {
+          prefix: bates.prefix, suffix: bates.suffix, startAt: bates.startAt,
+          digits: bates.digits, position: bates.position,
+          fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
+        });
+      }
+
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
