@@ -4627,10 +4627,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
  */
 function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
   const { file, replaceFile } = ctx;
-  // Local import to avoid a hard dep cycle at module init.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { useBatesSettings, docKey } = require("@/lib/workspace/bates-store") as typeof import("@/lib/workspace/bates-store");
-  const [s, update] = useBatesSettings(docKey(file));
+  const [s, update] = useBatesSettings(batesDocKey(file));
   const [busy, setBusy] = useState(false);
 
   const sample = `${s.prefix}${String(s.startAt).padStart(s.digits, "0")}${s.suffix ?? ""}`;
