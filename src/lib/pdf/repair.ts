@@ -153,7 +153,7 @@ async function repairWithPdfJs(
     }
   }
 
-  return { out, recovered: out.getPageCount(), dropped };
+  return { out, recovered: out.getPageCount(), dropped, expected: total };
 }
 
 export async function repairPdfBytes(
