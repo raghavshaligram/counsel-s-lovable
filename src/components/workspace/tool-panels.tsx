@@ -146,6 +146,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ProtectPanel ctx={ctx} />;
     case "unlock":
       return <UnlockPanel ctx={ctx} />;
+    case "repair":
+      return <RepairPanel ctx={ctx} />;
     case "compare":
       return <ComparePanel ctx={ctx} />;
     case "ocr":
