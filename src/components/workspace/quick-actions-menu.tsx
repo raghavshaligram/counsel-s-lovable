@@ -212,28 +212,28 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           <Wrench className="h-4 w-4" />
           <span className="flex-1">Repair PDF</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={runCompress} disabled={busy}>
+        <DropdownMenuItem onSelect={runCompress} disabled={busy || noFile}>
           <Archive className="h-4 w-4" />
           <span className="flex-1">Compress</span>
           <span className="text-[10px] text-text-2">medium</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={runSanitize} disabled={busy}>
+        <DropdownMenuItem onSelect={runSanitize} disabled={busy || noFile}>
           <ShieldOff className="h-4 w-4" />
           <span className="flex-1">Sanitize</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={runMakeSearchable}
-          disabled={busy || ocrRunning}
+          disabled={busy || ocrRunning || noFile}
         >
           <ScanText className="h-4 w-4" />
           <span className="flex-1">Make Searchable (OCR)</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={runFlatten} disabled={busy}>
+        <DropdownMenuItem onSelect={runFlatten} disabled={busy || noFile}>
           <Layers className="h-4 w-4" />
           <span className="flex-1">Flatten</span>
         </DropdownMenuItem>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={busy}>
+          <DropdownMenuSubTrigger disabled={busy || noFile}>
             <RotateCw className="h-4 w-4" />
             <span className="flex-1">Rotate (whole document)</span>
             <ChevronRight className="h-3.5 w-3.5 text-text-2" />
@@ -253,6 +253,17 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           </DropdownMenuPortal>
         </DropdownMenuSub>
       </DropdownMenuContent>
+      <input
+        ref={repairInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void repairFile(f);
+        }}
+      />
     </DropdownMenu>
   );
 }
