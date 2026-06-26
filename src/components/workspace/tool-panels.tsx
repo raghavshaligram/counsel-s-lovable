@@ -123,7 +123,7 @@ type PanelProps = { toolId: string; ctx: ToolPanelCtx };
 export function ToolPanel({ toolId, ctx }: PanelProps) {
   switch (toolId) {
     case "redact":
-      return <RedactPanel />;
+      return <RedactPanel ctx={ctx} />;
     case "sign":
       return <SignFillPanel ctx={ctx} />;
     case "merge":
