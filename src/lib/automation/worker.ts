@@ -30,7 +30,7 @@ ctx.onmessage = async (e: MessageEvent<RunMessage>) => {
   const msg = e.data;
   if (msg?.kind !== "run") return;
   const { id, pipeline } = msg;
-  let bytes: Uint8Array = new Uint8Array(msg.bytes);
+  let bytes: Uint8Array<ArrayBufferLike> = new Uint8Array(msg.bytes);
 
   const t0 = performance.now();
   const stepStats: Array<{ op: string; outputBytes: number; elapsedMs: number }> = [];
