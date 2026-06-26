@@ -999,6 +999,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }
   }, [editorState.doc]);
 
+  useEffect(() => { onPrintRef.current = onPrint; }, [onPrint]);
+
   useEffect(() => {
     return () => {
       if (printUrlRef.current) URL.revokeObjectURL(printUrlRef.current);
