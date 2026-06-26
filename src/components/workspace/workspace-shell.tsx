@@ -953,16 +953,34 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   // Print the CURRENT STATE of the active document. We bake all edits,
   // annotations, redactions, and added objects into a flattened PDF via
-  // the same exportEditedPdf pipeline, then hand the bytes to the
-  // browser's native print dialog through a hidden iframe. Nothing
-  // leaves the device.
-  const printIframeRef = useRef<HTMLIFrameElement | null>(null);
+  // the same exportEditedPdf pipeline, then open it in a new tab so the
+  // browser's built-in PDF viewer can print it (its toolbar has Print and
+  // ⌘P works there). Browsers block scripting the embedded PDF viewer in
+  // an iframe, so a new tab is the only reliable, popup-safe option.
+  // Nothing leaves the device.
   const printUrlRef = useRef<string | null>(null);
   const onPrint = useCallback(async () => {
     if (!editorState.doc || editorState.doc.pages.length === 0) {
       toast.error("Nothing to print yet");
       return;
     }
+    // Open the tab synchronously so it's treated as a user-gesture popup
+    // and not blocked. We'll set its location once the PDF is ready.
+    const win = window.open("", "_blank");
+    if (!win) {
+      toast.error("Print blocked", {
+        description: "Allow pop-ups for this site to print.",
+      });
+      return;
+    }
+    // Minimal placeholder while we build the PDF.
+    try {
+      win.document.write(
+        "<!doctype html><title>Preparing print…</title><style>body{font:14px system-ui;background:#111;color:#ddd;display:grid;place-items:center;height:100vh;margin:0}</style><body>Preparing print…</body>",
+      );
+      win.document.close();
+    } catch { /* ignore */ }
+
     try {
       toast.loading("Preparing print…", { id: "wsx-print" });
       const bytes = await exportEditedPdf(editorState.doc);
@@ -970,33 +988,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (printUrlRef.current) URL.revokeObjectURL(printUrlRef.current);
       const url = URL.createObjectURL(blob);
       printUrlRef.current = url;
-
-      let iframe = printIframeRef.current;
-      if (!iframe) {
-        iframe = document.createElement("iframe");
-        iframe.style.position = "fixed";
-        iframe.style.right = "0";
-        iframe.style.bottom = "0";
-        iframe.style.width = "0";
-        iframe.style.height = "0";
-        iframe.style.border = "0";
-        iframe.setAttribute("aria-hidden", "true");
-        document.body.appendChild(iframe);
-        printIframeRef.current = iframe;
-      }
-      iframe.onload = () => {
-        try {
-          iframe!.contentWindow?.focus();
-          iframe!.contentWindow?.print();
-          toast.dismiss("wsx-print");
-        } catch {
-          // Fallback: open the bytes in a new tab so the user can print.
-          window.open(url, "_blank", "noopener");
-          toast.dismiss("wsx-print");
-        }
-      };
-      iframe.src = url;
+      win.location.replace(url);
+      toast.success("Ready to print", {
+        id: "wsx-print",
+        description: "Use Print in the PDF viewer tab (or ⌘P there).",
+      });
     } catch (err) {
+      try { win.close(); } catch { /* ignore */ }
       toast.error("Print failed", { id: "wsx-print", description: (err as Error).message });
     }
   }, [editorState.doc]);
@@ -1006,9 +1004,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     return () => {
       if (printUrlRef.current) URL.revokeObjectURL(printUrlRef.current);
-      if (printIframeRef.current) printIframeRef.current.remove();
     };
   }, []);
+  
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
