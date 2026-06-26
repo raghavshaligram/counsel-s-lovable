@@ -27,9 +27,11 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   doc: EditorDoc | null;
+  /** Active File — read fresh at confirm so srcBytes detachment can't bite. */
+  file: File | null;
 };
 
-export function ExportDialog({ open, onOpenChange, doc }: Props) {
+export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   // Defaults are OFF — "export as-is" is one click away.
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
