@@ -773,7 +773,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         openNewStartTab();
       } else if (meta && e.key.toLowerCase() === "p") {
         e.preventDefault();
-        onPrint();
+        onPrintRef.current?.();
       } else if (
         !meta &&
         e.key.toLowerCase() === "o" &&
@@ -789,7 +789,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openFile, openNewStartTab, patchActive, inspectorOpen, zoom, onPrint]);
+  }, [openFile, openNewStartTab, patchActive, inspectorOpen, zoom]);
+
+  const onPrintRef = useRef<(() => void) | null>(null);
 
   // Drag-drop anywhere → open into active tab. Ignore non-file drags
   // (e.g. dragging a page tile inside the Organize grid) so the global
