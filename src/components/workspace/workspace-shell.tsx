@@ -56,6 +56,7 @@ import {
   FileCheck2,
   Settings as SettingsIcon,
   Wrench,
+  Printer,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
