@@ -110,7 +110,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [doc, pnOn, hfOn, flOn, pnFormat, headerText, footerText, onOpenChange]);
+  }, [doc, file, pnOn, hfOn, flOn, pnFormat, headerText, footerText, onOpenChange]);
 
   const anyOn = pnOn || hfOn || flOn;
 
