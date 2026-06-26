@@ -17,11 +17,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Download, Hash, Type, Layers, Loader2 } from "lucide-react";
+import { Download, Hash, Type, Layers, Loader2, Stamp } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
+import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 
 type Props = {
   open: boolean;
