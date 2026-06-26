@@ -32,6 +32,9 @@ import {
   GitCompare,
   Hash,
   Shield,
+  Wrench,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
