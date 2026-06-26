@@ -27,9 +27,11 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   doc: EditorDoc | null;
+  /** Active File — read fresh at confirm so srcBytes detachment can't bite. */
+  file: File | null;
 };
 
-export function ExportDialog({ open, onOpenChange, doc }: Props) {
+export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   // Defaults are OFF — "export as-is" is one click away.
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
@@ -52,7 +54,14 @@ export function ExportDialog({ open, onOpenChange, doc }: Props) {
     const tid = "wsx-export-flow";
     toast.loading("Building PDF…", { id: tid });
     try {
-      let bytes = await exportEditedPdf(doc);
+      // Re-read fresh bytes from the active File. The open path hands its
+      // bytes to pdf.js which transfers/detaches the ArrayBuffer, so
+      // `doc.srcBytes` may be empty by now. Reading the File again is the
+      // only place this cost is paid — and only at export confirm.
+      const exportDoc = file
+        ? { ...doc, srcBytes: new Uint8Array(await file.arrayBuffer()) }
+        : doc;
+      let bytes = await exportEditedPdf(exportDoc);
 
       if (pnOn) {
         const { addPageNumbers } = await import("@/lib/batch/ops/page-numbers");
@@ -101,7 +110,7 @@ export function ExportDialog({ open, onOpenChange, doc }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [doc, pnOn, hfOn, flOn, pnFormat, headerText, footerText, onOpenChange]);
+  }, [doc, file, pnOn, hfOn, flOn, pnFormat, headerText, footerText, onOpenChange]);
 
   const anyOn = pnOn || hfOn || flOn;
 

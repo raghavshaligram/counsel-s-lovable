@@ -838,11 +838,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const bytes = new Uint8Array(await f.arrayBuffer());
         const { loadPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await loadPdfjs();
-        // pdf.js transfers the ArrayBuffer to its worker and detaches it on
-        // the main thread. Pass a copy so `bytes` stays intact for srcBytes —
-        // export (pdf-lib) reads from srcBytes and would otherwise see an
-        // empty buffer ("No PDF header found").
-        const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+        // Hand bytes straight to pdf.js — the worker transfers the buffer.
+        // For 400p PDFs slicing here copies tens of MB on the main thread
+        // and freezes the open path. Keep this transfer fast; export re-
+        // reads fresh bytes from the active File on demand.
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
@@ -1653,6 +1653,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         open={exportOpen}
         onOpenChange={setExportOpen}
         doc={editorState.doc ?? null}
+        file={active.file ?? null}
       />
     </div>
   );
