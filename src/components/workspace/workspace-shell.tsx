@@ -838,7 +838,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const bytes = new Uint8Array(await f.arrayBuffer());
         const { loadPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await loadPdfjs();
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        // pdf.js transfers the ArrayBuffer to its worker and detaches it on
+        // the main thread. Pass a copy so `bytes` stays intact for srcBytes —
+        // export (pdf-lib) reads from srcBytes and would otherwise see an
+        // empty buffer ("No PDF header found").
+        const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
