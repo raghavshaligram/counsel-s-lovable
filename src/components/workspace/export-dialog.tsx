@@ -54,7 +54,14 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
     const tid = "wsx-export-flow";
     toast.loading("Building PDF…", { id: tid });
     try {
-      let bytes = await exportEditedPdf(doc);
+      // Re-read fresh bytes from the active File. The open path hands its
+      // bytes to pdf.js which transfers/detaches the ArrayBuffer, so
+      // `doc.srcBytes` may be empty by now. Reading the File again is the
+      // only place this cost is paid — and only at export confirm.
+      const exportDoc = file
+        ? { ...doc, srcBytes: new Uint8Array(await file.arrayBuffer()) }
+        : doc;
+      let bytes = await exportEditedPdf(exportDoc);
 
       if (pnOn) {
         const { addPageNumbers } = await import("@/lib/batch/ops/page-numbers");
