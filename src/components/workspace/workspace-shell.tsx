@@ -1238,7 +1238,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={file}
             onMakeSearchable={() => void onRequestOcr()}
             ocrRunning={ocrRunning}
-            onOpenFile={(f) => onFiles({ 0: f, length: 1, item: () => f } as unknown as FileList)}
+            onOpenFile={(f) => {
+              // Open in a new tab if a doc is already loaded; otherwise
+              // replace the current blank tab. Matches normal file-open.
+              const dt = new DataTransfer();
+              dt.items.add(f);
+              openInNewTabRef.current = !!file;
+              onFiles(dt.files);
+            }}
+
           />
 
           <button
