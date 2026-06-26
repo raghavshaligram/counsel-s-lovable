@@ -156,7 +156,7 @@ const TOOLS: RailTool[] = [
   { id: "doc-settings", label: "Document Settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
   // Legal
   { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
-  { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal" },
+  { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
   { id: "privilege-scan", label: "Privilege Scan", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
   // AI
   { id: "chat", label: "Search Inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
