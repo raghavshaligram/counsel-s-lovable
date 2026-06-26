@@ -211,3 +211,59 @@ export async function repairPdfFile(file: File): Promise<RepairResult> {
   const buf = new Uint8Array(await file.arrayBuffer());
   return repairPdfBytes(buf, { filename: file.name });
 }
+
+/**
+ * Map any repair/parse error (or a Repair result snapshot) into a plain-
+ * language reason. Internal parser strings ("Failed to parse number
+ * line:50 col:3 offset=1076"), library names, and stack traces never reach
+ * the user — they go to the console for debugging.
+ */
+export function friendlyRepairReason(
+  err: unknown,
+  ctx?: { fileSize?: number },
+): string {
+  // Log the raw technical detail for developers; never surface it.
+  // eslint-disable-next-line no-console
+  console.error("[repair] technical detail:", err);
+
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).toLowerCase();
+  const size = ctx?.fileSize ?? -1;
+
+  if (size === 0) {
+    return "This file is empty — it may not have finished downloading. Try downloading it again, then run Repair.";
+  }
+  if (raw.includes("empty file")) {
+    return "This file is empty — it may not have finished downloading. Try downloading it again, then run Repair.";
+  }
+  if (
+    raw.includes("password") ||
+    raw.includes("encrypted") ||
+    raw.includes("encryption")
+  ) {
+    return "This file is password-protected. Unlock it first, then run Repair.";
+  }
+  if (
+    raw.includes("no pdf header") ||
+    raw.includes("not a pdf") ||
+    raw.includes("invalid pdf") ||
+    raw.includes("missing pdf")
+  ) {
+    return "This file doesn't look like a PDF. It may be a different file type, or only partially downloaded.";
+  }
+  if (
+    raw.includes("no recoverable pages") ||
+    raw.includes("could not read")
+  ) {
+    return "This file appears to be corrupted beyond recovery — its internal structure is too damaged to rebuild.";
+  }
+  if (
+    raw.includes("unexpected end") ||
+    raw.includes("eof") ||
+    raw.includes("truncated")
+  ) {
+    return "This file looks truncated — it may not have finished downloading or saving.";
+  }
+  // Any other low-level parser noise.
+  return "This file appears to be corrupted beyond recovery — its internal structure is too damaged to rebuild.";
+}
+
