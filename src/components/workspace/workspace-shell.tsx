@@ -1006,7 +1006,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (printUrlRef.current) URL.revokeObjectURL(printUrlRef.current);
     };
   }, []);
-  // dummy line replaced below
+  
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
