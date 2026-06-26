@@ -845,7 +845,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const bytes = new Uint8Array(await f.arrayBuffer());
         const { loadPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await loadPdfjs();
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        // pdf.js transfers/detaches the ArrayBuffer passed in `data`. Hand
+        // it a copy so our retained `bytes` stays intact for pdf-lib export.
+        const doc = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
