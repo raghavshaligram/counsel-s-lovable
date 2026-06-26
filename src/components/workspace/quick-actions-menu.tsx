@@ -9,7 +9,7 @@
  * No tool inspector is opened. These tools also remain in the all-tools
  * modal for discoverability — this is just a faster path.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Zap,
   Wrench,
@@ -40,14 +40,23 @@ type Props = {
   file: File | null;
   onMakeSearchable: () => void;
   ocrRunning: boolean;
+  /**
+   * Open a File in the workspace (new tab if a doc is already open).
+   * Used after Repair so the repaired PDF lands in the viewer.
+   */
+  onOpenFile: (file: File) => void;
 };
 
 function baseName(name: string): string {
   return name.replace(/\.pdf$/i, "");
 }
 
-export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning }: Props) {
+export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFile }: Props) {
   const [busy, setBusy] = useState(false);
+  const repairInputRef = useRef<HTMLInputElement | null>(null);
+  // Repair is the exception — always enabled. Other items still need a file.
+  const noFile = !file;
+
   const disabled = !file || busy;
 
   async function withFile(
