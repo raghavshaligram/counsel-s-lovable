@@ -2947,6 +2947,8 @@ function Inspector({
   closeInspector,
   otherTabs,
   ocr,
+  focusSection,
+  clearFocusSection,
 }: {
   open: boolean;
   activeTool: RailTool | null;
