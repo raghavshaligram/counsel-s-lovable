@@ -31,6 +31,7 @@ import {
   ChevronDown,
   GitCompare,
   Hash,
+  Shield,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
@@ -123,7 +124,7 @@ type PanelProps = { toolId: string; ctx: ToolPanelCtx };
 export function ToolPanel({ toolId, ctx }: PanelProps) {
   switch (toolId) {
     case "redact":
-      return <RedactPanel />;
+      return <RedactPanel ctx={ctx} />;
     case "sign":
       return <SignFillPanel ctx={ctx} />;
     case "merge":
@@ -692,64 +693,229 @@ function CsvFillSection({
 
 /* ------------------------------ Redact ------------------------------ */
 
-function RedactPanel() {
-  const [query, setQuery] = useState("");
-  const [exemption, setExemption] = useState("");
+function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, editorState } = ctx;
+  type Verify = import("@/lib/editor/verify-redaction").VerifyResult;
+  const [busy, setBusy] = useState(false);
+  const [verify, setVerify] = useState<Verify | null>(null);
+  const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
+
+  // Pull redact annotations from the active editor state. Each one may
+  // carry `sources[]` — the captured text fragments under the drawn box —
+  // which the destructive content-stream rewriter uses to erase the actual
+  // Tj operands at export. Boxes drawn over images/regions with no captured
+  // sources still get the visual overlay, but can't be verified for removal.
+  const redactAnnos = useMemo(
+    () => (editorState?.doc?.annotations ?? []).filter((a) => a.kind === "redact"),
+    [editorState?.doc?.annotations],
+  );
+  const totalBoxes = redactAnnos.length;
+  const targets = useMemo(() => {
+    const out: { page: number; text: string }[] = [];
+    for (const a of redactAnnos) {
+      if (a.kind !== "redact" || !a.sources?.length) continue;
+      for (const s of a.sources) {
+        if (s.originalString && s.originalString.trim()) {
+          out.push({ page: a.page, text: s.originalString });
+        }
+      }
+    }
+    return out;
+  }, [redactAnnos]);
+  const boxesWithoutText = redactAnnos.filter((a) => a.kind === "redact" && !a.sources?.length).length;
+
+  const exportRedacted = useCallback(async () => {
+    if (!file || !editorState?.doc) return;
+    setBusy(true);
+    setVerify(null);
+    const tid = "wsx-redact-export";
+    toast.loading("Building redacted PDF…", { id: tid });
+    try {
+      // Reuse the editor's exporter — it already runs the destructive
+      // content-stream rewrite for every redact annotation that captured
+      // source strings (see src/lib/editor/text-rewrite.ts). Re-read fresh
+      // bytes from the File: the open path may have detached the worker
+      // buffer.
+      const { exportEditedPdf } = await import("@/lib/editor/export");
+      const freshBytes = new Uint8Array(await file.arrayBuffer());
+      const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
+      const bytes = await exportEditedPdf(exportDoc);
+
+      // Download.
+      downloadBytes(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf", "application/pdf");
+      setLastBytes(bytes);
+
+      // Verify by re-parsing the exported file and confirming every
+      // captured source string is absent from the text layer.
+      toast.loading("Verifying removal…", { id: tid });
+      const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
+      const result = await verifyRedactionRemoval(bytes, targets);
+      setVerify(result);
+      if (result.ok) {
+        toast.success(`Verified — ${result.removed}/${result.total} fragments removed`, { id: tid });
+      } else {
+        toast.warning(`${result.leaks.length} fragment${result.leaks.length === 1 ? "" : "s"} still present`, {
+          id: tid,
+          description: "See verification report below.",
+        });
+      }
+    } catch (err) {
+      console.error("[redact] export failed", err);
+      toast.error("Redaction export failed", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, editorState?.doc, targets]);
+
+  const downloadCertificate = useCallback(async () => {
+    if (!file || !verify || !lastBytes) return;
+    try {
+      const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
+      // Hash both source and redacted bytes for the chain of custody panel.
+      const hash = async (data: Uint8Array): Promise<string> => {
+        const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+        return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      };
+      const [sourceHash, redactedHash] = await Promise.all([
+        hash(new Uint8Array(await file.arrayBuffer())),
+        hash(lastBytes),
+      ]);
+      const boxes = redactAnnos.map((a, idx) => ({
+        id: a.id ?? `r${idx}`,
+        page: a.page + 1,
+        x: (a as { x?: number }).x ?? 0,
+        y: (a as { y?: number }).y ?? 0,
+        w: (a as { w?: number }).w ?? 0,
+        h: (a as { h?: number }).h ?? 0,
+        label: verify.ok ? "removed" : "see report",
+      }));
+      const cert = await buildRedactionCertificate({
+        sourceName: file.name,
+        sourceBytes: file.size,
+        pageCount: editorState?.doc?.pages.length ?? 0,
+        boxes,
+        stripMetadata: false,
+        sourceHashSHA256: sourceHash,
+        redactedHashSHA256: redactedHash,
+      });
+      downloadBytes(cert, file.name.replace(/\.pdf$/i, "") + "-redaction-certificate.pdf", "application/pdf");
+      toast.success("Certificate downloaded");
+    } catch (err) {
+      console.error("[redact] certificate failed", err);
+      toast.error("Couldn't build certificate", { description: (err as Error).message });
+    }
+  }, [file, verify, lastBytes, redactAnnos, editorState?.doc?.pages.length]);
+
+  if (!file) {
+    return (
+      <p className="text-[11.5px] leading-snug text-text-2">
+        Open a PDF to mark redactions.
+      </p>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Get started">
+      <Section title="How it works">
         <p className="text-[11.5px] leading-snug text-text-2">
-          Drag a box over the page to redact, or use the tools below. Redactions
-          are baked in on export — never reversible.
+          Drag a box over text or an image to mark it for redaction. On export, the
+          text under every box is <strong className="text-foreground">removed from the PDF&apos;s content stream</strong> —
+          not just covered with a black rectangle.
         </p>
       </Section>
 
-      <Section title="Auto-detect PII" icon={<Wand2 className="h-3 w-3" />}>
-        <button
-          type="button"
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90"
-        >
-          <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
-          Scan this document
-        </button>
-        <p className="mt-1.5 text-[10.5px] text-text-muted">
-          Finds names, emails, phone numbers, SSNs, addresses.
-        </p>
-      </Section>
-
-      <Section title="Find &amp; redact" icon={<Search className="h-3 w-3" />}>
-        <div className="flex items-center gap-1">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Text or /regex/"
-            className="min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:outline-none focus:border-vault/50"
-          />
-          <button
-            type="button"
-            disabled={!query.trim()}
-            className={cn(
-              "rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3",
-              !query.trim() && "opacity-40 cursor-not-allowed",
-            )}
-          >
-            Find
-          </button>
+      <Section title="Marked for removal" icon={<Shield className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2.5 text-[12px]">
+          <div className="flex items-center justify-between">
+            <span className="text-text-2">Boxes on this document</span>
+            <span className="font-mono tabular-nums text-foreground">{totalBoxes}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between">
+            <span className="text-text-2">Text fragments captured</span>
+            <span className="font-mono tabular-nums text-foreground">{targets.length}</span>
+          </div>
+          {boxesWithoutText > 0 && (
+            <p className="mt-2 text-[10.5px] leading-snug text-text-muted">
+              {boxesWithoutText} box{boxesWithoutText === 1 ? "" : "es"} covers an image or untextured region —
+              still painted opaque black on export, but nothing to verify.
+            </p>
+          )}
         </div>
       </Section>
 
-      <Section title="Exemption label" icon={<Tag className="h-3 w-3" />}>
-        <input
-          value={exemption}
-          onChange={(e) => setExemption(e.target.value)}
-          placeholder="e.g. FOIA (b)(6)"
-          className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:outline-none focus:border-vault/50"
-        />
+      <Section title="Export & verify" icon={<ShieldCheck className="h-3 w-3" />}>
+        <button
+          type="button"
+          onClick={exportRedacted}
+          disabled={busy || totalBoxes === 0}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            (busy || totalBoxes === 0) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy ? "Working…" : "Redact, export & verify"}
+        </button>
         <p className="mt-1.5 text-[10.5px] text-text-muted">
-          Stamped on each redaction mark.
+          Exports a redacted PDF, then re-parses the exported file and confirms each
+          captured fragment is gone from the text layer.
         </p>
       </Section>
+
+      {verify && (
+        <Section
+          title={verify.ok ? "Verification — passed" : "Verification — review"}
+          icon={<ShieldCheck className="h-3 w-3" />}
+        >
+          <div
+            className={cn(
+              "rounded-md border px-3 py-2.5 text-[12px]",
+              verify.ok
+                ? "border-vault/40 bg-accent-soft text-vault"
+                : "border-destructive/40 bg-destructive/10 text-foreground",
+            )}
+          >
+            <div className="font-medium">
+              {verify.removed} of {verify.total} text fragment{verify.total === 1 ? "" : "s"} removed
+            </div>
+            <div className="mt-0.5 text-[10.5px] opacity-80">
+              Scanned {new Date(verify.scannedAt).toLocaleString()}
+            </div>
+            {!verify.ok && (
+              <ul className="mt-2 space-y-1 text-[11px] text-foreground">
+                {verify.leaks.slice(0, 6).map((l, i) => (
+                  <li key={i} className="font-mono">
+                    p.{l.page + 1}: <span className="text-text-2">{l.text.length > 40 ? l.text.slice(0, 40) + "…" : l.text}</span>
+                  </li>
+                ))}
+                {verify.leaks.length > 6 && (
+                  <li className="text-[10.5px] text-text-muted">…and {verify.leaks.length - 6} more</li>
+                )}
+              </ul>
+            )}
+            {!verify.ok && (
+              <p className="mt-2 text-[10.5px] leading-snug text-text-2">
+                These fragments still appear in the exported file&apos;s text layer (likely a
+                custom font / CMap whose Tj operand doesn&apos;t match the visible string).
+                Visual overlay still hides them on screen, but search/copy can recover them.
+                Consider exporting via Print → PDF or applying Flatten in Document Settings.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={downloadCertificate}
+            disabled={!lastBytes}
+            className={cn(
+              "mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+              !lastBytes && "opacity-50 cursor-not-allowed",
+            )}
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={2} />
+            Download verification certificate
+          </button>
+        </Section>
+      )}
 
       <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />

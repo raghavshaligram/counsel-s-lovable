@@ -20,6 +20,7 @@
 // string and the rewrite is silently skipped (visual overlay still hides it).
 
 import type { PDFDocument } from "pdf-lib";
+import { unzlibSync, zlibSync } from "fflate";
 import type { TextEditAnno, RedactAnno } from "./types";
 
 type Edit = { original: string; replacement: string };
@@ -82,17 +83,47 @@ function rewriteStream(
   stream: import("pdf-lib").PDFRawStream,
   job: PageRewrite,
 ) {
-  // pdf-lib exposes the raw bytes as `contents` (Uint8Array). Some streams
-  // are flate-encoded; in that case we can't safely munge the bytes without
-  // a full encode round-trip, so we skip.
+  // pdf-lib exposes the raw bytes as `contents` (Uint8Array). Most real-
+  // world PDFs have FlateDecode'd content streams, so we decode-then-rewrite
+  // -then-re-encode. Without this, destructive redaction would silently fall
+  // back to visual whiteout on >90 % of documents.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const s: any = stream;
   const dict = s.dict;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const filter = dict?.get?.((dict.context as any).obj("Filter"));
-  if (filter) return; // encoded — bail out
-  const bytes: Uint8Array = s.contents;
+  const ctx = (dict?.context ?? null) as any;
+
+  // Read /Filter — may be a name or an array of names.
+  let filterNames: string[] = [];
+  try {
+    const filter = dict?.get?.(ctx.obj("Filter"));
+    if (filter) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const f: any = filter;
+      if (typeof f.asArray === "function") {
+        filterNames = f.asArray().map((n: { toString: () => string }) => n.toString().replace(/^\//, ""));
+      } else {
+        filterNames = [String(f).replace(/^\//, "")];
+      }
+    }
+  } catch { /* ignore */ }
+
+  let bytes: Uint8Array = s.contents;
   if (!bytes || !bytes.length) return;
+
+  const wasFlate = filterNames.length === 1 && (filterNames[0] === "FlateDecode" || filterNames[0] === "Fl");
+  if (filterNames.length && !wasFlate) {
+    // Other filters (ASCII85, LZW, RunLength, DCTDecode, etc.) — too risky
+    // to round-trip. Visual overlay still hides the glyphs.
+    return;
+  }
+  if (wasFlate) {
+    try {
+      bytes = unzlibSync(bytes);
+    } catch {
+      return;
+    }
+  }
 
   // latin1 decode
   let text = "";
@@ -154,8 +185,16 @@ function rewriteStream(
   if (!mutated) return;
 
   // re-encode latin1 back to bytes
-  const newBytes = new Uint8Array(out.length);
+  let newBytes = new Uint8Array(out.length);
   for (let n = 0; n < out.length; n++) newBytes[n] = out.charCodeAt(n) & 0xff;
+
+  if (wasFlate) {
+    try {
+      newBytes = zlibSync(newBytes);
+    } catch {
+      return;
+    }
+  }
   s.contents = newBytes;
   // update /Length if pdf-lib stored one
   try {
