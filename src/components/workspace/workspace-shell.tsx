@@ -903,8 +903,49 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
       } catch (err) {
         console.error("[workspace] open failed", err);
-        toast.error("Could not open this PDF", { description: (err as Error).message });
+        const failed = f;
+        toast.error("Couldn't open this PDF", {
+          description: "The file may be damaged. Try to repair it?",
+          action: {
+            label: "Repair",
+            onClick: () => {
+              void (async () => {
+                const toastId = "open-fail-repair";
+                toast.loading("Repairing…", { id: toastId });
+                try {
+                  const { repairPdfFile } = await import("@/lib/pdf/repair");
+                  const res = await repairPdfFile(failed);
+                  const repairedFile = new File(
+                    [res.bytes as BlobPart],
+                    res.filename,
+                    { type: "application/pdf" },
+                  );
+                  const dt = new DataTransfer();
+                  dt.items.add(repairedFile);
+                  openInNewTabRef.current = false;
+                  onFiles(dt.files);
+                  const total = res.pagesRecovered + res.pagesDropped;
+                  toast.success(
+                    res.pagesDropped > 0
+                      ? `Repaired — recovered ${res.pagesRecovered} of ${total} pages`
+                      : `Repaired — recovered all ${res.pagesRecovered} page${res.pagesRecovered === 1 ? "" : "s"}`,
+                    { id: toastId },
+                  );
+                } catch (repairErr) {
+                  const { friendlyRepairReason } = await import("@/lib/pdf/repair");
+                  toast.error("Couldn't repair this file", {
+                    id: toastId,
+                    description: friendlyRepairReason(repairErr, {
+                      fileSize: failed.size,
+                    }),
+                  });
+                }
+              })();
+            },
+          },
+        });
       }
+
 
     })();
     return () => {
