@@ -31,6 +31,7 @@ import {
   ChevronDown,
   GitCompare,
   Hash,
+  Shield,
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
