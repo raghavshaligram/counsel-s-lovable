@@ -67,7 +67,6 @@ export async function printPdfBytes(
   } finally {
     try {
       await doc.cleanup();
-      doc.destroy();
     } catch {
       /* ignore */
     }
