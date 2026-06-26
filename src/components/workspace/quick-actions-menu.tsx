@@ -268,22 +268,22 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           <span className="flex-1">Repair PDF</span>
         </DropdownMenuItem>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={busy || noFile}>
+          <DropdownMenuSubTrigger disabled={busy}>
             <Archive className="h-4 w-4" />
             <span className="flex-1">Compress</span>
             <ChevronRight className="h-3.5 w-3.5 text-text-2" />
           </DropdownMenuSubTrigger>
           <DropdownMenuPortal>
             <DropdownMenuSubContent className="w-44">
-              <DropdownMenuItem onSelect={() => void runCompress("light")} disabled={busy}>
+              <DropdownMenuItem onSelect={() => runCompress("light")} disabled={busy}>
                 <span className="flex-1">Light</span>
                 <span className="text-[10px] text-text-2">best quality</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void runCompress("medium")} disabled={busy}>
+              <DropdownMenuItem onSelect={() => runCompress("medium")} disabled={busy}>
                 <span className="flex-1">Medium</span>
                 <span className="text-[10px] text-text-2">balanced</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void runCompress("strong")} disabled={busy}>
+              <DropdownMenuItem onSelect={() => runCompress("strong")} disabled={busy}>
                 <span className="flex-1">Strong</span>
                 <span className="text-[10px] text-text-2">smallest</span>
               </DropdownMenuItem>
@@ -291,20 +291,24 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           </DropdownMenuPortal>
         </DropdownMenuSub>
 
-        <DropdownMenuItem onSelect={runSanitize} disabled={busy || noFile}>
+        <DropdownMenuItem onSelect={runSanitize} disabled={busy}>
           <ShieldOff className="h-4 w-4" />
           <span className="flex-1">Sanitize</span>
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={runFlatten} disabled={busy}>
+          <Layers className="h-4 w-4" />
+          <span className="flex-1">Flatten</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.18em] text-text-2 font-mono">
+          Requires open document
+        </DropdownMenuLabel>
         <DropdownMenuItem
           onSelect={runMakeSearchable}
           disabled={busy || ocrRunning || noFile}
         >
           <ScanText className="h-4 w-4" />
           <span className="flex-1">Make Searchable (OCR)</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={runFlatten} disabled={busy || noFile}>
-          <Layers className="h-4 w-4" />
-          <span className="flex-1">Flatten</span>
         </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger disabled={busy || noFile}>
