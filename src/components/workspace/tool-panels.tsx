@@ -5214,7 +5214,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
             type="button"
             onClick={runLinkify}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-text-2 hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-vault hover:underline hover:opacity-90 disabled:opacity-50"
           >
             <Wand2 className="h-3 w-3" /> Linkify URLs
           </button>
