@@ -57,7 +57,9 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
   // Repair is the exception — always enabled. Other items still need a file.
   const noFile = !file;
 
-  const disabled = !file || busy;
+  // Trigger button is enabled whenever Repair is usable (always) OR a file is
+  // open. Other items are individually gated on `noFile`.
+  const triggerDisabled = busy;
 
   async function withFile(
     label: string,
@@ -88,14 +90,13 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     }
   }
 
-  async function runRepair() {
-    if (!file) return;
+  async function repairFile(target: File) {
     setBusy(true);
     const toastId = "qa-repair";
     toast.loading("Repairing…", { id: toastId });
     try {
       const { repairPdfFile } = await import("@/lib/pdf/repair");
-      const res = await repairPdfFile(file);
+      const res = await repairPdfFile(target);
       downloadBytes(res.bytes, res.filename, "application/pdf");
       const total = res.pagesRecovered + res.pagesDropped;
       toast.success(
@@ -104,16 +105,38 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           : `Repaired — recovered all ${res.pagesRecovered} page${res.pagesRecovered === 1 ? "" : "s"}`,
         { id: toastId },
       );
+      // Open the repaired PDF in the workspace so the user can keep working.
+      try {
+        const repairedFile = new File([res.bytes as BlobPart], res.filename, {
+          type: "application/pdf",
+        });
+        onOpenFile(repairedFile);
+      } catch (e) {
+        console.error("[quick-actions] could not open repaired file", e);
+      }
     } catch (err) {
       const { friendlyRepairReason } = await import("@/lib/pdf/repair");
       toast.error("Couldn't repair this file", {
         id: toastId,
-        description: friendlyRepairReason(err, { fileSize: file.size }),
+        description: friendlyRepairReason(err, { fileSize: target.size }),
       });
     } finally {
       setBusy(false);
     }
   }
+
+  function runRepair() {
+    // Repair is the ONE exception: it must work even with no doc open
+    // (corrupted PDFs may never open through the normal viewer). If no file
+    // is loaded, open a dedicated picker that accepts any .pdf — including
+    // damaged ones — and feed its raw bytes to Repair.
+    if (file) {
+      void repairFile(file);
+    } else {
+      repairInputRef.current?.click();
+    }
+  }
+
 
   async function runCompress() {
     await withFile("Compress", "compressed", async (bytes) => {
