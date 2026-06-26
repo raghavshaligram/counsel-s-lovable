@@ -5813,3 +5813,183 @@ function OutlineTree({
     </ul>
   );
 }
+
+/* ============================== Repair ============================== */
+
+function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [picked, setPicked] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<
+    | { kind: "ok"; blob: Blob; filename: string; recovered: number; dropped: number; sourceName: string }
+    | { kind: "fail"; message: string }
+    | null
+  >(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Prefer the currently-open file; fall back to a directly picked one
+  // (the normal viewer may have refused to open a damaged PDF).
+  const source = picked ?? file;
+
+  const run = useCallback(async () => {
+    if (!source) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const { repairPdfFile } = await import("@/lib/pdf/repair");
+      const out = await repairPdfFile(source);
+      setResult({
+        kind: "ok",
+        blob: out.blob,
+        filename: out.filename,
+        recovered: out.pagesRecovered,
+        dropped: out.pagesDropped,
+        sourceName: source.name,
+      });
+      if (out.pagesDropped > 0) {
+        toast.warning(
+          `Recovered ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"} · ${out.pagesDropped} dropped`,
+        );
+      } else {
+        toast.success(`Repaired ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setResult({ kind: "fail", message });
+      toast.error("Could not fully repair this file", { description: message });
+    } finally {
+      setBusy(false);
+    }
+  }, [source]);
+
+  const openRepaired = useCallback(() => {
+    if (!result || result.kind !== "ok") return;
+    try {
+      const f = new File([result.blob], result.filename, { type: "application/pdf" });
+      replaceFile(f);
+      toast.success("Opened repaired copy in this tab");
+    } catch {
+      /* ignore */
+    }
+  }, [result, replaceFile]);
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        {source ? (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12px] text-foreground" title={source.name}>
+                {source.name}
+              </div>
+              <div className="text-[10.5px] text-text-muted">
+                {(source.size / 1024).toFixed(1)} KB{picked ? " · picked for repair" : " · current tab"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="rounded-md border border-border bg-surface-1 px-2 py-1 text-[11px] text-text-muted hover:text-foreground"
+            >
+              Change…
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-4 text-[11.5px] text-text-muted hover:text-foreground"
+          >
+            <Upload className="h-3.5 w-3.5" /> Choose a damaged PDF
+          </button>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) {
+              setPicked(f);
+              setResult(null);
+            }
+            e.target.value = "";
+          }}
+        />
+      </Section>
+
+      <div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[11px] text-text-muted">
+        <Info className="mt-0.5 h-3 w-3 shrink-0 text-vault" />
+        <div>
+          Attempts to repair damaged PDFs — recovery depends on the type and
+          extent of damage. Some severely corrupted files may not be fully
+          recoverable.
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={!source || busy}
+        className={cn(
+          "inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+          source && !busy ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+        )}
+      >
+        {busy ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Repairing…
+          </>
+        ) : (
+          <>
+            <Wrench className="h-3.5 w-3.5" /> Repair PDF
+          </>
+        )}
+      </button>
+
+      {result?.kind === "ok" ? (
+        <Section title="Result" icon={<CheckCircle2 className="h-3 w-3 text-vault" />}>
+          <div className="space-y-2 rounded-md border border-border bg-surface-2 px-2.5 py-2">
+            <div className="text-[12px] text-foreground">
+              {result.dropped === 0 ? "Repaired successfully." : "Partially repaired."}
+            </div>
+            <div className="text-[11px] text-text-muted">
+              {result.recovered} page{result.recovered === 1 ? "" : "s"} recovered
+              {result.dropped > 0 ? ` · ${result.dropped} dropped` : ""}.
+            </div>
+            <div className="flex gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => triggerDownload(result.blob, result.filename)}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3"
+              >
+                <Download className="h-3 w-3" /> Download
+              </button>
+              <button
+                type="button"
+                onClick={openRepaired}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[11.5px] text-foreground hover:bg-surface-3"
+              >
+                <FileText className="h-3 w-3" /> Open here
+              </button>
+            </div>
+          </div>
+        </Section>
+      ) : result?.kind === "fail" ? (
+        <Section title="Result" icon={<AlertTriangle className="h-3 w-3 text-amber-500" />}>
+          <div className="space-y-1 rounded-md border border-border bg-surface-2 px-2.5 py-2">
+            <div className="text-[12px] text-foreground">Could not fully repair this file.</div>
+            <div className="text-[11px] text-text-muted">{result.message}</div>
+          </div>
+        </Section>
+      ) : null}
+
+      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing is uploaded
+      </div>
+    </div>
+  );
+}
+
