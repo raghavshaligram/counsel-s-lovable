@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import {
   Lock,
   Download,
-  Printer,
   Files,
   Shield,
   PenLine,
@@ -771,9 +770,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       } else if (meta && e.key.toLowerCase() === "t") {
         e.preventDefault();
         openNewStartTab();
-      } else if (meta && e.key.toLowerCase() === "p") {
-        e.preventDefault();
-        onPrintRef.current?.();
       } else if (
         !meta &&
         e.key.toLowerCase() === "o" &&
@@ -790,8 +786,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openFile, openNewStartTab, patchActive, inspectorOpen, zoom]);
-
-  const onPrintRef = useRef<(() => void) | null>(null);
 
   // Drag-drop anywhere → open into active tab. Ignore non-file drags
   // (e.g. dragging a page tile inside the Organize grid) so the global
@@ -845,9 +839,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const bytes = new Uint8Array(await f.arrayBuffer());
         const { loadPdfjs } = await import("@/lib/pdf/worker");
         const pdfjs = await loadPdfjs();
-        // pdf.js transfers/detaches the ArrayBuffer passed in `data`. Hand
-        // it a copy so our retained `bytes` stays intact for pdf-lib export.
-        const doc = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
@@ -950,63 +942,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       toast.error("Export failed", { id: "wsx", description: (err as Error).message });
     }
   }, [editorState.doc, openTool]);
-
-  // Print the CURRENT STATE of the active document. We bake all edits,
-  // annotations, redactions, and added objects into a flattened PDF via
-  // the same exportEditedPdf pipeline, then open it in a new tab so the
-  // browser's built-in PDF viewer can print it (its toolbar has Print and
-  // ⌘P works there). Browsers block scripting the embedded PDF viewer in
-  // an iframe, so a new tab is the only reliable, popup-safe option.
-  // Nothing leaves the device.
-  const printUrlRef = useRef<string | null>(null);
-  const onPrint = useCallback(async () => {
-    if (!editorState.doc || editorState.doc.pages.length === 0) {
-      toast.error("Nothing to print yet");
-      return;
-    }
-    // Open the tab synchronously so it's treated as a user-gesture popup
-    // and not blocked. We'll set its location once the PDF is ready.
-    const win = window.open("", "_blank");
-    if (!win) {
-      toast.error("Print blocked", {
-        description: "Allow pop-ups for this site to print.",
-      });
-      return;
-    }
-    // Minimal placeholder while we build the PDF.
-    try {
-      win.document.write(
-        "<!doctype html><title>Preparing print…</title><style>body{font:14px system-ui;background:#111;color:#ddd;display:grid;place-items:center;height:100vh;margin:0}</style><body>Preparing print…</body>",
-      );
-      win.document.close();
-    } catch { /* ignore */ }
-
-    try {
-      toast.loading("Preparing print…", { id: "wsx-print" });
-      const bytes = await exportEditedPdf(editorState.doc);
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      if (printUrlRef.current) URL.revokeObjectURL(printUrlRef.current);
-      const url = URL.createObjectURL(blob);
-      printUrlRef.current = url;
-      win.location.replace(url);
-      toast.success("Ready to print", {
-        id: "wsx-print",
-        description: "Use Print in the PDF viewer tab (or ⌘P there).",
-      });
-    } catch (err) {
-      try { win.close(); } catch { /* ignore */ }
-      toast.error("Print failed", { id: "wsx-print", description: (err as Error).message });
-    }
-  }, [editorState.doc]);
-
-  useEffect(() => { onPrintRef.current = onPrint; }, [onPrint]);
-
-  useEffect(() => {
-    return () => {
-      if (printUrlRef.current) URL.revokeObjectURL(printUrlRef.current);
-    };
-  }, []);
-  
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
@@ -1288,20 +1223,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             )}
           >
             <SettingsIcon className="h-4 w-4" strokeWidth={2} />
-          </button>
-          <button
-            type="button"
-            onClick={onPrint}
-            disabled={!file}
-            title="Print current document (⌘P)"
-            aria-label="Print"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border border-stroke-1 bg-surface-1 px-3 py-1.5 text-[12.5px] font-medium text-text-1 transition-colors hover:bg-surface-2",
-              !file && "opacity-40 cursor-not-allowed hover:bg-surface-1",
-            )}
-          >
-            <Printer className="h-3.5 w-3.5" strokeWidth={2.5} />
-            Print
           </button>
           <button
             type="button"
