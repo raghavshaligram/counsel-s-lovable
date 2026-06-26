@@ -106,7 +106,7 @@ async function repairWithPdfLib(
 /** Attempt #2 — pdf.js parses what it can, rasterise each page into a fresh PDF. */
 async function repairWithPdfJs(
   bytes: Uint8Array,
-): Promise<{ out: PDFDocument; recovered: number; dropped: number } | null> {
+): Promise<{ out: PDFDocument; recovered: number; dropped: number; expected: number } | null> {
   const pdfjs = await loadPdfjs();
   let srcDoc: Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>;
   try {
