@@ -90,7 +90,7 @@ import {
 
 import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/lib/editor/state";
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
-import { exportEditedPdf } from "@/lib/editor/export";
+import { ExportDialog } from "./export-dialog";
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 
@@ -918,33 +918,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   ]);
 
 
-  const onExport = useCallback(async () => {
+  const [exportOpen, setExportOpen] = useState(false);
+  const onExport = useCallback(() => {
     if (!editorState.doc || editorState.doc.pages.length === 0) {
       toast.error("Nothing to export yet");
       return;
     }
-    try {
-      toast.loading("Building PDF…", { id: "wsx" });
-      const bytes = await exportEditedPdf(editorState.doc);
-      toast.success("Saved", {
-        id: "wsx",
-        description: "Need page numbers or a header/footer? Open Document Settings.",
-        action: {
-          label: "Document Settings",
-          onClick: () => openTool("doc-settings"),
-        },
-      });
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = editorState.doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error("Export failed", { id: "wsx", description: (err as Error).message });
-    }
-  }, [editorState.doc, openTool]);
+    setExportOpen(true);
+  }, [editorState.doc]);
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
@@ -1667,6 +1648,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           onCancel={() => setPendingCloseId(null)}
         />
       )}
+
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        doc={editorState.doc ?? null}
+      />
     </div>
   );
 }
