@@ -531,10 +531,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, []);
 
   const openTool = useCallback(
-    (toolId: string, opts?: { bump?: boolean }) => {
+    (toolId: string, opts?: { bump?: boolean; focusSection?: string }) => {
+      // Bates lives inside Document Settings now (next to Page Numbers).
+      // Selecting "Bates" anywhere (rail, all-tools search) deep-links into
+      // that panel and scrolls to the Bates section.
+      if (toolId === "bates") {
+        const target = toolById("doc-settings");
+        if (!target) return;
+        patchActive({ activeToolId: target.id, inspectorOpen: true });
+        setFocusSection("bates");
+        setToolModalOpen(false);
+        if (opts?.bump !== false) bumpUsage("bates");
+        return;
+      }
       const tool = toolById(toolId);
       if (!tool) return;
       patchActive({ activeToolId: tool.id, inspectorOpen: true });
+      if (opts?.focusSection) setFocusSection(opts.focusSection);
       setToolModalOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
