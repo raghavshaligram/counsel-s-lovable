@@ -1234,6 +1234,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           >
             <SettingsIcon className="h-4 w-4" strokeWidth={2} />
           </button>
+          <QuickActionsMenu
+            file={file}
+            onMakeSearchable={() => void onRequestOcr()}
+            ocrRunning={ocrRunning}
+          />
           <button
             type="button"
             onClick={onExport}
