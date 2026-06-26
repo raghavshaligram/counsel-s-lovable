@@ -1004,9 +1004,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     return () => {
       if (printUrlRef.current) URL.revokeObjectURL(printUrlRef.current);
-      if (printIframeRef.current) printIframeRef.current.remove();
     };
   }, []);
+  // dummy line replaced below
 
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
