@@ -4509,6 +4509,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   }
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
+  const [flOn, setFlOn] = useState(false);
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[11.5px] leading-snug text-text-2">
