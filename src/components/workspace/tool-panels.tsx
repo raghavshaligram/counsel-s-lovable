@@ -4548,6 +4548,25 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
+          # Flatten
+        </div>
+        <DisclosureToggle
+          label="Flatten on export"
+          on={flOn}
+          onChange={setFlOn}
+        />
+        <p className="text-[10.5px] leading-snug text-text-muted">
+          Bakes form fields and annotations into the page — makes them permanent and no longer editable.
+        </p>
+      </div>
+      {flOn && (
+        <div className="rounded-md border border-border bg-surface-2/40 p-3">
+          <FlattenSection ctx={ctx} />
+        </div>
+      )}
+
       <div className="mt-1 flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <Info className="h-3 w-3" />
         Saved with this document · stamped on export
