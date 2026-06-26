@@ -22,6 +22,8 @@
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "./worker";
 
+export type RepairOutcome = "full" | "partial" | "failed";
+
 export type RepairResult = {
   bytes: Uint8Array;
   blob: Blob;
@@ -30,6 +32,12 @@ export type RepairResult = {
   pagesRecovered: number;
   /** Pages present in the source that could not be copied. */
   pagesDropped: number;
+  /** Total pages expected from the source (recovered + dropped). */
+  pagesExpected: number;
+  /** 1-based indices (in the rebuilt PDF) of pages that lost their content. */
+  pagesWithMissingContent: number[];
+  /** Three-way outcome: full | partial | failed. */
+  outcome: RepairOutcome;
   /** True when at least one page was recovered. */
   ok: boolean;
   /** Which parser succeeded — useful for the UI ("rasterised fallback"). */
