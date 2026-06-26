@@ -156,6 +156,71 @@ async function repairWithPdfJs(
   return { out, recovered: out.getPageCount(), dropped, expected: total };
 }
 
+/**
+ * Attempt #3 — qpdf (compiled to WASM) rewrites the file. qpdf's parser
+ * automatically reconstructs damaged cross-reference tables and recovers
+ * from broken /ObjStm compressed object streams that defeat pdf.js
+ * (which fails with "unable to find /Root"). We don't decode pages here;
+ * we just hand the cleaned bytes back to the earlier attempts.
+ *
+ * Lazy-loaded: this only fetches /wasm/qpdf/qpdf.{js,wasm} (~1.3MB) the
+ * first time a user runs Repair. Apache-2.0 — safe for commercial use.
+ */
+async function repairWithQpdf(bytes: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const { createQpdfModule } = await import("./qpdf-loader");
+    const qpdf = await createQpdfModule();
+    // Build a fresh MEMFS workspace per call.
+    try {
+      qpdf.FS.mkdir("/work");
+    } catch {
+      /* already exists in a reused module */
+    }
+    const inPath = "/work/in.pdf";
+    const outPath = "/work/out.pdf";
+    qpdf.FS.writeFile(inPath, bytes);
+
+    // qpdf reconstructs xref/objstm by default on read. We additionally
+    // disable object streams on write so the rebuilt file is maximally
+    // tolerable to downstream parsers (pdf-lib, pdf.js).
+    let rc = -1;
+    try {
+      rc = qpdf.callMain([
+        "--object-streams=disable",
+        "--ignore-xref-streams",
+        inPath,
+        outPath,
+      ]);
+    } catch (e) {
+      // qpdf's CLI throws on hard errors; some hard errors still write a
+      // usable output. Continue and check the file.
+      // eslint-disable-next-line no-console
+      console.warn("[repair] qpdf callMain threw", e);
+    }
+
+    if (!qpdf.FS.analyzePath(outPath).exists) {
+      // eslint-disable-next-line no-console
+      console.warn("[repair] qpdf produced no output (rc=", rc, ")");
+      return null;
+    }
+    const out = qpdf.FS.readFile(outPath);
+    // Clean up so a reused module doesn't grow indefinitely.
+    try {
+      qpdf.FS.unlink(inPath);
+      qpdf.FS.unlink(outPath);
+    } catch {
+      /* best effort */
+    }
+    return out.byteLength > 0 ? out : null;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[repair] qpdf fallback unavailable", e);
+    return null;
+  }
+}
+
+
+
 export async function repairPdfBytes(
   input: Uint8Array,
   opts: RepairOptions = {},
