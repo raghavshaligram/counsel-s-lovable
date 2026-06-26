@@ -354,6 +354,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => { setFitNonce((n) => n + 1); }, [activeId]);
 
   const [toolModalOpen, setToolModalOpen] = useState(false);
+  // Deep-link target for a sub-section of the active panel. Consumed by
+  // panels with multiple disclosures (e.g. Document Settings → Bates).
+  const [focusSection, setFocusSection] = useState<string | null>(null);
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [manualPins, setManualPins] = useState<string[]>([]);
   const manualPinSet = useMemo(() => new Set(manualPins), [manualPins]);
