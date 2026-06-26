@@ -55,6 +55,7 @@ import {
   PinOff,
   FileCheck2,
   Settings as SettingsIcon,
+  Wrench,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
@@ -148,6 +149,7 @@ const TOOLS: RailTool[] = [
   // Secure
   { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
+  { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Secure" },
   { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
   { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
