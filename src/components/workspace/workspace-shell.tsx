@@ -1648,6 +1648,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           onCancel={() => setPendingCloseId(null)}
         />
       )}
+
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        doc={editorState.doc ?? null}
+      />
     </div>
   );
 }
