@@ -101,7 +101,6 @@ async function repairWithPdfJs(
       data: bytes.slice(),
       // Be as forgiving as possible.
       stopAtErrors: false,
-      isEvalSupported: false,
       disableAutoFetch: true,
       disableStream: true,
     }).promise;
