@@ -306,7 +306,7 @@ export async function repairPdfBytes(
   // page has content by construction. For the pdf-lib path, scan each page's
   // operator list for any text or image draws.
   const pagesWithMissingContent: number[] = [];
-  if (method === "pdf-lib") {
+  if (method !== "pdf.js-rasterise") {
     try {
       const pdfjs = await loadPdfjs();
       const verify = await pdfjs.getDocument({
