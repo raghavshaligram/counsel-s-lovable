@@ -180,30 +180,50 @@ async function repairWithQpdf(bytes: Uint8Array): Promise<Uint8Array | null> {
     const outPath = "/work/out.pdf";
     qpdf.FS.writeFile(inPath, bytes);
 
-    // qpdf reconstructs xref/objstm by default on read. We additionally
-    // disable object streams on write so the rebuilt file is maximally
-    // tolerable to downstream parsers (pdf-lib, pdf.js).
-    let rc = -1;
-    try {
-      rc = qpdf.callMain([
-        "--object-streams=disable",
-        "--ignore-xref-streams",
-        inPath,
-        outPath,
-      ]);
-    } catch (e) {
-      // qpdf's CLI throws on hard errors; some hard errors still write a
-      // usable output. Continue and check the file.
-      // eslint-disable-next-line no-console
-      console.warn("[repair] qpdf callMain threw", e);
+    // qpdf's parser auto-recovers from damaged xref / object streams. We
+    // pass --object-streams=disable on WRITE so the output is the most
+    // tolerable possible to downstream parsers. We do NOT pass
+    // --ignore-xref-streams: that disables xref-stream parsing entirely,
+    // which prevents recovery when the only intact metadata lives inside
+    // an xref stream. Try a sequence of arg sets, from least to most
+    // aggressive, until one produces a usable output.
+    const argSets: string[][] = [
+      ["--object-streams=disable", inPath, outPath],
+      ["--object-streams=disable", "--ignore-xref-streams", inPath, outPath],
+      ["--qdf", "--object-streams=disable", inPath, outPath],
+    ];
+
+    let out: Uint8Array | null = null;
+    for (const args of argSets) {
+      // Clean any stale output from previous attempt.
+      try {
+        qpdf.FS.unlink(outPath);
+      } catch {
+        /* not present */
+      }
+      try {
+        qpdf.callMain(args);
+      } catch (e) {
+        // qpdf calls exit() on hard errors; some still write a usable file.
+        // eslint-disable-next-line no-console
+        console.debug("[repair] qpdf attempt threw", e);
+      }
+      try {
+        const data = qpdf.FS.readFile(outPath);
+        if (data && data.byteLength > 0) {
+          out = data;
+          break;
+        }
+      } catch {
+        // No output file produced by this attempt — try the next.
+      }
     }
 
-    if (!qpdf.FS.analyzePath(outPath).exists) {
+    if (!out) {
       // eslint-disable-next-line no-console
-      console.warn("[repair] qpdf produced no output (rc=", rc, ")");
+      console.warn("[repair] qpdf produced no usable output");
       return null;
     }
-    const out = qpdf.FS.readFile(outPath);
     // Clean up so a reused module doesn't grow indefinitely.
     try {
       qpdf.FS.unlink(inPath);
@@ -211,7 +231,7 @@ async function repairWithQpdf(bytes: Uint8Array): Promise<Uint8Array | null> {
     } catch {
       /* best effort */
     }
-    return out.byteLength > 0 ? out : null;
+    return out;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn("[repair] qpdf fallback unavailable", e);
