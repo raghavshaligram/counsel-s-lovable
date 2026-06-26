@@ -1238,7 +1238,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={file}
             onMakeSearchable={() => void onRequestOcr()}
             ocrRunning={ocrRunning}
+            onOpenFile={(f) => onFiles({ 0: f, length: 1, item: () => f } as unknown as FileList)}
           />
+
           <button
             type="button"
             onClick={onExport}
