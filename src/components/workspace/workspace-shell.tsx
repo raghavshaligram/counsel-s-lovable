@@ -2958,6 +2958,8 @@ function Inspector({
   closeInspector: () => void;
   otherTabs: Array<{ id: string; name: string; file: File }>;
   ocr: import("./tool-panels").OcrCtx;
+  focusSection: string | null;
+  clearFocusSection: () => void;
 }) {
   return (
     <aside
