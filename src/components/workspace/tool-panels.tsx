@@ -109,6 +109,12 @@ export type ToolPanelCtx = {
   otherTabs?: Array<{ id: string; name: string; file: File }>;
   /** Workspace-managed OCR controls. */
   ocr?: OcrCtx;
+  /** When a panel has multiple sections, deep-link to one of them.
+   *  E.g. searching "Bates" in the command bar sets this to "bates"
+   *  so the Document Settings panel auto-opens that disclosure. */
+  focusSection?: string | null;
+  /** Clear focusSection after the consumer has acted on it. */
+  clearFocusSection?: () => void;
 };
 
 type PanelProps = { toolId: string; ctx: ToolPanelCtx };
