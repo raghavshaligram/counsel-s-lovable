@@ -191,12 +191,12 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled}
+          disabled={triggerDisabled}
           title="Quick Actions — one-click tools"
           aria-label="Quick Actions"
           className={cn(
             "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-surface-2",
-            disabled && "opacity-40 cursor-not-allowed hover:bg-surface-1",
+            triggerDisabled && "opacity-40 cursor-not-allowed hover:bg-surface-1",
           )}
         >
           <Zap className="h-3.5 w-3.5 text-vault" strokeWidth={2.5} />
