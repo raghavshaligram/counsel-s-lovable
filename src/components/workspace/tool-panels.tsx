@@ -5848,15 +5848,18 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
       });
       if (out.pagesDropped > 0) {
         toast.warning(
-          `Recovered ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"} · ${out.pagesDropped} dropped`,
+          `Repaired — recovered ${out.pagesRecovered} of ${out.pagesRecovered + out.pagesDropped} pages; ${out.pagesDropped} were too damaged and removed`,
         );
       } else {
-        toast.success(`Repaired ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"}`);
+        toast.success(
+          `Repaired — recovered all ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"}`,
+        );
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const { friendlyRepairReason } = await import("@/lib/pdf/repair");
+      const message = friendlyRepairReason(err, { fileSize: source.size });
       setResult({ kind: "fail", message });
-      toast.error("Could not fully repair this file", { description: message });
+      toast.error("Couldn't repair this file", { description: message });
     } finally {
       setBusy(false);
     }
@@ -5979,7 +5982,7 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
       ) : result?.kind === "fail" ? (
         <Section title="Result" icon={<AlertTriangle className="h-3 w-3 text-amber-500" />}>
           <div className="space-y-1 rounded-md border border-border bg-surface-2 px-2.5 py-2">
-            <div className="text-[12px] text-foreground">Could not fully repair this file.</div>
+            <div className="text-[12px] text-foreground">Couldn&apos;t repair this file.</div>
             <div className="text-[11px] text-text-muted">{result.message}</div>
           </div>
         </Section>
