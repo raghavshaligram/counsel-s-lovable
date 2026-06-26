@@ -38,6 +38,13 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const [hfOn, setHfOn] = useState(false);
   const [flOn, setFlOn] = useState(false);
 
+  // Bates settings persist per-document via the shared store. The toggle
+  // here is mirrored into the same store so the Document Settings inspector
+  // and this dialog always agree.
+  const [bates, updateBates] = useBatesSettings(batesDocKey(file));
+  const batesOn = bates.on;
+  const setBatesOn = (on: boolean) => updateBates({ on });
+
   // Light, sensible defaults for the three ops.
   const [pnFormat, setPnFormat] = useState<"n" | "page-n" | "n-of-m">("n-of-m");
   const [headerText, setHeaderText] = useState("");
