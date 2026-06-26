@@ -88,16 +88,18 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning }: Props) 
       const { repairPdfFile } = await import("@/lib/pdf/repair");
       const res = await repairPdfFile(file);
       downloadBytes(res.bytes, res.filename, "application/pdf");
+      const total = res.pagesRecovered + res.pagesDropped;
       toast.success(
         res.pagesDropped > 0
-          ? `Repaired — ${res.pagesRecovered} pages recovered, ${res.pagesDropped} dropped`
-          : `Repaired — ${res.pagesRecovered} pages`,
+          ? `Repaired — recovered ${res.pagesRecovered} of ${total} pages; ${res.pagesDropped} were too damaged and removed`
+          : `Repaired — recovered all ${res.pagesRecovered} page${res.pagesRecovered === 1 ? "" : "s"}`,
         { id: toastId },
       );
     } catch (err) {
-      toast.error("Repair failed", {
+      const { friendlyRepairReason } = await import("@/lib/pdf/repair");
+      toast.error("Couldn't repair this file", {
         id: toastId,
-        description: err instanceof Error ? err.message : String(err),
+        description: friendlyRepairReason(err, { fileSize: file.size }),
       });
     } finally {
       setBusy(false);
