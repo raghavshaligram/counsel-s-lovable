@@ -342,6 +342,19 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           if (f) void repairFile(f);
         }}
       />
+      <input
+        ref={standaloneInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          const action = pendingActionRef.current;
+          pendingActionRef.current = null;
+          if (f && action) void action(f);
+        }}
+      />
     </DropdownMenu>
   );
 }
