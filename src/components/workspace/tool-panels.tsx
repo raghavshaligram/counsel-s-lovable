@@ -5982,7 +5982,7 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
       ) : result?.kind === "fail" ? (
         <Section title="Result" icon={<AlertTriangle className="h-3 w-3 text-amber-500" />}>
           <div className="space-y-1 rounded-md border border-border bg-surface-2 px-2.5 py-2">
-            <div className="text-[12px] text-foreground">Could not fully repair this file.</div>
+            <div className="text-[12px] text-foreground">Couldn&apos;t repair this file.</div>
             <div className="text-[11px] text-text-muted">{result.message}</div>
           </div>
         </Section>
