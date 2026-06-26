@@ -2999,7 +2999,7 @@ function Inspector({
           <div className="flex-1 overflow-auto px-3 py-3">
             <ToolPanel
               toolId={activeTool.id}
-              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr }}
+              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
             />
           </div>
         </div>
