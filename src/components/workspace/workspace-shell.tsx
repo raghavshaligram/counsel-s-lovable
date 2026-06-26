@@ -56,6 +56,7 @@ import {
   FileCheck2,
   Settings as SettingsIcon,
   Wrench,
+  Printer,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
@@ -93,6 +94,9 @@ import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/l
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
+import { useHotkey } from "@/lib/use-hotkey";
+import { exportEditedPdf } from "@/lib/editor/export";
+import { printPdfBytes } from "@/lib/workspace/print";
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 
@@ -987,6 +991,47 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setExportOpen(true);
   }, [editorState.doc]);
 
+  // Print the ACTIVE document's current state — edits, annotations, and
+  // redactions baked in. Builds the same flattened PDF as Export, then
+  // pipes it into a hidden in-page iframe and calls print() on it. No new
+  // browser window/tab; only the native OS print dialog appears.
+  const [printing, setPrinting] = useState(false);
+  const onPrint = useCallback(async () => {
+    const doc = editorState.doc;
+    if (!doc || doc.pages.length === 0) {
+      toast.error("Nothing to print yet");
+      return;
+    }
+    if (printing) return;
+    setPrinting(true);
+    const tid = "wsx-print";
+    toast.loading("Preparing print…", { id: tid });
+    try {
+      // Re-read fresh bytes from the active File — same reason as Export:
+      // the open path may have detached doc.srcBytes.
+      const exportDoc = file
+        ? { ...doc, srcBytes: new Uint8Array(await file.arrayBuffer()) }
+        : doc;
+      const bytes = await exportEditedPdf(exportDoc);
+      await printPdfBytes(bytes, { filename: doc.fileName });
+      toast.success("Opening print dialog…", { id: tid });
+    } catch (err) {
+      console.error("[print] failed", err);
+      toast.error("Couldn't print this document", {
+        id: tid,
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setPrinting(false);
+    }
+  }, [editorState.doc, file, printing]);
+
+  // ⌘P / Ctrl+P — overrides the browser's default print dialog so users
+  // get the baked-in document (not the app chrome) every time.
+  useHotkey("mod+p", () => { void onPrint(); }, !!editorState.doc && !printing);
+
+
+
   // ---------- Scanned-PDF → OCR (in-place make-searchable) ----------
   // Runs the existing on-device OCR pipeline on the active tab's file and
   // swaps the file in place so the edit-text tool can immediately work on
@@ -1289,6 +1334,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             }}
 
           />
+
+          <button
+            type="button"
+            onClick={() => void onPrint()}
+            disabled={!editorState.doc || printing}
+            title="Print (⌘P)"
+            aria-label="Print"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-surface-2",
+              (!editorState.doc || printing) &&
+                "opacity-40 cursor-not-allowed hover:bg-surface-1",
+            )}
+          >
+            <Printer className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Print
+          </button>
 
           <button
             type="button"
