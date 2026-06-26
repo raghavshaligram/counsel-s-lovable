@@ -54,28 +54,33 @@ function baseName(name: string): string {
 export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFile }: Props) {
   const [busy, setBusy] = useState(false);
   const repairInputRef = useRef<HTMLInputElement | null>(null);
-  // Repair is the exception — always enabled. Other items still need a file.
+  const standaloneInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingActionRef = useRef<((f: File) => void | Promise<void>) | null>(null);
+  // Group B (OCR, Rotate) still requires an open document.
   const noFile = !file;
 
-  // Trigger button is enabled whenever Repair is usable (always) OR a file is
-  // open. Other items are individually gated on `noFile`.
   const triggerDisabled = busy;
 
-  async function withFile(
+  function pickFileThen(action: (f: File) => void | Promise<void>) {
+    pendingActionRef.current = action;
+    standaloneInputRef.current?.click();
+  }
+
+  async function processWithFile(
+    target: File,
     label: string,
     suffix: string,
     op: (bytes: Uint8Array) => Promise<Uint8Array>,
   ) {
-    if (!file) return;
     setBusy(true);
     const toastId = `qa-${suffix}`;
     toast.loading(`${label}…`, { id: toastId });
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      const bytes = new Uint8Array(await target.arrayBuffer());
       const out = await op(bytes);
       downloadBytes(
         out,
-        `${baseName(file.name)}-${suffix}.pdf`,
+        `${baseName(target.name)}-${suffix}.pdf`,
         "application/pdf",
       );
       toast.success(`${label} — saved`, { id: toastId });
@@ -112,7 +117,6 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
           { id: toastId },
         );
       }
-      // Open the repaired PDF in the workspace so the user can keep working.
       try {
         const repairedFile = new File([res.bytes as BlobPart], res.filename, {
           type: "application/pdf",
@@ -133,10 +137,6 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
   }
 
   function runRepair() {
-    // Repair is the ONE exception: it must work even with no doc open
-    // (corrupted PDFs may never open through the normal viewer). If no file
-    // is loaded, open a dedicated picker that accepts any .pdf — including
-    // damaged ones — and feed its raw bytes to Repair.
     if (file) {
       void repairFile(file);
     } else {
@@ -144,16 +144,14 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     }
   }
 
-
-  async function runCompress(level: "light" | "medium" | "strong" = "medium") {
-    if (!file) return;
+  async function compressOnFile(target: File, level: "light" | "medium" | "strong") {
     setBusy(true);
     const toastId = "qa-compress";
     const label =
       level === "light" ? "Light" : level === "strong" ? "Strong" : "Medium";
     toast.loading(`Compressing (${label})…`, { id: toastId });
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      const bytes = new Uint8Array(await target.arrayBuffer());
       const { compressSmart } = await import("@/lib/batch/ops/compress");
       const preset = level === "light" ? "low" : level === "strong" ? "high" : "medium";
       const res = await compressSmart(bytes, { preset, grayscale: false });
@@ -170,12 +168,10 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
         });
         return;
       }
-      const pct = Math.round(
-        (1 - res.outputSize / res.originalSize) * 100,
-      );
+      const pct = Math.round((1 - res.outputSize / res.originalSize) * 100);
       downloadBytes(
         res.bytes,
-        `${baseName(file.name)}-compressed.pdf`,
+        `${baseName(target.name)}-compressed.pdf`,
         "application/pdf",
       );
       toast.success(
@@ -193,19 +189,29 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     }
   }
 
-
-  async function runSanitize() {
-    await withFile("Sanitize", "sanitized", async (bytes) => {
-      const { sanitizePdfBytes } = await import("@/lib/pdf/sanitize");
-      return sanitizePdfBytes(bytes);
-    });
+  function runCompress(level: "light" | "medium" | "strong" = "medium") {
+    if (file) void compressOnFile(file, level);
+    else pickFileThen((f) => compressOnFile(f, level));
   }
 
-  async function runFlatten() {
-    await withFile("Flatten", "flattened", async (bytes) => {
-      const { flatten } = await import("@/lib/batch/ops/flatten");
-      return flatten(bytes, { forms: true, annotations: false });
-    });
+  function runSanitize() {
+    const op = (target: File) =>
+      processWithFile(target, "Sanitize", "sanitized", async (bytes) => {
+        const { sanitizePdfBytes } = await import("@/lib/pdf/sanitize");
+        return sanitizePdfBytes(bytes);
+      });
+    if (file) void op(file);
+    else pickFileThen(op);
+  }
+
+  function runFlatten() {
+    const op = (target: File) =>
+      processWithFile(target, "Flatten", "flattened", async (bytes) => {
+        const { flatten } = await import("@/lib/batch/ops/flatten");
+        return flatten(bytes, { forms: true, annotations: false });
+      });
+    if (file) void op(file);
+    else pickFileThen(op);
   }
 
   async function runRotate(angle: 90 | 180 | 270) {
