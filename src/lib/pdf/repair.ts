@@ -311,8 +311,15 @@ export async function repairPdfBytes(
   let outDoc: PDFDocument | null = null;
   let method: RepairResult["method"] = "pdf-lib";
 
+  // eslint-disable-next-line no-console
+  console.info("[repair] === START ===", { inputBytes: input.length, trimmedBytes: bytes.length });
+
   // Attempt 1: lenient pdf-lib.
+  // eslint-disable-next-line no-console
+  console.info("[repair] step 1: lenient pdf-lib");
   const a = await repairWithPdfLib(bytes);
+  // eslint-disable-next-line no-console
+  console.info("[repair] step 1 result", a ? { recovered: a.recovered, dropped: a.dropped, expected: a.expected } : "null");
   if (a && a.recovered > 0) {
     outDoc = a.out;
     recovered = a.recovered;
@@ -321,7 +328,11 @@ export async function repairPdfBytes(
     method = "pdf-lib";
   } else {
     // Attempt 2: pdf.js rasterise.
+    // eslint-disable-next-line no-console
+    console.info("[repair] step 2: pdf.js rasterise");
     const b = await repairWithPdfJs(bytes);
+    // eslint-disable-next-line no-console
+    console.info("[repair] step 2 result", b ? { recovered: b.recovered, dropped: b.dropped, expected: b.expected } : "null");
     if (b && b.recovered > 0) {
       outDoc = b.out;
       recovered = b.recovered;
@@ -330,13 +341,17 @@ export async function repairPdfBytes(
       method = "pdf.js-rasterise";
     } else {
       // Attempt 3 (strong fallback): qpdf-wasm.
-      // qpdf rebuilds the xref table and recovers from broken /ObjStm
-      // compressed object streams that defeat pdf.js (which fails with
-      // "unable to find /Root"). We rewrite the file with qpdf, then hand
-      // the clean output back to pdf-lib (or rasterise) to extract pages.
+      // eslint-disable-next-line no-console
+      console.info("[repair] step 3: qpdf-wasm (strong fallback)");
       const qpdfBytes = await repairWithQpdf(bytes);
+      // eslint-disable-next-line no-console
+      console.info("[repair] step 3 qpdf rebuild", qpdfBytes ? { rebuiltBytes: qpdfBytes.byteLength } : "null (qpdf could not rebuild)");
       if (qpdfBytes) {
+        // eslint-disable-next-line no-console
+        console.info("[repair] step 3a: re-feed qpdf output to pdf-lib");
         const a2 = await repairWithPdfLib(qpdfBytes);
+        // eslint-disable-next-line no-console
+        console.info("[repair] step 3a result", a2 ? { recovered: a2.recovered, dropped: a2.dropped, expected: a2.expected } : "null");
         if (a2 && a2.recovered > 0) {
           outDoc = a2.out;
           recovered = a2.recovered;
@@ -344,7 +359,11 @@ export async function repairPdfBytes(
           expected = a2.expected;
           method = "qpdf-wasm";
         } else {
+          // eslint-disable-next-line no-console
+          console.info("[repair] step 3b: re-feed qpdf output to pdf.js rasterise");
           const b2 = await repairWithPdfJs(qpdfBytes);
+          // eslint-disable-next-line no-console
+          console.info("[repair] step 3b result", b2 ? { recovered: b2.recovered, dropped: b2.dropped, expected: b2.expected } : "null");
           if (b2 && b2.recovered > 0) {
             outDoc = b2.out;
             recovered = b2.recovered;
@@ -356,6 +375,9 @@ export async function repairPdfBytes(
       }
     }
   }
+
+  // eslint-disable-next-line no-console
+  console.info("[repair] === DONE ===", { method, recovered, dropped, expected, hasOutDoc: !!outDoc });
 
   if (!outDoc || recovered === 0) {
     throw new Error(
