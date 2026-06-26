@@ -190,8 +190,6 @@ function rewriteStream(
 
   if (wasFlate) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { zlibSync } = require("fflate") as typeof import("fflate");
       newBytes = zlibSync(newBytes);
     } catch {
       return;
