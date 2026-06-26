@@ -4509,6 +4509,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   }
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
+  const [flOn, setFlOn] = useState(false);
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[11.5px] leading-snug text-text-2">
@@ -4544,6 +4545,25 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
       {hfOn && (
         <div className="rounded-md border border-border bg-surface-2/40 p-3">
           <HeaderFooterSection ctx={ctx} />
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
+          # Flatten
+        </div>
+        <DisclosureToggle
+          label="Flatten on export"
+          on={flOn}
+          onChange={setFlOn}
+        />
+        <p className="text-[10.5px] leading-snug text-text-muted">
+          Bakes form fields and annotations into the page — makes them permanent and no longer editable.
+        </p>
+      </div>
+      {flOn && (
+        <div className="rounded-md border border-border bg-surface-2/40 p-3">
+          <FlattenSection ctx={ctx} />
         </div>
       )}
 
@@ -4719,6 +4739,76 @@ function HeaderFooterSection({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
+
+/* ============================ Flatten ============================ */
+/**
+ * Flatten section — bakes form fields + annotations into static page
+ * content at export time. Reuses the existing flatten() op from
+ * src/lib/batch/ops/flatten.ts. Pure pdf-lib, on-device.
+ */
+function FlattenSection({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [busy, setBusy] = useState(false);
+
+  const run = useCallback(async (apply: "download" | "replace") => {
+    if (!file) return;
+    setBusy(true);
+    const tid = "wsx-flatten";
+    toast.loading("Flattening…", { id: tid });
+    try {
+      const { flatten } = await import("@/lib/batch/ops/flatten");
+      const out = await flatten(new Uint8Array(await file.arrayBuffer()), {
+        forms: true,
+        annotations: true,
+      });
+      if (apply === "download") {
+        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf", "application/pdf");
+        toast.success("Flattened PDF downloaded", { id: tid });
+      } else {
+        replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
+        toast.success("Flattened the active tab", { id: tid });
+      }
+    } catch (err) {
+      console.error("[flatten] failed", err);
+      toast.error("Failed to flatten", { id: tid, description: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }, [file, replaceFile]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[11px] leading-snug text-text-2">
+        Form fields and annotations become baked, static pixels. This is for final delivery — you won&apos;t be able to edit them after.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => run("download")}
+          disabled={busy}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            busy && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy ? "Working…" : "Flatten & download"}
+        </button>
+        <button
+          type="button"
+          onClick={() => run("replace")}
+          disabled={busy}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+            busy && "cursor-not-allowed opacity-60",
+          )}
+        >
+          Apply to active tab
+        </button>
+      </div>
+    </div>
+  );
+}
 
 
 function NumberField({
