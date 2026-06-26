@@ -24,6 +24,25 @@ import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 
+/** Detect Vite's "stale chunk" failure (after a redeploy the old hashed
+ *  chunk URL no longer exists). */
+function isStaleChunkError(err: unknown): boolean {
+  const msg = (err as Error)?.message ?? String(err);
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg);
+}
+
+/** Retry a dynamic import once on transient network blip. Stale-hash failures
+ *  surface to the caller, which prompts a reload. */
+async function importChunk<T>(load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    if (isStaleChunkError(err)) throw err;
+    await new Promise((r) => setTimeout(r, 200));
+    return await load();
+  }
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -72,7 +91,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       let bytes = await exportEditedPdf(exportDoc);
 
       if (pnOn) {
-        const { addPageNumbers } = await import("@/lib/batch/ops/page-numbers");
+        const { addPageNumbers } = await importChunk(() => import("@/lib/batch/ops/page-numbers"));
         bytes = await addPageNumbers(bytes, {
           anchor: "bottom-center",
           format: pnFormat,
@@ -84,7 +103,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       }
 
       if (hfOn) {
-        const { addHeaderFooter } = await import("@/lib/batch/ops/header-footer");
+        const { addHeaderFooter } = await importChunk(() => import("@/lib/batch/ops/header-footer"));
         bytes = await addHeaderFooter(bytes, {
           headerText: headerText || undefined,
           footerText: pnOn ? undefined : (footerText || undefined),
@@ -97,12 +116,12 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       }
 
       if (flOn) {
-        const { flatten } = await import("@/lib/batch/ops/flatten");
+        const { flatten } = await importChunk(() => import("@/lib/batch/ops/flatten"));
         bytes = await flatten(bytes, { forms: true, annotations: true });
       }
 
       if (batesOn) {
-        const { addBates } = await import("@/lib/batch/ops/bates");
+        const { addBates } = await importChunk(() => import("@/lib/batch/ops/bates"));
         bytes = await addBates(bytes, {
           prefix: bates.prefix, suffix: bates.suffix, startAt: bates.startAt,
           digits: bates.digits, position: bates.position,
@@ -123,7 +142,12 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       reset();
     } catch (err) {
       console.error("[export-flow] failed", err);
-      toast.error("Export failed", { id: tid, description: (err as Error).message });
+      if (isStaleChunkError(err)) {
+        toast.error("App was updated — reloading…", { id: tid });
+        setTimeout(() => window.location.reload(), 600);
+      } else {
+        toast.error("Export failed", { id: tid, description: (err as Error).message });
+      }
     } finally {
       setBusy(false);
     }
