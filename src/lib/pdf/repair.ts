@@ -41,7 +41,7 @@ export type RepairResult = {
   /** True when at least one page was recovered. */
   ok: boolean;
   /** Which parser succeeded — useful for the UI ("rasterised fallback"). */
-  method: "pdf-lib" | "pdf.js-rasterise";
+  method: "pdf-lib" | "pdf.js-rasterise" | "qpdf-wasm";
 };
 
 export type RepairOptions = {
@@ -156,6 +156,91 @@ async function repairWithPdfJs(
   return { out, recovered: out.getPageCount(), dropped, expected: total };
 }
 
+/**
+ * Attempt #3 — qpdf (compiled to WASM) rewrites the file. qpdf's parser
+ * automatically reconstructs damaged cross-reference tables and recovers
+ * from broken /ObjStm compressed object streams that defeat pdf.js
+ * (which fails with "unable to find /Root"). We don't decode pages here;
+ * we just hand the cleaned bytes back to the earlier attempts.
+ *
+ * Lazy-loaded: this only fetches /wasm/qpdf/qpdf.{js,wasm} (~1.3MB) the
+ * first time a user runs Repair. Apache-2.0 — safe for commercial use.
+ */
+async function repairWithQpdf(bytes: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const { createQpdfModule } = await import("./qpdf-loader");
+    const qpdf = await createQpdfModule();
+    // Build a fresh MEMFS workspace per call.
+    try {
+      qpdf.FS.mkdir("/work");
+    } catch {
+      /* already exists in a reused module */
+    }
+    const inPath = "/work/in.pdf";
+    const outPath = "/work/out.pdf";
+    qpdf.FS.writeFile(inPath, bytes);
+
+    // qpdf's parser auto-recovers from damaged xref / object streams. We
+    // pass --object-streams=disable on WRITE so the output is the most
+    // tolerable possible to downstream parsers. We do NOT pass
+    // --ignore-xref-streams: that disables xref-stream parsing entirely,
+    // which prevents recovery when the only intact metadata lives inside
+    // an xref stream. Try a sequence of arg sets, from least to most
+    // aggressive, until one produces a usable output.
+    const argSets: string[][] = [
+      ["--object-streams=disable", inPath, outPath],
+      ["--object-streams=disable", "--ignore-xref-streams", inPath, outPath],
+      ["--qdf", "--object-streams=disable", inPath, outPath],
+    ];
+
+    let out: Uint8Array | null = null;
+    for (const args of argSets) {
+      // Clean any stale output from previous attempt.
+      try {
+        qpdf.FS.unlink(outPath);
+      } catch {
+        /* not present */
+      }
+      try {
+        qpdf.callMain(args);
+      } catch (e) {
+        // qpdf calls exit() on hard errors; some still write a usable file.
+        // eslint-disable-next-line no-console
+        console.debug("[repair] qpdf attempt threw", e);
+      }
+      try {
+        const data = qpdf.FS.readFile(outPath);
+        if (data && data.byteLength > 0) {
+          out = data;
+          break;
+        }
+      } catch {
+        // No output file produced by this attempt — try the next.
+      }
+    }
+
+    if (!out) {
+      // eslint-disable-next-line no-console
+      console.warn("[repair] qpdf produced no usable output");
+      return null;
+    }
+    // Clean up so a reused module doesn't grow indefinitely.
+    try {
+      qpdf.FS.unlink(inPath);
+      qpdf.FS.unlink(outPath);
+    } catch {
+      /* best effort */
+    }
+    return out;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[repair] qpdf fallback unavailable", e);
+    return null;
+  }
+}
+
+
+
 export async function repairPdfBytes(
   input: Uint8Array,
   opts: RepairOptions = {},
@@ -197,12 +282,38 @@ export async function repairPdfBytes(
       dropped = b.dropped;
       expected = b.expected;
       method = "pdf.js-rasterise";
+    } else {
+      // Attempt 3 (strong fallback): qpdf-wasm.
+      // qpdf rebuilds the xref table and recovers from broken /ObjStm
+      // compressed object streams that defeat pdf.js (which fails with
+      // "unable to find /Root"). We rewrite the file with qpdf, then hand
+      // the clean output back to pdf-lib (or rasterise) to extract pages.
+      const qpdfBytes = await repairWithQpdf(bytes);
+      if (qpdfBytes) {
+        const a2 = await repairWithPdfLib(qpdfBytes);
+        if (a2 && a2.recovered > 0) {
+          outDoc = a2.out;
+          recovered = a2.recovered;
+          dropped = a2.dropped;
+          expected = a2.expected;
+          method = "qpdf-wasm";
+        } else {
+          const b2 = await repairWithPdfJs(qpdfBytes);
+          if (b2 && b2.recovered > 0) {
+            outDoc = b2.out;
+            recovered = b2.recovered;
+            dropped = b2.dropped;
+            expected = b2.expected;
+            method = "qpdf-wasm";
+          }
+        }
+      }
     }
   }
 
   if (!outDoc || recovered === 0) {
     throw new Error(
-      "No recoverable pages — neither the lenient parser nor the pdf.js fallback could read this file.",
+      "No recoverable pages — neither the lenient parser, the pdf.js fallback, nor the qpdf rebuild could read this file.",
     );
   }
 
@@ -215,7 +326,7 @@ export async function repairPdfBytes(
   // page has content by construction. For the pdf-lib path, scan each page's
   // operator list for any text or image draws.
   const pagesWithMissingContent: number[] = [];
-  if (method === "pdf-lib") {
+  if (method !== "pdf.js-rasterise") {
     try {
       const pdfjs = await loadPdfjs();
       const verify = await pdfjs.getDocument({
