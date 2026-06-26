@@ -171,6 +171,80 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           </OptionRow>
 
           <OptionRow
+            icon={<Stamp className="h-3.5 w-3.5" />}
+            label="Bates numbering"
+            on={batesOn}
+            onChange={setBatesOn}
+          >
+            <div className="grid grid-cols-3 gap-1.5">
+              <label className="col-span-2 flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Prefix</span>
+                <input
+                  type="text"
+                  value={bates.prefix}
+                  onChange={(e) => updateBates({ prefix: e.target.value })}
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Digits</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={bates.digits}
+                  onChange={(e) => updateBates({ digits: Math.min(10, Math.max(1, parseInt(e.target.value || "1", 10))) })}
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Start</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={bates.startAt}
+                  onChange={(e) => updateBates({ startAt: Math.max(0, parseInt(e.target.value || "0", 10)) })}
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+              <label className="col-span-2 flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Suffix</span>
+                <input
+                  type="text"
+                  value={bates.suffix ?? ""}
+                  onChange={(e) => updateBates({ suffix: e.target.value })}
+                  placeholder="(optional)"
+                  className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: "tl", l: "TL" }, { id: "tc", l: "TC" }, { id: "tr", l: "TR" },
+                { id: "bl", l: "BL" }, { id: "bc", l: "BC" }, { id: "br", l: "BR" },
+              ] as const).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => updateBates({ position: p.id })}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] transition-colors",
+                    bates.position === p.id
+                      ? "border-vault/50 bg-accent-soft text-vault"
+                      : "border-border bg-surface-2 text-text-2 hover:border-vault/30",
+                  )}
+                >
+                  {p.l}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10.5px] text-text-muted">
+              Preview: <span className="font-mono text-foreground">{batesPreview}</span> · sequential on every page. Full options in Document Settings.
+            </p>
+          </OptionRow>
+
+
+          <OptionRow
             icon={<Type className="h-3.5 w-3.5" />}
             label="Header / footer"
             on={hfOn}
