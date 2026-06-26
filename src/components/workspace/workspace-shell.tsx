@@ -148,6 +148,7 @@ const TOOLS: RailTool[] = [
   // Secure
   { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
+  { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Secure" },
   { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
   { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
