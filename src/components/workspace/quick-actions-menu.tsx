@@ -98,13 +98,20 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
       const { repairPdfFile } = await import("@/lib/pdf/repair");
       const res = await repairPdfFile(target);
       downloadBytes(res.bytes, res.filename, "application/pdf");
-      const total = res.pagesRecovered + res.pagesDropped;
-      toast.success(
-        res.pagesDropped > 0
-          ? `Repaired — recovered ${res.pagesRecovered} of ${total} pages; ${res.pagesDropped} were too damaged and removed`
-          : `Repaired — recovered all ${res.pagesRecovered} page${res.pagesRecovered === 1 ? "" : "s"}`,
-        { id: toastId },
-      );
+      if (res.outcome === "full") {
+        toast.success(
+          `Fully repaired — ${res.pagesRecovered}/${res.pagesExpected} pages`,
+          { id: toastId },
+        );
+      } else {
+        const missing = res.pagesWithMissingContent.length;
+        toast.warning(
+          `Partially repaired — ${res.pagesRecovered}/${res.pagesExpected} pages` +
+            (missing > 0 ? `, ${missing} with missing content` : "") +
+            (res.pagesDropped > 0 ? `, ${res.pagesDropped} dropped` : ""),
+          { id: toastId },
+        );
+      }
       // Open the repaired PDF in the workspace so the user can keep working.
       try {
         const repairedFile = new File([res.bytes as BlobPart], res.filename, {
@@ -116,7 +123,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
       }
     } catch (err) {
       const { friendlyRepairReason } = await import("@/lib/pdf/repair");
-      toast.error("Couldn't repair this file", {
+      toast.error("Unable to repair this file", {
         id: toastId,
         description: friendlyRepairReason(err, { fileSize: target.size }),
       });

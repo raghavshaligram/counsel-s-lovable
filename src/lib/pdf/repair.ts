@@ -22,6 +22,8 @@
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "./worker";
 
+export type RepairOutcome = "full" | "partial" | "failed";
+
 export type RepairResult = {
   bytes: Uint8Array;
   blob: Blob;
@@ -30,6 +32,12 @@ export type RepairResult = {
   pagesRecovered: number;
   /** Pages present in the source that could not be copied. */
   pagesDropped: number;
+  /** Total pages expected from the source (recovered + dropped). */
+  pagesExpected: number;
+  /** 1-based indices (in the rebuilt PDF) of pages that lost their content. */
+  pagesWithMissingContent: number[];
+  /** Three-way outcome: full | partial | failed. */
+  outcome: RepairOutcome;
   /** True when at least one page was recovered. */
   ok: boolean;
   /** Which parser succeeded — useful for the UI ("rasterised fallback"). */
@@ -64,7 +72,7 @@ function findHeader(bytes: Uint8Array): number {
 /** Attempt #1 — lenient pdf-lib copy-pages rebuild. */
 async function repairWithPdfLib(
   bytes: Uint8Array,
-): Promise<{ out: PDFDocument; recovered: number; dropped: number } | null> {
+): Promise<{ out: PDFDocument; recovered: number; dropped: number; expected: number } | null> {
   let src: PDFDocument;
   try {
     src = await PDFDocument.load(bytes, {
@@ -76,7 +84,12 @@ async function repairWithPdfLib(
     return null;
   }
 
-  const total = src.getPageCount();
+  let total = 0;
+  try {
+    total = src.getPageCount();
+  } catch {
+    return null;
+  }
   const out = await PDFDocument.create();
   let dropped = 0;
   for (let i = 0; i < total; i++) {
@@ -87,13 +100,13 @@ async function repairWithPdfLib(
       dropped += 1;
     }
   }
-  return { out, recovered: out.getPageCount(), dropped };
+  return { out, recovered: out.getPageCount(), dropped, expected: total };
 }
 
 /** Attempt #2 — pdf.js parses what it can, rasterise each page into a fresh PDF. */
 async function repairWithPdfJs(
   bytes: Uint8Array,
-): Promise<{ out: PDFDocument; recovered: number; dropped: number } | null> {
+): Promise<{ out: PDFDocument; recovered: number; dropped: number; expected: number } | null> {
   const pdfjs = await loadPdfjs();
   let srcDoc: Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>;
   try {
@@ -140,7 +153,7 @@ async function repairWithPdfJs(
     }
   }
 
-  return { out, recovered: out.getPageCount(), dropped };
+  return { out, recovered: out.getPageCount(), dropped, expected: total };
 }
 
 export async function repairPdfBytes(
@@ -163,6 +176,7 @@ export async function repairPdfBytes(
 
   let recovered = 0;
   let dropped = 0;
+  let expected = 0;
   let outDoc: PDFDocument | null = null;
   let method: RepairResult["method"] = "pdf-lib";
 
@@ -172,6 +186,7 @@ export async function repairPdfBytes(
     outDoc = a.out;
     recovered = a.recovered;
     dropped = a.dropped;
+    expected = a.expected;
     method = "pdf-lib";
   } else {
     // Attempt 2: pdf.js rasterise.
@@ -180,6 +195,7 @@ export async function repairPdfBytes(
       outDoc = b.out;
       recovered = b.recovered;
       dropped = b.dropped;
+      expected = b.expected;
       method = "pdf.js-rasterise";
     }
   }
@@ -194,6 +210,63 @@ export async function repairPdfBytes(
   outDoc.setCreator("VaultPDF");
   const repaired = await outDoc.save();
 
+  // Audit the rebuilt PDF for pages that lost their drawable content.
+  // The pdf.js-rasterise path always carries a full-page image, so every
+  // page has content by construction. For the pdf-lib path, scan each page's
+  // operator list for any text or image draws.
+  const pagesWithMissingContent: number[] = [];
+  if (method === "pdf-lib") {
+    try {
+      const pdfjs = await loadPdfjs();
+      const verify = await pdfjs.getDocument({
+        data: repaired.slice(),
+        stopAtErrors: false,
+        disableAutoFetch: true,
+        disableStream: true,
+      }).promise;
+      for (let i = 1; i <= verify.numPages; i++) {
+        let hasContent = false;
+        try {
+          const p = await verify.getPage(i);
+          const txt = await p.getTextContent();
+          if (txt.items.length > 0) {
+            hasContent = true;
+          } else {
+            const ops = await p.getOperatorList();
+            const OPS = pdfjs.OPS;
+            const drawCodes = new Set<number>(
+              [
+                OPS?.paintImageXObject,
+                OPS?.paintInlineImageXObject,
+                OPS?.paintXObject,
+                OPS?.paintImageMaskXObject,
+                OPS?.showText,
+                OPS?.showSpacedText,
+                OPS?.nextLineShowText,
+                OPS?.nextLineSetSpacingShowText,
+              ].filter((v): v is number => typeof v === "number"),
+            );
+            for (const code of ops.fnArray) {
+              if (drawCodes.has(code)) {
+                hasContent = true;
+                break;
+              }
+            }
+          }
+        } catch {
+          hasContent = false;
+        }
+        if (!hasContent) pagesWithMissingContent.push(i);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[repair] content audit failed", e);
+    }
+  }
+
+  const outcome: RepairOutcome =
+    dropped === 0 && pagesWithMissingContent.length === 0 ? "full" : "partial";
+
   const base = (opts.filename ?? "document").replace(/\.pdf$/i, "");
   const filename = `${base}-repaired.pdf`;
   return {
@@ -202,6 +275,9 @@ export async function repairPdfBytes(
     filename,
     pagesRecovered: recovered,
     pagesDropped: dropped,
+    pagesExpected: expected || recovered + dropped,
+    pagesWithMissingContent,
+    outcome,
     ok: true,
     method,
   };
