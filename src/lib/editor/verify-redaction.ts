@@ -74,7 +74,7 @@ export async function verifyRedactionRemoval(
       page.cleanup();
     }
   } finally {
-    try { await doc.destroy(); } catch { /* ignore */ }
+    try { (doc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
   }
 
   const removed = targets.length - leaks.length;
