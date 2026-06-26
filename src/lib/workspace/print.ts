@@ -86,9 +86,7 @@ export async function printPdfBytes(
   const imgs = pages
     .map(
       (p, idx) =>
-        `<img src="${p.dataUrl}" alt="Page ${idx + 1}" ${
-          idx < pages.length - 1 ? 'class="brk"' : ""
-        }/>`,
+        `<div class="pg${idx < pages.length - 1 ? " brk" : ""}"><img src="${p.dataUrl}" alt="Page ${idx + 1}"/></div>`,
     )
     .join("");
   const html = `<!doctype html>
@@ -99,8 +97,24 @@ export async function printPdfBytes(
 <style>
   @page { size: ${sizeRule}; margin: 0; }
   html, body { margin: 0; padding: 0; background: #fff; }
-  img { display: block; width: 100%; height: auto; }
-  img.brk { page-break-after: always; break-after: page; }
+  /* Each .pg is exactly one printed page. Fixed pt dimensions + overflow:hidden
+     prevent sub-pixel rounding of the rasterised JPEG from spilling onto a
+     blank trailing page (which doubled the page count). */
+  .pg {
+    width: ${first.widthPt}pt;
+    height: ${first.heightPt}pt;
+    overflow: hidden;
+    display: block;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .pg.brk { page-break-after: always; break-after: page; }
+  .pg img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
 </style>
 </head>
 <body>${imgs}</body>
