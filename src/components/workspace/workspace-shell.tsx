@@ -1337,6 +1337,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
           <button
             type="button"
+            onClick={() => void onPrint()}
+            disabled={!editorState.doc || printing}
+            title="Print (⌘P)"
+            aria-label="Print"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-surface-2",
+              (!editorState.doc || printing) &&
+                "opacity-40 cursor-not-allowed hover:bg-surface-1",
+            )}
+          >
+            <Printer className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Print
+          </button>
+
+          <button
+            type="button"
             onClick={onExport}
             className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 transition-opacity"
           >
