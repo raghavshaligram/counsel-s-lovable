@@ -78,7 +78,10 @@ function loadFactory(): Promise<QpdfFactory> {
  * Instantiate a fresh qpdf module. Each call returns its own MEMFS, so
  * repeated repairs can't leak files into each other.
  */
-export async function createQpdfModule(): Promise<QpdfModule> {
+export async function createQpdfModule(opts?: {
+  onStdout?: (s: string) => void;
+  onStderr?: (s: string) => void;
+}): Promise<QpdfModule> {
   if (typeof window === "undefined") {
     throw new Error("qpdf-wasm is browser-only");
   }
@@ -89,12 +92,14 @@ export async function createQpdfModule(): Promise<QpdfModule> {
     noInitialRun: true,
     noExitRuntime: true,
     print: (s) => {
+      opts?.onStdout?.(s);
       // eslint-disable-next-line no-console
-      console.debug("[qpdf]", s);
+      console.info("[qpdf:out]", s);
     },
     printErr: (s) => {
+      opts?.onStderr?.(s);
       // eslint-disable-next-line no-console
-      console.debug("[qpdf:err]", s);
+      console.info("[qpdf:err]", s);
     },
   });
 }
