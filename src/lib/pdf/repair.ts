@@ -2,20 +2,25 @@
  * Repair — attempt to rebuild a damaged PDF on-device.
  *
  * Strategy (no network, no upload):
- *   1. Load the source bytes with pdf-lib in lenient mode
- *      (ignoreEncryption + throwOnInvalidObject:false) so a busted xref or
- *      odd object doesn't abort the whole parse.
- *   2. Copy each page into a fresh PDFDocument. copyPages walks references
- *      per page, so pages whose object graph is intact survive; pages that
- *      throw are skipped and reported as dropped.
- *   3. Save the new document — pdf-lib writes a clean xref table and a
- *      well-formed trailer, which fixes most "won't open" PDFs.
+ *   1. Trim any garbage before the first "%PDF-" header.
+ *   2. Lenient pdf-lib load (ignoreEncryption + throwOnInvalidObject:false +
+ *      updateMetadata:false), then copy pages one at a time into a fresh
+ *      document. Pages whose object graph is intact survive; pages that
+ *      throw are skipped and counted as dropped.
+ *   3. If lenient pdf-lib STILL throws on the document level (its strict
+ *      tokenizer rejects malformed numbers, dictionaries, xref, etc.), fall
+ *      back to pdf.js — a much more tolerant parser. Rasterise each
+ *      recoverable page to JPEG and rebuild a clean PDF in pdf-lib. Pages
+ *      that pdf.js can't render are skipped.
+ *
+ * Only when BOTH paths fail do we report "could not repair".
  *
  * Recovery is best-effort. Severely corrupted streams (e.g. truncated file,
  * encrypted body with no password) may not be recoverable — callers must
  * surface that honestly.
  */
 import { PDFDocument } from "pdf-lib";
+import { loadPdfjs } from "./worker";
 
 export type RepairResult = {
   bytes: Uint8Array;
@@ -27,6 +32,8 @@ export type RepairResult = {
   pagesDropped: number;
   /** True when at least one page was recovered. */
   ok: boolean;
+  /** Which parser succeeded — useful for the UI ("rasterised fallback"). */
+  method: "pdf-lib" | "pdf.js-rasterise";
 };
 
 export type RepairOptions = {
@@ -54,6 +61,88 @@ function findHeader(bytes: Uint8Array): number {
   return -1;
 }
 
+/** Attempt #1 — lenient pdf-lib copy-pages rebuild. */
+async function repairWithPdfLib(
+  bytes: Uint8Array,
+): Promise<{ out: PDFDocument; recovered: number; dropped: number } | null> {
+  let src: PDFDocument;
+  try {
+    src = await PDFDocument.load(bytes, {
+      ignoreEncryption: true,
+      throwOnInvalidObject: false,
+      updateMetadata: false,
+    });
+  } catch {
+    return null;
+  }
+
+  const total = src.getPageCount();
+  const out = await PDFDocument.create();
+  let dropped = 0;
+  for (let i = 0; i < total; i++) {
+    try {
+      const [page] = await out.copyPages(src, [i]);
+      out.addPage(page);
+    } catch {
+      dropped += 1;
+    }
+  }
+  return { out, recovered: out.getPageCount(), dropped };
+}
+
+/** Attempt #2 — pdf.js parses what it can, rasterise each page into a fresh PDF. */
+async function repairWithPdfJs(
+  bytes: Uint8Array,
+): Promise<{ out: PDFDocument; recovered: number; dropped: number } | null> {
+  const pdfjs = await loadPdfjs();
+  let srcDoc: Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>;
+  try {
+    srcDoc = await pdfjs.getDocument({
+      data: bytes.slice(),
+      // Be as forgiving as possible.
+      stopAtErrors: false,
+      disableAutoFetch: true,
+      disableStream: true,
+    }).promise;
+  } catch {
+    return null;
+  }
+
+  const total = srcDoc.numPages;
+  const out = await PDFDocument.create();
+  let dropped = 0;
+  const SCALE = 2; // ~144 dpi — preserves readability without exploding size.
+
+  for (let i = 1; i <= total; i++) {
+    try {
+      const page = await srcDoc.getPage(i);
+      const viewport = page.getViewport({ scale: SCALE });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.ceil(viewport.width));
+      canvas.height = Math.max(1, Math.ceil(viewport.height));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas 2D unavailable");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      const b64 = dataUrl.split(",")[1] ?? "";
+      const bin = atob(b64);
+      const jpgBytes = new Uint8Array(bin.length);
+      for (let k = 0; k < bin.length; k++) jpgBytes[k] = bin.charCodeAt(k);
+      const jpg = await out.embedJpg(jpgBytes);
+      const w = viewport.width / SCALE;
+      const h = viewport.height / SCALE;
+      const p = out.addPage([w, h]);
+      p.drawImage(jpg, { x: 0, y: 0, width: w, height: h });
+    } catch {
+      dropped += 1;
+    }
+  }
+
+  return { out, recovered: out.getPageCount(), dropped };
+}
+
 export async function repairPdfBytes(
   input: Uint8Array,
   opts: RepairOptions = {},
@@ -68,51 +157,42 @@ export async function repairPdfBytes(
   if (headerOffset > 0) {
     bytes = bytes.slice(headerOffset);
   } else if (headerOffset < 0) {
-    // No header at all in the first 1KB — this isn't a PDF we can rebuild.
-    throw new Error(
-      `No PDF header found. This file doesn't look like a PDF (${PDF_HEADER}…).`,
-    );
+    // pdf.js can sometimes still parse files without a clean header in the
+    // first 1KB, so don't bail yet — let the fallback try.
   }
 
-  let src: PDFDocument;
-  try {
-    src = await PDFDocument.load(bytes, {
-      ignoreEncryption: true,
-      throwOnInvalidObject: false,
-      updateMetadata: false,
-    });
-  } catch (err) {
-    throw new Error(
-      `Could not parse the document: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
+  let recovered = 0;
+  let dropped = 0;
+  let outDoc: PDFDocument | null = null;
+  let method: RepairResult["method"] = "pdf-lib";
 
-  const total = src.getPageCount();
-  const out = await PDFDocument.create();
-
-  let pagesDropped = 0;
-  // Copy one page at a time so a single bad page can't kill the whole job.
-  for (let i = 0; i < total; i++) {
-    try {
-      const [page] = await out.copyPages(src, [i]);
-      out.addPage(page);
-    } catch {
-      pagesDropped += 1;
+  // Attempt 1: lenient pdf-lib.
+  const a = await repairWithPdfLib(bytes);
+  if (a && a.recovered > 0) {
+    outDoc = a.out;
+    recovered = a.recovered;
+    dropped = a.dropped;
+    method = "pdf-lib";
+  } else {
+    // Attempt 2: pdf.js rasterise.
+    const b = await repairWithPdfJs(bytes);
+    if (b && b.recovered > 0) {
+      outDoc = b.out;
+      recovered = b.recovered;
+      dropped = b.dropped;
+      method = "pdf.js-rasterise";
     }
   }
 
-  const pagesRecovered = out.getPageCount();
-  if (pagesRecovered === 0) {
+  if (!outDoc || recovered === 0) {
     throw new Error(
-      "No recoverable pages — the document's content streams appear too damaged.",
+      "No recoverable pages — neither the lenient parser nor the pdf.js fallback could read this file.",
     );
   }
 
-  out.setProducer("VaultPDF");
-  out.setCreator("VaultPDF");
-  const repaired = await out.save();
+  outDoc.setProducer("VaultPDF");
+  outDoc.setCreator("VaultPDF");
+  const repaired = await outDoc.save();
 
   const base = (opts.filename ?? "document").replace(/\.pdf$/i, "");
   const filename = `${base}-repaired.pdf`;
@@ -120,15 +200,14 @@ export async function repairPdfBytes(
     bytes: repaired,
     blob: new Blob([repaired as BlobPart], { type: "application/pdf" }),
     filename,
-    pagesRecovered,
-    pagesDropped,
+    pagesRecovered: recovered,
+    pagesDropped: dropped,
     ok: true,
+    method,
   };
 }
 
-export async function repairPdfFile(
-  file: File,
-): Promise<RepairResult> {
+export async function repairPdfFile(file: File): Promise<RepairResult> {
   const buf = new Uint8Array(await file.arrayBuffer());
   return repairPdfBytes(buf, { filename: file.name });
 }
