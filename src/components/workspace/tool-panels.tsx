@@ -5821,7 +5821,17 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [picked, setPicked] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<
-    | { kind: "ok"; blob: Blob; filename: string; recovered: number; dropped: number; sourceName: string }
+    | {
+        kind: "ok";
+        blob: Blob;
+        filename: string;
+        recovered: number;
+        dropped: number;
+        expected: number;
+        missingContent: number[];
+        outcome: "full" | "partial";
+        sourceName: string;
+      }
     | { kind: "fail"; message: string }
     | null
   >(null);
@@ -5838,28 +5848,36 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const { repairPdfFile } = await import("@/lib/pdf/repair");
       const out = await repairPdfFile(source);
+      const outcome: "full" | "partial" =
+        out.outcome === "full" ? "full" : "partial";
       setResult({
         kind: "ok",
         blob: out.blob,
         filename: out.filename,
         recovered: out.pagesRecovered,
         dropped: out.pagesDropped,
+        expected: out.pagesExpected,
+        missingContent: out.pagesWithMissingContent,
+        outcome,
         sourceName: source.name,
       });
-      if (out.pagesDropped > 0) {
-        toast.warning(
-          `Repaired — recovered ${out.pagesRecovered} of ${out.pagesRecovered + out.pagesDropped} pages; ${out.pagesDropped} were too damaged and removed`,
+      if (outcome === "full") {
+        toast.success(
+          `Fully repaired — ${out.pagesRecovered}/${out.pagesExpected} pages`,
         );
       } else {
-        toast.success(
-          `Repaired — recovered all ${out.pagesRecovered} page${out.pagesRecovered === 1 ? "" : "s"}`,
+        toast.warning(
+          `Partially repaired — ${out.pagesRecovered}/${out.pagesExpected} pages` +
+            (out.pagesWithMissingContent.length > 0
+              ? `, ${out.pagesWithMissingContent.length} with missing content`
+              : ""),
         );
       }
     } catch (err) {
       const { friendlyRepairReason } = await import("@/lib/pdf/repair");
       const message = friendlyRepairReason(err, { fileSize: source.size });
       setResult({ kind: "fail", message });
-      toast.error("Couldn't repair this file", { description: message });
+      toast.error("Unable to repair this file", { description: message });
     } finally {
       setBusy(false);
     }
