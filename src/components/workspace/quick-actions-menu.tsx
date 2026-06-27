@@ -293,8 +293,9 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
 
         <DropdownMenuItem onSelect={runSanitize} disabled={busy}>
           <ShieldOff className="h-4 w-4" />
-          <span className="flex-1">Sanitize</span>
+          <span className="flex-1">Sanitize before filing</span>
         </DropdownMenuItem>
+
         <DropdownMenuItem onSelect={runFlatten} disabled={busy}>
           <Layers className="h-4 w-4" />
           <span className="flex-1">Flatten</span>
