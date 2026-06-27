@@ -38,6 +38,18 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
+
+/**
+ * Uniform empty-state shown in the inspector when no document is open.
+ * All tool panels use this so the “open a PDF…” affordance looks identical.
+ */
+function InspectorEmpty({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] leading-snug text-text-muted">
+      {children}
+    </p>
+  );
+}
 import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
 import type { Action as EditorAction, State as EditorState } from "@/lib/editor/state";
@@ -814,9 +826,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="text-[11.5px] leading-snug text-text-2">
-        Open a PDF to mark redactions.
-      </p>
+      <InspectorEmpty>Open a PDF to mark redactions.</InspectorEmpty>
     );
   }
 
@@ -1123,9 +1133,7 @@ function MergePanel({ ctx }: { ctx: ToolPanelCtx }) {
         }
       >
         {rows.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11px] text-text-muted">
-            Open a PDF in the workspace to begin, then add more files below.
-          </p>
+          <InspectorEmpty>Open a PDF in the workspace to begin, then add more files below.</InspectorEmpty>
         ) : (
           <ul className="space-y-1">
             {rows.map((r, idx) => {
@@ -1406,9 +1414,7 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
   return (
     <div className="flex h-full flex-col gap-3.5">
       {!file ? (
-        <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-          Open a PDF in the workspace to split it.
-        </p>
+        <InspectorEmpty>Open a PDF in the workspace to split it.</InspectorEmpty>
       ) : (
         <>
           <Section title="Source" icon={<FileText className="h-3 w-3" />}>
@@ -1646,9 +1652,7 @@ function RotatePanel({ ctx }: { ctx: ToolPanelCtx }) {
   return (
     <div className="flex h-full flex-col gap-3.5">
       {!file ? (
-        <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-          Open a PDF in the workspace to rotate it.
-        </p>
+        <InspectorEmpty>Open a PDF in the workspace to rotate it.</InspectorEmpty>
       ) : (
         <>
           <Section title="Source" icon={<FileText className="h-3 w-3" />}>
@@ -2364,9 +2368,7 @@ function ExtractPagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-        Open a PDF in the workspace to extract pages.
-      </p>
+      <InspectorEmpty>Open a PDF in the workspace to extract pages.</InspectorEmpty>
     );
   }
 
@@ -2497,9 +2499,7 @@ function ExtractDataPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-        Open a PDF in the workspace to extract its data.
-      </p>
+      <InspectorEmpty>Open a PDF in the workspace to extract its data.</InspectorEmpty>
     );
   }
 
@@ -2617,9 +2617,7 @@ function WatermarkPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-        Open a PDF in the workspace to add a watermark.
-      </p>
+      <InspectorEmpty>Open a PDF in the workspace to add a watermark.</InspectorEmpty>
     );
   }
 
@@ -2842,9 +2840,7 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-        Open a PDF in the workspace to encrypt it.
-      </p>
+      <InspectorEmpty>Open a PDF in the workspace to encrypt it.</InspectorEmpty>
     );
   }
 
@@ -3085,9 +3081,7 @@ function UnlockPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-        Open a PDF in the workspace to unlock it.
-      </p>
+      <InspectorEmpty>Open a PDF in the workspace to unlock it.</InspectorEmpty>
     );
   }
 
@@ -3244,9 +3238,7 @@ function ComparePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] text-text-muted">
-        Open a PDF in the workspace to set it as document A, then pick B here.
-      </p>
+      <InspectorEmpty>Open a PDF in the workspace to set it as document A, then pick B here.</InspectorEmpty>
     );
   }
 
@@ -3407,9 +3399,7 @@ function ToWordPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="text-[11.5px] leading-snug text-text-2">
-        Open a PDF to convert it to an editable Word document.
-      </p>
+      <InspectorEmpty>Open a PDF to convert it to an editable Word document.</InspectorEmpty>
     );
   }
 
@@ -4569,9 +4559,7 @@ function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="text-[11.5px] leading-snug text-text-2">
-        Open a PDF to stamp page numbers.
-      </p>
+      <InspectorEmpty>Open a PDF to stamp page numbers.</InspectorEmpty>
     );
   }
 
@@ -4682,9 +4670,7 @@ function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
 function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   if (!ctx.file) {
     return (
-      <p className="text-[11.5px] leading-snug text-text-2">
-        Open a PDF to configure document settings.
-      </p>
+      <InspectorEmpty>Open a PDF to configure document settings.</InspectorEmpty>
     );
   }
   const [pnOn, setPnOn] = useState(false);
