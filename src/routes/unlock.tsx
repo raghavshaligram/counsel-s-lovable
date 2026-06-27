@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Eye, EyeOff, LockOpen, ShieldOff } from "lucide-react";
 import { FileBar, ToolHeader, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
+import { importChunk } from "@/lib/chunk-import";
 
 export const Route = createFileRoute("/unlock")({
   head: () => ({
@@ -41,7 +42,7 @@ function UnlockPage() {
     setPassword("");
     setNeedsPassword(false);
     try {
-      const { PDFDocument } = await import("@cantoo/pdf-lib");
+      const { PDFDocument } = await importChunk(() => import("@cantoo/pdf-lib"));
       // Try loading without password — if encrypted, this throws
       await PDFDocument.load(await f.arrayBuffer());
     } catch {
@@ -60,7 +61,7 @@ function UnlockPage() {
     if (!file) return;
     setBusy(true);
     try {
-      const { PDFDocument } = await import("@cantoo/pdf-lib");
+      const { PDFDocument } = await importChunk(() => import("@cantoo/pdf-lib"));
       let src;
       try {
         src = await PDFDocument.load(await file.arrayBuffer(), {
