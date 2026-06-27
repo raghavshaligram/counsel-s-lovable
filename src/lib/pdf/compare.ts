@@ -7,6 +7,7 @@
  * Compare panel/canvas and the legacy /compare route call into here.
  */
 import { loadPdfjs } from "./worker";
+import { importChunk } from "@/lib/chunk-import";
 
 export type ComparePdf = {
   doc: any; // pdfjs PDFDocumentProxy
@@ -74,7 +75,7 @@ export async function renderComparePage(opts: RenderPageOptions): Promise<Compar
   const imgA = ctxA.getImageData(0, 0, aDim.width, aDim.height);
   const imgB = ctxB.getImageData(0, 0, bDim.width, bDim.height);
   const out = ctxD.createImageData(aDim.width, aDim.height);
-  const pixelmatch = (await import("pixelmatch")).default;
+  const pixelmatch = (await importChunk(() => import("pixelmatch"))).default;
   const diffPixels = pixelmatch(imgA.data, imgB.data, out.data, aDim.width, aDim.height, {
     threshold,
     includeAA: false,
@@ -151,7 +152,7 @@ export async function exportDiffPdf(opts: ExportDiffOptions): Promise<{ blob: Bl
   const pageWidth = opts.pageWidth ?? 1100;
   const total = Math.max(pdfA.pageCount, pdfB.pageCount);
 
-  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const { PDFDocument, StandardFonts, rgb } = await importChunk(() => import("pdf-lib"));
   const out = await PDFDocument.create();
   const font = await out.embedFont(StandardFonts.Helvetica);
   const fontBold = await out.embedFont(StandardFonts.HelveticaBold);
