@@ -2,6 +2,7 @@
 // JPG and bundles multi-page output in a zip.
 
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { importChunk } from "@/lib/chunk-import";
 
 export type ToImagesFormat = "png" | "jpg";
 
@@ -68,7 +69,7 @@ export async function convertPdfToImages(
 
   const pageNums = parsePageRange(options.pages, doc.numPages);
 
-  const JSZip = (await import("jszip")).default;
+  const JSZip = (await importChunk(() => import("jszip"))).default;
   const zip = new JSZip();
   const pad = String(doc.numPages).length;
 

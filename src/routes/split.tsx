@@ -8,6 +8,7 @@ import { Download, FileText, Lock, Scissors, X, RefreshCw } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 import { useHotkey, modKey } from "@/lib/use-hotkey";
 import { parseRanges, splitPdf, downloadBlob, type SplitMode } from "@/lib/pdf/split";
+import { importChunk } from "@/lib/chunk-import";
 export { downloadBlob } from "@/lib/pdf/split";
 
 export const Route = createFileRoute("/split")({
@@ -72,7 +73,7 @@ function SplitPage() {
       const base = file.name.replace(/\.pdf$/i, "");
 
       if (mode === "each") {
-        const JSZip = (await import("jszip")).default;
+        const JSZip = (await importChunk(() => import("jszip"))).default;
         const zip = new JSZip();
         for (let i = 0; i < src.getPageCount(); i++) {
           const out = await PDFDocument.create();
@@ -98,7 +99,7 @@ function SplitPage() {
           downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${base}-split.pdf`);
           toast.success(`Saved ${idx.length} pages`);
         } else {
-          const JSZip = (await import("jszip")).default;
+          const JSZip = (await importChunk(() => import("jszip"))).default;
           const zip = new JSZip();
           for (let g = 0; g < parsed.groups.length; g++) {
             const idx = parsed.groups[g].map((n) => n - 1);

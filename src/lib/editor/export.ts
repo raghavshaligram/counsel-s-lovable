@@ -12,6 +12,7 @@ import fontkit from "@pdf-lib/fontkit";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
+import { importChunk } from "@/lib/chunk-import";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
@@ -153,7 +154,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
 
   // Optional encryption + permissions
   if (settings?.protect && settings.protect.userPassword) {
-    const { PDFDocument: CantooPDFDocument } = await import("@cantoo/pdf-lib");
+    const { PDFDocument: CantooPDFDocument } = await importChunk(() => import("@cantoo/pdf-lib"));
     const cantooDoc = await CantooPDFDocument.load(bytes, { ignoreEncryption: true });
     const p = settings.protect.permissions;
     await cantooDoc.encrypt({

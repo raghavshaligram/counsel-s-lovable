@@ -4,6 +4,8 @@
  * same logic. Pure: File in, encrypted bytes out.
  */
 
+import { importChunk } from "@/lib/chunk-import";
+
 export type ProtectPermissions = {
   printing: boolean;
   modifying: boolean;
@@ -43,7 +45,7 @@ export async function protectPdf(
   if (!opts.userPassword || opts.userPassword.length < 4) {
     throw new Error("Password must be at least 4 characters.");
   }
-  const { PDFDocument } = await import("@cantoo/pdf-lib");
+  const { PDFDocument } = await importChunk(() => import("@cantoo/pdf-lib"));
   const doc = await PDFDocument.load(await file.arrayBuffer(), {
     ignoreEncryption: true,
   });

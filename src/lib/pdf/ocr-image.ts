@@ -6,6 +6,7 @@
 
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import { toTesseractLang } from "./ocr-languages";
+import { importChunk } from "@/lib/chunk-import";
 
 export interface ImageOcrProgress {
   stage: "loading-language" | "decoding" | "ocr" | "embedding";
@@ -61,7 +62,7 @@ export async function ocrImageToSearchable(
 ): Promise<Uint8Array> {
   const langs = options.languages && options.languages.length > 0 ? options.languages : ["eng"];
   const langArg = toTesseractLang(langs);
-  const tess = await import("tesseract.js");
+  const tess = await importChunk(() => import("tesseract.js"));
 
   onProgress?.({
     stage: "decoding",

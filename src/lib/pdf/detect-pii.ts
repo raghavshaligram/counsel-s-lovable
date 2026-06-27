@@ -7,6 +7,7 @@
 // over-covering is correct behaviour (no half-visible account numbers).
 
 import { getPdfjs } from "./worker";
+import { importChunk } from "@/lib/chunk-import";
 
 export type PiiCategory =
   | "ssn"
@@ -121,7 +122,7 @@ export async function detectPiiInPdf(
   // serial OCR pins a 400-page scan for tens of minutes. Mirror the pool
   // pattern from ocr-pdf.ts.
   if (ocrPages.length > 0) {
-    const { createWorker } = await import("tesseract.js");
+    const { createWorker } = await importChunk(() => import("tesseract.js"));
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
     const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2), ocrPages.length));
     const workers = await Promise.all(
@@ -362,7 +363,7 @@ export async function findKeywordInPdf(
 
 
   if (opts.ocr && scannedPages.length > 0) {
-    const { createWorker } = await import("tesseract.js");
+    const { createWorker } = await importChunk(() => import("tesseract.js"));
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
     const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2), scannedPages.length));
     const workers = await Promise.all(

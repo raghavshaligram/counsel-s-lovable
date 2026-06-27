@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { downloadBytes } from "@/lib/batch/runner";
+import { importChunk } from "@/lib/chunk-import";
 
 type Props = {
   file: File | null;
@@ -100,7 +101,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     const toastId = "qa-repair";
     toast.loading("Repairing…", { id: toastId });
     try {
-      const { repairPdfFile } = await import("@/lib/pdf/repair");
+      const { repairPdfFile } = await importChunk(() => import("@/lib/pdf/repair"));
       const res = await repairPdfFile(target);
       downloadBytes(res.bytes, res.filename, "application/pdf");
       if (res.outcome === "full") {
@@ -126,7 +127,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
         console.error("[quick-actions] could not open repaired file", e);
       }
     } catch (err) {
-      const { friendlyRepairReason } = await import("@/lib/pdf/repair");
+      const { friendlyRepairReason } = await importChunk(() => import("@/lib/pdf/repair"));
       toast.error("Unable to repair this file", {
         id: toastId,
         description: friendlyRepairReason(err, { fileSize: target.size }),
@@ -152,7 +153,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     toast.loading(`Compressing (${label})…`, { id: toastId });
     try {
       const bytes = new Uint8Array(await target.arrayBuffer());
-      const { compressSmart } = await import("@/lib/batch/ops/compress");
+      const { compressSmart } = await importChunk(() => import("@/lib/batch/ops/compress"));
       const preset = level === "light" ? "low" : level === "strong" ? "high" : "medium";
       const res = await compressSmart(bytes, { preset, grayscale: false });
       const fmt = (n: number) =>
@@ -197,7 +198,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
   function runSanitize() {
     const op = (target: File) =>
       processWithFile(target, "Sanitize", "sanitized", async (bytes) => {
-        const { sanitizePdfBytes } = await import("@/lib/pdf/sanitize");
+        const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
         return sanitizePdfBytes(bytes);
       });
     if (file) void op(file);
@@ -207,7 +208,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
   function runFlatten() {
     const op = (target: File) =>
       processWithFile(target, "Flatten", "flattened", async (bytes) => {
-        const { flatten } = await import("@/lib/batch/ops/flatten");
+        const { flatten } = await importChunk(() => import("@/lib/batch/ops/flatten"));
         return flatten(bytes, { forms: true, annotations: false });
       });
     if (file) void op(file);
@@ -220,7 +221,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     const toastId = "qa-rotate";
     toast.loading(`Rotating ${angle}°…`, { id: toastId });
     try {
-      const { rotatePdf } = await import("@/lib/pdf/rotate");
+      const { rotatePdf } = await importChunk(() => import("@/lib/pdf/rotate"));
       const res = await rotatePdf(file, { angle, scope: "all" });
       const buf = new Uint8Array(await res.blob.arrayBuffer());
       downloadBytes(buf, res.filename, "application/pdf");

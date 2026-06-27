@@ -21,6 +21,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { loadPdfjs } from "./worker";
 import { toTesseractLang } from "./ocr-languages";
+import { importChunk } from "@/lib/chunk-import";
 
 const RENDER_SCALE_DEFAULT = 1.5;
 const RENDER_SCALE_HIGH = 2.0;
@@ -174,7 +175,7 @@ export async function ocrPdfToSearchable(
   const langArg = toTesseractLang(langs);
   const partial = !!options.returnPartialOnAbort;
   const pdfjs = await loadPdfjs();
-  const tess = await import("tesseract.js");
+  const tess = await importChunk(() => import("tesseract.js"));
 
   const srcBytes = new Uint8Array(await file.arrayBuffer());
   const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
@@ -450,7 +451,7 @@ export async function ocrPdfToTokens(
   const langArg = toTesseractLang(langs);
   const partial = !!options.returnPartialOnAbort;
   const pdfjs = await loadPdfjs();
-  const tess = await import("tesseract.js");
+  const tess = await importChunk(() => import("tesseract.js"));
 
   const srcBytes = new Uint8Array(await file.arrayBuffer());
   const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;

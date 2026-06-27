@@ -46,6 +46,7 @@ import {
 } from "@/lib/pdf/detect-pii";
 
 import { buildRedactionCertificate } from "@/lib/pdf/redaction-certificate";
+import { importChunk } from "@/lib/chunk-import";
 
 
 type Box = {
@@ -293,7 +294,7 @@ export function RedactPage() {
     setTotalPages(0);
     (async () => {
       try {
-        const { getPdfjs } = await import("@/lib/pdf/worker");
+        const { getPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await getPdfjs();
         const buf = await file.arrayBuffer();
         const doc = await pdfjs.getDocument({ data: buf }).promise;
@@ -371,7 +372,7 @@ export function RedactPage() {
     setPendingDetections(null);
     setPendingUsedOcr(false);
     try {
-      const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
+      const { detectPiiInPdf } = await importChunk(() => import("@/lib/pdf/detect-pii"));
       const { detections: found, usedOcr } = await detectPiiInPdf(
         file,
         1.5,
@@ -640,7 +641,7 @@ export function RedactPage() {
 
     setExporting(true);
     try {
-      const { PDFDocument, PDFName } = await import("pdf-lib");
+      const { PDFDocument, PDFName } = await importChunk(() => import("pdf-lib"));
       const out = await PDFDocument.create();
 
       if (stripMetadata) {

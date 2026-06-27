@@ -23,25 +23,7 @@ import { cn } from "@/lib/utils";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
-
-/** Detect Vite's "stale chunk" failure (after a redeploy the old hashed
- *  chunk URL no longer exists). */
-function isStaleChunkError(err: unknown): boolean {
-  const msg = (err as Error)?.message ?? String(err);
-  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg);
-}
-
-/** Retry a dynamic import once on transient network blip. Stale-hash failures
- *  surface to the caller, which prompts a reload. */
-async function importChunk<T>(load: () => Promise<T>): Promise<T> {
-  try {
-    return await load();
-  } catch (err) {
-    if (isStaleChunkError(err)) throw err;
-    await new Promise((r) => setTimeout(r, 200));
-    return await load();
-  }
-}
+import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk-import";
 
 type Props = {
   open: boolean;
@@ -142,9 +124,9 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       reset();
     } catch (err) {
       console.error("[export-flow] failed", err);
-      if (isStaleChunkError(err)) {
+      if (isChunkLoadError(err)) {
         toast.error("App was updated — reloading…", { id: tid });
-        setTimeout(() => window.location.reload(), 600);
+        reloadForFreshChunks();
       } else {
         toast.error("Export failed", { id: tid, description: (err as Error).message });
       }

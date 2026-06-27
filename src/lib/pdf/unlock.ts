@@ -4,6 +4,8 @@
  * panel and standalone route share one implementation.
  */
 
+import { importChunk } from "@/lib/chunk-import";
+
 export class WrongPasswordError extends Error {
   constructor() {
     super("Wrong password");
@@ -23,7 +25,7 @@ export type UnlockResult = {
  * Useful for the UI to decide whether to prompt.
  */
 export async function isPdfEncrypted(file: File): Promise<boolean> {
-  const { PDFDocument } = await import("@cantoo/pdf-lib");
+  const { PDFDocument } = await importChunk(() => import("@cantoo/pdf-lib"));
   try {
     await PDFDocument.load(await file.arrayBuffer());
     return false;
@@ -36,7 +38,7 @@ export async function unlockPdf(
   file: File,
   password?: string,
 ): Promise<UnlockResult> {
-  const { PDFDocument } = await import("@cantoo/pdf-lib");
+  const { PDFDocument } = await importChunk(() => import("@cantoo/pdf-lib"));
   let src;
   let wasEncrypted = false;
   try {

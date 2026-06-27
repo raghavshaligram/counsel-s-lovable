@@ -8,6 +8,7 @@
 // Falls back to OCR for scanned pages.
 
 import { loadPdfjs } from "./worker";
+import { importChunk } from "@/lib/chunk-import";
 
 export type ExtractedTable = {
   page: number;
@@ -87,7 +88,7 @@ async function ocrPageItems(
   const ctx = canvas.getContext("2d");
   if (!ctx) return [];
   await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-  const { createWorker } = await import("tesseract.js");
+  const { createWorker } = await importChunk(() => import("tesseract.js"));
   const worker = await createWorker("eng");
   try {
     const { data } = await worker.recognize(canvas, {}, { blocks: true });
@@ -214,7 +215,7 @@ export async function downloadXlsx(
   tables: ExtractedTable[],
   filename: string,
 ) {
-  const XLSX = await import("xlsx");
+  const XLSX = await importChunk(() => import("xlsx"));
   const wb = XLSX.utils.book_new();
   for (const t of tables) {
     const ws = XLSX.utils.aoa_to_sheet(t.rows);

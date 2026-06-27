@@ -2,6 +2,7 @@
 // Renders the document via mammoth + html2canvas, packs into PDF pages with pdf-lib.
 
 import { PDFDocument } from "pdf-lib";
+import { importChunk } from "@/lib/chunk-import";
 
 export type WordToPdfPageSize = "letter" | "a4";
 
@@ -28,7 +29,7 @@ export async function convertWordToPdfBlob(
   const onProgress = opts.onProgress ?? (() => {});
 
   onProgress("Reading document…");
-  const mammoth: any = await import("mammoth/mammoth.browser.js" as any);
+  const mammoth: any = await importChunk(() => import("mammoth/mammoth.browser.js" as any));
   const arr = await file.arrayBuffer();
   const { value: html } = await mammoth.convertToHtml({ arrayBuffer: arr });
 
@@ -122,7 +123,7 @@ export async function convertWordToPdfBlob(
     packHost.remove();
   }
 
-  const html2canvas = (await import("html2canvas-pro")).default;
+  const html2canvas = (await importChunk(() => import("html2canvas-pro"))).default;
   const pdf = await PDFDocument.create();
 
   try {
