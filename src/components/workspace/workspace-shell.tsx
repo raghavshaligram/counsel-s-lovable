@@ -94,6 +94,7 @@ import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/l
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
+import { PrivacyShield } from "./privacy-shield";
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
