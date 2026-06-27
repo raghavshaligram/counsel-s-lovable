@@ -39,7 +39,7 @@ export async function importChunk<T>(load: () => Promise<T>): Promise<T> {
     // Non-stale network hiccup: retry once. Browsers cannot retry the exact
     // failed module request, but calling the import expression again handles
     // transient fetch interruptions for still-valid chunks.
-    await new Promise((resolve) => window.setTimeout(resolve, 200));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 200));
     return load();
   }
 }
