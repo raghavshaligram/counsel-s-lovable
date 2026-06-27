@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, FileText, GitCompare, RefreshCw, Upload, X }
 import { ToolHeader } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { importChunk } from "@/lib/chunk-import";
 
 export const Route = createFileRoute("/compare")({
   head: () => ({
@@ -124,7 +125,7 @@ function ComparePage() {
         const imgA = ctxA.getImageData(0, 0, aDim.width, aDim.height);
         const imgB = ctxB.getImageData(0, 0, bDim.width, bDim.height);
         const out = ctxD.createImageData(aDim.width, aDim.height);
-        const pixelmatch = (await import("pixelmatch")).default;
+        const pixelmatch = (await importChunk(() => import("pixelmatch"))).default;
         const count = pixelmatch(imgA.data, imgB.data, out.data, aDim.width, aDim.height, {
           threshold,
           includeAA: false,
