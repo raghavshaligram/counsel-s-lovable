@@ -508,6 +508,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/" className="hover:text-foreground">Home</Link>
           <Link to="/pricing" className="hover:text-foreground">Pricing</Link>
           <Link to="/verify-privacy" className="hover:text-foreground">Verify our privacy</Link>
+          <Link to="/security-architecture" className="hover:text-foreground">Security</Link>
         </div>
       </footer>
 
