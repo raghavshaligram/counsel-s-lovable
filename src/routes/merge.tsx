@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { softwareAppSchema } from "@/lib/seo/tool-schema";
+import { importChunk } from "@/lib/chunk-import";
 
 export const Route = createFileRoute("/merge")({
   head: () => ({
@@ -82,7 +83,7 @@ function MergePage() {
     setMapping({});
     setPdfError(null);
     try {
-      const { PDFDocument } = await import("pdf-lib");
+      const { PDFDocument } = await importChunk(() => import("pdf-lib"));
       const buf = await file.arrayBuffer();
       const doc = await PDFDocument.load(buf, { ignoreEncryption: true });
       const form = doc.getForm();
@@ -106,7 +107,7 @@ function MergePage() {
     setColumns([]);
     setRows([]);
     try {
-      const Papa = (await import("papaparse")).default;
+      const Papa = (await importChunk(() => import("papaparse"))).default;
       const text = await file.text();
       const parsed = Papa.parse<CsvRow>(text, {
         header: true,
@@ -150,8 +151,8 @@ function MergePage() {
     setBusy(true);
     setProgress({ done: 0, total: rows.length });
     try {
-      const { PDFDocument } = await import("pdf-lib");
-      const JSZip = (await import("jszip")).default;
+      const { PDFDocument } = await importChunk(() => import("pdf-lib"));
+      const JSZip = (await importChunk(() => import("jszip"))).default;
       const templateBuf = await pdfFile.arrayBuffer();
       const zip = new JSZip();
       const usedNames = new Map<string, number>();
