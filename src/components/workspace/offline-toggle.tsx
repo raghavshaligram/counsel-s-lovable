@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 
 const OFFLINE_KEY = "vaultpdf:work-offline";
 
-function loadOfflinePref(): boolean {
+export function loadOfflinePref(): boolean {
   if (typeof window === "undefined") return false;
   try {
     return window.localStorage.getItem(OFFLINE_KEY) === "true";
@@ -14,7 +14,7 @@ function loadOfflinePref(): boolean {
   }
 }
 
-function saveOfflinePref(value: boolean) {
+export function saveOfflinePref(value: boolean) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(OFFLINE_KEY, value ? "true" : "false");
@@ -23,8 +23,15 @@ function saveOfflinePref(value: boolean) {
   }
 }
 
-export function OfflineToggle({ hasDocument }: { hasDocument: boolean }) {
-  const [enabled, setEnabled] = useState(() => loadOfflinePref());
+export function OfflineToggle({
+  hasDocument,
+  enabled,
+  onChange,
+}: {
+  hasDocument: boolean;
+  enabled: boolean;
+  onChange: (next: boolean) => void;
+}) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -120,7 +127,7 @@ export function OfflineToggle({ hasDocument }: { hasDocument: boolean }) {
                   <Switch
                     checked={enabled}
                     onCheckedChange={(next) => {
-                      setEnabled(next);
+                      onChange(next);
                       saveOfflinePref(next);
                     }}
                     aria-label="Toggle offline mode"
@@ -142,8 +149,7 @@ export function OfflineToggle({ hasDocument }: { hasDocument: boolean }) {
   );
 }
 
-export function OfflineBadge() {
-  const [enabled] = useState(() => loadOfflinePref());
+export function OfflineBadge({ enabled }: { enabled: boolean }) {
   if (!enabled) return null;
   return (
     <span className="inline-flex items-center gap-1 rounded-md bg-vault/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-vault">
