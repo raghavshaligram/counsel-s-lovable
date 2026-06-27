@@ -103,6 +103,7 @@ import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
+import { importChunk } from "@/lib/chunk-import";
 
 
 type ToolId =
@@ -865,7 +866,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // (so it can render without re-parsing), and let EditorPages refine
         // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
-        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         // Hand bytes straight to pdf.js — the worker transfers the buffer.
         // For 400p PDFs slicing here copies tens of MB on the main thread
@@ -923,7 +924,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 const toastId = "open-fail-repair";
                 toast.loading("Repairing…", { id: toastId });
                 try {
-                  const { repairPdfFile } = await import("@/lib/pdf/repair");
+                  const { repairPdfFile } = await importChunk(() => import("@/lib/pdf/repair"));
                   const res = await repairPdfFile(failed);
                   const repairedFile = new File(
                     [res.bytes as BlobPart],
@@ -942,7 +943,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     { id: toastId },
                   );
                 } catch (repairErr) {
-                  const { friendlyRepairReason } = await import("@/lib/pdf/repair");
+                  const { friendlyRepairReason } = await importChunk(() => import("@/lib/pdf/repair"));
                   toast.error("Couldn't repair this file", {
                     id: toastId,
                     description: friendlyRepairReason(repairErr, {
@@ -1081,16 +1082,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const newlyOcr = new Set<number>();
     const newlyCopied = new Set<number>();
     try {
-      const { ocrPdfToTokens } = await import("@/lib/pdf/ocr-pdf").catch((err) => {
-        // Stale dynamic-chunk reference (e.g. after a new deploy). Reload once
-        // so the browser fetches the fresh chunk hash, then surface the error.
-        if (/dynamically imported module|Failed to fetch/i.test(String(err?.message ?? err))
-            && !sessionStorage.getItem("ocr-chunk-reloaded")) {
-          sessionStorage.setItem("ocr-chunk-reloaded", "1");
-          window.location.reload();
-        }
-        throw err;
-      });
+      const { ocrPdfToTokens } = await importChunk(() => import("@/lib/pdf/ocr-pdf"));
       // Sidecar OCR: returns per-source-page tokens — never modifies the
       // base PDF bytes. Tokens are composited live in the canvas and baked
       // as invisible text on export.
@@ -2741,7 +2733,7 @@ function PagesPlaceholder({
     setError(null);
     (async () => {
       try {
-        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await file.arrayBuffer());
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
