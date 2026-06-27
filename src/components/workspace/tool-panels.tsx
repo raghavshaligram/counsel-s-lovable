@@ -917,7 +917,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
-            Download verification certificate
+            Download certificate of redaction
+
           </button>
         </Section>
       )}
