@@ -152,24 +152,25 @@ const TOOLS: RailTool[] = [
   { id: "watermark", label: "Watermark", icon: Stamp, group: "secure", groupLabel: "Edit" },
   { id: "compress", label: "Compress", icon: PackageOpen, group: "secure", groupLabel: "Edit" },
   // Redact
-  { id: "redact", label: "Redact", icon: Shield, group: "redact", groupLabel: "Redact" },
+  { id: "redact", label: "Redact for production", icon: Shield, group: "redact", groupLabel: "Redact" },
   // Secure
   { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Secure" },
-  { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
+  { id: "compare", label: "Compare versions", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
-  { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
+  { id: "outline", label: "Outline & links", icon: ListTree, group: "layout", groupLabel: "Layout" },
   // Document settings — page numbers + header/footer. Accessed from the
   // top-bar gear next to Export (document-level property, not a tool).
-  { id: "doc-settings", label: "Document Settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
+  { id: "doc-settings", label: "Document settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
   // Legal
-  { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
-  { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
-  { id: "privilege-scan", label: "Privilege Scan", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  { id: "bates", label: "Bates stamp", icon: Hash, group: "legal", groupLabel: "Legal" },
+  { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
+  { id: "privilege-scan", label: "Privilege review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
   // AI
-  { id: "chat", label: "Search Inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
+  { id: "chat", label: "Search inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
 ];
+
 
 const GROUP_ORDER: ToolGroupLabel[] = [
   "Pages", "Convert", "Edit", "Redact", "Secure", "Layout", "Legal", "AI",
