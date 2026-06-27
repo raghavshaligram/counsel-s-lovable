@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Lock, Shield, X } from "lucide-react";
+import { Lock, Shield, X, ArrowRight } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 export function PrivacyShield({ hasDocument }: { hasDocument: boolean }) {
