@@ -24,5 +24,5 @@ export const Route = createFileRoute("/workspace")({
 
 function WorkspacePage() {
   const { tool } = Route.useSearch();
-  return <WorkspaceShell initialTool={tool} />;
+  return <WorkspaceShell initialTool={tool as never} />;
 }
