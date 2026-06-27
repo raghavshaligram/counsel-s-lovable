@@ -3107,6 +3107,44 @@ function StartCard({
   );
 }
 
+function TaskCard({
+  icon,
+  title,
+  sub,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex items-start gap-3 rounded-md border border-border/70 bg-surface-2 px-3 py-2.5 text-left",
+        "transition-colors hover:bg-surface-3",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      style={{ borderWidth: 0.5, borderRadius: 9 }}
+    >
+      <span
+        className="grid h-8 w-8 shrink-0 place-items-center bg-accent-soft text-vault"
+        style={{ borderRadius: 7 }}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12.5px] font-medium text-foreground">{title}</span>
+        <span className="block text-[11px] text-text-muted">{sub}</span>
+      </span>
+    </button>
+  );
+}
+
+
+
 function ShortcutChip({
   icon,
   label,
