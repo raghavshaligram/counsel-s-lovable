@@ -82,6 +82,9 @@ function Landing() {
                   Lifetime — $29
                 </Link>
               </div>
+              <p className="mt-5 text-sm text-muted-foreground">
+                Works on any device — Windows, Mac, iPad — with no installation. Just open it in your browser.
+              </p>
             </div>
 
             {/* Right — mock canvas with animated redaction */}
