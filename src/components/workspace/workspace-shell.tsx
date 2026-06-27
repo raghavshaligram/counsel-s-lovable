@@ -57,7 +57,9 @@ import {
   Settings as SettingsIcon,
   Wrench,
   Printer,
+  ShieldOff,
 } from "lucide-react";
+
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
 // PDFDocument.load() blocks the main thread for seconds. The open path now
