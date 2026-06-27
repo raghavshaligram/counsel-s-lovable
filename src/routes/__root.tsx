@@ -13,6 +13,7 @@ import { Toaster } from "sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { requestPersistentStorage } from "../lib/storage-persist";
+import { isChunkLoadError, reloadForFreshChunks } from "../lib/chunk-import";
 
 function NotFoundComponent() {
   return (
@@ -139,6 +140,36 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    const onPreloadError = (event: Event) => {
+      const error = (event as Event & { payload?: unknown }).payload;
+      if (!isChunkLoadError(error)) return;
+      event.preventDefault();
+      reloadForFreshChunks();
+    };
+    const onError = (event: ErrorEvent) => {
+      if (isChunkLoadError(event.error ?? event.message)) {
+        event.preventDefault();
+        reloadForFreshChunks();
+      }
+    };
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isChunkLoadError(event.reason)) {
+        event.preventDefault();
+        reloadForFreshChunks();
+      }
+    };
+
+    window.addEventListener("vite:preloadError", onPreloadError);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("vite:preloadError", onPreloadError);
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
 
   useEffect(() => {
     // Ask the browser to make our IndexedDB durable. Logs the outcome.
