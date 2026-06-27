@@ -5,6 +5,7 @@
  * inspector can reuse it without embedding the page.
  */
 import { PDFDocument } from "pdf-lib";
+import { importChunk } from "@/lib/chunk-import";
 
 export type SplitMode = "ranges" | "each";
 
@@ -123,7 +124,7 @@ export async function splitPdf(file: File, opts: SplitOptions): Promise<SplitRes
 
   // "each" stays a streaming write since it can be very large.
   if (opts.mode === "each") {
-    const JSZip = (await import("jszip")).default;
+    const JSZip = (await importChunk(() => import("jszip"))).default;
     const zip = new JSZip();
     for (let i = 0; i < total; i++) {
       const out = await PDFDocument.create();
@@ -185,7 +186,7 @@ export async function splitPdf(file: File, opts: SplitOptions): Promise<SplitRes
     };
   }
 
-  const JSZip = (await import("jszip")).default;
+  const JSZip = (await importChunk(() => import("jszip"))).default;
   const zip = new JSZip();
   let totalPages = 0;
   for (let g = 0; g < groups.length; g++) {
