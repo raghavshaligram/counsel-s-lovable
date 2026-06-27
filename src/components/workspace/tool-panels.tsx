@@ -2761,7 +2761,7 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   useEffect(() => {
     let cancelled = false;
-    void import("@/lib/pdf/protect").then((m) => {
+    void importChunk(() => import("@/lib/pdf/protect")).then((m) => {
       if (!cancelled) setStrength(m.scorePasswordStrength(userPassword));
     });
     return () => {
