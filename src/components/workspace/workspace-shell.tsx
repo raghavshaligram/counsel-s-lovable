@@ -1375,32 +1375,76 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
       {/* MAIN ROW */}
       <div className="flex min-h-0 flex-1">
-        {/* LEFT RAIL */}
-        <nav className="flex w-[52px] shrink-0 flex-col items-center justify-between border-r border-border bg-surface-1 py-3">
-          <ul className="flex flex-col items-center gap-1.5">
-            {pinnedTools.map((tool) => (
-              <li key={tool.id}>
-                <RailButton
-                  active={activeToolId === tool.id && inspectorOpen}
-                  label={tool.label}
-                  kbd={SHORTCUTS[tool.id]}
-                  pinned={manualPinSet.has(tool.id)}
-                  onClick={() => openTool(tool.id)}
-                >
-                  <tool.icon className="h-[18px] w-[18px]" />
-                </RailButton>
-              </li>
-            ))}
-          </ul>
-          <RailButton
-            label="All tools"
-            active={toolModalOpen}
-            onClick={() => setToolModalOpen((v) => !v)}
-            alwaysShow
-          >
-            <Grid3x3 className="h-[18px] w-[18px]" />
-          </RailButton>
+        {/* LEFT RAIL — grouped & labeled. Familiar layout for paralegals:
+            every tool spelled out, sections named, nothing hidden behind
+            cryptic icons. Pin/usage logic still drives the "All tools"
+            modal; the rail itself simply lists every visible tool by
+            its real name under its real section header. */}
+        <nav
+          aria-label="Tools"
+          className="flex w-[212px] shrink-0 flex-col border-r border-border bg-surface-1"
+        >
+          <div className="flex-1 overflow-y-auto no-scrollbar px-2 py-3">
+            {GROUP_ORDER.map((groupLabel) => {
+              const groupTools = TOOLS.filter(
+                (t) => !t.hidden && t.groupLabel === groupLabel,
+              );
+              if (groupTools.length === 0) return null;
+              return (
+                <div key={groupLabel} className="mb-4 last:mb-0">
+                  <div className="px-2 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-text-muted">
+                    {groupLabel}
+                  </div>
+                  <ul className="flex flex-col gap-0.5">
+                    {groupTools.map((tool) => {
+                      const isActive = activeToolId === tool.id && inspectorOpen;
+                      const Icon = tool.icon;
+                      return (
+                        <li key={tool.id}>
+                          <button
+                            type="button"
+                            onClick={() => openTool(tool.id)}
+                            aria-label={tool.label}
+                            aria-pressed={isActive}
+                            className={cn(
+                              "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors",
+                              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              isActive
+                                ? "bg-accent-soft text-vault"
+                                : "text-text-2 hover:bg-surface-2 hover:text-foreground",
+                            )}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                            <span className="truncate">{tool.label}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+          <div className="shrink-0 border-t border-border p-2">
+            <button
+              type="button"
+              onClick={() => setToolModalOpen((v) => !v)}
+              aria-label="All tools"
+              aria-pressed={toolModalOpen}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                toolModalOpen
+                  ? "bg-accent-soft text-vault"
+                  : "text-text-2 hover:bg-surface-2 hover:text-foreground",
+              )}
+            >
+              <Grid3x3 className="h-4 w-4 shrink-0" strokeWidth={2} />
+              <span className="truncate">All tools</span>
+            </button>
+          </div>
         </nav>
+
 
         {/* CANVAS + INSPECTOR */}
         <div className="relative flex min-w-0 flex-1">
