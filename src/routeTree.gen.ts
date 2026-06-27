@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as WordToPdfRouteImport } from './routes/word-to-pdf'
 import { Route as WatermarkRouteImport } from './routes/watermark'
+import { Route as VerifyPrivacyRouteImport } from './routes/verify-privacy'
 import { Route as VerifiableRedactionRouteImport } from './routes/verifiable-redaction'
 import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as ToWordRouteImport } from './routes/to-word'
@@ -52,6 +53,11 @@ const WordToPdfRoute = WordToPdfRouteImport.update({
 const WatermarkRoute = WatermarkRouteImport.update({
   id: '/watermark',
   path: '/watermark',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerifyPrivacyRoute = VerifyPrivacyRouteImport.update({
+  id: '/verify-privacy',
+  path: '/verify-privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VerifiableRedactionRoute = VerifiableRedactionRouteImport.update({
@@ -212,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/verifiable-redaction': typeof VerifiableRedactionRoute
+  '/verify-privacy': typeof VerifyPrivacyRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
@@ -243,6 +250,7 @@ export interface FileRoutesByTo {
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/verifiable-redaction': typeof VerifiableRedactionRoute
+  '/verify-privacy': typeof VerifyPrivacyRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
@@ -275,6 +283,7 @@ export interface FileRoutesById {
   '/to-word': typeof ToWordRoute
   '/unlock': typeof UnlockRoute
   '/verifiable-redaction': typeof VerifiableRedactionRoute
+  '/verify-privacy': typeof VerifyPrivacyRoute
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
@@ -308,6 +317,7 @@ export interface FileRouteTypes {
     | '/to-word'
     | '/unlock'
     | '/verifiable-redaction'
+    | '/verify-privacy'
     | '/watermark'
     | '/word-to-pdf'
     | '/workspace'
@@ -339,6 +349,7 @@ export interface FileRouteTypes {
     | '/to-word'
     | '/unlock'
     | '/verifiable-redaction'
+    | '/verify-privacy'
     | '/watermark'
     | '/word-to-pdf'
     | '/workspace'
@@ -370,6 +381,7 @@ export interface FileRouteTypes {
     | '/to-word'
     | '/unlock'
     | '/verifiable-redaction'
+    | '/verify-privacy'
     | '/watermark'
     | '/word-to-pdf'
     | '/workspace'
@@ -402,6 +414,7 @@ export interface RootRouteChildren {
   ToWordRoute: typeof ToWordRoute
   UnlockRoute: typeof UnlockRoute
   VerifiableRedactionRoute: typeof VerifiableRedactionRoute
+  VerifyPrivacyRoute: typeof VerifyPrivacyRoute
   WatermarkRoute: typeof WatermarkRoute
   WordToPdfRoute: typeof WordToPdfRoute
   WorkspaceRoute: typeof WorkspaceRoute
@@ -428,6 +441,13 @@ declare module '@tanstack/react-router' {
       path: '/watermark'
       fullPath: '/watermark'
       preLoaderRoute: typeof WatermarkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verify-privacy': {
+      id: '/verify-privacy'
+      path: '/verify-privacy'
+      fullPath: '/verify-privacy'
+      preLoaderRoute: typeof VerifyPrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/verifiable-redaction': {
@@ -642,6 +662,7 @@ const rootRouteChildren: RootRouteChildren = {
   ToWordRoute: ToWordRoute,
   UnlockRoute: UnlockRoute,
   VerifiableRedactionRoute: VerifiableRedactionRoute,
+  VerifyPrivacyRoute: VerifyPrivacyRoute,
   WatermarkRoute: WatermarkRoute,
   WordToPdfRoute: WordToPdfRoute,
   WorkspaceRoute: WorkspaceRoute,

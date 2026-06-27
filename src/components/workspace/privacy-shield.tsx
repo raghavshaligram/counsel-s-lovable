@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Lock, Shield, X } from "lucide-react";
+import { Lock, Shield, X, ArrowRight } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 export function PrivacyShield({ hasDocument }: { hasDocument: boolean }) {
@@ -74,6 +75,13 @@ export function PrivacyShield({ hasDocument }: { hasDocument: boolean }) {
                   <Lock className="h-3 w-3" strokeWidth={2.5} />
                   0 bytes uploaded since opening
                 </div>
+                <Link
+                  to="/verify-privacy"
+                  className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-vault hover:underline"
+                  onClick={() => setOpen(false)}
+                >
+                  Verify our privacy <ArrowRight className="h-3 w-3" />
+                </Link>
               </div>
             </div>
           </div>

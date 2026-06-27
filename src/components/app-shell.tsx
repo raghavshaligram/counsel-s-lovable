@@ -507,7 +507,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex gap-4">
           <Link to="/" className="hover:text-foreground">Home</Link>
           <Link to="/pricing" className="hover:text-foreground">Pricing</Link>
-          <a href="/#trust" className="hover:text-foreground">How privacy works</a>
+          <Link to="/verify-privacy" className="hover:text-foreground">Verify our privacy</Link>
         </div>
       </footer>
 
