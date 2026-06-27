@@ -6,6 +6,7 @@
 // (much faster than PNG) for a snappy on-device conversion.
 
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { importChunk } from "@/lib/chunk-import";
 
 export type ToWordMode = "flow" | "page" | "fidelity";
 
@@ -241,7 +242,7 @@ export async function convertPdfToWordBlob(
 
   const pdfjs = await loadPdfjs();
   const { Document, Packer, Paragraph, TextRun, PageBreak, HeadingLevel, ImageRun, AlignmentType } =
-    await import("docx");
+    await importChunk(() => import("docx"));
   const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
   const numPages: number = doc.numPages;
   const MAX_IMG_W_PT = 468;
