@@ -75,13 +75,22 @@ export function PrivacyShield({ hasDocument }: { hasDocument: boolean }) {
                   <Lock className="h-3 w-3" strokeWidth={2.5} />
                   0 bytes uploaded since opening
                 </div>
-                <Link
-                  to="/verify-privacy"
-                  className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-vault hover:underline"
-                  onClick={() => setOpen(false)}
-                >
-                  Verify our privacy <ArrowRight className="h-3 w-3" />
-                </Link>
+                <div className="mt-3 flex flex-col gap-1">
+                  <Link
+                    to="/verify-privacy"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-vault hover:underline"
+                    onClick={() => setOpen(false)}
+                  >
+                    Verify our privacy <ArrowRight className="h-3 w-3" />
+                  </Link>
+                  <Link
+                    to="/security-architecture"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-vault hover:underline"
+                    onClick={() => setOpen(false)}
+                  >
+                    Security & architecture <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
