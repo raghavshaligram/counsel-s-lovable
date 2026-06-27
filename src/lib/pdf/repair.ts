@@ -21,6 +21,7 @@
  */
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "./worker";
+import { importChunk } from "@/lib/chunk-import";
 
 export type RepairOutcome = "full" | "partial" | "failed";
 
@@ -173,7 +174,7 @@ async function repairWithQpdf(bytes: Uint8Array): Promise<Uint8Array | null> {
   const stderrBuf: string[] = [];
   const stdoutBuf: string[] = [];
   try {
-    const { createQpdfModule } = await import("./qpdf-loader");
+    const { createQpdfModule } = await importChunk(() => import("./qpdf-loader"));
     qpdf = await createQpdfModule({
       onStdout: (s) => stdoutBuf.push(s),
       onStderr: (s) => stderrBuf.push(s),
