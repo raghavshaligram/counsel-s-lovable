@@ -162,7 +162,7 @@ function Landing() {
           </div>
           <div className="mt-10 flex justify-end">
             <Link
-              to="/tools"
+              to="/workspace"
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition group"
             >
               All 18 tools
