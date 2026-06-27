@@ -803,8 +803,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         sourceHashSHA256: sourceHash,
         redactedHashSHA256: redactedHash,
       });
-      downloadBytes(cert, file.name.replace(/\.pdf$/i, "") + "-redaction-certificate.pdf", "application/pdf");
-      toast.success("Certificate downloaded");
+      downloadBytes(cert, file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction.pdf", "application/pdf");
+      toast.success("Certificate of redaction downloaded");
+
     } catch (err) {
       console.error("[redact] certificate failed", err);
       toast.error("Couldn't build certificate", { description: (err as Error).message });
@@ -917,7 +918,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
-            Download verification certificate
+            Download certificate of redaction
+
           </button>
         </Section>
       )}

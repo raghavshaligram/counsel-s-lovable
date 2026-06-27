@@ -57,7 +57,9 @@ import {
   Settings as SettingsIcon,
   Wrench,
   Printer,
+  ShieldOff,
 } from "lucide-react";
+
 import { useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
 // PDFDocument.load() blocks the main thread for seconds. The open path now
@@ -152,24 +154,25 @@ const TOOLS: RailTool[] = [
   { id: "watermark", label: "Watermark", icon: Stamp, group: "secure", groupLabel: "Edit" },
   { id: "compress", label: "Compress", icon: PackageOpen, group: "secure", groupLabel: "Edit" },
   // Redact
-  { id: "redact", label: "Redact", icon: Shield, group: "redact", groupLabel: "Redact" },
+  { id: "redact", label: "Redact for production", icon: Shield, group: "redact", groupLabel: "Redact" },
   // Secure
   { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Secure" },
-  { id: "compare", label: "Compare", icon: Scale, group: "layout", groupLabel: "Secure" },
+  { id: "compare", label: "Compare versions", icon: Scale, group: "layout", groupLabel: "Secure" },
   // Layout
-  { id: "outline", label: "Outline & Links", icon: ListTree, group: "layout", groupLabel: "Layout" },
+  { id: "outline", label: "Outline & links", icon: ListTree, group: "layout", groupLabel: "Layout" },
   // Document settings — page numbers + header/footer. Accessed from the
   // top-bar gear next to Export (document-level property, not a tool).
-  { id: "doc-settings", label: "Document Settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
+  { id: "doc-settings", label: "Document settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
   // Legal
-  { id: "bates", label: "Bates", icon: Hash, group: "legal", groupLabel: "Legal" },
-  { id: "verifiable-redaction", label: "Verifiable Redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
-  { id: "privilege-scan", label: "Privilege Scan", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  { id: "bates", label: "Bates stamp", icon: Hash, group: "legal", groupLabel: "Legal" },
+  { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
+  { id: "privilege-scan", label: "Privilege review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
   // AI
-  { id: "chat", label: "Search Inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
+  { id: "chat", label: "Search inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
 ];
+
 
 const GROUP_ORDER: ToolGroupLabel[] = [
   "Pages", "Convert", "Edit", "Redact", "Secure", "Layout", "Legal", "AI",
@@ -2873,13 +2876,13 @@ function EmptyStart({
 
   return (
     <div className="grid h-full place-items-center px-6 py-12">
-      <div className="w-full max-w-[720px] text-center">
-        <h1 className="font-display text-[24px] leading-tight">Start something</h1>
+      <div className="w-full max-w-[760px] text-center">
+        <h1 className="font-display text-[24px] leading-tight">Begin a matter</h1>
         <p className="mt-2 text-[12.5px] text-text-2">
-          Nothing is uploaded. Everything stays on your device.
+          Purpose-built for legal work. Nothing leaves this device.
         </p>
 
-        {/* Primary cards */}
+        {/* Primary: open a document */}
         <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StartCard
             icon={<Upload className="h-[18px] w-[18px]" />}
@@ -2897,16 +2900,61 @@ function EmptyStart({
           <StartCard
             icon={<LayoutTemplate className="h-[18px] w-[18px]" />}
             title="Template"
-            sub="invoice, resume…"
+            sub="letter, memo…"
             onClick={() => setPickerOpen(true)}
           />
+        </div>
+
+        {/* Task-named entry points — how lawyers describe the work. */}
+        <div className="mt-8 text-left">
+          <div className="mb-2 px-1 text-[10.5px] uppercase tracking-[0.18em] text-text-muted">
+            Start a task
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <TaskCard
+              icon={<Shield className="h-[15px] w-[15px]" />}
+              title="Redact for production"
+              sub="Mark and burn permanent redactions"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "redact" } as any })}
+            />
+            <TaskCard
+              icon={<Hash className="h-[15px] w-[15px]" />}
+              title="Bates stamp a set"
+              sub="Sequential discovery numbering"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "bates" } as any })}
+            />
+            <TaskCard
+              icon={<Files className="h-[15px] w-[15px]" />}
+              title="Prepare a discovery packet"
+              sub="Combine exhibits into a production set"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "merge" } as any })}
+            />
+            <TaskCard
+              icon={<ScanSearch className="h-[15px] w-[15px]" />}
+              title="Review for privilege"
+              sub="Surface privileged terms before disclosure"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "privilege-scan" } as any })}
+            />
+            <TaskCard
+              icon={<ShieldOff className="h-[15px] w-[15px]" />}
+              title="Sanitize before filing"
+              sub="Strip metadata and hidden content"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "protect" } as any })}
+            />
+            <TaskCard
+              icon={<ScanText className="h-[15px] w-[15px]" />}
+              title="Make searchable (OCR)"
+              sub="Recognize text in scanned exhibits"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "ocr" } as any })}
+            />
+          </div>
         </div>
 
         {recents.length > 0 && (
           <div className="mt-8 text-left">
             <div className="mb-2 flex items-center justify-between px-1">
               <div className="text-[10.5px] uppercase tracking-[0.18em] text-text-muted">
-                Resume recent
+                Resume recent matter
               </div>
               <button
                 type="button"
@@ -2956,25 +3004,11 @@ function EmptyStart({
               ))}
             </ul>
             <div className="mt-2 px-1 text-[10.5px] text-text-muted">
-              Recent files are stored only on this device.
+              Recent matters are stored only on this device.
             </div>
           </div>
         )}
 
-
-        {/* Secondary chips */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <ShortcutChip
-            icon={<FileType className="h-[14px] w-[14px]" />}
-            label="Convert"
-            onClick={() => navigate({ to: "/workspace", search: { tool: "convert" } as any })}
-          />
-          <ShortcutChip
-            icon={<FileType className="h-[14px] w-[14px]" />}
-            label="Word → PDF"
-            onClick={() => navigate({ to: "/workspace", search: { tool: "convert" } as any })}
-          />
-        </div>
 
         <div className="mt-10 flex items-center justify-center gap-2 text-[11px] text-text-muted">
           <KeyChip inline>⌘K</KeyChip> command
@@ -3072,6 +3106,44 @@ function StartCard({
     </button>
   );
 }
+
+function TaskCard({
+  icon,
+  title,
+  sub,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex items-start gap-3 rounded-md border border-border/70 bg-surface-2 px-3 py-2.5 text-left",
+        "transition-colors hover:bg-surface-3",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      style={{ borderWidth: 0.5, borderRadius: 9 }}
+    >
+      <span
+        className="grid h-8 w-8 shrink-0 place-items-center bg-accent-soft text-vault"
+        style={{ borderRadius: 7 }}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12.5px] font-medium text-foreground">{title}</span>
+        <span className="block text-[11px] text-text-muted">{sub}</span>
+      </span>
+    </button>
+  );
+}
+
+
 
 function ShortcutChip({
   icon,
