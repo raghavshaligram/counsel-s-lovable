@@ -303,9 +303,7 @@ function SignFillPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="text-[11.5px] leading-snug text-text-2">
-        Open a document to start signing or filling form fields.
-      </p>
+      <InspectorEmpty>Open a document to start signing or filling form fields.</InspectorEmpty>
     );
   }
 
@@ -1734,11 +1732,9 @@ function RotatePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 function ComingSoonPanel({ label }: { label: string }) {
   return (
-    <p className="text-[11.5px] leading-snug text-text-2">
-      The native <span className="text-foreground">{label}</span> panel is being
-      mounted here. The full controls land in the next pass — same single
-      inspector, no second column.
-    </p>
+    <InspectorEmpty>
+      The native <span className="text-foreground">{label}</span> panel is being mounted here. The full controls land in the next pass — same single inspector, no second column.
+    </InspectorEmpty>
   );
 }
 
@@ -1782,9 +1778,7 @@ function OcrPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="text-[11.5px] leading-snug text-text-2">
-        Open a document to run on-device OCR.
-      </p>
+      <InspectorEmpty>Open a document to run on-device OCR.</InspectorEmpty>
     );
   }
   if (!ocr) return null;
@@ -1973,11 +1967,9 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!ctx.file && cells.length === 0) {
     return (
-      <p className="text-[11.5px] leading-snug text-text-2">
-        Open a document to organize its pages. You can also pull pages in from
-        any other open document — they appear in the grid alongside the active
-        document's pages.
-      </p>
+      <InspectorEmpty>
+        Open a document to organize its pages. You can also pull pages in from any other open document — they appear in the grid alongside the active document's pages.
+      </InspectorEmpty>
     );
   }
 
@@ -5559,7 +5551,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
   const linksOnCurrent = links.filter((l) => l.page === currentPage);
 
   if (!file) {
-    return <p className="text-[11.5px] leading-snug text-text-2">Open a document to edit its outline & links.</p>;
+    return <InspectorEmpty>Open a document to edit its outline & links.</InspectorEmpty>;
   }
   if (loading || !parsed) {
     return <p className="text-[11.5px] text-text-muted">Reading outline…</p>;
