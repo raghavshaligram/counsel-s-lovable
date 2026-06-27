@@ -19,6 +19,7 @@ import { Route as ToWordRouteImport } from './routes/to-word'
 import { Route as ToExcelRouteImport } from './routes/to-excel'
 import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
+import { Route as SecurityArchitectureRouteImport } from './routes/security-architecture'
 import { Route as RotateRouteImport } from './routes/rotate'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as ProtectRouteImport } from './routes/protect'
@@ -88,6 +89,11 @@ const SplitRoute = SplitRouteImport.update({
 const SignRoute = SignRouteImport.update({
   id: '/sign',
   path: '/sign',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SecurityArchitectureRoute = SecurityArchitectureRouteImport.update({
+  id: '/security-architecture',
+  path: '/security-architecture',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RotateRoute = RotateRouteImport.update({
@@ -212,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
+  '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
@@ -244,6 +251,7 @@ export interface FileRoutesByTo {
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
+  '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
@@ -277,6 +285,7 @@ export interface FileRoutesById {
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
   '/rotate': typeof RotateRoute
+  '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
@@ -311,6 +320,7 @@ export interface FileRouteTypes {
     | '/protect'
     | '/redact'
     | '/rotate'
+    | '/security-architecture'
     | '/sign'
     | '/split'
     | '/to-excel'
@@ -343,6 +353,7 @@ export interface FileRouteTypes {
     | '/protect'
     | '/redact'
     | '/rotate'
+    | '/security-architecture'
     | '/sign'
     | '/split'
     | '/to-excel'
@@ -375,6 +386,7 @@ export interface FileRouteTypes {
     | '/protect'
     | '/redact'
     | '/rotate'
+    | '/security-architecture'
     | '/sign'
     | '/split'
     | '/to-excel'
@@ -408,6 +420,7 @@ export interface RootRouteChildren {
   ProtectRoute: typeof ProtectRoute
   RedactRoute: typeof RedactRoute
   RotateRoute: typeof RotateRoute
+  SecurityArchitectureRoute: typeof SecurityArchitectureRoute
   SignRoute: typeof SignRoute
   SplitRoute: typeof SplitRoute
   ToExcelRoute: typeof ToExcelRoute
@@ -490,6 +503,13 @@ declare module '@tanstack/react-router' {
       path: '/sign'
       fullPath: '/sign'
       preLoaderRoute: typeof SignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/security-architecture': {
+      id: '/security-architecture'
+      path: '/security-architecture'
+      fullPath: '/security-architecture'
+      preLoaderRoute: typeof SecurityArchitectureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rotate': {
@@ -656,6 +676,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProtectRoute: ProtectRoute,
   RedactRoute: RedactRoute,
   RotateRoute: RotateRoute,
+  SecurityArchitectureRoute: SecurityArchitectureRoute,
   SignRoute: SignRoute,
   SplitRoute: SplitRoute,
   ToExcelRoute: ToExcelRoute,
