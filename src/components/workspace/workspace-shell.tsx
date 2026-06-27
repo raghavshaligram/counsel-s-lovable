@@ -1439,7 +1439,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   : "text-text-2 hover:bg-surface-2 hover:text-foreground",
               )}
             >
-              <Grid3x3 className="h-4 w-4 shrink-0" strokeWidth={2} />
+              <Grid3x3 className="h-4 w-4 shrink-0" />
               <span className="truncate">All tools</span>
             </button>
           </div>
