@@ -95,6 +95,7 @@ import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { PrivacyShield } from "./privacy-shield";
+import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
@@ -371,6 +372,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [recents, setRecents] = useState<RecentMeta[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [pendingResume, setPendingResume] = useState<OpenTabMeta[]>([]);
+  const [workOffline, setWorkOffline] = useState(() => loadOfflinePref());
   const aiRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // When true, the next file selection opens in a NEW tab instead of
