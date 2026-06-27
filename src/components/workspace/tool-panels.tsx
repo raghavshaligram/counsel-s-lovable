@@ -97,6 +97,7 @@ import { downloadBytes } from "@/lib/batch/runner";
 import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
+import { importChunk } from "@/lib/chunk-import";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -751,7 +752,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       // source strings (see src/lib/editor/text-rewrite.ts). Re-read fresh
       // bytes from the File: the open path may have detached the worker
       // buffer.
-      const { exportEditedPdf } = await import("@/lib/editor/export");
+      const { exportEditedPdf } = await importChunk(() => import("@/lib/editor/export"));
       const freshBytes = new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
       const bytes = await exportEditedPdf(exportDoc);
@@ -763,7 +764,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       // Verify by re-parsing the exported file and confirming every
       // captured source string is absent from the text layer.
       toast.loading("Verifying removal…", { id: tid });
-      const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
+      const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
       const result = await verifyRedactionRemoval(bytes, targets);
       setVerify(result);
       if (result.ok) {
@@ -785,7 +786,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const downloadCertificate = useCallback(async () => {
     if (!file || !verify || !lastBytes) return;
     try {
-      const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
+      const { buildRedactionCertificate } = await importChunk(() => import("@/lib/pdf/redaction-certificate"));
       // Hash both source and redacted bytes for the chain of custody panel.
       const hash = async (data: Uint8Array): Promise<string> => {
         const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
@@ -1749,7 +1750,7 @@ function OcrPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   useEffect(() => {
     let alive = true;
-    void import("@/lib/pdf/ocr-languages").then((m) => {
+    void importChunk(() => import("@/lib/pdf/ocr-languages")).then((m) => {
       if (!alive) return;
       setLangs(m.OCR_LANGUAGES as { code: string; label: string; sizeMb: number }[]);
       setEstimateMb(m.estimateDownloadMb(languages));
@@ -1759,7 +1760,7 @@ function OcrPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   useEffect(() => {
     if (!langs) return;
-    void import("@/lib/pdf/ocr-languages").then((m) => setEstimateMb(m.estimateDownloadMb(languages)));
+    void importChunk(() => import("@/lib/pdf/ocr-languages")).then((m) => setEstimateMb(m.estimateDownloadMb(languages)));
     if (ocr) ocr.defaults.languages = languages;
   }, [languages, langs, ocr]);
 
@@ -2289,7 +2290,7 @@ function ExtractPagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
     void (async () => {
       try {
-        const { getPageCount } = await import("@/lib/pdf/extract-pages");
+        const { getPageCount } = await importChunk(() => import("@/lib/pdf/extract-pages"));
         const n = await getPageCount(file);
         if (!cancelled) setPageCount(n);
       } catch {
@@ -2341,7 +2342,7 @@ function ExtractPagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!file) return;
     setBusy(true);
     try {
-      const { extractPages } = await import("@/lib/pdf/extract-pages");
+      const { extractPages } = await importChunk(() => import("@/lib/pdf/extract-pages"));
       const result = await extractPages(file, ranges);
       triggerDownload(result.blob, result.filename);
       toast.success(
@@ -2441,9 +2442,9 @@ function ExtractDataPanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBusy(true);
     setStatus("Reading PDF locally…");
     try {
-      const { extractTables, downloadXlsx, rowsToCsv } = await import(
+      const { extractTables, downloadXlsx, rowsToCsv } = await importChunk(() => import(
         "@/lib/pdf/extract-tables"
-      );
+      ));
       const results = await extractTables(file, 1.5, (p) => {
         setStatus(
           p.stage === "ocr"
@@ -2586,7 +2587,7 @@ function WatermarkPanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!file || !text.trim()) return;
     setBusy(true);
     try {
-      const { applyTextWatermark } = await import("@/lib/pdf/watermark");
+      const { applyTextWatermark } = await importChunk(() => import("@/lib/pdf/watermark"));
       const result = await applyTextWatermark(file, {
         text,
         opacity,
@@ -2810,7 +2811,7 @@ function ProtectPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
     setBusy(true);
     try {
-      const { protectPdf } = await import("@/lib/pdf/protect");
+      const { protectPdf } = await importChunk(() => import("@/lib/pdf/protect"));
       const result = await protectPdf(file, {
         userPassword,
         ownerPassword: useOwnerPw ? ownerPassword : undefined,
@@ -3020,7 +3021,7 @@ function UnlockPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
     let cancelled = false;
     setChecking(true);
-    void import("@/lib/pdf/unlock")
+    void importChunk(() => import("@/lib/pdf/unlock"))
       .then((m) => m.isPdfEncrypted(file))
       .then((enc) => {
         if (!cancelled) setNeedsPassword(enc);
@@ -3037,7 +3038,7 @@ function UnlockPanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!file) return;
     setBusy(true);
     try {
-      const { unlockPdf, WrongPasswordError } = await import("@/lib/pdf/unlock");
+      const { unlockPdf, WrongPasswordError } = await importChunk(() => import("@/lib/pdf/unlock"));
       try {
         const result = await unlockPdf(file, password || undefined);
         triggerDownload(result.blob, result.filename);
@@ -3205,7 +3206,7 @@ function ComparePanel({ ctx }: { ctx: ToolPanelCtx }) {
     setExporting(true);
     setExportProgress({ done: 0, total: 0 });
     try {
-      const { exportDiffPdf } = await import("@/lib/pdf/compare");
+      const { exportDiffPdf } = await importChunk(() => import("@/lib/pdf/compare"));
       const result = await exportDiffPdf({
         a: file,
         b: bSource.file,
@@ -3401,7 +3402,7 @@ function ToWordPanel({ ctx }: { ctx: ToolPanelCtx }) {
     const tid = "wsx-to-word";
     toast.loading("Converting to Word…", { id: tid });
     try {
-      const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
+      const { convertPdfToWordBlob } = await importChunk(() => import("@/lib/pdf/to-word"));
       const blob = await convertPdfToWordBlob(file, { mode, onProgress: setProgress });
       const base = file.name.replace(/\.pdf$/i, "");
       downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.docx`);
@@ -3526,7 +3527,7 @@ function WordToPdfPanel() {
     const tid = "wsx-word-to-pdf";
     toast.loading("Converting to PDF…", { id: tid });
     try {
-      const { convertWordToPdfBlob } = await import("@/lib/pdf/word-to-pdf");
+      const { convertWordToPdfBlob } = await importChunk(() => import("@/lib/pdf/word-to-pdf"));
       const { blob, pages } = await convertWordToPdfBlob(file, {
         pageSize,
         onProgress: setProgress,
@@ -3721,7 +3722,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const prepared =
           wordMode === "fidelity" ? file : await ensureSearchablePdf(file, (s) => setProgress(s));
         setProgress("Building .docx…");
-        const { convertPdfToWordBlob } = await import("@/lib/pdf/to-word");
+        const { convertPdfToWordBlob } = await importChunk(() => import("@/lib/pdf/to-word"));
         const blob = await convertPdfToWordBlob(prepared, {
           mode: wordMode,
           includeImages: wordIncludeImages,
@@ -3733,7 +3734,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
       } else if (kind === "pdf" && target === "excel") {
         const file = sources[0];
         // extractTables already OCRs page-by-page where needed.
-        const { extractTables, downloadXlsx } = await import("@/lib/pdf/extract-tables");
+        const { extractTables, downloadXlsx } = await importChunk(() => import("@/lib/pdf/extract-tables"));
         const result = await extractTables(file, 1.5, (p) => {
           setProgress(`Scanning page ${p.page}/${p.totalPages} (${p.stage})`);
         });
@@ -3745,7 +3746,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         }
       } else if (kind === "pdf" && target === "images") {
         const file = sources[0];
-        const { convertPdfToImages } = await import("@/lib/pdf/to-images");
+        const { convertPdfToImages } = await importChunk(() => import("@/lib/pdf/to-images"));
         const res = await convertPdfToImages(file, {
           format: imgFormat,
           dpi: imgDpi,
@@ -3757,7 +3758,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         toast.success(`Exported ${res.pages} page${res.pages === 1 ? "" : "s"}`, { id: tid });
       } else if (kind === "word" && target === "pdf") {
         const file = sources[0];
-        const { convertWordToPdfBlob } = await import("@/lib/pdf/word-to-pdf");
+        const { convertWordToPdfBlob } = await importChunk(() => import("@/lib/pdf/word-to-pdf"));
         const { blob, pages } = await convertWordToPdfBlob(file, {
           pageSize: pdfPageSize,
           onProgress: (s) => setProgress(s),
@@ -3766,7 +3767,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
         toast.success(`Converted ${pages} page${pages === 1 ? "" : "s"}`, { id: tid });
       } else if (kind === "images" && target === "pdf") {
-        const { buildPdfFromImages } = await import("@/lib/pdf/images-to-pdf");
+        const { buildPdfFromImages } = await importChunk(() => import("@/lib/pdf/images-to-pdf"));
         const res = await buildPdfFromImages(sources, {
           pageSize: imagesPageSize,
           fit: imagesFit,
@@ -4126,7 +4127,7 @@ async function ensureSearchablePdf(
   onStatus: (s: string) => void,
 ): Promise<File> {
   try {
-    const { loadPdfjs } = await import("@/lib/pdf/worker");
+    const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
     const pdfjs = await loadPdfjs();
     const bytes = new Uint8Array(await file.arrayBuffer());
     const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
@@ -4141,7 +4142,7 @@ async function ensureSearchablePdf(
     if (totalChars >= 40 * probePages) return file;
 
     onStatus("Scanned PDF detected — running OCR first…");
-    const { ocrPdfToSearchable } = await import("@/lib/pdf/ocr-pdf");
+    const { ocrPdfToSearchable } = await importChunk(() => import("@/lib/pdf/ocr-pdf"));
     const out = await ocrPdfToSearchable(file, (p) => {
       onStatus(`OCR · page ${p.page}/${p.totalPages} (${p.stage})`);
     });
@@ -4229,7 +4230,7 @@ function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       if (direction === "pdf-to-images") {
         const file = sources[0];
-        const { convertPdfToImages } = await import("@/lib/pdf/to-images");
+        const { convertPdfToImages } = await importChunk(() => import("@/lib/pdf/to-images"));
         const res = await convertPdfToImages(file, {
           format: imgFormat,
           dpi: imgDpi,
@@ -4240,7 +4241,7 @@ function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
         toast.success(`Exported ${res.pages} page${res.pages === 1 ? "" : "s"}`, { id: tid });
       } else {
-        const { buildPdfFromImages } = await import("@/lib/pdf/images-to-pdf");
+        const { buildPdfFromImages } = await importChunk(() => import("@/lib/pdf/images-to-pdf"));
         const res = await buildPdfFromImages(sources, {
           pageSize: imagesPageSize,
           fit: imagesFit,
@@ -4529,7 +4530,7 @@ function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
     const tid = "wsx-page-numbers";
     toast.loading("Stamping page numbers…", { id: tid });
     try {
-      const { addPageNumbers } = await import("@/lib/batch/ops/page-numbers");
+      const { addPageNumbers } = await importChunk(() => import("@/lib/batch/ops/page-numbers"));
       const out = await addPageNumbers(new Uint8Array(await file.arrayBuffer()), {
         anchor, format, startAt, skipFirst, fontSize, margin,
         prefix: prefix || undefined,
@@ -4789,7 +4790,7 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
     const tid = "wsx-bates";
     toast.loading("Stamping Bates numbers…", { id: tid });
     try {
-      const { addBates } = await import("@/lib/batch/ops/bates");
+      const { addBates } = await importChunk(() => import("@/lib/batch/ops/bates"));
       const out = await addBates(new Uint8Array(await file.arrayBuffer()), {
         prefix: s.prefix, suffix: s.suffix, startAt: s.startAt, digits: s.digits,
         position: s.position, fontSize: s.fontSize, color: s.color, margin: s.margin,
@@ -4989,7 +4990,7 @@ function HeaderFooterSection({ ctx }: { ctx: ToolPanelCtx }) {
     const tid = "wsx-header-footer";
     toast.loading("Stamping header/footer…", { id: tid });
     try {
-      const { addHeaderFooter } = await import("@/lib/batch/ops/header-footer");
+      const { addHeaderFooter } = await importChunk(() => import("@/lib/batch/ops/header-footer"));
       const out = await addHeaderFooter(new Uint8Array(await file.arrayBuffer()), {
         headerText: headerText || undefined,
         footerText: footerText || undefined,
@@ -5107,7 +5108,7 @@ function FlattenSection({ ctx }: { ctx: ToolPanelCtx }) {
     const tid = "wsx-flatten";
     toast.loading("Flattening…", { id: tid });
     try {
-      const { flatten } = await import("@/lib/batch/ops/flatten");
+      const { flatten } = await importChunk(() => import("@/lib/batch/ops/flatten"));
       const out = await flatten(new Uint8Array(await file.arrayBuffer()), {
         forms: true,
         annotations: true,
@@ -5397,7 +5398,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
     setLoading(true);
     (async () => {
       try {
-        const { parsePdf } = await import("@/lib/outline/parse");
+        const { parsePdf } = await importChunk(() => import("@/lib/outline/parse"));
         const buf = new Uint8Array(await file.arrayBuffer());
         const { parsed } = await parsePdf(buf);
         if (cancelled) return;
@@ -5518,7 +5519,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!bytes) return;
     setBusy(true);
     try {
-      const { linkifyPage } = await import("@/lib/outline/linkify");
+      const { linkifyPage } = await importChunk(() => import("@/lib/outline/linkify"));
       const found = await linkifyPage(bytes, currentPage, links);
       if (found.length === 0) toast.message(`No new URLs on page ${currentPage + 1}`);
       else {
@@ -5535,7 +5536,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!bytes || !file) return;
     setBusy(true);
     try {
-      const { exportPdf } = await import("@/lib/outline/write");
+      const { exportPdf } = await importChunk(() => import("@/lib/outline/write"));
       const out = await exportPdf(bytes, outline, links);
       const base = file.name.replace(/\.pdf$/i, "");
       downloadBytes(out, `${base}-outline.pdf`, "application/pdf");
@@ -5826,7 +5827,7 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBusy(true);
     setResult(null);
     try {
-      const { repairPdfFile } = await import("@/lib/pdf/repair");
+      const { repairPdfFile } = await importChunk(() => import("@/lib/pdf/repair"));
       const out = await repairPdfFile(source);
       const outcome: "full" | "partial" =
         out.outcome === "full" ? "full" : "partial";
@@ -5854,7 +5855,7 @@ function RepairPanel({ ctx }: { ctx: ToolPanelCtx }) {
         );
       }
     } catch (err) {
-      const { friendlyRepairReason } = await import("@/lib/pdf/repair");
+      const { friendlyRepairReason } = await importChunk(() => import("@/lib/pdf/repair"));
       const message = friendlyRepairReason(err, { fileSize: source.size });
       setResult({ kind: "fail", message });
       toast.error("Unable to repair this file", { description: message });
