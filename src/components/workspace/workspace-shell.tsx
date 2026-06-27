@@ -2874,13 +2874,13 @@ function EmptyStart({
 
   return (
     <div className="grid h-full place-items-center px-6 py-12">
-      <div className="w-full max-w-[720px] text-center">
-        <h1 className="font-display text-[24px] leading-tight">Start something</h1>
+      <div className="w-full max-w-[760px] text-center">
+        <h1 className="font-display text-[24px] leading-tight">Begin a matter</h1>
         <p className="mt-2 text-[12.5px] text-text-2">
-          Nothing is uploaded. Everything stays on your device.
+          Purpose-built for legal work. Nothing leaves this device.
         </p>
 
-        {/* Primary cards */}
+        {/* Primary: open a document */}
         <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StartCard
             icon={<Upload className="h-[18px] w-[18px]" />}
@@ -2898,16 +2898,61 @@ function EmptyStart({
           <StartCard
             icon={<LayoutTemplate className="h-[18px] w-[18px]" />}
             title="Template"
-            sub="invoice, resume…"
+            sub="letter, memo…"
             onClick={() => setPickerOpen(true)}
           />
+        </div>
+
+        {/* Task-named entry points — how lawyers describe the work. */}
+        <div className="mt-8 text-left">
+          <div className="mb-2 px-1 text-[10.5px] uppercase tracking-[0.18em] text-text-muted">
+            Start a task
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <TaskCard
+              icon={<Shield className="h-[15px] w-[15px]" />}
+              title="Redact for production"
+              sub="Mark and burn permanent redactions"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "redact" } as any })}
+            />
+            <TaskCard
+              icon={<Hash className="h-[15px] w-[15px]" />}
+              title="Bates stamp a set"
+              sub="Sequential discovery numbering"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "bates" } as any })}
+            />
+            <TaskCard
+              icon={<Files className="h-[15px] w-[15px]" />}
+              title="Prepare a discovery packet"
+              sub="Combine exhibits into a production set"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "merge" } as any })}
+            />
+            <TaskCard
+              icon={<ScanSearch className="h-[15px] w-[15px]" />}
+              title="Review for privilege"
+              sub="Surface privileged terms before disclosure"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "privilege-scan" } as any })}
+            />
+            <TaskCard
+              icon={<ShieldOff className="h-[15px] w-[15px]" />}
+              title="Sanitize before filing"
+              sub="Strip metadata and hidden content"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "protect" } as any })}
+            />
+            <TaskCard
+              icon={<ScanText className="h-[15px] w-[15px]" />}
+              title="Make searchable (OCR)"
+              sub="Recognize text in scanned exhibits"
+              onClick={() => navigate({ to: "/workspace", search: { tool: "ocr" } as any })}
+            />
+          </div>
         </div>
 
         {recents.length > 0 && (
           <div className="mt-8 text-left">
             <div className="mb-2 flex items-center justify-between px-1">
               <div className="text-[10.5px] uppercase tracking-[0.18em] text-text-muted">
-                Resume recent
+                Resume recent matter
               </div>
               <button
                 type="button"
@@ -2957,25 +3002,11 @@ function EmptyStart({
               ))}
             </ul>
             <div className="mt-2 px-1 text-[10.5px] text-text-muted">
-              Recent files are stored only on this device.
+              Recent matters are stored only on this device.
             </div>
           </div>
         )}
 
-
-        {/* Secondary chips */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <ShortcutChip
-            icon={<FileType className="h-[14px] w-[14px]" />}
-            label="Convert"
-            onClick={() => navigate({ to: "/workspace", search: { tool: "convert" } as any })}
-          />
-          <ShortcutChip
-            icon={<FileType className="h-[14px] w-[14px]" />}
-            label="Word → PDF"
-            onClick={() => navigate({ to: "/workspace", search: { tool: "convert" } as any })}
-          />
-        </div>
 
         <div className="mt-10 flex items-center justify-center gap-2 text-[11px] text-text-muted">
           <KeyChip inline>⌘K</KeyChip> command
