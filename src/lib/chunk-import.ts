@@ -40,6 +40,16 @@ export async function importChunk<T>(load: () => Promise<T>): Promise<T> {
     // failed module request, but calling the import expression again handles
     // transient fetch interruptions for still-valid chunks.
     await new Promise((resolve) => globalThis.setTimeout(resolve, 200));
-    return load();
+    try {
+      return await load();
+    } catch (retryErr) {
+      if (isChunkLoadError(retryErr)) {
+        if (reloadForFreshChunks()) {
+          return new Promise<T>(() => {});
+        }
+        throw new Error("This tab is using an old app bundle. Please refresh once and try again.");
+      }
+      throw retryErr;
+    }
   }
 }
