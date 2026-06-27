@@ -38,6 +38,18 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
+
+/**
+ * Uniform empty-state shown in the inspector when no document is open.
+ * All tool panels use this so the “open a PDF…” affordance looks identical.
+ */
+function InspectorEmpty({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] leading-snug text-text-muted">
+      {children}
+    </p>
+  );
+}
 import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
 import type { Action as EditorAction, State as EditorState } from "@/lib/editor/state";
