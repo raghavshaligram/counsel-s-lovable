@@ -62,98 +62,100 @@
   --text-micro: 0.6875rem;
 }
 
-/* VaultPDF — warm, spacious, soft. Reference: UPDF / Linear / 1Password.
-   Amber is the ONLY accent. No gradients on chrome. */
+/* VaultPDF — calm, sober, professional. Deep navy/slate ink with a
+   restrained steel-blue accent. Reference: legal-grade tools, Bloomberg
+   Terminal calm, 1Password trust. Blue is the ONLY accent. No gradients
+   on chrome. The --vault token is kept as the brand accent slot. */
 :root {
   --radius: 0.625rem;
 
-  /* App surfaces (warm dark) */
-  --background: #0E1116;
-  --foreground: #F2EFE9;
+  /* App surfaces (deep navy ink) */
+  --background: #0B1220;
+  --foreground: #E8ECF3;
 
-  --surface-1: #141821;     /* rails, top bar, bottom bar */
-  --surface-2: #1B212C;     /* panels, cards, inputs, hover */
-  --surface-3: #20252E;     /* active states, popovers */
+  --surface-1: #111A2C;     /* rails, top bar, bottom bar */
+  --surface-2: #18243B;     /* panels, cards, inputs, hover */
+  --surface-3: #20304B;     /* active states, popovers */
 
-  --card: #141821;
-  --card-foreground: #F2EFE9;
-  --popover: #1B212C;
-  --popover-foreground: #F2EFE9;
+  --card: #111A2C;
+  --card-foreground: #E8ECF3;
+  --popover: #18243B;
+  --popover-foreground: #E8ECF3;
 
-  /* Amber = primary + brand vault stamp */
-  --primary: #F5A623;
-  --primary-foreground: #0E1116;
-  --vault: #F5A623;
-  --vault-foreground: #0E1116;
-  --accent-soft: rgba(245, 166, 35, 0.12);
+  /* Steel blue = primary + brand accent (the only accent in the UI) */
+  --primary: #4C7FB8;
+  --primary-foreground: #0B1220;
+  --vault: #4C7FB8;
+  --vault-foreground: #0B1220;
+  --accent-soft: rgba(76, 127, 184, 0.14);
 
-  --secondary: #1B212C;
-  --secondary-foreground: #F2EFE9;
+  --secondary: #18243B;
+  --secondary-foreground: #E8ECF3;
 
-  --muted: #1B212C;
-  --muted-foreground: #8B92A0;
+  --muted: #18243B;
+  --muted-foreground: #8893A6;
 
-  --accent: #20252E;
-  --accent-foreground: #F2EFE9;
+  --accent: #20304B;
+  --accent-foreground: #E8ECF3;
 
   /* Status — used sparingly */
-  --success: #34C98E;
-  --danger: #E5484D;
-  --destructive: #E5484D;
-  --destructive-foreground: #F2EFE9;
-  --evidence: #E5484D;
+  --success: #3AA277;
+  --danger: #C4484D;
+  --destructive: #C4484D;
+  --destructive-foreground: #E8ECF3;
+  --evidence: #C4484D;
 
-  --border: rgba(255, 255, 255, 0.06);   /* hairline */
-  --input: #1B212C;
-  --ring: #F5A623;
+  --border: rgba(255, 255, 255, 0.07);   /* hairline */
+  --input: #18243B;
+  --ring: #4C7FB8;
 
   /* Locked semantic surfaces */
-  --ink: #F2EFE9;
-  --text-2: #B8BEC9;
-  --text-muted: #8B92A0;
-  --paper: #FAF7F0;                /* warm page surface for PDF render */
-  --canvas: #0B0E13;               /* editor backdrop behind paper */
-  --surface-canvas: #0B0E13;
+  --ink: #E8ECF3;
+  --text-2: #B6C0CF;
+  --text-muted: #8893A6;
+  --paper: #F7F5EE;                /* page surface for PDF render */
+  --canvas: #060C18;               /* editor backdrop behind paper */
+  --surface-canvas: #060C18;
   --whisper: rgba(255, 255, 255, 0.06);
 
-  /* Chart palette — amber-led, muted supporting hues */
-  --chart-1: #F5A623;
-  --chart-2: #7BB8E0;
-  --chart-3: #E5484D;
-  --chart-4: #34C98E;
-  --chart-5: #B98AD6;
+  /* Chart palette — blue-led, muted supporting hues */
+  --chart-1: #4C7FB8;
+  --chart-2: #6FA0CC;
+  --chart-3: #C4484D;
+  --chart-4: #3AA277;
+  --chart-5: #8E7FB5;
 
-  /* Marketing-only soft glow (used behind hero CTAs). No gradients on UI chrome. */
-  --gradient-vault: linear-gradient(135deg, #1B212C, #0E1116);
-  --gradient-glow: radial-gradient(60% 80% at 50% 0%, rgba(245, 166, 35, 0.10), transparent 70%);
+  /* Marketing-only soft glow. No gradients on UI chrome. */
+  --gradient-vault: linear-gradient(135deg, #18243B, #0B1220);
+  --gradient-glow: radial-gradient(60% 80% at 50% 0%, rgba(76, 127, 184, 0.10), transparent 70%);
 
   /* Gentle shadows — lift floating things off the canvas */
-  --shadow-card:  0 4px 16px rgba(0, 0, 0, 0.25);
-  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.40);
-  --shadow-stamp: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-card:  0 4px 16px rgba(0, 0, 0, 0.28);
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.42);
+  --shadow-stamp: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 4px 16px rgba(0, 0, 0, 0.28);
 }
 
 /* dark-first product — .dark mirrors :root */
 .dark {
-  --background: #0E1116;
-  --foreground: #F2EFE9;
-  --card: #141821;
-  --card-foreground: #F2EFE9;
-  --popover: #1B212C;
-  --popover-foreground: #F2EFE9;
-  --primary: #F5A623;
-  --primary-foreground: #0E1116;
-  --secondary: #1B212C;
-  --secondary-foreground: #F2EFE9;
-  --muted: #1B212C;
-  --muted-foreground: #8B92A0;
-  --accent: #20252E;
-  --accent-foreground: #F2EFE9;
-  --destructive: #E5484D;
-  --destructive-foreground: #F2EFE9;
-  --border: rgba(255, 255, 255, 0.06);
-  --input: #1B212C;
-  --ring: #F5A623;
+  --background: #0B1220;
+  --foreground: #E8ECF3;
+  --card: #111A2C;
+  --card-foreground: #E8ECF3;
+  --popover: #18243B;
+  --popover-foreground: #E8ECF3;
+  --primary: #4C7FB8;
+  --primary-foreground: #0B1220;
+  --secondary: #18243B;
+  --secondary-foreground: #E8ECF3;
+  --muted: #18243B;
+  --muted-foreground: #8893A6;
+  --accent: #20304B;
+  --accent-foreground: #E8ECF3;
+  --destructive: #C4484D;
+  --destructive-foreground: #E8ECF3;
+  --border: rgba(255, 255, 255, 0.07);
+  --input: #18243B;
+  --ring: #4C7FB8;
 }
 
 @layer base {
