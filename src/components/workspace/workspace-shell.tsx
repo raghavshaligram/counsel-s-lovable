@@ -1296,10 +1296,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault">
-            <Lock className="h-3 w-3" strokeWidth={2.5} />
-            100% in your browser
-          </span>
+          <PrivacyShield hasDocument={!!file} />
           <button
             type="button"
             onClick={() => {
