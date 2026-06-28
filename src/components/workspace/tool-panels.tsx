@@ -3537,7 +3537,7 @@ function WordToPdfPanel() {
         onProgress: setProgress,
       });
       const base = file.name.replace(/\.docx$/i, "");
-      downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
+      await downloadPdf(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
       toast.success(`Converted ${pages} page${pages === 1 ? "" : "s"}`, { id: tid });
     } catch (err) {
       console.error("[word-to-pdf] failed", err);
