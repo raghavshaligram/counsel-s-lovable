@@ -175,6 +175,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <CommentsInspectorPanel ctx={ctx} />;
     case "outline":
       return <OutlinePanel ctx={ctx} />;
+    case "sanitize":
+      return <SanitizePanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
