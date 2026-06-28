@@ -281,8 +281,13 @@ function Landing() {
               className="font-display leading-[1] tracking-tight"
               style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
             >
-              Built around the work you actually do.
+              Bates stamp, redact, and strip metadata before filing.
             </h2>
+            <p className="mt-4 text-sm text-muted-foreground max-w-xl">
+              Redaction software for law firms that handles the real workflows —
+              production-ready discovery sets, FRCP 5.2-compliant redactions,
+              privilege review, and sanitization before e-filing.
+            </p>
           </div>
           <div className="grid md:grid-cols-2 gap-px bg-border rounded-xl overflow-hidden border border-border">
             <UseCase
