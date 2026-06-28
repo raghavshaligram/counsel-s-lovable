@@ -130,7 +130,9 @@ function AuthPage() {
   const handleGoogle = async () => {
     setLoading(true);
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: fullDest,
+      // Stay on the public /auth origin for the OAuth callback; the
+      // useEffect above sees the session and navigates to `dest` after.
+      redirect_uri: window.location.origin + "/auth" + (rawRedirect ? `?redirect=${encodeURIComponent(rawRedirect)}` : ""),
     });
     if (result.error) {
       setLoading(false);
