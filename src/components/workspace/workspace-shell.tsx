@@ -519,8 +519,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     ) {
       dispatchEditorFor(id, { type: "SET_TOOL", t: "select" });
     }
+    // Include editor.tool so that when LOAD resets tool back to "select"
+    // (loading a file rebuilds editor state), we re-apply the redact /
+    // page-crop tool the user already selected from the rail.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active.id, active.activeToolId]);
+  }, [active.id, active.activeToolId, active.editor.tool]);
+
 
   const setEditorTool = useCallback(
     (t: EditorTool) => {
