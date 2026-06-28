@@ -1064,7 +1064,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr, scannedPages: scanned, totalPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
         setProgress(
           p.stage === "ocr"
             ? `OCR scanning ${p.page}/${p.totalPages}`
@@ -1078,11 +1078,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
       const hasScanned = scanned.length > 0;
+      const lowConf = lowConfidenceOcrPages.length;
       if (detections.length === 0) {
         if (hasScanned) {
-          toast.warning("Scanned/image document — detection cannot read it", {
-            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. Run OCR first, or mark regions manually. Do NOT rely on auto-detect here.`,
-            duration: 12000,
+          toast.warning("Scanned/image document — detection may have missed items", {
+            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only.${lowConf > 0 ? ` OCR confidence was LOW on ${lowConf} page${lowConf === 1 ? "" : "s"} (${lowConfidenceOcrPages.slice(0, 6).join(", ")}${lowConf > 6 ? "…" : ""}) — treat detection as unreliable there.` : " OCR was attempted but recall is imperfect."} Review manually — do NOT treat silence as "clean".`,
+            duration: 14000,
           });
         } else {
           toast.info("No sensitive data matched", {
@@ -1097,10 +1098,17 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             : "Review then click Redact selected.",
         });
         if (hasScanned) {
-          toast.warning("Some pages are scanned — detection may miss items", {
-            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
-            duration: 12000,
-          });
+          toast.warning(
+            lowConf > 0
+              ? `Low OCR confidence on ${lowConf} scanned page${lowConf === 1 ? "" : "s"} — manual review required`
+              : "Some pages are scanned — detection may miss items",
+            {
+              description: lowConf > 0
+                ? `Pages ${lowConfidenceOcrPages.slice(0, 8).join(", ")}${lowConf > 8 ? "…" : ""}: OCR text could not be read reliably. Mark sensitive regions on those pages manually.`
+                : `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
+              duration: 14000,
+            },
+          );
         }
       }
 
