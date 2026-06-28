@@ -19,6 +19,9 @@ import {
   PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFDict,
 } from "pdf-lib";
 import { srgbIccBytes } from "./srgb-icc";
+import { embedStandard14Fallbacks } from "./embed-standard14";
+
+const TAG = "[pdfa]";
 
 function buildPdfAXmp(opts: {
   title?: string;
