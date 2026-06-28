@@ -580,7 +580,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       // Whole-tool gating for paid-only tools (privilege review, private AI).
       if (PAID_TOOL_IDS.has(toolId) && !isPro) {
         const tool = toolById(toolId);
-        if (!requirePro(tool?.label)) return;
+        if (!requirePro(tool?.label, `/workspace?tool=${encodeURIComponent(toolId)}`)) return;
       }
       // Bates lives inside Document Settings now (next to Page Numbers).
       // Selecting "Bates" anywhere (rail, all-tools search) deep-links into
