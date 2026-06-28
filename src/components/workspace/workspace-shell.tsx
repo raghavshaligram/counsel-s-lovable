@@ -283,6 +283,9 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 };
 
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
+  // ----------------- Welcome modal --------------------------------------
+  // Shown once on first /workspace visit. Re-openable via the account menu.
+  const [welcomeNonce, setWelcomeNonce] = useState(0);
   // ----------------- Tabs: array of open documents -------------------
   // Each tab owns its OWN file, editor state, active tool, view settings,
   // undo history, and dirty flag. The canvas/inspector/toolbar/command bar
