@@ -144,14 +144,14 @@ export function UpgradeModal() {
         if (!next) close();
       }}
     >
-      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0">
+      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0 transform-gpu antialiased">
         <DialogHeader className="border-b border-border bg-surface-1 p-5">
           <div className="flex items-start gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-vault/15 text-vault">
               <Lock className="h-4 w-4" strokeWidth={2.5} />
             </span>
             <div className="min-w-0">
-              <DialogTitle className="font-display text-[17px] leading-tight">
+              <DialogTitle className="font-display text-[17px] leading-tight antialiased tracking-normal">
                 Unlock VaultPDF Pro
               </DialogTitle>
               <DialogDescription className="mt-1 text-[13px] text-text-2">
