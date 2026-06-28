@@ -208,9 +208,9 @@ function Landing() {
                 className="font-display leading-[0.95] tracking-tight"
                 style={{ fontSize: "clamp(2.25rem, 7vw, 5.5rem)" }}
               >
-                No bytes leave
+                Redact privileged documents
                 <br />
-                <span className="italic">this tab.</span>
+                <span className="italic">— on your device.</span>
               </h2>
               <div className="mt-10 space-y-5 max-w-lg text-muted-foreground leading-relaxed">
                 <p>
