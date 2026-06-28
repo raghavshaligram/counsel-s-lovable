@@ -141,19 +141,21 @@ function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite): Rewrite
     if ((contents as any).contents || typeof (contents as any).getContents === "function") streams.push(contents as any);
   }
 
-  for (const stream of streams) addStats(stats, rewriteStream(stream, job));
+  const fonts = collectPageFonts(page);
+  for (const stream of streams) addStats(stats, rewriteStream(stream, job, fonts));
   return stats;
 }
 
-function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite): RewriteStats {
+function rewriteStream(
+  stream: import("pdf-lib").PDFRawStream,
+  job: PageRewrite,
+  fonts: Map<string, FontMetrics>,
+): RewriteStats {
   const stats = emptyStats();
   stats.streamsVisited = 1;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const s: any = stream;
   const dict = s.dict;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = (dict?.context ?? null) as any;
-
   // Read /Filter — may be a name or an array of names.
   let filterNames: string[] = [];
   try {
@@ -172,14 +174,11 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   let bytes: Uint8Array = s.contents ?? (typeof s.getContents === "function" ? s.getContents() : undefined);
   if (!bytes || !bytes.length) return stats;
 
-  const wasFlate = filterNames.length === 1 && (filterNames[0] === "FlateDecode" || filterNames[0] === "Fl");
-  if (filterNames.length && !wasFlate) {
-    // Other filters (ASCII85, LZW, DCTDecode, etc.) — too risky to round-trip.
+  try {
+    bytes = decodeContentBytes(bytes, filterNames);
+  } catch {
     stats.skippedStreams = 1;
     return stats;
-  }
-  if (wasFlate) {
-    try { bytes = unzlibSync(bytes); } catch { stats.skippedStreams = 1; return stats; }
   }
 
   // latin1 decode — operators are ASCII; non-ASCII bytes only appear inside
@@ -187,21 +186,23 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   let text = "";
   for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
 
-  const result = surgicalRewrite(text, job);
+  const result = surgicalRewrite(text, job, fonts);
   if (!result.mutated) return stats;
 
   let newBytes = new Uint8Array(result.text.length);
   for (let n = 0; n < result.text.length; n++) newBytes[n] = result.text.charCodeAt(n) & 0xff;
 
-  if (wasFlate) {
-    try { newBytes = zlibSync(newBytes); } catch { stats.skippedStreams = 1; return stats; }
-  }
+  // Normalize supported input filters to FlateDecode after mutation. This is
+  // safe for content streams and avoids needing a binary-exact ASCII85 encoder.
+  try { newBytes = zlibSync(newBytes); } catch { stats.skippedStreams = 1; return stats; }
   s.contents = newBytes;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const lenKey = PDFName.of("Length");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     dict.set?.(lenKey, (dict.context as any).obj(newBytes.length));
+    dict.set?.(PDFName.of("Filter"), PDFName.of("FlateDecode"));
+    dict.delete?.(PDFName.of("DecodeParms"));
   } catch { /* pdf-lib will recompute on save */ }
   stats.streamsMutated = 1;
   addStats(stats, result.stats);
