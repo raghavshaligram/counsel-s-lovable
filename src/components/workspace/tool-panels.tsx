@@ -1382,15 +1382,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
   const totalBoxes = redactAnnos.length;
   const targets = useMemo(() => {
-    const out: { page: number; text: string }[] = [];
+    const out: { page: number; text?: string; rect: { x: number; y: number; w: number; h: number } }[] = [];
     for (const a of redactAnnos) {
-      if (a.kind !== "redact" || !a.sources?.length) continue;
-      for (const s of a.sources) {
-        const text = (s.redactText || s.originalString || "").trim();
-        if (text) {
-          out.push({ page: a.page, text });
-        }
-      }
+      if (a.kind !== "redact") continue;
+      const text = a.sources?.map((s) => (s.redactText || s.originalString || "").trim()).find(Boolean);
+      out.push({ page: a.page, text, rect: { x: a.x, y: a.y, w: a.w, h: a.h } });
     }
     return out;
   }, [redactAnnos]);
@@ -1448,8 +1444,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
       const bytes = await exportEditedPdf(exportDoc);
 
-      // Verify by re-parsing the exported file and confirming every
-      // captured source string is absent from the text layer.
+      // Verify by re-parsing the exported file and confirming no text remains
+      // inside any redaction region. This works for custom fonts/CMaps where
+      // glyph bytes do not decode to the visible string.
       toast.loading("Verifying removal…", { id: tid });
       const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
       const result = await verifyRedactionRemoval(bytes, targets);
@@ -1457,9 +1454,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       if (result.ok) {
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
-        toast.success(`Verified — ${result.removed}/${result.total} fragments removed`, { id: tid });
+        toast.success(`Verified — ${result.removed}/${result.total} regions cleared`, { id: tid });
       } else {
-        throw new Error(`${result.leaks.length} redacted fragment${result.leaks.length === 1 ? " is" : "s are"} still extractable`);
+        throw new Error(`${result.leaks.length} redaction region${result.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
     } catch (err) {
       console.error("[redact] export failed", err);
