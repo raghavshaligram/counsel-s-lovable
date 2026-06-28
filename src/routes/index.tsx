@@ -34,13 +34,22 @@ export const Route = createFileRoute("/")({
 
 function Landing() {
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
+    if (typeof IntersectionObserver === "undefined") {
+      document.querySelectorAll(".reveal").forEach((el) => el.classList.add("is-visible"));
+      return;
+    }
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // Re-arm on scroll: toggle is-visible on/off so the transition replays
+    // every time an element re-enters the viewport. Honors reduced motion.
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
           if (e.isIntersecting) {
             e.target.classList.add("is-visible");
-            io.unobserve(e.target);
+          } else if (!prefersReduced) {
+            e.target.classList.remove("is-visible");
           }
         });
       },
@@ -423,12 +432,19 @@ function RedactStamp({
 
 /* ——— useInView hook ——— */
 
-function useInView<T extends HTMLElement>(once = true) {
+function useInView<T extends HTMLElement>(once = false) {
   const ref = useRef<T | null>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) {
       setInView(true);
       return;
     }
@@ -771,6 +787,7 @@ function Keyframes() {
         18% { transform: scaleX(1); opacity: 1; }
         88% { transform: scaleX(1); opacity: 1; }
         96%, 100% { transform: scaleX(1); opacity: 0; }
+      }
       @keyframes pulse-zero {
         0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--vault) 35%, transparent); }
         50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--vault) 0%, transparent); }
