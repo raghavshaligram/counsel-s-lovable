@@ -3,31 +3,108 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Check, X, ArrowRight, Minus, WifiOff, Plane } from "lucide-react";
 
+const SEO_TITLE =
+  "VaultPDF — Private PDF Redaction & Bates Stamping for Lawyers";
+const SEO_DESCRIPTION =
+  "Redact, Bates-stamp, and review PDFs for privilege entirely on your device. Built for solo and small-firm lawyers. Nothing uploaded. Works offline.";
+
+const FAQ: Array<{ q: string; a: string }> = [
+  {
+    q: "How do I redact a PDF for court?",
+    a: "Open the PDF in VaultPDF's Redact tool, let the on-device detector find names, Social Security numbers, account numbers and addresses, confirm each box, then export. VaultPDF burns the text out of the underlying content stream — it does not just paint a black rectangle over it — so the redacted version is safe to file under FRCP 5.2 and equivalent state rules.",
+  },
+  {
+    q: "Is browser-based PDF redaction secure?",
+    a: "Yes, when the tool is genuinely on-device. VaultPDF runs entirely in your browser using WebAssembly. Your documents are never uploaded to a server. You can verify this yourself: open DevTools, watch the Network panel, and run any tool on a real file — you will see the JavaScript bundle load and nothing else.",
+  },
+  {
+    q: "Does VaultPDF work offline?",
+    a: "Yes. After the first load the entire app is cached as a progressive web app. Disconnect from Wi-Fi and you can still redact, Bates-stamp, OCR, sanitize, sign and merge PDFs in an airplane, a courthouse, or any room without internet.",
+  },
+  {
+    q: "How is VaultPDF different from Adobe Acrobat?",
+    a: "Acrobat is a desktop install that processes documents locally but is priced and licensed for enterprises. Cloud redaction services upload your files to a server you do not control. VaultPDF runs in any browser on Windows, Mac or iPad, keeps every document on your device, and is priced for solo and small-firm lawyers — without giving up the legal-grade redaction, Bates and privilege-review workflows you need.",
+  },
+  {
+    q: "Can I Bates stamp a whole discovery production at once?",
+    a: "Yes. Drop a folder of PDFs into the Bates tool, set a prefix and starting number, and VaultPDF stamps every page across every file with consistent placement and padding in a single pass — without uploading anything.",
+  },
+];
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "VaultPDF — On-device PDF tools for solo & small-firm lawyers" },
-      {
-        name: "description",
-        content:
-          "Redact, Bates-stamp, privilege-review and sanitize PDFs without uploading. Your documents never leave your device — you sign in only to verify your subscription.",
-      },
-      { property: "og:title", content: "VaultPDF — Legal PDF tools that stay on your device" },
-      {
-        property: "og:description",
-        content:
-          "Built for solo and small-firm lawyers. Redaction, Bates, privilege review and sanitize — all on-device. Founder's rate available.",
-      },
+      { title: SEO_TITLE },
+      { name: "description", content: SEO_DESCRIPTION },
+      { name: "keywords", content: "redact PDF for court, Bates numbering, privileged documents, redaction software for law firms, strip metadata before filing, FRCP 5.2, discovery, on-device PDF editor" },
+      { property: "og:title", content: SEO_TITLE },
+      { property: "og:description", content: SEO_DESCRIPTION },
       { property: "og:type", content: "website" },
       { property: "og:url", content: "/" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "VaultPDF — Legal PDF tools that stay on your device" },
-      {
-        name: "twitter:description",
-        content: "Redact, Bates, privilege review, sanitize. On-device. For solo and small-firm lawyers.",
-      },
+      { name: "twitter:title", content: SEO_TITLE },
+      { name: "twitter:description", content: SEO_DESCRIPTION },
     ],
     links: [{ rel: "canonical", href: "/" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "VaultPDF",
+          description: SEO_DESCRIPTION,
+          applicationCategory: "BusinessApplication",
+          applicationSubCategory: "Legal PDF Editor",
+          operatingSystem: "Web",
+          url: "/",
+          offers: [
+            {
+              "@type": "Offer",
+              name: "Free",
+              price: "0",
+              priceCurrency: "USD",
+              description: "Free on-device PDF tools forever.",
+            },
+            {
+              "@type": "Offer",
+              name: "Solo — founder's rate",
+              price: "17",
+              priceCurrency: "USD",
+              description: "Per month, billed annually. All Pro workflows for a solo practice.",
+            },
+            {
+              "@type": "Offer",
+              name: "Small-firm annual pass",
+              price: "1490",
+              priceCurrency: "USD",
+              description: "Per year, up to 10 seats.",
+            },
+          ],
+          featureList: [
+            "On-device PDF redaction",
+            "Bates numbering across files",
+            "Privilege review",
+            "Sanitize and strip metadata before filing",
+            "OCR (make searchable)",
+            "Works offline as a PWA",
+          ],
+          publisher: { "@type": "Organization", name: "VaultPDF" },
+        }),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: FAQ.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
+        }),
+      },
+    ],
   }),
   component: Landing,
 });
