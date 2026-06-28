@@ -61,7 +61,7 @@ import {
   ShieldOff,
 } from "lucide-react";
 
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 // pdf-lib is intentionally NOT imported here. Opening a 400p PDF via
 // PDFDocument.load() blocks the main thread for seconds. The open path now
 // uses pdf.js (Web Worker) only; pdf-lib is dynamic-imported inside the
