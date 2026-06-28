@@ -282,18 +282,28 @@ function Editor() {
         watermark: state.watermark ?? undefined,
         protect: state.protect ?? undefined,
       };
-      const bytes = await exportEditedPdf(state.doc, settings);
+      let bytes = await exportEditedPdf(state.doc, settings);
       const redactionTargets = state.doc.annotations.flatMap((a) => {
         if (a.kind !== "redact") return [];
         const text = a.sources?.map((s) => (s.redactText || s.originalString || "").trim()).find(Boolean);
         return [{ page: a.page, text, rect: { x: a.x, y: a.y, w: a.w, h: a.h } }];
       });
       if (redactionTargets.length > 0) {
+        toast.loading("Burning redaction regions…", { id: "exp" });
+        const pageRedactions = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+        for (const t of redactionTargets) {
+          const arr = pageRedactions.get(t.page) ?? [];
+          arr.push(t.rect);
+          pageRedactions.set(t.page, arr);
+        }
+        const { rasterizeRedactedPages } = await import("@/lib/editor/rasterize-redacted-pages");
+        bytes = (await rasterizeRedactedPages(bytes, pageRedactions, { mode: "always", scale: 2.5 })).bytes;
         toast.loading("Verifying redaction regions…", { id: "exp" });
         const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
         const check = await verifyRedactionRemoval(bytes, redactionTargets);
         if (!check.ok) throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
+
       toast.success("Done", { id: "exp" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
