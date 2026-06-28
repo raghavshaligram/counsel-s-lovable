@@ -1370,12 +1370,19 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
   const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
+  // "always" = rasterize every page that carries a redaction (default, safest).
+  // "fallback" = attempt content-stream surgery first, rasterize only pages
+  // where text still intersects a redaction rect after verification.
+  const [maxSecurity, setMaxSecurity] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const v = window.localStorage.getItem("vault.redact.maxSecurity");
+    return v === null ? true : v === "1";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("vault.redact.maxSecurity", maxSecurity ? "1" : "0");
+  }, [maxSecurity]);
 
-  // Pull redact annotations from the active editor state. Each one may
-  // carry `sources[]` — the captured text fragments under the drawn box —
-  // which the destructive content-stream rewriter uses to erase the actual
-  // Tj operands at export. Boxes drawn over images/regions with no captured
-  // sources still get the visual overlay, but can't be verified for removal.
   const redactAnnos = useMemo(
     () => (editorState?.doc?.annotations ?? []).filter((a) => a.kind === "redact"),
     [editorState?.doc?.annotations],
@@ -1391,6 +1398,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     return out;
   }, [redactAnnos]);
   const boxesWithoutText = redactAnnos.filter((a) => a.kind === "redact" && !a.sources?.length).length;
+
 
   const exportRedacted = useCallback(async () => {
     if (!file || !editorState?.doc) return;
@@ -1442,19 +1450,60 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const { exportEditedPdf } = await importChunk(() => import("@/lib/editor/export"));
       const freshBytes = new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
-      const bytes = await exportEditedPdf(exportDoc);
+      let bytes = await exportEditedPdf(exportDoc);
 
-      // Verify by re-parsing the exported file and confirming no text remains
-      // inside any redaction region. This works for custom fonts/CMaps where
-      // glyph bytes do not decode to the visible string.
+      // Region-rasterize redacted pages. Default ("always") rasterizes every
+      // page with a redaction — text inside the box is physically replaced
+      // by image pixels and cannot be recovered regardless of font/CMap.
+      // "fallback" mode keeps text selectable on pages where the content-
+      // stream surgery already cleared the region.
+      toast.loading("Burning redaction regions…", { id: tid });
+      const pageRedactions = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+      for (const t of targets) {
+        const arr = pageRedactions.get(t.page) ?? [];
+        arr.push(t.rect);
+        pageRedactions.set(t.page, arr);
+      }
+      const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
+      const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+        mode: maxSecurity ? "always" : "fallback",
+        scale: 2.5,
+      });
+      bytes = rasterResult.bytes;
+
       toast.loading("Verifying removal…", { id: tid });
       const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
-      const result = await verifyRedactionRemoval(bytes, targets);
+      let result = await verifyRedactionRemoval(bytes, targets);
+
+      // Safety net: if anything still leaks (only possible in fallback mode),
+      // force rasterization on the offending pages and re-verify. A leaky
+      // file is never downloaded.
+      if (!result.ok) {
+        const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+        for (const leak of result.leaks) {
+          if (!leak.rect) continue;
+          const arr = leakedPages.get(leak.page) ?? [];
+          // Use the original redaction rects for that page (not just the
+          // single leaking rect) so we cover everything marked.
+          const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
+          arr.push(...pageRects);
+          leakedPages.set(leak.page, arr);
+        }
+        if (leakedPages.size > 0) {
+          const forced = await rasterizeRedactedPages(bytes, leakedPages, { mode: "always", scale: 2.5 });
+          bytes = forced.bytes;
+          result = await verifyRedactionRemoval(bytes, targets);
+        }
+      }
+
       setVerify(result);
       if (result.ok) {
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
-        toast.success(`Verified — ${result.removed}/${result.total} regions cleared`, { id: tid });
+        const flatNote = rasterResult.rasterizedPages.length
+          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} flattened`
+          : "";
+        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
       } else {
         throw new Error(`${result.leaks.length} redaction region${result.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
@@ -1464,7 +1513,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setBusy(false);
     }
-  }, [file, editorState?.doc, targets, totalBoxes]);
+  }, [file, editorState?.doc, targets, totalBoxes, maxSecurity]);
+
 
   const downloadCertificate = useCallback(async () => {
     if (!file || !verify || !lastBytes) return;
@@ -1552,6 +1602,53 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           )}
         </div>
       </Section>
+
+      <Section title="Redaction mode" icon={<Shield className="h-3 w-3" />}>
+        <div className="flex flex-col gap-1.5">
+          <label className={cn(
+            "flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+            maxSecurity ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+          )}>
+            <input
+              type="radio"
+              name="redact-mode"
+              checked={maxSecurity}
+              onChange={() => setMaxSecurity(true)}
+              className="mt-0.5 accent-[var(--vault,#4C7FB8)]"
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">Maximum security (recommended)</span>
+              <span className="text-text-2">
+                Flatten every redacted page to an image. The redacted text is physically
+                unrecoverable — guaranteed regardless of font or encoding. Those pages
+                lose text selectability.
+              </span>
+            </div>
+          </label>
+          <label className={cn(
+            "flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+            !maxSecurity ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+          )}>
+            <input
+              type="radio"
+              name="redact-mode"
+              checked={!maxSecurity}
+              onChange={() => setMaxSecurity(false)}
+              className="mt-0.5 accent-[var(--vault,#4C7FB8)]"
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">Standard — keep text selectable</span>
+              <span className="text-text-2">
+                Try to delete only the redacted text from the content stream. Pages
+                still containing the text after verification are automatically
+                flattened as a safety net — a leaky file is never downloaded.
+              </span>
+            </div>
+          </label>
+        </div>
+      </Section>
+
+
 
       <Section title="Export & verify" icon={<ShieldCheck className="h-3 w-3" />}>
         <button
