@@ -11,8 +11,9 @@ import { cn } from "@/lib/utils";
  * `useRequirePro()` directly and render a `<LockBadge />` on the trigger.
  */
 export const PAID_TOOL_IDS = new Set<string>([
-  "privilege-scan", // Privilege review (AI)
-  "chat",           // Private AI assist / search inside PDF
+  "privilege-scan",  // Privilege review (AI)
+  "chat",            // Private AI assist / search inside PDF
+  "exhibit-binder",  // Multi-file court-ready binder
 ]);
 
 /**
@@ -24,6 +25,7 @@ export const PAID_FEATURES = {
   "ai-detect-sensitive": "AI detect sensitive info",
   "pattern-bulk-redact": "Pattern / bulk redaction",
   "multi-file-bates": "Multi-file Bates",
+  "exhibit-binder": "Exhibit Binder",
   "batch-processing": "Batch processing",
   "workflows": "Workflows & automation",
   "privilege-review": "Privilege review (AI)",

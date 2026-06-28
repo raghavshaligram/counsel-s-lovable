@@ -154,6 +154,7 @@ const TOOLS: RailTool[] = [
   { id: "privilege-scan", label: "Privilege review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
   { id: "sanitize", label: "Sanitize", icon: ShieldCheck, group: "legal", groupLabel: "Legal" },
   { id: "ocr", label: "Make Searchable", icon: ScanText, group: "legal", groupLabel: "Legal" },
+  { id: "exhibit-binder", label: "Exhibit Binder", icon: BookOpen, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
 
   // Assemble
