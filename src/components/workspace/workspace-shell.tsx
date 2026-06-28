@@ -1398,6 +1398,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         </div>
       </header>
 
+      <AnnouncementBanner />
+
       {/* TAB STRIP */}
       <TabStrip
         tabs={tabs}
