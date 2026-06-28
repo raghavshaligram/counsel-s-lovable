@@ -393,28 +393,54 @@ export async function detectPiiInPdf(
   return { detections, usedOcr: ocrPages.length > 0 };
 }
 
-type CatHit = { category: PiiCategory; confidence?: "high" | "low" };
+type CatHit = {
+  category: PiiCategory;
+  confidence?: "high" | "low";
+  /** Substring span within the source text item. */
+  start: number;
+  length: number;
+  /** The matched text itself (used for the snippet shown in the UI). */
+  text: string;
+};
 
-function matchCategory(str: string): CatHit | null {
-  // Structured patterns first — these are reliable.
+function matchAllCategories(str: string): CatHit[] {
+  const hits: CatHit[] = [];
+  // Structured patterns — emit ONLY the value span, not the surrounding label
+  // or line ("Client SSN: 123-45-6789" → just "123-45-6789").
   for (const { category, re } of PATTERNS) {
-    if (re.test(str)) return { category };
+    const global = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    let m: RegExpExecArray | null;
+    while ((m = global.exec(str)) !== null) {
+      hits.push({
+        category,
+        start: m.index,
+        length: m[0].length,
+        text: m[0],
+      });
+      if (m[0].length === 0) global.lastIndex++;
+    }
   }
   // Names — only emit when we have a STRONG signal (title prefix like
   // Mr/Dr/Hon/"signed by", suffix like Jr/Esq/PhD, middle initial, or
-  // surname marker like O'/Mc/Mac). Bare title-case phrases ("The Problem
-  // with Current Agency Models", "Data Architecture") are NOT names —
-  // emitting them at all produced the heading-spam bug, so low-confidence
-  // candidates are dropped entirely rather than shown unchecked. Real-name
-  // documents still flag correctly via the strong signals.
-  const nm = NAME_CANDIDATE_RE.exec(str);
-  if (nm) {
+  // surname marker like O'/Mc/Mac). The match span is the person name
+  // ONLY — not the surrounding sentence ("signed by Mr. John Anderson"
+  // → just "John Anderson" with optional honorific captured by regex).
+  const nameGlobal = new RegExp(NAME_CANDIDATE_RE.source, "g");
+  let nm: RegExpExecArray | null;
+  while ((nm = nameGlobal.exec(str)) !== null) {
     const verdict = classifyName(str, nm[0], nm.index);
     if (verdict.ok && verdict.confidence === "high") {
-      return { category: "name", confidence: "high" };
+      hits.push({
+        category: "name",
+        confidence: "high",
+        start: nm.index,
+        length: nm[0].length,
+        text: nm[0],
+      });
     }
+    if (nm[0].length === 0) nameGlobal.lastIndex++;
   }
-  return null;
+  return hits;
 }
 
 
