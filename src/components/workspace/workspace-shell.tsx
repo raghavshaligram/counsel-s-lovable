@@ -1368,6 +1368,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             Print
           </button>
 
+          <ExportFormatChip />
           <button
             type="button"
             onClick={onExport}
