@@ -24,6 +24,8 @@ import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk-import";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "./export-format-row";
 
 type Props = {
   open: boolean;
