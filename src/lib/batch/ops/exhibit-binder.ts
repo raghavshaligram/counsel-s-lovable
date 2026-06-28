@@ -23,6 +23,10 @@ export interface ExhibitInput {
   name: string;
   /** Optional display title shown in ToC + slip-sheet. Falls back to name. */
   title?: string;
+  /** Optional explicit label override (e.g. "Exhibit A"). When provided,
+   *  this exact string is used on the slip-sheet AND ToC — no recomputation
+   *  from index. Pass this when the user has confirmed letters per row. */
+  label?: string;
   bytes: Uint8Array;
 }
 
