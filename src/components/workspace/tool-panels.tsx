@@ -844,6 +844,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </p>
       </Section>
 
+      <ProRedactSection />
+
+
+
       <Section title="Marked for removal" icon={<Shield className="h-3 w-3" />}>
         <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2.5 text-[12px]">
           <div className="flex items-center justify-between">
