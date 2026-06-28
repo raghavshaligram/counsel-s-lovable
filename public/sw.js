@@ -15,13 +15,15 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "vaultpdf-v3-offline";
+const VERSION = "vaultpdf-v4-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;
 const NAV_CACHE = `${VERSION}-nav`;
 
-const SHELL_URLS = ["/", "/manifest.webmanifest"];
+const OFFLINE_URL = "/offline.html";
+const SHELL_URLS = ["/", "/manifest.webmanifest", OFFLINE_URL];
+
 
 const THIRD_PARTY_HOSTS = new Set([
   "unpkg.com",
