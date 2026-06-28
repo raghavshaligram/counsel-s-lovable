@@ -31,6 +31,7 @@ interface ExhibitRow {
   size: number;
   bytes: Uint8Array;
   title: string; // editable display title
+  labelOverride: string; // editable label (e.g. "Exhibit A"); empty = auto
 }
 
 const POSITIONS: { value: BatesPosition; label: string }[] = [
@@ -44,6 +45,20 @@ const POSITIONS: { value: BatesPosition; label: string }[] = [
 
 function readPdf(f: File): Promise<Uint8Array> {
   return f.arrayBuffer().then((b) => new Uint8Array(b));
+}
+
+/** Turn a filename like "04_ExhibitC_Financials.pdf" into "Financials"
+ *  (or the cleanest readable title we can derive). Strips:
+ *   - .pdf extension
+ *   - leading numeric prefixes "04_" / "04-" / "04 "
+ *   - embedded "Exhibit X_" / "Exhibit X-" tokens
+ *   - underscores → spaces, collapsed whitespace */
+function cleanTitleFromName(name: string): string {
+  let s = name.replace(/\.pdf$/i, "");
+  s = s.replace(/^[\s_\-.]*\d+[\s_\-.]+/i, "");
+  s = s.replace(/\bExhibit[\s_\-]*[A-Z0-9]+[\s_\-]*/gi, "");
+  s = s.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+  return s || name.replace(/\.pdf$/i, "");
 }
 
 export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
