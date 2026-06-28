@@ -362,9 +362,11 @@ export async function detectPiiInPdf(
               y: y0 - pad,
               w: x1 - x0 + pad * 2,
               h: y1 - y0 + pad * 2,
-              category: cat,
+              category: cat.category,
+              confidence: cat.confidence,
               snippet: snippet(w.text),
             });
+
           }
         }),
       );
