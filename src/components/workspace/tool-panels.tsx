@@ -2564,7 +2564,13 @@ function ExtractDataPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+async function triggerDownload(blob: Blob, filename: string) {
+  // Route PDFs through downloadPdf so the user's PDF/A preference applies.
+  if (/\.pdf$/i.test(filename) || blob.type === "application/pdf") {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    await downloadPdf(bytes, filename);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
