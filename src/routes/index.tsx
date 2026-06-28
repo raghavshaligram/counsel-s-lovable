@@ -658,6 +658,9 @@ function Keyframes() {
         18% { transform: scaleX(1); opacity: 1; }
         88% { transform: scaleX(1); opacity: 1; }
         96%, 100% { transform: scaleX(1); opacity: 0; }
+      @keyframes pulse-zero {
+        0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--vault) 35%, transparent); }
+        50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--vault) 0%, transparent); }
       }
       .reveal { opacity: 0; transform: translateY(8px); transition: opacity 600ms ease-out, transform 600ms ease-out; }
       .reveal.is-visible { opacity: 1; transform: none; }
