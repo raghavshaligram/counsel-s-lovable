@@ -5390,6 +5390,19 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 /* ============================== Bates ============================== */
 /**
+ * Dedicated Bates tool — single-document Bates (free) plus an entry point
+ * for multi-file Bates (Pro). Lives in the Legal rail group; there is no
+ * other Bates UI in the workspace.
+ */
+function BatesPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  if (!ctx.file) {
+    return <InspectorEmpty>Open a PDF to stamp Bates numbers, or use multi-file Bates below.</InspectorEmpty>;
+  }
+  return <BatesSection ctx={ctx} />;
+}
+
+
+/**
  * Bates configuration — prefix/suffix, start number, zero-padding, and
  * stamp position. Settings persist per-document via the shared bates store
  * so the Export dialog reflects the same config the user sees here. The
