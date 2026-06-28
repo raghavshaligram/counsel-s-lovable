@@ -131,17 +131,28 @@ export const hqSetPlan = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
+    const { data: subRow, error } = await supabaseAdmin
       .from("subscriptions")
       .upsert(
         { user_id: data.userId, plan: data.plan, status: data.status },
         { onConflict: "user_id" },
-      );
+      )
+      .select("plan, status")
+      .single();
     if (error) throw new Error(error.message);
     await supabaseAdmin
       .from("profiles")
       .upsert({ user_id: data.userId, plan: data.plan }, { onConflict: "user_id" });
-    return { ok: true };
+    // Echo persisted values so the UI binds to the DB truth, not the
+    // optimistic guess. Also lets the admin verify the write round-tripped.
+    // eslint-disable-next-line no-console
+    console.info(`[hq] setPlan user=${data.userId} -> plan=${subRow?.plan} status=${subRow?.status}`);
+    return {
+      ok: true as const,
+      userId: data.userId,
+      plan: (subRow?.plan as "free" | "solo" | "firm") ?? data.plan,
+      status: (subRow?.status as "active" | "trialing" | "past_due" | "canceled") ?? data.status,
+    };
   });
 
 // ----- Subscriptions snapshot -----
