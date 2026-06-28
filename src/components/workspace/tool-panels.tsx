@@ -1322,13 +1322,18 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      {findings && !scanning && scannedPages.length > 0 && (
+      {findings && !scanning && lowConfOcrPages.length > 0 && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
-          <div className="font-semibold mb-0.5">⚠ Scanned / image document detected</div>
-          {scannedPages.length} of {totalPagesScanned} page{scannedPages.length === 1 ? " is" : "s are"} image-only
-          (page{scannedPages.length === 1 ? "" : "s"} {scannedPages.slice(0, 8).join(", ")}{scannedPages.length > 8 ? "…" : ""}).
-          Automatic detection cannot reliably read text inside images.
-          <strong> Run OCR first, or mark regions manually — do NOT treat silence here as “clean”.</strong>
+          <div className="font-semibold mb-0.5">⚠ OCR couldn't reliably read {lowConfOcrPages.length} scanned page{lowConfOcrPages.length === 1 ? "" : "s"}</div>
+          Page{lowConfOcrPages.length === 1 ? "" : "s"} {lowConfOcrPages.slice(0, 8).join(", ")}{lowConfOcrPages.length > 8 ? "…" : ""}: text was unreadable.
+          <strong> Redact manually on those pages — don't rely on automatic detection.</strong>
+        </div>
+      )}
+
+      {findings && !scanning && scannedPages.length > 0 && lowConfOcrPages.length < scannedPages.length && (
+        <div className="rounded-md border border-vault/30 bg-vault/10 px-2.5 py-2 text-[11px] leading-snug text-text-1">
+          <div className="font-semibold mb-0.5">Scanned document · OCR ran on {scannedPages.length - lowConfOcrPages.length} page{scannedPages.length - lowConfOcrPages.length === 1 ? "" : "s"}</div>
+          Detection ran on OCR-recognized text. OCR can miss low-quality or handwritten text — review scanned pages manually to be sure.
         </div>
       )}
 
