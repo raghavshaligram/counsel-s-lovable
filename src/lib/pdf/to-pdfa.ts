@@ -69,25 +69,47 @@ export function findUnembeddedFonts(doc: PDFDocument): string[] {
     if (!(type instanceof PDFName) || type.asString() !== "/Font") continue;
     const subtype = obj.get(PDFName.of("Subtype"));
     const subtypeName = subtype instanceof PDFName ? subtype.asString() : "";
-    // Type0 (composite) and Type3 fonts get a pass per the validation rule.
-    if (subtypeName === "/Type0" || subtypeName === "/Type3") continue;
-    const desc = obj.get(PDFName.of("FontDescriptor"));
-    if (!(desc instanceof PDFDict)) {
-      // No FontDescriptor at all → cannot have an embedded program.
-      const base = obj.get(PDFName.of("BaseFont"));
-      offenders.push(base instanceof PDFName ? base.asString() : "<unknown>");
+    // Type3 has its own content streams — exempt per the validation rule.
+    if (subtypeName === "/Type3") continue;
+    // Type0 (composite): the actual font program lives on the descendant
+    // CIDFontType0/2 FontDescriptor — recurse into DescendantFonts.
+    if (subtypeName === "/Type0") {
+      const descArr = obj.lookup(PDFName.of("DescendantFonts"));
+      const items: unknown[] = descArr && typeof (descArr as { asArray?: unknown }).asArray === "function"
+        ? (descArr as { asArray: () => unknown[] }).asArray()
+        : [];
+      let anyEmbedded = false;
+      for (const it of items) {
+        const cid = it instanceof PDFDict ? it : context.lookup(it as never);
+        if (!(cid instanceof PDFDict)) continue;
+        const cidDesc = cid.lookup(PDFName.of("FontDescriptor"));
+        if (cidDesc instanceof PDFDict && hasFontFile(cidDesc)) {
+          anyEmbedded = true;
+          break;
+        }
+      }
+      if (!anyEmbedded) {
+        const base = obj.get(PDFName.of("BaseFont"));
+        offenders.push(base instanceof PDFName ? base.asString() : "<unknown Type0>");
+      }
       continue;
     }
-    const hasFile =
-      desc.has(PDFName.of("FontFile")) ||
-      desc.has(PDFName.of("FontFile2")) ||
-      desc.has(PDFName.of("FontFile3"));
-    if (!hasFile) {
+    // Simple fonts (TrueType, Type1, MMType1): check FontDescriptor.
+    const desc = obj.lookup(PDFName.of("FontDescriptor"));
+    if (!(desc instanceof PDFDict) || !hasFontFile(desc)) {
       const base = obj.get(PDFName.of("BaseFont"));
       offenders.push(base instanceof PDFName ? base.asString() : "<unknown>");
     }
   }
   return offenders;
+}
+
+function hasFontFile(desc: PDFDict): boolean {
+  return (
+    desc.has(PDFName.of("FontFile")) ||
+    desc.has(PDFName.of("FontFile2")) ||
+    desc.has(PDFName.of("FontFile3"))
+  );
 }
 
 function randomHexString(byteLen: number): PDFHexString {
