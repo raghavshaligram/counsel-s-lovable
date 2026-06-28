@@ -43,6 +43,9 @@ const passwordSchema = z
 
 function AuthPage() {
   const navigate = useNavigate();
+  const { redirect: rawRedirect } = Route.useSearch();
+  const dest = safeRedirect(rawRedirect);
+  const fullDest = (typeof window !== "undefined" ? window.location.origin : "") + dest;
   const [mode, setMode] = useState<Mode>("magic");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -54,7 +57,7 @@ function AuthPage() {
     let cancelled = false;
     void supabase.auth.getUser().then(({ data }) => {
       if (cancelled) return;
-      if (data.user) navigate({ to: "/workspace" });
+      if (data.user) navigate({ to: dest as never });
     });
     return () => {
       cancelled = true;
@@ -68,7 +71,7 @@ function AuthPage() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email: parsed.data,
-      options: { emailRedirectTo: window.location.origin + "/workspace" },
+      options: { emailRedirectTo: fullDest },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
@@ -86,7 +89,7 @@ function AuthPage() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
-    navigate({ to: "/workspace" });
+    navigate({ to: dest as never });
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -99,12 +102,12 @@ function AuthPage() {
     const { error, data } = await supabase.auth.signUp({
       email: em.data,
       password: pw.data,
-      options: { emailRedirectTo: window.location.origin + "/workspace" },
+      options: { emailRedirectTo: fullDest },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
     if (data.session) {
-      navigate({ to: "/workspace" });
+      navigate({ to: dest as never });
     } else {
       toast.success("Check your inbox to confirm your email.");
     }
@@ -127,7 +130,7 @@ function AuthPage() {
   const handleGoogle = async () => {
     setLoading(true);
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+      redirect_uri: fullDest,
     });
     if (result.error) {
       setLoading(false);
@@ -136,7 +139,7 @@ function AuthPage() {
     }
     if (result.redirected) return; // browser redirects out
     setLoading(false);
-    navigate({ to: "/workspace" });
+    navigate({ to: dest as never });
   };
 
   return (
