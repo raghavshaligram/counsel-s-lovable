@@ -146,21 +146,26 @@ function Landing() {
         <div className="relative mx-auto max-w-7xl px-5 md:px-8 pt-16 md:pt-24 pb-20 md:pb-28">
           <div className="grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 items-center">
             <div className="reveal">
-              <div className="font-mono text-[11px] text-muted-foreground mb-8 flex items-center gap-2">
+              <div className="font-mono text-[11px] text-muted-foreground mb-6 flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-vault animate-pulse" />
                 For solo &amp; small-firm lawyers
               </div>
-              <h1
+              <h1 className="text-sm md:text-base font-semibold tracking-tight text-vault mb-5">
+                Private PDF Redaction &amp; Bates Stamping, Built for Lawyers
+              </h1>
+              <p
                 className="font-display leading-[0.92] tracking-tight"
                 style={{ fontSize: "clamp(2.75rem, 7.5vw, 6.25rem)" }}
+                aria-hidden="true"
               >
                 Documents you'd
                 <br />
                 <span className="italic text-vault">never upload.</span>
-              </h1>
+              </p>
               <p className="mt-8 max-w-md text-base md:text-lg text-muted-foreground leading-relaxed">
-                Redact, Bates-stamp, privilege-review and sanitize PDFs entirely on your device.
-                You sign in only to verify your subscription — your files are never uploaded. Works offline.
+                Redact PDFs for court, Bates-stamp a discovery set, review for privilege and
+                strip metadata before filing — entirely on your device. No Adobe required.
+                Your files never upload, and VaultPDF keeps working offline.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-4">
                 <Link
