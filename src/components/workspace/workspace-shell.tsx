@@ -97,6 +97,7 @@ import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/l
 import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
+import { AccountMenu } from "./account-menu";
 import { PrivacyShield } from "./privacy-shield";
 import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
 import { useHotkey } from "@/lib/use-hotkey";
