@@ -63,7 +63,13 @@ export interface Reply {
 // Source metadata captured from pdf.js text item — used by the destructive
 // rewriter to find the matching Tj operand in the page's content stream.
 export interface TextSource {
+  /** Full pdf.js text item string that contained the marked text. */
   originalString: string;
+  /** Exact sensitive substring to remove/verify when only part of the item is redacted. */
+  redactText?: string;
+  /** Substring span inside originalString, when known. */
+  matchStart?: number;
+  matchLength?: number;
   transform?: number[]; // a,b,c,d,e,f (pdf.js text item transform)
   fontName?: string;
   cssFamily?: string;

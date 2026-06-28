@@ -854,8 +854,12 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
           sources: m.source?.originalString
             ? [{
                 originalString: m.source.originalString,
+                  redactText: m.source.redactText,
+                  matchStart: m.source.matchStart,
+                  matchLength: m.source.matchLength,
                 transform: m.source.transform,
                 fontName: m.source.fontName,
+                  bounds: m.source.bounds,
               }]
             : undefined,
         },
@@ -1130,8 +1134,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             ? [
                 {
                   originalString: d.source.originalString,
+                  redactText: d.source.redactText,
+                  matchStart: d.source.matchStart,
+                  matchLength: d.source.matchLength,
                   transform: d.source.transform,
                   fontName: d.source.fontName,
+                  bounds: d.source.bounds,
                 },
               ]
             : undefined,
@@ -1378,8 +1386,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     for (const a of redactAnnos) {
       if (a.kind !== "redact" || !a.sources?.length) continue;
       for (const s of a.sources) {
-        if (s.originalString && s.originalString.trim()) {
-          out.push({ page: a.page, text: s.originalString });
+        const text = (s.redactText || s.originalString || "").trim();
+        if (text) {
+          out.push({ page: a.page, text });
         }
       }
     }

@@ -566,7 +566,15 @@ export function EditorCanvas({
         const ox = Math.max(0, Math.min(a.x + w, ix2) - Math.max(a.x, it.x));
         const oy = Math.max(0, Math.min(a.y + h, iy2) - Math.max(a.y, it.y));
         if (ox > 1 && oy > it.h * 0.35) {
-          sources.push({ originalString: it.str, transform: it.transform, fontName: it.fontName });
+          sources.push({
+            originalString: it.str,
+            redactText: it.str,
+            matchStart: 0,
+            matchLength: it.str.length,
+            transform: it.transform,
+            fontName: it.fontName,
+            bounds: { x: it.x, y: it.y, w: it.w, h: it.h },
+          });
         }
       }
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: pageIndex, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });
