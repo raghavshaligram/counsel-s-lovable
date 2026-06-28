@@ -75,8 +75,8 @@ export function findUnembeddedFonts(doc: PDFDocument): string[] {
     // CIDFontType0/2 FontDescriptor — recurse into DescendantFonts.
     if (subtypeName === "/Type0") {
       const descArr = obj.lookup(PDFName.of("DescendantFonts"));
-      const items: unknown[] = descArr && typeof (descArr as { asArray?: unknown }).asArray === "function"
-        ? (descArr as { asArray: () => unknown[] }).asArray()
+      const items: unknown[] = descArr && typeof (descArr as unknown as { asArray?: unknown }).asArray === "function"
+        ? (descArr as unknown as { asArray: () => unknown[] }).asArray()
         : [];
       let anyEmbedded = false;
       for (const it of items) {
