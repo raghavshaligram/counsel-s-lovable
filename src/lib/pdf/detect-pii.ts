@@ -339,6 +339,7 @@ export async function detectPiiInPdf(
     };
 
     let done = 0;
+    const ocrPageConfidence: Record<number, number> = {};
     try {
       await Promise.all(
         ocrPages.map(async (i) => {
@@ -365,6 +366,15 @@ export async function detectPiiInPdf(
           }
           done++;
           onProgress?.({ stage: "ocr", page: done, totalPages: ocrPages.length });
+
+          // Mean per-word confidence on this page (0–100). Tesseract reports
+          // -1 for words it gave up on; treat those as 0 for the average.
+          const confs = words
+            .filter((w) => w.text && w.text.trim())
+            .map((w) => Math.max(0, w.confidence ?? 0));
+          ocrPageConfidence[i] = confs.length
+            ? confs.reduce((a, b) => a + b, 0) / confs.length
+            : 0;
 
           for (const w of words) {
             if (!w.text || !w.text.trim()) continue;
@@ -395,10 +405,22 @@ export async function detectPiiInPdf(
     } finally {
       await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
     }
+
+    // Pages where mean OCR confidence is below 60 are flagged unreliable —
+    // the UI must warn that auto-detect cannot be trusted on those pages.
+    const lowConfidenceOcrPages = ocrPages.filter((p) => (ocrPageConfidence[p] ?? 0) < 60);
+    return {
+      detections,
+      usedOcr: ocrPages.length > 0,
+      scannedPages: ocrPages.slice(),
+      totalPages: doc.numPages,
+      lowConfidenceOcrPages,
+      ocrPageConfidence,
+    };
   }
 
 
-  return { detections, usedOcr: ocrPages.length > 0, scannedPages: ocrPages.slice(), totalPages: doc.numPages };
+  return { detections, usedOcr: false, scannedPages: [], totalPages: doc.numPages, lowConfidenceOcrPages: [], ocrPageConfidence: {} };
 }
 
 type CatHit = {
