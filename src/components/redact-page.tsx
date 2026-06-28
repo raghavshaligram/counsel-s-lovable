@@ -373,7 +373,7 @@ export function RedactPage() {
     setPendingUsedOcr(false);
     try {
       const { detectPiiInPdf } = await importChunk(() => import("@/lib/pdf/detect-pii"));
-      const { detections: found, usedOcr, scannedPages, totalPages: scannedTotal } = await detectPiiInPdf(
+      const { detections: found, usedOcr, scannedPages, totalPages: scannedTotal, lowConfidenceOcrPages } = await detectPiiInPdf(
         file,
         1.5,
         (p) => {
@@ -386,11 +386,18 @@ export function RedactPage() {
         docRef.current ?? undefined,
       );
       const hasScanned = scannedPages.length > 0;
+      const ocrFailed = lowConfidenceOcrPages;
+      const ocrSucceededCount = scannedPages.length - ocrFailed.length;
       if (found.length === 0) {
-        if (hasScanned) {
-          toast.warning("Scanned/image document — auto-detect cannot read it", {
-            description: `${scannedPages.length} of ${scannedTotal} page${scannedPages.length === 1 ? "" : "s"} are image-only. Run OCR first, or mark regions manually. Do NOT treat this as "nothing found".`,
+        if (ocrFailed.length > 0) {
+          toast.warning("OCR couldn't reliably read this scanned document", {
+            description: `Pages ${ocrFailed.slice(0, 8).join(", ")}${ocrFailed.length > 8 ? "…" : ""}: text was unreadable. Redact manually — don't rely on automatic detection.`,
             duration: 12000,
+          });
+        } else if (hasScanned) {
+          toast.info("Scanned document — OCR ran, nothing matched", {
+            description: `Detection ran on OCR-recognized text from ${ocrSucceededCount} scanned page${ocrSucceededCount === 1 ? "" : "s"}. OCR can miss low-quality or handwritten text — review manually to be sure.`,
+            duration: 10000,
           });
         } else {
           toast.info("No obvious PII patterns found on the readable text layer.", {
@@ -408,10 +415,15 @@ export function RedactPage() {
         toast.info(
           `Found ${found.length} potential PII region${found.length === 1 ? "" : "s"} — review before redacting`,
         );
-        if (hasScanned) {
-          toast.warning("Some pages are scanned — auto-detect may miss items", {
-            description: `${scannedPages.length} of ${scannedTotal} image-only page${scannedPages.length === 1 ? "" : "s"} were OCR'd, but recall is imperfect. Review those pages manually.`,
+        if (ocrFailed.length > 0) {
+          toast.warning(`OCR failed on ${ocrFailed.length} scanned page${ocrFailed.length === 1 ? "" : "s"} — redact those manually`, {
+            description: `Pages ${ocrFailed.slice(0, 8).join(", ")}${ocrFailed.length > 8 ? "…" : ""}: text couldn't be read reliably.`,
             duration: 12000,
+          });
+        } else if (hasScanned) {
+          toast.info(`Scanned document · OCR ran on ${ocrSucceededCount} page${ocrSucceededCount === 1 ? "" : "s"}`, {
+            description: "OCR can miss low-quality or handwritten text — give scanned pages a manual review.",
+            duration: 10000,
           });
         }
       }
