@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Lock, ShieldCheck, WifiOff, Scale, ArrowRight, X } from "lucide-react";
+import { Lock, ShieldCheck, WifiOff, Scale, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { hasSeenWelcome, markWelcomeSeen } from "@/lib/workspace/welcome-store";
 
@@ -112,22 +112,13 @@ export function WelcomeModal({ forceOpen, onClosed }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) void close(); }}>
-      <DialogContent className="max-w-md bg-surface-1 border-border">
-        <button
-          type="button"
-          onClick={close}
-          aria-label="Skip"
-          className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-
+      <DialogContent className="max-w-md bg-surface-1 border-border transform-gpu antialiased">
         <div className="flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center rounded-md bg-vault text-vault-foreground">
             {step.icon}
           </span>
           <div>
-            <DialogTitle className="font-display text-[17px] leading-tight">{step.title}</DialogTitle>
+            <DialogTitle className="font-display text-[17px] leading-tight antialiased tracking-normal">{step.title}</DialogTitle>
             <DialogDescription className="text-[11px] text-text-2">Step {i + 1} of {steps.length}</DialogDescription>
           </div>
         </div>

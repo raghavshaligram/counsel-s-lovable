@@ -17,7 +17,7 @@
 import { useCallback, useState } from "react";
 import { create } from "zustand";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Lock, Check, X as XIcon, Loader2, ArrowRight } from "lucide-react";
+import { Lock, Check, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { useServerFn } from "@tanstack/react-start";
@@ -144,14 +144,14 @@ export function UpgradeModal() {
         if (!next) close();
       }}
     >
-      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0">
+      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0 transform-gpu antialiased">
         <DialogHeader className="border-b border-border bg-surface-1 p-5">
           <div className="flex items-start gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-vault/15 text-vault">
               <Lock className="h-4 w-4" strokeWidth={2.5} />
             </span>
             <div className="min-w-0">
-              <DialogTitle className="font-display text-[17px] leading-tight">
+              <DialogTitle className="font-display text-[17px] leading-tight antialiased tracking-normal">
                 Unlock VaultPDF Pro
               </DialogTitle>
               <DialogDescription className="mt-1 text-[13px] text-text-2">
@@ -267,14 +267,6 @@ export function UpgradeModal() {
           </Link>
         </footer>
 
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={close}
-          className="absolute right-3 top-3 inline-grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
       </DialogContent>
     </Dialog>
   );
