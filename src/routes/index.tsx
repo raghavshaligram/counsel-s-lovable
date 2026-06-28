@@ -392,6 +392,38 @@ function Landing() {
         </div>
       </section>
 
+      {/* FAQ — answers the questions lawyers actually search for */}
+      <section className="border-b border-border" aria-labelledby="faq-heading">
+        <div className="mx-auto max-w-4xl px-5 md:px-8 py-20 md:py-28">
+          <div className="max-w-2xl mb-10 reveal">
+            <div className="font-mono text-[11px] text-muted-foreground mb-4">/ frequently asked</div>
+            <h2
+              id="faq-heading"
+              className="font-display leading-[1] tracking-tight"
+              style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
+            >
+              Questions lawyers ask before switching.
+            </h2>
+          </div>
+          <dl className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+            {FAQ.map((item) => (
+              <div key={item.q} className="p-6 md:p-7 reveal">
+                <dt>
+                  <h3 className="text-base md:text-lg font-semibold text-foreground tracking-tight">
+                    {item.q}
+                  </h3>
+                </dt>
+                <dd className="mt-3 text-sm md:text-[15px] text-muted-foreground leading-relaxed">
+                  {item.a}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+
+
       {/* CTA — bus line kept */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: "var(--gradient-glow)" }} />
