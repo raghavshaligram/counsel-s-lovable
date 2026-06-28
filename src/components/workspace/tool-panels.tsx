@@ -1037,6 +1037,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [findings, setFindings] = useState<Det[] | null>(null);
   const [usedOcr, setUsedOcr] = useState(false);
   const [scannedPages, setScannedPages] = useState<number[]>([]);
+  const [lowConfOcrPages, setLowConfOcrPages] = useState<number[]>([]);
   const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
@@ -1058,6 +1059,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setFindings(null);
     setUsedOcr(false);
     setScannedPages([]);
+    setLowConfOcrPages([]);
     setTotalPagesScanned(0);
     setSelected(new Set());
     setProgress("Reading text layer…");
@@ -1074,16 +1076,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setFindings(detections);
       setUsedOcr(usedOcr);
       setScannedPages(scanned);
+      setLowConfOcrPages(lowConfidenceOcrPages);
       setTotalPagesScanned(totalPages);
       const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
       const hasScanned = scanned.length > 0;
       const lowConf = lowConfidenceOcrPages.length;
+      // OCR "succeeded" on a scanned page when we ran it AND confidence was
+      // not flagged low. Only the genuinely-failed pages get the hard
+      // "manual redaction required" warning.
+      const ocrFailedPages = lowConfidenceOcrPages;
+      const ocrSucceededCount = scanned.length - ocrFailedPages.length;
       if (detections.length === 0) {
-        if (hasScanned) {
-          toast.warning("Scanned/image document — detection may have missed items", {
-            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only.${lowConf > 0 ? ` OCR confidence was LOW on ${lowConf} page${lowConf === 1 ? "" : "s"} (${lowConfidenceOcrPages.slice(0, 6).join(", ")}${lowConf > 6 ? "…" : ""}) — treat detection as unreliable there.` : " OCR was attempted but recall is imperfect."} Review manually — do NOT treat silence as "clean".`,
+        if (ocrFailedPages.length > 0) {
+          toast.warning("OCR couldn't reliably read this scanned document", {
+            description: `Pages ${ocrFailedPages.slice(0, 8).join(", ")}${ocrFailedPages.length > 8 ? "…" : ""}: text was unreadable. Redact manually — don't rely on automatic detection here.`,
             duration: 14000,
+          });
+        } else if (hasScanned) {
+          toast.info("Scanned document — OCR ran, nothing matched", {
+            description: `Detection ran on OCR-recognized text from ${ocrSucceededCount} scanned page${ocrSucceededCount === 1 ? "" : "s"}. OCR can miss low-quality or handwritten text — review manually to be sure.`,
+            duration: 10000,
           });
         } else {
           toast.info("No sensitive data matched", {
@@ -1097,18 +1110,16 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             ? `${autoSelect.length} auto-selected · ${lowCount} low-confidence name${lowCount === 1 ? "" : "s"} unchecked — review and opt in.`
             : "Review then click Redact selected.",
         });
-        if (hasScanned) {
-          toast.warning(
-            lowConf > 0
-              ? `Low OCR confidence on ${lowConf} scanned page${lowConf === 1 ? "" : "s"} — manual review required`
-              : "Some pages are scanned — detection may miss items",
-            {
-              description: lowConf > 0
-                ? `Pages ${lowConfidenceOcrPages.slice(0, 8).join(", ")}${lowConf > 8 ? "…" : ""}: OCR text could not be read reliably. Mark sensitive regions on those pages manually.`
-                : `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
-              duration: 14000,
-            },
-          );
+        if (ocrFailedPages.length > 0) {
+          toast.warning(`OCR failed on ${ocrFailedPages.length} scanned page${ocrFailedPages.length === 1 ? "" : "s"} — redact those manually`, {
+            description: `Pages ${ocrFailedPages.slice(0, 8).join(", ")}${ocrFailedPages.length > 8 ? "…" : ""}: text couldn't be read reliably. Don't rely on automatic detection there.`,
+            duration: 14000,
+          });
+        } else if (hasScanned) {
+          toast.info(`Scanned document · OCR ran on ${ocrSucceededCount} page${ocrSucceededCount === 1 ? "" : "s"}`, {
+            description: "OCR can miss low-quality or handwritten text — give scanned pages a manual review.",
+            duration: 10000,
+          });
         }
       }
 
@@ -1311,13 +1322,18 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      {findings && !scanning && scannedPages.length > 0 && (
+      {findings && !scanning && lowConfOcrPages.length > 0 && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
-          <div className="font-semibold mb-0.5">⚠ Scanned / image document detected</div>
-          {scannedPages.length} of {totalPagesScanned} page{scannedPages.length === 1 ? " is" : "s are"} image-only
-          (page{scannedPages.length === 1 ? "" : "s"} {scannedPages.slice(0, 8).join(", ")}{scannedPages.length > 8 ? "…" : ""}).
-          Automatic detection cannot reliably read text inside images.
-          <strong> Run OCR first, or mark regions manually — do NOT treat silence here as “clean”.</strong>
+          <div className="font-semibold mb-0.5">⚠ OCR couldn't reliably read {lowConfOcrPages.length} scanned page{lowConfOcrPages.length === 1 ? "" : "s"}</div>
+          Page{lowConfOcrPages.length === 1 ? "" : "s"} {lowConfOcrPages.slice(0, 8).join(", ")}{lowConfOcrPages.length > 8 ? "…" : ""}: text was unreadable.
+          <strong> Redact manually on those pages — don't rely on automatic detection.</strong>
+        </div>
+      )}
+
+      {findings && !scanning && scannedPages.length > 0 && lowConfOcrPages.length < scannedPages.length && (
+        <div className="rounded-md border border-vault/30 bg-vault/10 px-2.5 py-2 text-[11px] leading-snug text-text-1">
+          <div className="font-semibold mb-0.5">Scanned document · OCR ran on {scannedPages.length - lowConfOcrPages.length} page{scannedPages.length - lowConfOcrPages.length === 1 ? "" : "s"}</div>
+          Detection ran on OCR-recognized text. OCR can miss low-quality or handwritten text — review scanned pages manually to be sure.
         </div>
       )}
 
