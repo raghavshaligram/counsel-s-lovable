@@ -7,6 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: (s: Record<string, unknown>) => ({
+    redirect: typeof s.redirect === "string" ? s.redirect : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Sign in — VaultPDF" },
@@ -21,6 +24,15 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+/** Only allow same-origin paths starting with `/` and no protocol-relative trick. */
+function safeRedirect(raw: string | undefined): string {
+  if (!raw) return "/workspace";
+  if (!raw.startsWith("/")) return "/workspace";
+  if (raw.startsWith("//")) return "/workspace";
+  if (raw.toLowerCase().includes("://")) return "/workspace";
+  return raw;
+}
+
 type Mode = "magic" | "password" | "signup" | "forgot";
 
 const emailSchema = z.string().trim().email("Enter a valid email").max(255);
@@ -31,6 +43,9 @@ const passwordSchema = z
 
 function AuthPage() {
   const navigate = useNavigate();
+  const { redirect: rawRedirect } = Route.useSearch();
+  const dest = safeRedirect(rawRedirect);
+  const fullDest = (typeof window !== "undefined" ? window.location.origin : "") + dest;
   const [mode, setMode] = useState<Mode>("magic");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,7 +57,7 @@ function AuthPage() {
     let cancelled = false;
     void supabase.auth.getUser().then(({ data }) => {
       if (cancelled) return;
-      if (data.user) navigate({ to: "/workspace" });
+      if (data.user) navigate({ to: dest as never });
     });
     return () => {
       cancelled = true;
@@ -56,7 +71,7 @@ function AuthPage() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email: parsed.data,
-      options: { emailRedirectTo: window.location.origin + "/workspace" },
+      options: { emailRedirectTo: fullDest },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
@@ -74,7 +89,7 @@ function AuthPage() {
     });
     setLoading(false);
     if (error) return toast.error(error.message);
-    navigate({ to: "/workspace" });
+    navigate({ to: dest as never });
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -87,12 +102,12 @@ function AuthPage() {
     const { error, data } = await supabase.auth.signUp({
       email: em.data,
       password: pw.data,
-      options: { emailRedirectTo: window.location.origin + "/workspace" },
+      options: { emailRedirectTo: fullDest },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
     if (data.session) {
-      navigate({ to: "/workspace" });
+      navigate({ to: dest as never });
     } else {
       toast.success("Check your inbox to confirm your email.");
     }
@@ -115,7 +130,9 @@ function AuthPage() {
   const handleGoogle = async () => {
     setLoading(true);
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+      // Stay on the public /auth origin for the OAuth callback; the
+      // useEffect above sees the session and navigates to `dest` after.
+      redirect_uri: window.location.origin + "/auth" + (rawRedirect ? `?redirect=${encodeURIComponent(rawRedirect)}` : ""),
     });
     if (result.error) {
       setLoading(false);
@@ -124,7 +141,7 @@ function AuthPage() {
     }
     if (result.redirected) return; // browser redirects out
     setLoading(false);
-    navigate({ to: "/workspace" });
+    navigate({ to: dest as never });
   };
 
   return (

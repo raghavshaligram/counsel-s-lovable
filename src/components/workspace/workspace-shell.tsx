@@ -99,6 +99,7 @@ import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
 import { ExportFormatChip } from "./export-format-row";
+import { WelcomeModal } from "./welcome-modal";
 import { PrivacyShield } from "./privacy-shield";
 import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
 import { useHotkey } from "@/lib/use-hotkey";
@@ -282,6 +283,9 @@ const THEME_TINT: Record<ReadingTheme, string> = {
 };
 
 export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
+  // ----------------- Welcome modal --------------------------------------
+  // Shown once on first /workspace visit. Re-openable via the account menu.
+  const [welcomeNonce, setWelcomeNonce] = useState(0);
   // ----------------- Tabs: array of open documents -------------------
   // Each tab owns its OWN file, editor state, active tool, view settings,
   // undo history, and dirty flag. The canvas/inspector/toolbar/command bar
@@ -1378,7 +1382,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             Export
           </button>
           <span className="mx-0.5 h-4 w-px bg-border" />
-          <AccountMenu />
+          <AccountMenu onShowWelcome={() => setWelcomeNonce((n) => n + 1)} />
         </div>
       </header>
 
@@ -1857,6 +1861,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         doc={editorState.doc ?? null}
         file={active.file ?? null}
       />
+      <WelcomeModal forceOpen={welcomeNonce > 0 ? true : undefined} key={welcomeNonce} />
     </div>
   );
 }

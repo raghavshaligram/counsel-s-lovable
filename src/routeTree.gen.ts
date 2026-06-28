@@ -41,7 +41,10 @@ import { Route as CompareRouteImport } from './routes/compare'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as BatesRouteImport } from './routes/bates'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
+import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
@@ -203,10 +206,24 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -243,6 +260,8 @@ export interface FileRoutesByFullPath {
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
+  '/account': typeof AuthenticatedAccountRoute
+  '/billing': typeof AuthenticatedBillingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -278,10 +297,13 @@ export interface FileRoutesByTo {
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
+  '/account': typeof AuthenticatedAccountRoute
+  '/billing': typeof AuthenticatedBillingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/bates': typeof BatesRoute
   '/chat': typeof ChatRoute
@@ -314,6 +336,8 @@ export interface FileRoutesById {
   '/watermark': typeof WatermarkRoute
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
+  '/_authenticated/account': typeof AuthenticatedAccountRoute
+  '/_authenticated/billing': typeof AuthenticatedBillingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -351,6 +375,8 @@ export interface FileRouteTypes {
     | '/watermark'
     | '/word-to-pdf'
     | '/workspace'
+    | '/account'
+    | '/billing'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -386,9 +412,12 @@ export interface FileRouteTypes {
     | '/watermark'
     | '/word-to-pdf'
     | '/workspace'
+    | '/account'
+    | '/billing'
   id:
     | '__root__'
     | '/'
+    | '/_authenticated'
     | '/auth'
     | '/bates'
     | '/chat'
@@ -421,10 +450,13 @@ export interface FileRouteTypes {
     | '/watermark'
     | '/word-to-pdf'
     | '/workspace'
+    | '/_authenticated/account'
+    | '/_authenticated/billing'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   BatesRoute: typeof BatesRoute
   ChatRoute: typeof ChatRoute
@@ -685,6 +717,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -692,11 +731,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/billing': {
+      id: '/_authenticated/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof AuthenticatedBillingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/account': {
+      id: '/_authenticated/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AuthenticatedAccountRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
+  AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAccountRoute: AuthenticatedAccountRoute,
+  AuthenticatedBillingRoute: AuthenticatedBillingRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   BatesRoute: BatesRoute,
   ChatRoute: ChatRoute,

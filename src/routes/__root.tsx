@@ -15,6 +15,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { requestPersistentStorage } from "../lib/storage-persist";
 import { isChunkLoadError, reloadForFreshChunks } from "../lib/chunk-import";
 import { useLicenseActivation } from "../lib/use-license-activation";
+import { supabase } from "@/integrations/supabase/client";
 
 function NotFoundComponent() {
   return (
@@ -141,7 +142,24 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
   useLicenseActivation();
+
+  // Global auth-state navigation. On sign-out, return to the public home so
+  // signed-out users land on the landing page (not a stale protected route).
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        queryClient.clear();
+        void router.navigate({ to: "/" });
+      } else if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+        void router.invalidate();
+        void queryClient.invalidateQueries();
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [router, queryClient]);
+
 
 
   useEffect(() => {
