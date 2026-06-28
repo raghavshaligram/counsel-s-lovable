@@ -432,12 +432,19 @@ function RedactStamp({
 
 /* ——— useInView hook ——— */
 
-function useInView<T extends HTMLElement>(once = true) {
+function useInView<T extends HTMLElement>(once = false) {
   const ref = useRef<T | null>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) {
       setInView(true);
       return;
     }
