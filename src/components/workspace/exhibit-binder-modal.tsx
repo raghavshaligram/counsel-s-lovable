@@ -172,7 +172,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
           exhibits: exhibits.map((e, i) => ({
             name: e.name,
             title: e.title,
-            label: previewLabels[i], // single ordered source of truth
+            label: e.labelOverride.trim() || undefined,
             bytes: e.bytes,
           })),
           labelScheme,
