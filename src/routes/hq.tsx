@@ -312,8 +312,14 @@ function UsersTab() {
                     ) : (
                       <button
                         disabled={busy === u.userId}
-                        onClick={() => {
-                          if (!confirm(`Soft-delete ${u.email ?? u.userId}?`)) return;
+                        onClick={async () => {
+                          const ok = await confirmDialog({
+                            title: "Soft-delete user?",
+                            description: `${u.email ?? u.userId} will be marked deleted. You can restore them later.`,
+                            confirmText: "Soft-delete",
+                            tone: "danger",
+                          });
+                          if (!ok) return;
                           void act(u.userId, () => softDelete({ data: { userId: u.userId } }));
                         }}
                         className="rounded border border-red-500/40 px-2 py-0.5 text-red-400 hover:bg-red-500/10"
