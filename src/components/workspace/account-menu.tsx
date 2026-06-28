@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn } from "lucide-react";
+import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLicenseActivation } from "@/lib/use-license-activation";
 import { clearLicense } from "@/lib/license-store";
+import { resetWelcomeSeen } from "@/lib/workspace/welcome-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +22,6 @@ function planLabel(plan: "free" | "solo" | "firm" | undefined) {
   if (plan === "firm") return "Firm plan";
   return "Free";
 }
-
 function statusLabel(status: string | undefined) {
   if (!status) return "";
   if (status === "active") return "Active";
@@ -31,7 +31,12 @@ function statusLabel(status: string | undefined) {
   return status;
 }
 
-export function AccountMenu() {
+type AccountMenuProps = {
+  /** Called when user selects "How it works" — wired by workspace shell to re-open the welcome modal. */
+  onShowWelcome?: () => void;
+};
+
+export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
   const license = useLicenseActivation();
   const navigate = useNavigate();
   const [user, setUser] = useState<SessionUser>(null);
@@ -74,8 +79,20 @@ export function AccountMenu() {
     try {
       await supabase.auth.signOut();
       await clearLicense();
+      navigate({ to: "/" });
     } finally {
       setSigningOut(false);
+    }
+  };
+
+  const showWelcome = async () => {
+    if (onShowWelcome) {
+      // Reset the seen flag so the modal opens fresh anywhere.
+      await resetWelcomeSeen();
+      onShowWelcome();
+    } else {
+      await resetWelcomeSeen();
+      navigate({ to: "/workspace" });
     }
   };
 
@@ -111,13 +128,17 @@ export function AccountMenu() {
           For subscription &amp; identity only. Your documents stay on this device.
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void navigate({ to: "/pricing" })}>
+        <DropdownMenuItem onSelect={() => void navigate({ to: "/_authenticated/billing" as never })}>
           <CreditCard className="h-3.5 w-3.5" strokeWidth={2} />
-          Manage subscription
+          Subscription &amp; billing
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void navigate({ to: "/pricing" })}>
+        <DropdownMenuItem onSelect={() => void navigate({ to: "/_authenticated/account" as never })}>
           <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2} />
           Account settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); void showWelcome(); }}>
+          <HelpCircle className="h-3.5 w-3.5" strokeWidth={2} />
+          How it works
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={signingOut} onSelect={(e) => { e.preventDefault(); void onSignOut(); }}>
