@@ -1125,6 +1125,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           h: rect.h,
           color: { r: 0, g: 0, b: 0 },
           opacity: 1,
+          category: d.category,
           sources: d.source?.originalString
             ? [
                 {
