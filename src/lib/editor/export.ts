@@ -134,17 +134,36 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
 
   }
 
-  // Best-effort destructive text rewrite: erase content-stream Tj operands
-  // matching captured originals for text-edit + redact annotations.
+  // Destructive content-stream surgery. For text-edit annotations we keep
+  // string-equality replacement of Tj/' literals. For redact annotations we
+  // pass the rectangle in PDF user-space (bottom-left origin) and delete
+  // every text-show (Tj/TJ/'/") whose start position falls inside the box —
+  // works for `(literal) Tj`, `<hex> Tj`, and `[...] TJ` uniformly because
+  // the match is by glyph POSITION, not glyph bytes.
+  const outPages = out.getPages();
   const rewrites = new Map<number, PageRewrite>();
   for (const a of doc.annotations) {
     if (a.kind === "text-edit" && a.source?.originalString) {
-      const job = rewrites.get(a.page) ?? { edits: [], redacts: [] };
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [], redactStrings: [] };
       job.edits.push({ original: a.source.originalString, replacement: a.text });
       rewrites.set(a.page, job);
-    } else if (a.kind === "redact" && a.sources?.length) {
-      const job = rewrites.get(a.page) ?? { edits: [], redacts: [] };
-      for (const s of a.sources) job.redacts.push({ original: s.originalString });
+    } else if (a.kind === "redact") {
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [], redactStrings: [] };
+      const outPage = outPages[a.page];
+      if (outPage) {
+        const ph = outPage.getSize().height;
+        job.redacts.push({
+          x1: a.x,
+          y1: ph - (a.y + a.h),
+          x2: a.x + a.w,
+          y2: ph - a.y,
+        });
+      }
+      if (a.sources?.length) {
+        for (const s of a.sources) {
+          if (s.originalString) job.redactStrings!.push(s.originalString);
+        }
+      }
       rewrites.set(a.page, job);
     }
   }
