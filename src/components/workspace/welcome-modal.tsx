@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Lock, ShieldCheck, WifiOff, Scale, ArrowRight, X } from "lucide-react";
+import { Lock, ShieldCheck, WifiOff, Scale, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { hasSeenWelcome, markWelcomeSeen } from "@/lib/workspace/welcome-store";
 
