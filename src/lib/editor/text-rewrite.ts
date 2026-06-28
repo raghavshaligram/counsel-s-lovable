@@ -1,34 +1,43 @@
-// Best-effort destructive content-stream rewriter.
+// Destructive content-stream surgery.
 //
-// pdf-lib does not ship a public AST API for content streams, so we operate
-// on the raw decoded bytes of each page's content stream. We treat the
-// stream as latin1 text (operators are ASCII; non-ASCII bytes only appear
-// inside Tj string operands and we re-emit them verbatim when they don't
-// match an edit/redact target).
+// For redaction, we DO NOT rely on string matching. We tokenize each page's
+// content stream, track the graphics state (CTM via cm/q/Q) and the text
+// state (Tm/Tlm via BT/ET/Td/TD/Tm/T*/TL), compute the user-space START
+// position of every text-show operator (Tj/TJ/'/"), and delete the entire
+// operator + its operands when that start position falls inside any redact
+// rectangle. This handles `(literal) Tj`, `<hex> Tj`, and `[...] TJ` arrays
+// uniformly because the trigger is glyph POSITION, not glyph bytes.
 //
-// Scope (intentional):
-//   - Tj  (show string)
-//   - '   (move next line and show string)
-// Out of scope for v1: TJ array operands (arrays of string + kern numbers)
-// and " operator. When a target string lives inside TJ we fall back to the
-// existing visual whiteout — search/copy won't reflect it, but render does.
+// In addition we:
+//   - drop image `Do` operators whose CTM-mapped bounding box lies fully
+//     inside a redact rectangle
+//   - keep a string-equality fallback (operand literal == captured source
+//     string) for Tj/' in case the position tracker drifts on a stream that
+//     uses implicit-advance text runs without per-glyph Tm resets
+//   - preserve the legacy text-edit string-replacement path used by Edit-text
+//     annotations (handles only `(literal) Tj` / `'`, like before)
 //
-// Match strategy: exact string equality on the decoded literal. This is
-// reliable for Standard 14 fonts and for any font whose encoding maps
-// directly to latin1 codepoints (the common case for plain ASCII text). For
-// CID fonts / custom CMaps the literal bytes won't match the user-visible
-// string and the rewrite is silently skipped (visual overlay still hides it).
+// The redact rectangles are passed in PDF user-space coordinates (origin at
+// bottom-left, matching PDF native coordinates) — the caller is responsible
+// for flipping the editor's top-left rects into user space.
 
 import type { PDFDocument } from "pdf-lib";
 import { unzlibSync, zlibSync } from "fflate";
-import type { TextEditAnno, RedactAnno } from "./types";
 
-type Edit = { original: string; replacement: string };
-type Redact = { original: string };
+export interface RedactRect {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
 
 export interface PageRewrite {
-  edits: Edit[];
-  redacts: Redact[];
+  /** Redact rectangles in PDF user-space (bottom-left origin). */
+  redacts: RedactRect[];
+  /** Best-effort string fallback for redaction (Tj/' literals). */
+  redactStrings?: string[];
+  /** Text-edit string replacements (Tj/' literal equality). */
+  edits: { original: string; replacement: string }[];
 }
 
 export async function rewriteDocument(
@@ -41,19 +50,19 @@ export async function rewriteDocument(
     if (!job || (!job.edits.length && !job.redacts.length)) continue;
     try {
       rewritePage(pages[i], job);
-    } catch {
-      // Swallow — visual overlay still hides the original glyphs.
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[redact] page rewrite failed", i, err);
     }
   }
 }
 
 function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite) {
-  // Access the (possibly multi-part) content stream. We use the internal
-  // PDFPageLeaf helpers exposed by pdf-lib at runtime.
+  // pdf-lib internals: coalesce a multi-stream Contents into a single stream
+  // when possible so we only rewrite one buffer per page.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const node: any = page.node;
   if (typeof node.normalize === "function") {
-    // Coalesce content stream array into a single stream where possible.
     try { node.normalize(); } catch { /* ignore */ }
   }
 
@@ -74,19 +83,10 @@ function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite) {
     if ((contents as any).contents) streams.push(contents as import("pdf-lib").PDFRawStream);
   }
 
-  for (const stream of streams) {
-    rewriteStream(stream, job);
-  }
+  for (const stream of streams) rewriteStream(stream, job);
 }
 
-function rewriteStream(
-  stream: import("pdf-lib").PDFRawStream,
-  job: PageRewrite,
-) {
-  // pdf-lib exposes the raw bytes as `contents` (Uint8Array). Most real-
-  // world PDFs have FlateDecode'd content streams, so we decode-then-rewrite
-  // -then-re-encode. Without this, destructive redaction would silently fall
-  // back to visual whiteout on >90 % of documents.
+function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const s: any = stream;
   const dict = s.dict;
@@ -113,90 +113,28 @@ function rewriteStream(
 
   const wasFlate = filterNames.length === 1 && (filterNames[0] === "FlateDecode" || filterNames[0] === "Fl");
   if (filterNames.length && !wasFlate) {
-    // Other filters (ASCII85, LZW, RunLength, DCTDecode, etc.) — too risky
-    // to round-trip. Visual overlay still hides the glyphs.
+    // Other filters (ASCII85, LZW, DCTDecode, etc.) — too risky to round-trip.
     return;
   }
   if (wasFlate) {
-    try {
-      bytes = unzlibSync(bytes);
-    } catch {
-      return;
-    }
+    try { bytes = unzlibSync(bytes); } catch { return; }
   }
 
-  // latin1 decode
+  // latin1 decode — operators are ASCII; non-ASCII bytes only appear inside
+  // string/hex operands and we treat operand bytes opaquely on rewrite.
   let text = "";
   for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
 
-  const editMap = new Map(job.edits.map((e) => [e.original, e.replacement]));
-  const redactSet = new Set(job.redacts.map((r) => r.original));
+  const result = surgicalRewrite(text, job);
+  if (!result.mutated) return;
 
-  // Walk Tj literal operands: `(...) Tj`  or  `(...) '`.
-  // String literal supports escapes (\(, \), \\, \n, \r, \t, \b, \f, \ddd) and
-  // balanced parens. We only need correct *bounds*; the operand bytes are
-  // replaced wholesale by literal-encoded ASCII when we hit a match.
-  let out = "";
-  let i = 0;
-  let mutated = false;
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch !== "(") { out += ch; i++; continue; }
-    // find matching close paren respecting escapes + nesting
-    let j = i + 1;
-    let depth = 1;
-    while (j < text.length && depth > 0) {
-      const c = text[j];
-      if (c === "\\") { j += 2; continue; }
-      if (c === "(") { depth++; j++; continue; }
-      if (c === ")") { depth--; j++; if (depth === 0) break; continue; }
-      j++;
-    }
-    if (depth !== 0) { out += text.slice(i); break; }
-    const literal = text.slice(i + 1, j - 1);
-    // peek operator after optional whitespace
-    let k = j;
-    while (k < text.length && /\s/.test(text[k])) k++;
-    const op = text[k];
-    const op2 = text.slice(k, k + 2);
-    const isTj = op === "'" || (op === "T" && text[k + 1] === "j");
-    if (!isTj) { out += text.slice(i, j); i = j; continue; }
-    const decoded = decodeLiteral(literal);
-    if (redactSet.has(decoded)) {
-      // erase the entire `( ... ) Tj` (or `'`) sequence
-      const after = op === "'" ? k + 1 : k + 2;
-      mutated = true;
-      i = after;
-      continue;
-    }
-    const repl = editMap.get(decoded);
-    if (repl !== undefined) {
-      out += "(" + encodeLiteral(repl) + ")";
-      mutated = true;
-      i = j;
-      continue;
-    }
-    out += text.slice(i, j);
-    i = j;
-    // op chars handled in next iteration
-    void op2;
-  }
-
-  if (!mutated) return;
-
-  // re-encode latin1 back to bytes
-  let newBytes = new Uint8Array(out.length);
-  for (let n = 0; n < out.length; n++) newBytes[n] = out.charCodeAt(n) & 0xff;
+  let newBytes = new Uint8Array(result.text.length);
+  for (let n = 0; n < result.text.length; n++) newBytes[n] = result.text.charCodeAt(n) & 0xff;
 
   if (wasFlate) {
-    try {
-      newBytes = zlibSync(newBytes);
-    } catch {
-      return;
-    }
+    try { newBytes = zlibSync(newBytes); } catch { return; }
   }
   s.contents = newBytes;
-  // update /Length if pdf-lib stored one
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const lenKey = (dict.context as any).obj("Length");
@@ -205,8 +143,162 @@ function rewriteStream(
   } catch { /* pdf-lib will recompute on save */ }
 }
 
+// ─── Tokenizer + content-stream walker ──────────────────────────────────────
+
+type TokKind =
+  | "num" | "name" | "op" | "str" | "hexstr"
+  | "lbrack" | "rbrack" | "dict" | "other";
+type Tok = { kind: TokKind; start: number; end: number };
+
+function tokenize(text: string): Tok[] {
+  const out: Tok[] = [];
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    const c = text[i];
+    // whitespace
+    if (c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f" || c === "\0") { i++; continue; }
+    // comment
+    if (c === "%") {
+      while (i < n && text[i] !== "\n" && text[i] !== "\r") i++;
+      continue;
+    }
+    const start = i;
+    // string literal `(...)` with escapes and balanced parens
+    if (c === "(") {
+      let depth = 1; i++;
+      while (i < n && depth > 0) {
+        const ch = text[i];
+        if (ch === "\\") { i += 2; continue; }
+        if (ch === "(") { depth++; i++; continue; }
+        if (ch === ")") { depth--; i++; continue; }
+        i++;
+      }
+      out.push({ kind: "str", start, end: i });
+      continue;
+    }
+    // dict `<<...>>` or hex string `<...>`
+    if (c === "<") {
+      if (text[i + 1] === "<") {
+        let depth = 1; i += 2;
+        while (i < n && depth > 0) {
+          if (text[i] === "<" && text[i + 1] === "<") { depth++; i += 2; continue; }
+          if (text[i] === ">" && text[i + 1] === ">") { depth--; i += 2; continue; }
+          if (text[i] === "(") {
+            let d = 1; i++;
+            while (i < n && d > 0) {
+              const ch = text[i];
+              if (ch === "\\") { i += 2; continue; }
+              if (ch === "(") d++;
+              else if (ch === ")") d--;
+              i++;
+            }
+            continue;
+          }
+          i++;
+        }
+        out.push({ kind: "dict", start, end: i });
+        continue;
+      }
+      i++;
+      while (i < n && text[i] !== ">") i++;
+      if (i < n) i++;
+      out.push({ kind: "hexstr", start, end: i });
+      continue;
+    }
+    if (c === "[") { out.push({ kind: "lbrack", start, end: i + 1 }); i++; continue; }
+    if (c === "]") { out.push({ kind: "rbrack", start, end: i + 1 }); i++; continue; }
+    // name `/Foo`
+    if (c === "/") {
+      i++;
+      while (i < n && !"()<>[]{}/% \t\n\r\f\0".includes(text[i])) i++;
+      out.push({ kind: "name", start, end: i });
+      continue;
+    }
+    // number
+    if (c === "+" || c === "-" || c === "." || (c >= "0" && c <= "9")) {
+      i++;
+      while (i < n) {
+        const ch = text[i];
+        if ((ch >= "0" && ch <= "9") || ch === "." || ch === "-" || ch === "+" || ch === "e" || ch === "E") i++;
+        else break;
+      }
+      out.push({ kind: "num", start, end: i });
+      continue;
+    }
+    // bare-character operators `'` and `"`
+    if (c === "'" || c === '"') {
+      i++;
+      out.push({ kind: "op", start, end: i });
+      continue;
+    }
+    // alphabetic operator
+    if ((c >= "A" && c <= "Z") || (c >= "a" && c <= "z")) {
+      i++;
+      while (i < n) {
+        const ch = text[i];
+        if ((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "*") i++;
+        else break;
+      }
+      out.push({ kind: "op", start, end: i });
+      // Inline image: ID … EI carries raw bytes that may look like operators.
+      const op = text.slice(start, i);
+      if (op === "ID") {
+        if (i < n && (text[i] === " " || text[i] === "\n" || text[i] === "\r")) i++;
+        let p = i;
+        while (p < n - 1) {
+          if (text[p] === "E" && text[p + 1] === "I") {
+            const before = p === 0 ? " " : text[p - 1];
+            const after = p + 2 >= n ? " " : text[p + 2];
+            if (/\s/.test(before) && /\s/.test(after)) break;
+          }
+          p++;
+        }
+        i = Math.min(p, n);
+      }
+      continue;
+    }
+    // unknown byte — skip
+    i++;
+  }
+  return out;
+}
+
+// 2×3 affine matrices as 6-tuples [a b c d e f] representing
+//   [a b 0; c d 0; e f 1]
+function identity(): number[] { return [1, 0, 0, 1, 0, 0]; }
+function mul(a: number[], b: number[]): number[] {
+  return [
+    a[0] * b[0] + a[1] * b[2],
+    a[0] * b[1] + a[1] * b[3],
+    a[2] * b[0] + a[3] * b[2],
+    a[2] * b[1] + a[3] * b[3],
+    a[4] * b[0] + a[5] * b[2] + b[4],
+    a[4] * b[1] + a[5] * b[3] + b[5],
+  ];
+}
+function txp(m: number[], x: number, y: number): [number, number] {
+  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+}
+
+function pointInRects(x: number, y: number, rects: RedactRect[]): boolean {
+  for (const r of rects) {
+    const x1 = Math.min(r.x1, r.x2), x2 = Math.max(r.x1, r.x2);
+    const y1 = Math.min(r.y1, r.y2), y2 = Math.max(r.y1, r.y2);
+    if (x >= x1 && x <= x2 && y >= y1 && y <= y2) return true;
+  }
+  return false;
+}
+function bboxInRects(minX: number, minY: number, maxX: number, maxY: number, rects: RedactRect[]): boolean {
+  for (const r of rects) {
+    const x1 = Math.min(r.x1, r.x2), x2 = Math.max(r.x1, r.x2);
+    const y1 = Math.min(r.y1, r.y2), y2 = Math.max(r.y1, r.y2);
+    if (minX >= x1 && maxX <= x2 && minY >= y1 && maxY <= y2) return true;
+  }
+  return false;
+}
+
 function decodeLiteral(s: string): string {
-  // Decode PDF string-literal escapes into the raw byte string.
   let out = "";
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
@@ -224,15 +316,12 @@ function decodeLiteral(s: string): string {
       if (s[i + 2] >= "0" && s[i + 2] <= "7") { oct += s[i + 2]; i++; }
       if (s[i + 2] >= "0" && s[i + 2] <= "7") { oct += s[i + 2]; i++; }
       out += String.fromCharCode(parseInt(oct, 8));
-      i++;
-      continue;
+      i++; continue;
     }
-    out += n;
-    i++;
+    out += n; i++;
   }
   return out;
 }
-
 function encodeLiteral(s: string): string {
   let out = "";
   for (let i = 0; i < s.length; i++) {
@@ -248,4 +337,138 @@ function encodeLiteral(s: string): string {
     }
   }
   return out;
+}
+
+const TEXT_SHOW_OPS = new Set(["Tj", "TJ", "'", '"']);
+
+function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutated: boolean } {
+  const tokens = tokenize(text);
+  const editMap = new Map(job.edits.map((e) => [e.original, e.replacement]));
+  const redactStrings = new Set(job.redactStrings ?? []);
+  const rects = job.redacts;
+
+  let ctm = identity();
+  const gStack: number[][] = [];
+
+  let inText = false;
+  let tm = identity();
+  let tlm = identity();
+  let tLeading = 0;
+
+  let operands: Tok[] = [];
+  let cursor = 0;
+  let mutated = false;
+  const chunks: string[] = [];
+
+  const num = (t: Tok) => parseFloat(text.slice(t.start, t.end));
+
+  for (const tk of tokens) {
+    if (tk.kind !== "op") { operands.push(tk); continue; }
+    const op = text.slice(tk.start, tk.end);
+
+    // ── Decide drop / replace ──
+    let drop = false;
+    let replaceTjLiteral: string | null = null;
+
+    if (TEXT_SHOW_OPS.has(op) && inText) {
+      const [ux, uy] = txp(ctm, tm[4], tm[5]);
+      const inRect = rects.length ? pointInRects(ux, uy, rects) : false;
+
+      let stringMatchRedact = false;
+      if (!inRect && redactStrings.size && (op === "Tj" || op === "'")) {
+        const last = operands[operands.length - 1];
+        if (last?.kind === "str") {
+          const lit = decodeLiteral(text.slice(last.start + 1, last.end - 1));
+          if (redactStrings.has(lit)) stringMatchRedact = true;
+        }
+      }
+
+      if (inRect || stringMatchRedact) {
+        drop = true;
+      } else if ((op === "Tj" || op === "'") && editMap.size) {
+        const last = operands[operands.length - 1];
+        if (last?.kind === "str") {
+          const lit = decodeLiteral(text.slice(last.start + 1, last.end - 1));
+          const repl = editMap.get(lit);
+          if (repl !== undefined) replaceTjLiteral = repl;
+        }
+      }
+    }
+
+    if (op === "Do" && operands.length >= 1 && operands[operands.length - 1].kind === "name" && rects.length) {
+      // Unit-square corners through current CTM
+      const corners: Array<[number, number]> = [[0, 0], [1, 0], [1, 1], [0, 1]];
+      const usrs = corners.map(([x, y]) => txp(ctm, x, y));
+      const xs = usrs.map((u) => u[0]);
+      const ys = usrs.map((u) => u[1]);
+      if (bboxInRects(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), rects)) {
+        drop = true;
+      }
+    }
+
+    // ── Update graphics / text state (drops do not affect state) ──
+    if (op === "q") gStack.push(ctm.slice());
+    else if (op === "Q") ctm = gStack.pop() ?? identity();
+    else if (op === "cm" && operands.length >= 6) {
+      const k = operands.length - 6;
+      const m = [num(operands[k]), num(operands[k + 1]), num(operands[k + 2]), num(operands[k + 3]), num(operands[k + 4]), num(operands[k + 5])];
+      ctm = mul(m, ctm);
+    } else if (op === "BT") {
+      inText = true; tm = identity(); tlm = identity();
+    } else if (op === "ET") {
+      inText = false;
+    } else if (inText) {
+      if (op === "Tm" && operands.length >= 6) {
+        const k = operands.length - 6;
+        tm = [num(operands[k]), num(operands[k + 1]), num(operands[k + 2]), num(operands[k + 3]), num(operands[k + 4]), num(operands[k + 5])];
+        tlm = tm.slice();
+      } else if (op === "Td" && operands.length >= 2) {
+        const k = operands.length - 2;
+        const m = [1, 0, 0, 1, num(operands[k]), num(operands[k + 1])];
+        tlm = mul(m, tlm);
+        tm = tlm.slice();
+      } else if (op === "TD" && operands.length >= 2) {
+        const k = operands.length - 2;
+        const tx2 = num(operands[k]), ty2 = num(operands[k + 1]);
+        tLeading = -ty2;
+        const m = [1, 0, 0, 1, tx2, ty2];
+        tlm = mul(m, tlm);
+        tm = tlm.slice();
+      } else if (op === "T*") {
+        const m = [1, 0, 0, 1, 0, -tLeading];
+        tlm = mul(m, tlm);
+        tm = tlm.slice();
+      } else if (op === "TL" && operands.length >= 1) {
+        tLeading = num(operands[operands.length - 1]);
+      } else if (op === "'" || op === '"') {
+        const m = [1, 0, 0, 1, 0, -tLeading];
+        tlm = mul(m, tlm);
+        tm = tlm.slice();
+      }
+    }
+
+    // ── Emit ──
+    const groupStart = operands.length ? operands[0].start : tk.start;
+    const opEnd = tk.end;
+
+    if (drop) {
+      if (groupStart > cursor) chunks.push(text.slice(cursor, groupStart));
+      cursor = opEnd;
+      mutated = true;
+    } else if (replaceTjLiteral !== null) {
+      const last = operands[operands.length - 1];
+      if (last.start > cursor) chunks.push(text.slice(cursor, last.start));
+      chunks.push("(" + encodeLiteral(replaceTjLiteral) + ")");
+      chunks.push(text.slice(last.end, opEnd));
+      cursor = opEnd;
+      mutated = true;
+    } else {
+      chunks.push(text.slice(cursor, opEnd));
+      cursor = opEnd;
+    }
+    operands = [];
+  }
+  if (cursor < text.length) chunks.push(text.slice(cursor));
+
+  return { text: chunks.join(""), mutated };
 }
