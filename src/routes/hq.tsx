@@ -142,11 +142,14 @@ function UsersTab() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  const reload = useCallback(() => {
-    setRows(null);
-    void listUsers().then(setRows);
-  }, [listUsers]);
-  useEffect(reload, [reload]);
+  const reload = useCallback(
+    (silent = false) => {
+      if (!silent) setRows(null);
+      void listUsers().then(setRows);
+    },
+    [listUsers],
+  );
+  useEffect(() => reload(false), [reload]);
 
   const filtered = useMemo(() => {
     if (!rows) return null;
@@ -160,13 +163,22 @@ function UsersTab() {
     );
   }, [rows, q]);
 
-  const act = async (id: string, fn: () => Promise<unknown>) => {
+  const patchRow = (id: string, patch: Partial<HqUserRow>) =>
+    setRows((cur) => (cur ? cur.map((r) => (r.userId === id ? { ...r, ...patch } : r)) : cur));
+
+  const act = async (
+    id: string,
+    fn: () => Promise<unknown>,
+    optimistic?: Partial<HqUserRow>,
+  ) => {
+    if (optimistic) patchRow(id, optimistic);
     setBusy(id);
     try {
       await fn();
-      reload();
+      reload(true);
     } catch (e) {
       alert((e as Error).message);
+      reload(true);
     } finally {
       setBusy(null);
     }
@@ -206,17 +218,17 @@ function UsersTab() {
                   <select
                     value={u.plan}
                     disabled={busy === u.userId}
-                    onChange={(e) =>
-                      act(u.userId, () =>
-                        setPlan({
-                          data: {
-                            userId: u.userId,
-                            plan: e.target.value as "free" | "solo" | "firm",
-                            status: "active",
-                          },
-                        }),
-                      )
-                    }
+                    onChange={(e) => {
+                      const next = e.target.value as "free" | "solo" | "firm";
+                      void act(
+                        u.userId,
+                        () =>
+                          setPlan({
+                            data: { userId: u.userId, plan: next, status: "active" },
+                          }),
+                        { plan: next, subscriptionStatus: "active" },
+                      );
+                    }}
                     className="rounded border border-border bg-surface-1 px-1.5 py-1 text-[12px]"
                   >
                     <option value="free">free</option>
