@@ -720,6 +720,148 @@ function surgicalRewrite(
   return { text: chunks.join(""), mutated, stats };
 }
 
+function measureTextShow(
+  text: string,
+  operands: Tok[],
+  op: string,
+  state: {
+    ctm: number[];
+    tm: number[];
+    tlm: number[];
+    leading: number;
+    font: FontMetrics;
+    fontSize: number;
+    charSpacing: number;
+    wordSpacing: number;
+    hScale: number;
+    textRise: number;
+  },
+): { advance: number; baseTm: number[]; bbox: { minX: number; minY: number; maxX: number; maxY: number } | null } {
+  let baseTm = state.tm.slice();
+  let charSpacing = state.charSpacing;
+  let wordSpacing = state.wordSpacing;
+  let tokens: Tok[] = [];
+  let tjAdjust = 0;
+
+  if (op === "'" || op === '"') {
+    baseTm = mul([1, 0, 0, 1, 0, -state.leading], state.tlm);
+    if (op === '"' && operands.length >= 3) {
+      wordSpacing = parseFloat(text.slice(operands[operands.length - 3].start, operands[operands.length - 3].end)) || 0;
+      charSpacing = parseFloat(text.slice(operands[operands.length - 2].start, operands[operands.length - 2].end)) || 0;
+    }
+    tokens = operands.length ? [operands[operands.length - 1]] : [];
+  } else if (op === "Tj") {
+    tokens = operands.length ? [operands[operands.length - 1]] : [];
+  } else if (op === "TJ") {
+    const arr = arrayOperandTokens(operands);
+    tokens = arr.filter((t) => t.kind === "str" || t.kind === "hexstr");
+    for (const t of arr) if (t.kind === "num") tjAdjust += parseFloat(text.slice(t.start, t.end)) || 0;
+  }
+
+  const bytes = tokens.flatMap((t) => stringTokenBytes(text, t));
+  if (bytes.length === 0) return { advance: 0, baseTm, bbox: null };
+  const fontSize = Math.max(Math.abs(state.fontSize) || 12, 0.1);
+  const scale = (state.hScale || 100) / 100;
+  const design = glyphDesignWidth(bytes, state.font);
+  const codeCount = Math.max(1, countGlyphCodes(bytes, state.font));
+  const spaces = countSpaceCodes(bytes, state.font);
+  const spacing = codeCount * charSpacing + spaces * wordSpacing;
+  const advance = ((design / 1000) * fontSize + spacing - (tjAdjust / 1000) * fontSize) * scale;
+  const widthEm = Math.max(Math.abs(advance) / Math.max(fontSize * Math.abs(scale), 0.1), design / 1000, 0.05);
+  const heightEm = 1.2;
+  const riseEm = state.textRise / fontSize;
+  const trm = mul([fontSize * scale, 0, 0, fontSize, 0, state.textRise], mul(baseTm, state.ctm));
+  const corners: Array<[number, number]> = [
+    [0, -0.25 + riseEm],
+    [widthEm, -0.25 + riseEm],
+    [widthEm, heightEm - 0.25 + riseEm],
+    [0, heightEm - 0.25 + riseEm],
+  ].map(([x, y]) => txp(trm, x, y));
+  const xs = corners.map((p) => p[0]);
+  const ys = corners.map((p) => p[1]);
+  return {
+    advance,
+    baseTm,
+    bbox: { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) },
+  };
+}
+
+function arrayOperandTokens(operands: Tok[]): Tok[] {
+  let start = -1;
+  for (let i = operands.length - 1; i >= 0; i--) {
+    if (operands[i].kind === "lbrack") { start = i; break; }
+  }
+  if (start < 0 || operands[operands.length - 1]?.kind !== "rbrack") return [];
+  return operands.slice(start + 1, -1);
+}
+
+function stringTokenBytes(text: string, tok: Tok | undefined): number[] {
+  if (!tok) return [];
+  if (tok.kind === "str") return literalBytes(text.slice(tok.start + 1, tok.end - 1));
+  if (tok.kind === "hexstr") return hexBytes(text.slice(tok.start + 1, tok.end - 1));
+  return [];
+}
+
+function literalBytes(s: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i) & 0xff;
+    if (s[i] !== "\\") { out.push(c); continue; }
+    const n = s[i + 1];
+    if (n === undefined) break;
+    if (n === "n") { out.push(0x0a); i++; continue; }
+    if (n === "r") { out.push(0x0d); i++; continue; }
+    if (n === "t") { out.push(0x09); i++; continue; }
+    if (n === "b") { out.push(0x08); i++; continue; }
+    if (n === "f") { out.push(0x0c); i++; continue; }
+    if (n >= "0" && n <= "7") {
+      let oct = n;
+      if (s[i + 2] >= "0" && s[i + 2] <= "7") { oct += s[i + 2]; i++; }
+      if (s[i + 2] >= "0" && s[i + 2] <= "7") { oct += s[i + 2]; i++; }
+      out.push(parseInt(oct, 8) & 0xff);
+      i++; continue;
+    }
+    out.push(n.charCodeAt(0) & 0xff); i++;
+  }
+  return out;
+}
+
+function hexBytes(hex: string): number[] {
+  const clean = hex.replace(/\s+/g, "");
+  const out: number[] = [];
+  for (let i = 0; i < clean.length; i += 2) {
+    const n = Number.parseInt(clean.slice(i, i + 2).padEnd(2, "0"), 16);
+    if (Number.isFinite(n)) out.push(n & 0xff);
+  }
+  return out;
+}
+
+function glyphDesignWidth(bytes: number[], font: FontMetrics): number {
+  let width = 0;
+  for (const code of iterCodes(bytes, font)) width += font.widths.get(code) ?? font.missingWidth ?? font.defaultWidth;
+  return width || font.defaultWidth;
+}
+
+function countGlyphCodes(bytes: number[], font: FontMetrics): number {
+  let n = 0;
+  for (const _ of iterCodes(bytes, font)) n++;
+  return n;
+}
+
+function countSpaceCodes(bytes: number[], font: FontMetrics): number {
+  let n = 0;
+  for (const code of iterCodes(bytes, font)) if (code === 32) n++;
+  return n;
+}
+
+function* iterCodes(bytes: number[], font: FontMetrics): Generator<number> {
+  if (font.codeSize === 2) {
+    for (let i = 0; i < bytes.length; i += 2) yield ((bytes[i] ?? 0) << 8) | (bytes[i + 1] ?? 0);
+  } else {
+    for (const b of bytes) yield b;
+  }
+}
+
 function decodeStringToken(text: string, tok: Tok | undefined): string | null {
   if (!tok) return null;
   if (tok.kind === "str") return decodeLiteral(text.slice(tok.start + 1, tok.end - 1));
