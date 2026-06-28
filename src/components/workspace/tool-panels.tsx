@@ -1036,6 +1036,8 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [progress, setProgress] = useState<string>("");
   const [findings, setFindings] = useState<Det[] | null>(null);
   const [usedOcr, setUsedOcr] = useState(false);
+  const [scannedPages, setScannedPages] = useState<number[]>([]);
+  const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
 
@@ -1055,12 +1057,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setScanning(true);
     setFindings(null);
     setUsedOcr(false);
+    setScannedPages([]);
+    setTotalPagesScanned(0);
     setSelected(new Set());
     setProgress("Reading text layer…");
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+      const { detections, usedOcr, scannedPages: scanned, totalPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
         setProgress(
           p.stage === "ocr"
             ? `OCR scanning ${p.page}/${p.totalPages}`
@@ -1069,15 +1073,22 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       });
       setFindings(detections);
       setUsedOcr(usedOcr);
-      // Default selection: auto-check structured / high-confidence findings.
-      // Heuristic name matches are left UNCHECKED so users opt into them
-      // (avoids 50+ false positives from headings on business docs).
-      const autoSelect = detections.filter(
-        (d) => d.confidence !== "low",
-      );
+      setScannedPages(scanned);
+      setTotalPagesScanned(totalPages);
+      const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
+      const hasScanned = scanned.length > 0;
       if (detections.length === 0) {
-        toast.info("No sensitive data found", { description: "Nothing matched the built-in patterns." });
+        if (hasScanned) {
+          toast.warning("Scanned/image document — detection cannot read it", {
+            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. Run OCR first, or mark regions manually. Do NOT rely on auto-detect here.`,
+            duration: 12000,
+          });
+        } else {
+          toast.info("No sensitive data matched", {
+            description: "Nothing matched the built-in patterns on the readable text layer.",
+          });
+        }
       } else {
         const lowCount = detections.length - autoSelect.length;
         toast.success(`${detections.length} finding${detections.length === 1 ? "" : "s"}`, {
@@ -1085,6 +1096,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             ? `${autoSelect.length} auto-selected · ${lowCount} low-confidence name${lowCount === 1 ? "" : "s"} unchecked — review and opt in.`
             : "Review then click Redact selected.",
         });
+        if (hasScanned) {
+          toast.warning("Some pages are scanned — detection may miss items", {
+            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
+            duration: 12000,
+          });
+        }
       }
 
     } catch (err) {
@@ -1286,13 +1303,23 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      {findings && findings.length === 0 && !scanning && (
+      {findings && !scanning && scannedPages.length > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Scanned / image document detected</div>
+          {scannedPages.length} of {totalPagesScanned} page{scannedPages.length === 1 ? " is" : "s are"} image-only
+          (page{scannedPages.length === 1 ? "" : "s"} {scannedPages.slice(0, 8).join(", ")}{scannedPages.length > 8 ? "…" : ""}).
+          Automatic detection cannot reliably read text inside images.
+          <strong> Run OCR first, or mark regions manually — do NOT treat silence here as “clean”.</strong>
+        </div>
+      )}
+
+      {findings && findings.length === 0 && !scanning && scannedPages.length === 0 && (
         <p className="text-[11px] text-text-2">
-          No sensitive data matched the built-in patterns on this document.
+          No sensitive data matched the built-in patterns on this document’s readable text.
         </p>
       )}
 
-      {usedOcr && (
+      {usedOcr && scannedPages.length === 0 && (
         <p className="text-[10.5px] leading-snug text-text-muted">
           Some pages were image-only — OCR ran on-device to read them. Findings
           from those pages can be covered visually but the destructive burn

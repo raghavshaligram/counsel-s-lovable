@@ -233,7 +233,7 @@ export async function detectPiiInPdf(
   scale = 1.5,
   onProgress?: (p: DetectProgress) => void,
   preloadedDoc?: { numPages: number; getPage: (n: number) => Promise<unknown> },
-): Promise<{ detections: Detection[]; usedOcr: boolean }> {
+): Promise<{ detections: Detection[]; usedOcr: boolean; scannedPages: number[]; totalPages: number }> {
   const pdfjs = await getPdfjs();
   // Reuse the doc loaded by the caller (e.g. redact route already parsed the
   // file to render pages). Avoids a second arrayBuffer() + getDocument() on
@@ -398,7 +398,7 @@ export async function detectPiiInPdf(
   }
 
 
-  return { detections, usedOcr: ocrPages.length > 0 };
+  return { detections, usedOcr: ocrPages.length > 0, scannedPages: ocrPages.slice(), totalPages: doc.numPages };
 }
 
 type CatHit = {
