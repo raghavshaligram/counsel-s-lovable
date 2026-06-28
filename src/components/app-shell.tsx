@@ -355,8 +355,15 @@ function AllToolsPanel({ activeTool }: { activeTool: string | null }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
+  const currentSearch = useRouterState({ select: (s) => s.location.search as { tool?: string } });
+  const activeTool = currentPath === "/workspace" ? currentSearch?.tool ?? null : null;
   const [mobileOpen, setMobileOpen] = useState(false);
-  const isActive = (path: string) => currentPath === path;
+
+  const isPrimaryActive = (p: { tool?: string }) => {
+    if (currentPath !== "/workspace") return false;
+    if (!p.tool) return !activeTool; // "Workspace" only when no tool query
+    return activeTool === p.tool;
+  };
 
   return (
     <div className="flex min-h-svh w-full flex-col">
@@ -369,35 +376,41 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="font-display text-[19px] leading-none">VaultPDF</span>
           </Link>
 
-          {/* Desktop nav — 5 primary tools + All tools disclosure */}
+          {/* Desktop nav — primary tools + All tools disclosure. Every entry
+              deep-links into the workspace; no login required. */}
           <NavigationMenu className="hidden md:flex flex-1 justify-center">
             <NavigationMenuList className="gap-1">
-              {primaryNav.map((p) => (
-                <NavigationMenuItem key={p.to}>
-                  <Link
-                    to={p.to}
-                    className={cn(
-                      "inline-flex h-9 items-center rounded-md px-3 text-sm transition-colors hover:bg-accent/60",
-                      isActive(p.to) && "text-vault"
-                    )}
-                  >
-                    {p.label}
-                  </Link>
-                </NavigationMenuItem>
-              ))}
+              {primaryNav.map((p) => {
+                const active = isPrimaryActive(p);
+                return (
+                  <NavigationMenuItem key={p.label}>
+                    <Link
+                      to="/workspace"
+                      search={p.tool ? { tool: p.tool } : {}}
+                      className={cn(
+                        "inline-flex h-9 items-center rounded-md px-3 text-sm transition-colors hover:bg-accent/60",
+                        active && "text-vault"
+                      )}
+                    >
+                      {p.label}
+                    </Link>
+                  </NavigationMenuItem>
+                );
+              })}
               <NavigationMenuItem>
                 <NavigationMenuTrigger
                   className={cn(
                     "h-9 bg-transparent text-sm",
-                    groups.some((g) => g.items.some((t) => isActive(t.to))) &&
-                      !primaryNav.some((p) => isActive(p.to)) &&
+                    activeTool &&
+                      groups.some((g) => g.items.some((t) => t.id === activeTool)) &&
+                      !primaryNav.some(isPrimaryActive) &&
                       "text-vault"
                   )}
                 >
                   All tools
                 </NavigationMenuTrigger>
                 <NavigationMenuContent>
-                  <AllToolsPanel isActive={isActive} />
+                  <AllToolsPanel activeTool={activeTool} />
                 </NavigationMenuContent>
               </NavigationMenuItem>
             </NavigationMenuList>
@@ -434,6 +447,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <SheetTitle>All tools</SheetTitle>
                 </SheetHeader>
                 <div className="mt-4 space-y-6">
+                  <Link
+                    to="/workspace"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-between rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-vault">Open workspace</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">All tools, one canvas.</div>
+                    </div>
+                    <span className="text-vault text-xs">→</span>
+                  </Link>
                   {groups.map((group) => (
                     <div key={group.id}>
                       <div className="font-display text-sm text-vault mb-2 px-1">
@@ -442,28 +466,23 @@ export function AppShell({ children }: { children: ReactNode }) {
 
                       <div className="flex flex-col">
                         {group.items.map((t) => (
-                          <ToolCard key={t.to} tool={t} onClick={() => setMobileOpen(false)} isActive={isActive(t.to)} />
+                          <ToolCard
+                            key={t.id}
+                            tool={t}
+                            onClick={() => setMobileOpen(false)}
+                            isActive={activeTool === t.id}
+                          />
                         ))}
                       </div>
                     </div>
                   ))}
-                  <Link
-                    to="/pricing"
-                    onClick={() => setMobileOpen(false)}
-                    className="flex items-center justify-between rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-vault">Pricing &amp; sign in</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Founder's rate — locked for life.</div>
-                    </div>
-                    <span className="text-vault text-xs">→</span>
-                  </Link>
                 </div>
               </SheetContent>
             </Sheet>
           </div>
         </div>
       </header>
+
 
       <main className="flex-1 min-h-0 pb-28">{children}</main>
 
