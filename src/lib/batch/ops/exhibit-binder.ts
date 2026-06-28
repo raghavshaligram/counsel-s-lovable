@@ -139,9 +139,16 @@ export async function buildExhibitBinder(
   type Tracked = { label: string; title: string; slipIndex: number };
   const tracked: Tracked[] = [];
 
+  // ORDER GUARANTEE: iterate the caller's array in-place by index.
+  // Slip-sheet, ToC entry, and merged pages for position `i` all come from
+  // opts.exhibits[i] in the same iteration — there is no second pass that
+  // could re-order them. The label is either the caller's explicit override
+  // (e.g. user-confirmed "Exhibit A") or computed from this same index `i`.
   for (let i = 0; i < opts.exhibits.length; i++) {
     const ex = opts.exhibits[i];
-    const label = `${labelPrefix}${exhibitLabel(i, opts.labelScheme)}`;
+    const label = ex.label?.trim()
+      ? ex.label.trim()
+      : `${labelPrefix}${exhibitLabel(i, opts.labelScheme)}`;
     const title = (ex.title ?? ex.name.replace(/\.pdf$/i, "")).trim() || ex.name;
     onProgress?.({ phase: "exhibits", current: i + 1, total: opts.exhibits.length, label });
 
