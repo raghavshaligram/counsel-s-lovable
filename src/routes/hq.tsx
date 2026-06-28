@@ -142,11 +142,14 @@ function UsersTab() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  const reload = useCallback(() => {
-    setRows(null);
-    void listUsers().then(setRows);
-  }, [listUsers]);
-  useEffect(reload, [reload]);
+  const reload = useCallback(
+    (silent = false) => {
+      if (!silent) setRows(null);
+      void listUsers().then(setRows);
+    },
+    [listUsers],
+  );
+  useEffect(() => reload(false), [reload]);
 
   const filtered = useMemo(() => {
     if (!rows) return null;
@@ -160,13 +163,22 @@ function UsersTab() {
     );
   }, [rows, q]);
 
-  const act = async (id: string, fn: () => Promise<unknown>) => {
+  const patchRow = (id: string, patch: Partial<HqUserRow>) =>
+    setRows((cur) => (cur ? cur.map((r) => (r.userId === id ? { ...r, ...patch } : r)) : cur));
+
+  const act = async (
+    id: string,
+    fn: () => Promise<unknown>,
+    optimistic?: Partial<HqUserRow>,
+  ) => {
+    if (optimistic) patchRow(id, optimistic);
     setBusy(id);
     try {
       await fn();
-      reload();
+      reload(true);
     } catch (e) {
       alert((e as Error).message);
+      reload(true);
     } finally {
       setBusy(null);
     }
