@@ -114,7 +114,10 @@ type ToolId =
   | "secure"
   | "layout"
   | "legal"
-  | "ai";
+  | "ai"
+  | "assemble"
+  | "edit"
+  | "navigate";
 
 type ToolGroupLabel =
   | "Pages"
@@ -124,7 +127,9 @@ type ToolGroupLabel =
   | "Secure"
   | "Layout"
   | "Legal"
-  | "AI";
+  | "AI"
+  | "Assemble"
+  | "Navigate";
 
 type RailTool = {
   id: string;
