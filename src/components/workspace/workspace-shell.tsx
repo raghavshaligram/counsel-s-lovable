@@ -3305,6 +3305,7 @@ function ToolModal({
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const isPro = useIsPro();
 
   useEffect(() => {
     inputRef.current?.focus();
