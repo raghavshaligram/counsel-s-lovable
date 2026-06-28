@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -179,8 +179,43 @@ function RootComponent() {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (import.meta.env.DEV) return; // skip SW in dev to avoid stale chunks
-    void navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+    const READY_KEY = "vaultpdf:offline-ready-notified";
+    const wasControlled = Boolean(navigator.serviceWorker.controller);
+
+    const notifyReady = () => {
+      try {
+        if (window.localStorage.getItem(READY_KEY) === "1") return;
+        window.localStorage.setItem(READY_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      toast.success("VaultPDF is ready to work offline", {
+        description: "You can disconnect anytime — everything stays on this device.",
+        duration: 6000,
+      });
+    };
+
+    void navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        // First-load case: no controller yet. Wait for the worker to activate,
+        // which means the app shell is precached and offline use is safe.
+        if (!wasControlled) {
+          const worker = registration.installing ?? registration.waiting ?? registration.active;
+          if (!worker) return;
+          if (worker.state === "activated") {
+            notifyReady();
+            return;
+          }
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "activated") notifyReady();
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
+
 
   return (
     <QueryClientProvider client={queryClient}>

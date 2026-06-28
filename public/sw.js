@@ -15,13 +15,15 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "vaultpdf-v3-offline";
+const VERSION = "vaultpdf-v4-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;
 const NAV_CACHE = `${VERSION}-nav`;
 
-const SHELL_URLS = ["/", "/manifest.webmanifest"];
+const OFFLINE_URL = "/offline.html";
+const SHELL_URLS = ["/", "/manifest.webmanifest", OFFLINE_URL];
+
 
 const THIRD_PARTY_HOSTS = new Set([
   "unpkg.com",
@@ -97,6 +99,10 @@ async function networkFirstNav(req) {
     const cached = await cache.match(req);
     if (cached) return cached;
     const shell = await caches.open(SHELL_CACHE);
+    // Prefer the branded offline page so users never see the browser's
+    // default "no internet" error. Fall back to the cached app shell.
+    const offline = await shell.match(OFFLINE_URL);
+    if (offline) return offline;
     const fallback = await shell.match("/");
     if (fallback) return fallback;
     return new Response("Offline", { status: 503, statusText: "Offline" });
