@@ -1,60 +1,32 @@
-## Goal
+## Plan: position-based true redaction for custom-font PDFs
 
-Reach feature parity with `/editor` inside the workspace without violating the one-inspector / no-second-rail rule. Reuse existing logic from `src/lib/editor/*`, `src/lib/outline/*`, `src/components/editor/CommentsPanel.tsx`. No embedding of standalone pages.
+1. **Replace string-dependent deletion with geometry-only deletion**
+   - Refactor `src/lib/editor/text-rewrite.ts` so redaction does not depend on decoded `Tj`/`TJ` text.
+   - Walk each page content stream in operator order and track graphics/text state: `q/Q`, `cm`, `BT/ET`, `Tm`, `Td`, `TD`, `T*`, text leading, font selection `Tf`, font size, character spacing, word spacing, horizontal scale.
+   - For every text-show operator (`Tj`, `TJ`, `'`, `"`), compute the rendered text bounding box from current text position, font size, and approximate advance width.
+   - If that bounding box intersects any redaction rectangle, remove that text-show operation based only on position.
 
-## 1. Contextual floating ribbon (full tool parity)
+2. **Add font-width lookup for custom fonts/CMaps**
+   - Resolve the active page font resource selected by `Tf` from the copied PDF page resources.
+   - Estimate text-show advance using `/Widths`, `/FirstChar`, `/MissingWidth`, `/DW`, and `/W` where available, with a safe default width fallback.
+   - Decode string bytes only as glyph/code units for width lookup, not for matching visible text.
+   - Preserve surrounding text operators whose bounding boxes do not intersect the redaction rectangles.
 
-Edit `src/components/workspace/workspace-shell.tsx`:
+3. **Decode and re-encode common PDF stream filter chains**
+   - Extend stream handling beyond single `/FlateDecode` to support common chains needed by generated/legal PDFs, especially `ASCII85Decode + FlateDecode` and aliases.
+   - Re-encode streams after mutation with a safe supported filter chain so the exported PDF remains readable.
+   - Continue skipping unsupported binary/image-only filters rather than corrupting them.
 
-- Extend `EDITOR_GROUPS` to add the missing drawing tools so the base ribbon matches `/editor`:
-  - Shapes group: `rect`, `ellipse`, `line`, `arrow`, `freehand` (icons already imported pattern: `Circle`, `Minus`, `ArrowRight`).
-- Keep the ribbon visually calm: only tool icons + undo/redo stay permanent.
-- Add a **contextual style strip** that mounts directly under the floating toolbar (same floating surface, second row) and renders ONLY the controls relevant to the active tool OR currently selected annotation. Reuses the same primitives already present in `/editor` (`PALETTE`, stroke/font/opacity number inputs) lifted into a small shared component `src/components/workspace/editor-style-strip.tsx`:
-  - text / edit-text / note → color, font size, opacity, B/I/U, align (reuse existing inline text toolbar logic already built in the canvas)
-  - highlight / underline / strikethrough → color, opacity
-  - rect / ellipse → color, stroke, fill toggle, opacity
-  - line / arrow / freehand → color, stroke, opacity
-  - image → opacity only
-  - select with an annotation selected → mirrors the selected annotation's kind (same mapping)
-- Strip hides entirely for `select` with no selection, and for `redact` / `page-crop` (their contextual groups already swap the ribbon).
-- Wire it through the same `editorDispatch` already passed into `ToolPanel`. No new state stores.
+4. **Verify by redaction regions, not strings**
+   - Update `src/lib/editor/verify-redaction.ts` to accept redaction rectangles in page coordinates.
+   - Re-open the exported PDF with pdf.js, extract text items with transforms/positions, and fail if any text item bounding box intersects a redaction rectangle.
+   - Keep string verification as diagnostic metadata only where available, but success must be based on “no text remains inside the redacted regions.”
 
-## 2. Navigation overlay (bookmarks + thumbnails + comments)
+5. **Wire region verification through export flows**
+   - In `src/components/workspace/tool-panels.tsx` and `src/components/workspace/export-dialog.tsx`, pass actual redaction boxes to verification after `exportEditedPdf`.
+   - Update success/error wording to report region removal, e.g. all redaction regions cleared.
+   - Ensure the Certificate of Redaction only states verified removal when the region-based check passes.
 
-New file `src/components/workspace/nav-overlay.tsx`. Single overlay component, three tabs: **Bookmarks**, **Pages**, **Comments**. Opens over the canvas (absolute, right-anchored, dismissible on Esc / outside click / toggle), NOT a permanent rail.
-
-- Trigger: a single icon button in the floating toolbar (left side, before tool groups) + hotkey `⌘B` (toggles overlay, defaults to Bookmarks tab).
-- **Bookmarks tab**: reuses `parseOutlineAndLinks` (already used by the Outline & Links inspector) to read the current tab's outline tree. Read-only navigation — click a node → `dispatch({ type: "SET_PAGE", n: dest.page })` and close overlay. Editing stays in the inspector panel.
-- **Pages tab**: thumbnail list rendered via existing pdf.js loader (`loadPdfjs`) already used by `linkifyPage`. Click → jump to page. Pure navigation; reorder/rotate/delete remain in the Organize tool (no duplication).
-- **Comments tab**: lists all annotations where `contents` is set (filterable: All / Unresolved / Mine). Click → SET_PAGE + select annotation. Resolve / reply actions delegate to the inspector (see §3) by opening it on that annotation.
-
-Overlay uses design tokens only (`surface-2/3`, `border`, `vault`, etc.), no ad-hoc colors.
-
-## 3. Comments — inspector panel for editing
-
-Add a `comments` rail entry under the **Edit** group in `TOOLS` (`src/components/workspace/workspace-shell.tsx`). Add a case in `ToolPanel` (`src/components/workspace/tool-panels.tsx`) that renders a thin wrapper around the existing `src/components/editor/CommentsPanel.tsx` logic — reuse the component's reply/resolve/threaded behavior, restyled to fit the inspector (design tokens, no embedded page chrome). When the nav overlay's Comments tab requests "edit this comment", it sets `activeToolId = "comments"` + selects the annotation.
-
-## 4. Editor route untouched
-
-`/editor` standalone route is not modified, not embedded, not removed. Workspace and `/editor` continue to share `src/lib/editor/state.ts` so annotations are interchangeable.
-
-## Files
-
-- edit `src/components/workspace/workspace-shell.tsx` — extend EDITOR_GROUPS, add overlay trigger + hotkey, add `comments` rail tool, mount style strip + nav overlay
-- new  `src/components/workspace/editor-style-strip.tsx` — contextual style controls
-- new  `src/components/workspace/nav-overlay.tsx` — bookmarks/pages/comments overlay
-- edit `src/components/workspace/tool-panels.tsx` — add `comments` case wrapping reused CommentsPanel
-
-## Rules respected
-
-- Exactly one right inspector; new panels REPLACE its contents.
-- No second rail. Navigation overlay is a dismissible floating surface, not a permanent column.
-- Canvas actions (style strip) attach to the floating toolbar, not a new toolbar.
-- All logic reused from `src/lib/editor`, `src/lib/outline`, `src/components/editor/CommentsPanel.tsx`. No rewrites.
-- Design tokens only. 100% on-device.
-
-## Out of scope
-
-- Pages thumbnails for reorder/delete (Organize already owns it).
-- New AI features.
-- Any change to `/editor` route, persistence model, or export pipeline.
+6. **Validation target**
+   - Use the existing custom-font test case behavior described by the user: redact all detected items, export, re-extract text with positions, and confirm no text items intersect any redaction rectangle while surrounding text outside rectangles remains extractable.
+   - Do not report success unless post-export verification passes with zero text in redaction regions.
