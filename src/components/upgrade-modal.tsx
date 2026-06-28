@@ -100,7 +100,7 @@ export function UpgradeModal() {
   const checkout = useServerFn(createMyCheckout);
   const [pending, setPending] = useState<Tier["id"] | null>(null);
 
-  const returnTo = reason?.returnTo ?? "/workspace";
+  void reason?.returnTo;
 
   const onSubscribe = useCallback(
     async (plan: Tier["id"]) => {
