@@ -1640,7 +1640,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               {viewOpen && (
                 <ViewPopover
                   pageLayout={pageLayout}
-                  onPageLayout={(v) => patchActive({ pageLayout: v })}
+                  onPageLayout={(v) => {
+                    // Switching to double-page while the inspector is open
+                    // leaves very little horizontal room — "Actual size" then
+                    // clips both pages. Auto-promote to fit-width so both
+                    // pages stay fully visible.
+                    if (v === "double" && inspectorOpen && zoomMode === "actual") {
+                      patchActive({ pageLayout: v, zoomMode: "fit-width" });
+                    } else {
+                      patchActive({ pageLayout: v });
+                    }
+                  }}
+
                   continuous={continuous}
                   onContinuous={(v) => patchActive({ continuous: v })}
                   showGaps={showGaps}
