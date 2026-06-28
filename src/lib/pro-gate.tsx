@@ -37,8 +37,7 @@ export type PaidFeatureId = keyof typeof PAID_FEATURES;
 export function useIsPro(): boolean {
   const license = useLicenseActivation();
   if (!license) return false;
-  if (license.plan === "free") return false;
-  return license.status === "active" || license.status === "trialing";
+  return license.entitled;
 }
 
 /**

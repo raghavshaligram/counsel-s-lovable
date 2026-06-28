@@ -54,6 +54,17 @@ async function activate(reason: string) {
   }
 }
 
+async function seedFromStoredLicense() {
+  const [{ data }, stored] = await Promise.all([supabase.auth.getSession(), loadLicense()]);
+  if (!stored) return;
+  if (!data.session || stored.userId !== data.session.user.id) {
+    await clearLicense();
+    if (current?.userId === stored.userId) setCurrent(null);
+    return;
+  }
+  if (!current) setCurrent(stored);
+}
+
 function subscribeRealtime(userId: string) {
   // One channel per session; tear down + recreate if user changes.
   if (realtimeChannel) {
@@ -84,10 +95,9 @@ function bootstrap() {
   if (bootstrapped || typeof window === "undefined") return;
   bootstrapped = true;
 
-  // Seed from IDB only if we don't already have a fresher snapshot.
-  void loadLicense().then((l) => {
-    if (l && !current) setCurrent(l);
-  });
+  // Seed from IDB only for the current signed-in user, then immediately
+  // re-fetch the live backend row on launch/auth events below.
+  void seedFromStoredLicense();
 
   void activate("launch");
 

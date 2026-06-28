@@ -30,16 +30,19 @@ export const getLicense = createServerFn({ method: "GET" })
 
     if (error) throw new Error(error.message);
 
+    // Raw workspace load signal. This is the exact table/columns used for Pro gating.
+    // eslint-disable-next-line no-console
+    console.info(
+      `[license] raw plan load user=${userId} subscriptions.plan=${data?.plan ?? "<missing>"} subscriptions.status=${data?.status ?? "<missing>"}`,
+    );
+
     const plan = (data?.plan ?? "free") as LicenseSnapshot["plan"];
     const status = (data?.status ?? "active") as LicenseSnapshot["status"];
     const currentPeriodEnd = data?.current_period_end ?? null;
 
     const periodOk =
       !currentPeriodEnd || new Date(currentPeriodEnd).getTime() > Date.now();
-    const entitled =
-      (status === "active" || status === "trialing") && periodOk && plan !== "free"
-        ? true
-        : plan === "free" && status === "active"; // free tier is always "entitled" to free tools
+    const entitled = (plan === "solo" || plan === "firm") && status === "active" && periodOk;
 
     return {
       userId,

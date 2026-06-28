@@ -39,7 +39,7 @@ export const hqAmOwner = createServerFn({ method: "GET" })
 
 export const hqListUsers = createServerFn({ method: "GET" })
   .middleware([requireOwner])
-  .handler(async (): Promise<HqUserRow[]> => {
+  .handler(async ({ context }): Promise<HqUserRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: usersRes, error: usersErr } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
@@ -47,15 +47,27 @@ export const hqListUsers = createServerFn({ method: "GET" })
     });
     if (usersErr) throw new Error(usersErr.message);
 
-    const { data: profiles } = await supabaseAdmin
+    const { data: profiles, error: profilesErr } = await supabaseAdmin
       .from("profiles")
       .select("user_id, full_name, plan, suspended_at, deleted_at");
-    const { data: subs } = await supabaseAdmin
+    if (profilesErr) throw new Error(profilesErr.message);
+
+    const { data: subs, error: subsErr } = await supabaseAdmin
       .from("subscriptions")
       .select("user_id, plan, status");
+    if (subsErr) throw new Error(subsErr.message);
 
     const profMap = new Map((profiles ?? []).map((p) => [p.user_id, p]));
     const subMap = new Map((subs ?? []).map((s) => [s.user_id, s]));
+
+    const ownerSub = subMap.get(context.userId);
+    const ownerProfile = profMap.get(context.userId);
+    // Raw load signal for the admin panel. The dropdown below binds to
+    // `subscriptions.plan`; `profiles.plan` is logged only to spot legacy drift.
+    // eslint-disable-next-line no-console
+    console.info(
+      `[hq] raw plan load user=${context.userId} subscriptions.plan=${ownerSub?.plan ?? "<missing>"} subscriptions.status=${ownerSub?.status ?? "<missing>"} profiles.plan=${ownerProfile?.plan ?? "<missing>"}`,
+    );
 
     return usersRes.users.map((u) => {
       const p = profMap.get(u.id);
@@ -64,7 +76,8 @@ export const hqListUsers = createServerFn({ method: "GET" })
         userId: u.id,
         email: u.email ?? null,
         fullName: (p?.full_name as string | null) ?? (u.user_metadata?.full_name as string | null) ?? null,
-        plan: (s?.plan as string | undefined) ?? (p?.plan as string | undefined) ?? "free",
+        // Single source of truth for subscription gating and the admin dropdown.
+        plan: (s?.plan as string | undefined) ?? "free",
         subscriptionStatus: (s?.status as string | undefined) ?? null,
         suspendedAt: (p?.suspended_at as string | null) ?? null,
         deletedAt: (p?.deleted_at as string | null) ?? null,
