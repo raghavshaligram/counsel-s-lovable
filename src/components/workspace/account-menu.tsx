@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle } from "lucide-react";
+import { useLoginModal } from "@/components/login-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useLicenseActivation } from "@/lib/use-license-activation";
 import { clearLicense } from "@/lib/license-store";
@@ -39,6 +40,7 @@ type AccountMenuProps = {
 export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
   const license = useLicenseActivation();
   const navigate = useNavigate();
+  const openLogin = useLoginModal((s) => s.openLogin);
   const [user, setUser] = useState<SessionUser>(null);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -60,14 +62,15 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
 
   if (!user) {
     return (
-      <Link
-        to="/auth"
+      <button
+        type="button"
+        onClick={openLogin}
         className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-surface-2"
         title="Sign in to manage your subscription"
       >
         <LogIn className="h-3.5 w-3.5" strokeWidth={2.5} />
         Sign in
-      </Link>
+      </button>
     );
   }
 

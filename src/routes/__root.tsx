@@ -17,6 +17,7 @@ import { isChunkLoadError, reloadForFreshChunks } from "../lib/chunk-import";
 import { useLicenseActivation } from "../lib/use-license-activation";
 import { supabase } from "@/integrations/supabase/client";
 import { UpgradeModal } from "@/components/upgrade-modal";
+import { LoginModal } from "@/components/login-modal";
 
 function NotFoundComponent() {
   return (
@@ -246,6 +247,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <Outlet />
       <UpgradeModal />
+      <LoginModal />
       <Toaster theme="dark" position="bottom-right" />
     </QueryClientProvider>
   );

@@ -31,6 +31,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useLoginModal } from "@/components/login-modal";
 
 type UpgradeReason = {
   featureName?: string;
@@ -95,10 +96,11 @@ const TIERS: Tier[] = [
 export function UpgradeModal() {
   const { open, reason, close } = useUpgradeModal();
   const navigate = useNavigate();
+  const openLogin = useLoginModal((s) => s.openLogin);
   const checkout = useServerFn(createMyCheckout);
   const [pending, setPending] = useState<Tier["id"] | null>(null);
 
-  const returnTo = reason?.returnTo ?? "/workspace";
+
 
   const onSubscribe = useCallback(
     async (plan: Tier["id"]) => {
@@ -134,8 +136,8 @@ export function UpgradeModal() {
 
   const onSignIn = useCallback(() => {
     close();
-    void navigate({ to: "/auth", search: { redirect: returnTo } as never });
-  }, [close, navigate, returnTo]);
+    openLogin();
+  }, [close, openLogin]);
 
   return (
     <Dialog
