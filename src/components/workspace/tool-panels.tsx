@@ -174,6 +174,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ImageConvertPanel ctx={ctx} />;
     case "doc-settings":
       return <DocumentSettingsPanel ctx={ctx} />;
+    case "bates":
+      return <BatesPanel ctx={ctx} />;
     case "comments":
       return <CommentsInspectorPanel ctx={ctx} />;
     case "outline":
@@ -5319,19 +5321,6 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
   const [flOn, setFlOn] = useState(false);
-  const [batesOn, setBatesOn] = useState(false);
-  const batesRef = useRef<HTMLDivElement | null>(null);
-
-  // Deep-link from the command bar ("search Bates") opens the Bates
-  // disclosure and scrolls it into view.
-  useEffect(() => {
-    if (ctx.focusSection !== "bates") return;
-    setBatesOn(true);
-    requestAnimationFrame(() => {
-      batesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    ctx.clearFocusSection?.();
-  }, [ctx.focusSection, ctx]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -5355,24 +5344,6 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      <div ref={batesRef} className="flex flex-col gap-2" id="doc-settings-bates">
-        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
-          # Bates Numbering
-        </div>
-        <DisclosureToggle
-          label="Stamp Bates numbers on export"
-          on={batesOn}
-          onChange={setBatesOn}
-        />
-        <p className="text-[10.5px] leading-snug text-text-muted">
-          Sequential discovery stamps (e.g. <code>ABC000123</code>) on every page. Court-ready.
-        </p>
-      </div>
-      {batesOn && (
-        <div className="rounded-md border border-border bg-surface-2/40 p-3">
-          <BatesSection ctx={ctx} />
-        </div>
-      )}
 
       <div className="flex flex-col gap-2">
         <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
@@ -5418,6 +5389,19 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
 }
 
 /* ============================== Bates ============================== */
+/**
+ * Dedicated Bates tool — single-document Bates (free) plus an entry point
+ * for multi-file Bates (Pro). Lives in the Legal rail group; there is no
+ * other Bates UI in the workspace.
+ */
+function BatesPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  if (!ctx.file) {
+    return <InspectorEmpty>Open a PDF to stamp Bates numbers, or use multi-file Bates below.</InspectorEmpty>;
+  }
+  return <BatesSection ctx={ctx} />;
+}
+
+
 /**
  * Bates configuration — prefix/suffix, start number, zero-padding, and
  * stamp position. Settings persist per-document via the shared bates store

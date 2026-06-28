@@ -589,18 +589,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const tool = toolById(toolId);
         if (!requirePro(tool?.label, `/workspace?tool=${encodeURIComponent(toolId)}`)) return;
       }
-      // Bates lives inside Document Settings now (next to Page Numbers).
-      // Selecting "Bates" anywhere (rail, all-tools search) deep-links into
-      // that panel and scrolls to the Bates section.
-      if (toolId === "bates") {
-        const target = toolById("doc-settings");
-        if (!target) return;
-        patchActive({ activeToolId: target.id, inspectorOpen: true });
-        setFocusSection("bates");
-        setToolModalOpen(false);
-        if (opts?.bump !== false) bumpUsage("bates");
-        return;
-      }
+      // Bates is now its own dedicated Legal-rail tool — fall through.
+
       const tool = toolById(toolId);
       if (!tool) return;
       patchActive({ activeToolId: tool.id, inspectorOpen: true });
