@@ -1450,19 +1450,60 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const { exportEditedPdf } = await importChunk(() => import("@/lib/editor/export"));
       const freshBytes = new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
-      const bytes = await exportEditedPdf(exportDoc);
+      let bytes = await exportEditedPdf(exportDoc);
 
-      // Verify by re-parsing the exported file and confirming no text remains
-      // inside any redaction region. This works for custom fonts/CMaps where
-      // glyph bytes do not decode to the visible string.
+      // Region-rasterize redacted pages. Default ("always") rasterizes every
+      // page with a redaction — text inside the box is physically replaced
+      // by image pixels and cannot be recovered regardless of font/CMap.
+      // "fallback" mode keeps text selectable on pages where the content-
+      // stream surgery already cleared the region.
+      toast.loading("Burning redaction regions…", { id: tid });
+      const pageRedactions = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+      for (const t of targets) {
+        const arr = pageRedactions.get(t.page) ?? [];
+        arr.push(t.rect);
+        pageRedactions.set(t.page, arr);
+      }
+      const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
+      const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+        mode: maxSecurity ? "always" : "fallback",
+        scale: 2.5,
+      });
+      bytes = rasterResult.bytes;
+
       toast.loading("Verifying removal…", { id: tid });
       const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
-      const result = await verifyRedactionRemoval(bytes, targets);
+      let result = await verifyRedactionRemoval(bytes, targets);
+
+      // Safety net: if anything still leaks (only possible in fallback mode),
+      // force rasterization on the offending pages and re-verify. A leaky
+      // file is never downloaded.
+      if (!result.ok) {
+        const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+        for (const leak of result.leaks) {
+          if (!leak.rect) continue;
+          const arr = leakedPages.get(leak.page) ?? [];
+          // Use the original redaction rects for that page (not just the
+          // single leaking rect) so we cover everything marked.
+          const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
+          arr.push(...pageRects);
+          leakedPages.set(leak.page, arr);
+        }
+        if (leakedPages.size > 0) {
+          const forced = await rasterizeRedactedPages(bytes, leakedPages, { mode: "always", scale: 2.5 });
+          bytes = forced.bytes;
+          result = await verifyRedactionRemoval(bytes, targets);
+        }
+      }
+
       setVerify(result);
       if (result.ok) {
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
-        toast.success(`Verified — ${result.removed}/${result.total} regions cleared`, { id: tid });
+        const flatNote = rasterResult.rasterizedPages.length
+          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} flattened`
+          : "";
+        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
       } else {
         throw new Error(`${result.leaks.length} redaction region${result.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
@@ -1472,7 +1513,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setBusy(false);
     }
-  }, [file, editorState?.doc, targets, totalBoxes]);
+  }, [file, editorState?.doc, targets, totalBoxes, maxSecurity]);
+
 
   const downloadCertificate = useCallback(async () => {
     if (!file || !verify || !lastBytes) return;
