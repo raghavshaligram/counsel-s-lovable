@@ -762,7 +762,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const bytes = await exportEditedPdf(exportDoc);
 
       // Download.
-      downloadBytes(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf", "application/pdf");
+      await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
       setLastBytes(bytes);
 
       // Verify by re-parsing the exported file and confirming every
@@ -818,7 +818,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         sourceHashSHA256: sourceHash,
         redactedHashSHA256: redactedHash,
       });
-      downloadBytes(cert, file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction.pdf", "application/pdf");
+      await downloadPdf(cert, file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction.pdf");
       toast.success("Certificate of redaction downloaded");
 
     } catch (err) {
@@ -4540,7 +4540,7 @@ function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
         prefix: prefix || undefined,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf");
         toast.success("Page numbers added", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
@@ -4800,7 +4800,7 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         position: s.position, fontSize: s.fontSize, color: s.color, margin: s.margin,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-bates.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-bates.pdf");
         toast.success("Bates numbers added", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
@@ -5002,7 +5002,7 @@ function HeaderFooterSection({ ctx }: { ctx: ToolPanelCtx }) {
         filename: file.name,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf");
         toast.success("Header/footer added", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
@@ -5118,7 +5118,7 @@ function FlattenSection({ ctx }: { ctx: ToolPanelCtx }) {
         annotations: true,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf");
         toast.success("Flattened PDF downloaded", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
