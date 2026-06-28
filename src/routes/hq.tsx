@@ -602,7 +602,13 @@ function OffersTab() {
                 <td className="px-3 py-2">
                   <button
                     onClick={async () => {
-                      if (!confirm(`Delete offer “${o.name}”?`)) return;
+                      const ok = await confirmDialog({
+                        title: "Delete offer?",
+                        description: `“${o.name}” will be removed.`,
+                        confirmText: "Delete",
+                        tone: "danger",
+                      });
+                      if (!ok) return;
                       await del({ data: { id: o.id } });
                       reload();
                     }}
