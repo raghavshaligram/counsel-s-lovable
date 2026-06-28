@@ -128,11 +128,11 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
           For subscription &amp; identity only. Your documents stay on this device.
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void navigate({ to: "/_authenticated/billing" as never })}>
+        <DropdownMenuItem onSelect={() => void navigate({ to: "/billing" })}>
           <CreditCard className="h-3.5 w-3.5" strokeWidth={2} />
           Subscription &amp; billing
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void navigate({ to: "/_authenticated/account" as never })}>
+        <DropdownMenuItem onSelect={() => void navigate({ to: "/account" })}>
           <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2} />
           Account settings
         </DropdownMenuItem>

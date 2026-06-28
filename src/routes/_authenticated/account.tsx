@@ -73,7 +73,7 @@ function Header() {
         <Link to="/workspace" className="inline-flex items-center gap-1.5 text-[12.5px] text-text-2 hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to workspace
         </Link>
-        <Link to="/_authenticated/billing" className="text-[12.5px] text-text-2 hover:text-foreground">
+        <Link to="/billing" className="text-[12.5px] text-text-2 hover:text-foreground">
           Subscription &amp; billing →
         </Link>
       </div>
