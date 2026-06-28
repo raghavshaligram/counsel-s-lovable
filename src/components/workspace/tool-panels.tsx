@@ -1510,8 +1510,6 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         for (const leak of result.leaks) {
           if (!leak.rect) continue;
           const arr = leakedPages.get(leak.page) ?? [];
-          // Use the original redaction rects for that page (not just the
-          // single leaking rect) so we cover everything marked.
           const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
           arr.push(...pageRects);
           leakedPages.set(leak.page, arr);
@@ -1519,7 +1517,31 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         if (leakedPages.size > 0) {
           const forced = await rasterizeRedactedPages(bytes, leakedPages, { mode: "always", scale: 2.5 });
           bytes = forced.bytes;
+          rasterResult.rasterizedPages.push(
+            ...forced.rasterizedPages.filter((p) => !rasterResult.rasterizedPages.includes(p)),
+          );
           result = await verifyRedactionRemoval(bytes, targets);
+        }
+      }
+
+      // Pixel-level re-OCR check for every page we rasterized — pdf.js sees
+      // no text layer on those pages, so it can't prove the underlying
+      // pixels were actually destroyed. Tesseract is the only way to verify.
+      if (rasterResult.rasterizedPages.length > 0) {
+        toast.loading("Re-OCR check on burned pages…", { id: tid });
+        const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
+        const pixelTargets = targets
+          .filter((t) => !!t.rect)
+          .map((t) => ({ page: t.page, rect: t.rect!, label: t.label }));
+        const pixelResult = await verifyPixelRedaction(
+          bytes,
+          pixelTargets,
+          new Set(rasterResult.rasterizedPages),
+        );
+        if (!pixelResult.ok) {
+          throw new Error(
+            `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still show recognizable text after pixel burn — refusing to download.`,
+          );
         }
       }
 
@@ -1528,7 +1550,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
         const flatNote = rasterResult.rasterizedPages.length
-          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} flattened`
+          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
         toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
       } else {
