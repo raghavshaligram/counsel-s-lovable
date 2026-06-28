@@ -453,7 +453,84 @@ function useInView<T extends HTMLElement>(once = true) {
 
 /* ——— Network monitor mock ——— */
 
-function NetworkMonitor() {
+/* ——— Offline panel ——— */
+
+function OfflinePanel() {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const tools = ["Redact", "Bates stamp", "OCR", "Sanitize"];
+  return (
+    <div
+      ref={ref}
+      className="reveal rounded-lg border border-border bg-background shadow-[var(--shadow-float)] overflow-hidden"
+    >
+      {/* Browser-style chrome */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card/60 text-[11px] font-mono text-muted-foreground">
+        <span className="h-2 w-2 rounded-full bg-evidence" />
+        <span className="h-2 w-2 rounded-full bg-vault/60" />
+        <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+        <span className="ml-2 truncate">vaultpdf.app/workspace</span>
+        <span
+          className={`ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border transition-colors duration-500 ${
+            inView
+              ? "border-vault/30 bg-vault/10 text-vault"
+              : "border-border text-muted-foreground"
+          }`}
+        >
+          <WifiOff className="h-3 w-3" strokeWidth={2.25} />
+          {inView ? "Offline — fully functional" : "Online"}
+        </span>
+      </div>
+
+      {/* Body */}
+      <div className="p-6 md:p-8">
+        <div className="font-mono text-[10px] text-muted-foreground mb-4">/ on-device task queue</div>
+        <ul className="space-y-3">
+          {tools.map((t, i) => (
+            <li
+              key={t}
+              className="flex items-center gap-3 text-sm transition-all duration-500 ease-out"
+              style={{
+                opacity: inView ? 1 : 0.25,
+                transform: inView ? "translateX(0)" : "translateX(-6px)",
+                transitionDelay: `${i * 220 + 350}ms`,
+              }}
+            >
+              <span
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
+                  inView ? "border-vault/40 bg-vault/10" : "border-border"
+                }`}
+              >
+                <Check
+                  className="h-3.5 w-3.5 text-vault"
+                  strokeWidth={2.75}
+                  style={{
+                    opacity: inView ? 1 : 0,
+                    transition: "opacity 300ms ease-out",
+                    transitionDelay: `${i * 220 + 500}ms`,
+                  }}
+                />
+              </span>
+              <span className="text-foreground">{t}</span>
+              <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+                done · on-device
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <div
+          className="mt-6 pt-5 border-t border-border flex items-center justify-between text-[11px] font-mono transition-opacity duration-500"
+          style={{ opacity: inView ? 1 : 0, transitionDelay: "1300ms" }}
+        >
+          <span className="text-muted-foreground">Network requests during work</span>
+          <span className="font-semibold text-vault tabular-nums">0</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
   const [ref, inView] = useInView<HTMLDivElement>();
   const rows = [
     { name: "app.bundle.js", type: "script", size: "812 KB", status: "200" },
