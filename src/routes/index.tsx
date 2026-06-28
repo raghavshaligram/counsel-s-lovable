@@ -34,13 +34,22 @@ export const Route = createFileRoute("/")({
 
 function Landing() {
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
+    if (typeof IntersectionObserver === "undefined") {
+      document.querySelectorAll(".reveal").forEach((el) => el.classList.add("is-visible"));
+      return;
+    }
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // Re-arm on scroll: toggle is-visible on/off so the transition replays
+    // every time an element re-enters the viewport. Honors reduced motion.
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
           if (e.isIntersecting) {
             e.target.classList.add("is-visible");
-            io.unobserve(e.target);
+          } else if (!prefersReduced) {
+            e.target.classList.remove("is-visible");
           }
         });
       },
