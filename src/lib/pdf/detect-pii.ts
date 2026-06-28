@@ -375,21 +375,22 @@ export async function detectPiiInPdf(
   return { detections, usedOcr: ocrPages.length > 0 };
 }
 
-function matchCategory(str: string): PiiCategory | null {
+type CatHit = { category: PiiCategory; confidence?: "high" | "low" };
+
+function matchCategory(str: string): CatHit | null {
+  // Structured patterns first — these are reliable.
   for (const { category, re } of PATTERNS) {
-    const m = re.exec(str);
-    if (!m) continue;
-    if (category === "name") {
-      // Reject if every capitalized token is a generic header/month/day.
-      const tokens = m[0].split(/\s+/).filter((t) => /^[A-Z]/.test(t));
-      if (tokens.every((t) => NAME_STOPWORDS.has(t.replace(/\.$/, "")))) continue;
-      // Reject single-token "names" (regex requires 2+, but defensive).
-      if (tokens.length < 2) continue;
-    }
-    return category;
+    if (re.test(str)) return { category };
+  }
+  // Names — much stricter, with a confidence signal.
+  const nm = NAME_CANDIDATE_RE.exec(str);
+  if (nm) {
+    const verdict = classifyName(str, nm[0], nm.index);
+    if (verdict.ok) return { category: "name", confidence: verdict.confidence };
   }
   return null;
 }
+
 
 
 function snippet(s: string) {
