@@ -67,11 +67,11 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
 
   // 1) Strip hostile / non-PDF/A constructs ------------------------------
   // Document-level JavaScript & launch actions are forbidden in PDF/A.
-  const namesDict = catalog.lookupMaybe(PDFName.of("Names"), undefined as never);
-  // We can't introspect cleanly without pulling more pdf-lib types — the
-  // safest minimal action is dropping the JavaScript subtree if present.
-  if (namesDict && typeof (namesDict as { delete?: (k: unknown) => void }).delete === "function") {
-    (namesDict as { delete: (k: unknown) => void }).delete(PDFName.of("JavaScript"));
+  // The safest minimal action is removing the JavaScript subtree if present.
+  const namesAny = catalog.lookupMaybe(PDFName.of("Names"), undefined as never) as unknown;
+  if (namesAny && typeof namesAny === "object" && "delete" in (namesAny as object)) {
+    const d = (namesAny as { delete: (k: unknown) => void }).delete.bind(namesAny);
+    try { d(PDFName.of("JavaScript")); } catch { /* not a dict — ignore */ }
   }
   // Strip /OpenAction and /AA (additional actions) — they may carry JS.
   catalog.delete(PDFName.of("OpenAction"));
