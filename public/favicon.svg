@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="VaultPDF">
+  <rect width="64" height="64" rx="12" fill="#0E1116"/>
+  <path d="M32 12l16 6v12c0 12-7.5 19.5-16 22-8.5-2.5-16-10-16-22V18l16-6z" fill="#4C7FB8"/>
+  <rect x="22" y="30" width="20" height="16" rx="2.5" fill="#0E1116"/>
+  <path d="M26 30v-4a6 6 0 0112 0v4" fill="none" stroke="#0E1116" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="37" r="2.2" fill="#4C7FB8"/>
+  <rect x="31" y="38.5" width="2" height="4.5" rx="1" fill="#4C7FB8"/>
+</svg>
