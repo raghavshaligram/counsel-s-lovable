@@ -498,6 +498,14 @@ function bboxInRects(minX: number, minY: number, maxX: number, maxY: number, rec
   }
   return false;
 }
+function bboxIntersectsRects(minX: number, minY: number, maxX: number, maxY: number, rects: RedactRect[]): boolean {
+  for (const r of rects) {
+    const x1 = Math.min(r.x1, r.x2), x2 = Math.max(r.x1, r.x2);
+    const y1 = Math.min(r.y1, r.y2), y2 = Math.max(r.y1, r.y2);
+    if (maxX >= x1 && minX <= x2 && maxY >= y1 && minY <= y2) return true;
+  }
+  return false;
+}
 
 function decodeLiteral(s: string): string {
   let out = "";
