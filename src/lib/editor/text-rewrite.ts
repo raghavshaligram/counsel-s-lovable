@@ -209,6 +209,141 @@ function rewriteStream(
   return stats;
 }
 
+function decodeContentBytes(bytes: Uint8Array, filters: string[]): Uint8Array {
+  let out = bytes;
+  for (const raw of filters) {
+    const f = raw.replace(/^\//, "");
+    if (f === "FlateDecode" || f === "Fl") {
+      out = unzlibSync(out);
+    } else if (f === "ASCII85Decode" || f === "A85") {
+      out = ascii85Decode(out);
+    } else if (!f) {
+      continue;
+    } else {
+      throw new Error(`Unsupported content stream filter: ${f}`);
+    }
+  }
+  return out;
+}
+
+function ascii85Decode(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let tuple: number[] = [];
+  const flush = (final = false) => {
+    if (tuple.length === 0) return;
+    const actual = tuple.length;
+    if (final) while (tuple.length < 5) tuple.push(84); // 'u'
+    if (tuple.length < 5) return;
+    let value = 0;
+    for (const n of tuple) value = value * 85 + n;
+    const bytes = [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+    out.push(...bytes.slice(0, final ? Math.max(0, actual - 1) : 4));
+    tuple = [];
+  };
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (c === 0x25) { while (i < input.length && input[i] !== 0x0a && input[i] !== 0x0d) i++; continue; }
+    if (c <= 0x20) continue;
+    if (c === 0x7e && input[i + 1] === 0x3e) { flush(true); break; }
+    if (c === 0x7a && tuple.length === 0) { out.push(0, 0, 0, 0); continue; }
+    if (c < 33 || c > 117) continue;
+    tuple.push(c - 33);
+    if (tuple.length === 5) flush(false);
+  }
+  flush(true);
+  return new Uint8Array(out);
+}
+
+function collectPageFonts(page: import("pdf-lib").PDFPage): Map<string, FontMetrics> {
+  const fonts = new Map<string, FontMetrics>();
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const node: any = page.node;
+    const entries = typeof node.normalizedEntries === "function" ? node.normalizedEntries() : null;
+    const fontDict = entries?.Font ?? node.Resources?.()?.lookup?.(PDFName.of("Font"));
+    if (!fontDict || typeof fontDict.entries !== "function") return fonts;
+    for (const [name, obj] of fontDict.entries() as Array<[unknown, unknown]>) {
+      const key = String(name).replace(/^\//, "");
+      const dict = lookupDict(page.doc.context, obj);
+      if (dict) fonts.set(key, readFontMetrics(page.doc.context, dict));
+    }
+  } catch {
+    /* best effort; caller falls back to default metrics */
+  }
+  return fonts;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lookupDict(ctx: any, obj: unknown): any | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolved: any = obj && typeof (obj as any).entries === "function" ? obj : ctx.lookup(obj as never);
+    return resolved && typeof resolved.entries === "function" ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function readFontMetrics(ctx: any, font: any): FontMetrics {
+  const subtype = nameValue(font.get?.(PDFName.of("Subtype")));
+  if (subtype === "Type0") {
+    const descendants = font.lookup?.(PDFName.of("DescendantFonts"));
+    const cid = descendants?.lookup?.(0) ?? descendants?.asArray?.()[0];
+    const cidDict = lookupDict(ctx, cid) ?? font;
+    return readCidMetrics(cidDict);
+  }
+  return readSimpleMetrics(font);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function readSimpleMetrics(font: any): FontMetrics {
+  const firstChar = numObj(font.get?.(PDFName.of("FirstChar"))) ?? 0;
+  const widths = new Map<number, number>();
+  const arr = font.lookup?.(PDFName.of("Widths"));
+  const values = typeof arr?.asArray === "function" ? arr.asArray() : [];
+  for (let i = 0; i < values.length; i++) widths.set(firstChar + i, numObj(values[i]) ?? 500);
+  const fd = lookupDict(font.context, font.get?.(PDFName.of("FontDescriptor")));
+  const missingWidth = numObj(fd?.get?.(PDFName.of("MissingWidth"))) ?? 500;
+  return { widths, defaultWidth: 500, missingWidth, firstChar, codeSize: 1 };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function readCidMetrics(font: any): FontMetrics {
+  const widths = new Map<number, number>();
+  const defaultWidth = numObj(font.get?.(PDFName.of("DW"))) ?? 1000;
+  const wArr = font.lookup?.(PDFName.of("W"));
+  const values = typeof wArr?.asArray === "function" ? wArr.asArray() : [];
+  for (let i = 0; i < values.length;) {
+    const first = numObj(values[i++]);
+    if (first === undefined || i >= values.length) break;
+    const next = values[i++];
+    if (typeof next?.asArray === "function") {
+      const ws = next.asArray();
+      for (let j = 0; j < ws.length; j++) widths.set(first + j, numObj(ws[j]) ?? defaultWidth);
+    } else {
+      const last = numObj(next);
+      const width = numObj(values[i++]);
+      if (last === undefined || width === undefined) break;
+      for (let c = first; c <= last; c++) widths.set(c, width);
+    }
+  }
+  const fd = lookupDict(font.context, font.get?.(PDFName.of("FontDescriptor")));
+  const missingWidth = numObj(fd?.get?.(PDFName.of("MissingWidth"))) ?? defaultWidth;
+  return { widths, defaultWidth, missingWidth, firstChar: 0, codeSize: 2 };
+}
+
+function nameValue(v: unknown): string {
+  return String(v ?? "").replace(/^\//, "");
+}
+
+function numObj(v: unknown): number | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const any = v as any;
+  const n = typeof any?.asNumber === "function" ? any.asNumber() : typeof any?.value === "function" ? any.value() : Number(String(v));
+  return Number.isFinite(n) ? n : undefined;
+}
+
 // ─── Tokenizer + content-stream walker ──────────────────────────────────────
 
 type TokKind =
