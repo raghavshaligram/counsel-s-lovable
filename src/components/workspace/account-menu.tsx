@@ -40,6 +40,7 @@ type AccountMenuProps = {
 export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
   const license = useLicenseActivation();
   const navigate = useNavigate();
+  const openLogin = useLoginModal((s) => s.openLogin);
   const [user, setUser] = useState<SessionUser>(null);
   const [signingOut, setSigningOut] = useState(false);
 
