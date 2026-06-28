@@ -147,6 +147,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         </DialogHeader>
 
         <div className="flex flex-col gap-2.5">
+          <ExportFormatRow />
           <OptionRow
             icon={<Hash className="h-3.5 w-3.5" />}
             label="Page numbers"
