@@ -717,22 +717,27 @@ function CsvFillSection({
 /**
  * Pro capabilities that live INSIDE the (free) Redact tool. Manual redact
  * stays free for everyone; AI sensitive-data detection and pattern/bulk
- * redaction require a Pro subscription. Each trigger shows a lock badge
- * and routes to /auth with a redirect back to the workspace when used.
+ * redaction require a Pro subscription. For non-Pro users the buttons show
+ * a lock badge and open the Upgrade modal. For Pro users, "AI detect" mounts
+ * the AutoDetectSection inline so findings + select/redact happen in-panel.
  */
-function ProRedactSection() {
+function ProRedactSection({ ctx }: { ctx: ToolPanelCtx }) {
   const isPro = useIsPro();
   const requirePro = useRequirePro();
   return (
     <Section title="Find redactions automatically" icon={<Shield className="h-3 w-3" />}>
       <div className="flex flex-col gap-1.5">
-        <ProGatedButton
-          isPro={isPro}
-          locked={!isPro}
-          onClick={() => requirePro("AI detect sensitive info")}
-          label="AI detect sensitive info"
-          hint="Names, emails, SSNs, account numbers — proposed as draft boxes."
-        />
+        {isPro ? (
+          <AutoDetectSensitive ctx={ctx} />
+        ) : (
+          <ProGatedButton
+            isPro={isPro}
+            locked={!isPro}
+            onClick={() => requirePro("AI detect sensitive info")}
+            label="AI detect sensitive info"
+            hint="Names, emails, SSNs, phones, dates, cards/accounts — proposed as draft boxes you review before redacting."
+          />
+        )}
         <ProGatedButton
           isPro={isPro}
           locked={!isPro}
@@ -743,6 +748,302 @@ function ProRedactSection() {
       </div>
     </Section>
   );
+}
+
+/**
+ * AutoDetectSensitive — Pro-only. Runs detect-pii on the open document,
+ * lists every finding grouped by category, lets the user select / jump to
+ * each, and pushes selected ones as redact annotations into the editor.
+ * The actual destructive burn is the existing "Redact, export & verify"
+ * action lower in the panel — we only add boxes here, the user always
+ * confirms by triggering export.
+ */
+function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, editorDispatch, editorState } = ctx;
+  type Det = import("@/lib/pdf/detect-pii").Detection;
+  type Cat = import("@/lib/pdf/detect-pii").PiiCategory;
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState<string>("");
+  const [findings, setFindings] = useState<Det[] | null>(null);
+  const [usedOcr, setUsedOcr] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
+
+  // Skip duplicates against existing redact annotations to avoid re-adding
+  // the same box on a second scan.
+  const existingRedactKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of editorState?.doc?.annotations ?? []) {
+      if (a.kind !== "redact") continue;
+      set.add(`${a.page}|${Math.round(a.x)}|${Math.round(a.y)}|${Math.round(a.w)}|${Math.round(a.h)}`);
+    }
+    return set;
+  }, [editorState?.doc?.annotations]);
+
+  const runScan = useCallback(async () => {
+    if (!file) return;
+    setScanning(true);
+    setFindings(null);
+    setUsedOcr(false);
+    setSelected(new Set());
+    setProgress("Reading text layer…");
+    try {
+      const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
+      setMeta(mod.CATEGORY_META);
+      const { detections, usedOcr } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+        setProgress(
+          p.stage === "ocr"
+            ? `OCR scanning ${p.page}/${p.totalPages}`
+            : `Reading page ${p.page}/${p.totalPages}`,
+        );
+      });
+      setFindings(detections);
+      setUsedOcr(usedOcr);
+      // Default selection: every finding pre-checked, the user opts OUT of any
+      // they want to keep.
+      setSelected(new Set(detections.map((d) => d.id)));
+      if (detections.length === 0) {
+        toast.info("No sensitive data found", { description: "Nothing matched the built-in patterns." });
+      } else {
+        toast.success(`${detections.length} finding${detections.length === 1 ? "" : "s"}`, {
+          description: "Review then click Redact selected.",
+        });
+      }
+    } catch (err) {
+      console.error("[auto-detect] failed", err);
+      toast.error("Scan failed", { description: (err as Error).message });
+    } finally {
+      setScanning(false);
+      setProgress("");
+    }
+  }, [file]);
+
+  const jumpToFinding = useCallback(
+    (d: Det) => {
+      // detect-pii uses 1-based page numbers; editor uses 0-based.
+      editorDispatch({ type: "SET_PAGE", n: Math.max(0, d.page - 1) });
+    },
+    [editorDispatch],
+  );
+
+  const redactSelected = useCallback(() => {
+    if (!findings || selected.size === 0) return;
+    let added = 0;
+    let skipped = 0;
+    for (const d of findings) {
+      if (!selected.has(d.id)) continue;
+      const rect =
+        d.pdfRect ?? { x: d.x / 1.5, y: d.y / 1.5, w: d.w / 1.5, h: d.h / 1.5 };
+      const key = `${d.page - 1}|${Math.round(rect.x)}|${Math.round(rect.y)}|${Math.round(rect.w)}|${Math.round(rect.h)}`;
+      if (existingRedactKeys.has(key)) {
+        skipped++;
+        continue;
+      }
+      editorDispatch({
+        type: "ADD_ANNO",
+        a: {
+          id: `det-${d.id}-${Date.now().toString(36)}`,
+          kind: "redact",
+          page: d.page - 1,
+          x: rect.x,
+          y: rect.y,
+          w: rect.w,
+          h: rect.h,
+          color: { r: 0, g: 0, b: 0 },
+          opacity: 1,
+          sources: d.source?.originalString
+            ? [
+                {
+                  originalString: d.source.originalString,
+                  transform: d.source.transform,
+                  fontName: d.source.fontName,
+                },
+              ]
+            : undefined,
+        },
+      });
+      added++;
+    }
+    if (added > 0) {
+      toast.success(`${added} redaction box${added === 1 ? "" : "es"} added`, {
+        description: 'Click "Redact, export & verify" below to burn them into the PDF.',
+      });
+      // Clear the selection so a second scan doesn't double-add.
+      setSelected(new Set());
+    } else if (skipped > 0) {
+      toast.info("Already added", { description: `${skipped} of these are already marked.` });
+    }
+  }, [findings, selected, editorDispatch, existingRedactKeys]);
+
+  const grouped = useMemo(() => {
+    if (!findings) return null;
+    const m = new Map<Cat, Det[]>();
+    for (const d of findings) {
+      const arr = m.get(d.category) ?? [];
+      arr.push(d);
+      m.set(d.category, arr);
+    }
+    return Array.from(m.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [findings]);
+
+  const allSelected =
+    !!findings && findings.length > 0 && selected.size === findings.length;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-foreground">
+          AI detect sensitive info
+        </span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-vault">
+          Pro · On-device
+        </span>
+      </div>
+      <p className="text-[10.5px] leading-snug text-text-muted">
+        Scans this document for SSNs, emails, phones, dates, cards/accounts and
+        likely names — proposed as draft boxes. Nothing leaves your device. You
+        confirm each before redacting.
+      </p>
+
+      <button
+        type="button"
+        onClick={() => void runScan()}
+        disabled={!file || scanning}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2.5 py-1.5 text-[12px] font-medium text-vault transition-colors hover:bg-vault/15",
+          (!file || scanning) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {scanning ? progress || "Scanning…" : findings ? "Re-scan document" : "Scan for sensitive info"}
+      </button>
+
+      {findings && findings.length > 0 && (
+        <div className="mt-1 rounded-md border border-border bg-surface-2/60">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
+            <label className="flex items-center gap-1.5 text-[11px] text-text-2">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelected(new Set(findings.map((d) => d.id)));
+                  } else {
+                    setSelected(new Set());
+                  }
+                }}
+                className="h-3 w-3 accent-vault"
+              />
+              {selected.size} / {findings.length} selected
+            </label>
+            <button
+              type="button"
+              onClick={redactSelected}
+              disabled={selected.size === 0}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90",
+                selected.size === 0 && "cursor-not-allowed opacity-50",
+              )}
+            >
+              <Shield className="h-3 w-3" strokeWidth={2.5} />
+              Redact selected
+            </button>
+          </div>
+          <ul className="max-h-[280px] overflow-y-auto py-1">
+            {grouped?.map(([cat, list]) => (
+              <li key={cat}>
+                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                  {meta?.[cat]?.label ?? cat} · {list.length}
+                </div>
+                <ul>
+                  {list.map((d) => {
+                    const checked = selected.has(d.id);
+                    return (
+                      <li key={d.id}>
+                        <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              setSelected((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(d.id);
+                                else next.delete(d.id);
+                                return next;
+                              });
+                            }}
+                            className="mt-[3px] h-3 w-3 shrink-0 accent-vault"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => jumpToFinding(d)}
+                            className="min-w-0 flex-1 text-left"
+                            title="Jump to this finding"
+                          >
+                            <div className="font-mono text-[11px] text-foreground">
+                              {maskPreview(d)}
+                            </div>
+                            <div className="text-[10px] text-text-2">
+                              Page {d.page}
+                              {!d.source && (
+                                <span className="ml-1 text-amber-400/80">
+                                  · visual-only (scanned)
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {findings && findings.length === 0 && !scanning && (
+        <p className="text-[11px] text-text-2">
+          No sensitive data matched the built-in patterns on this document.
+        </p>
+      )}
+
+      {usedOcr && (
+        <p className="text-[10.5px] leading-snug text-text-muted">
+          Some pages were image-only — OCR ran on-device to read them. Findings
+          from those pages can be covered visually but the destructive burn
+          can only erase glyphs from native text pages.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Mask sensitive snippets in the findings list so the inspector itself doesn't
+ * become a leak surface (someone reading over the user's shoulder). Names and
+ * dates are left intact — they're context, not credentials.
+ */
+function maskPreview(d: import("@/lib/pdf/detect-pii").Detection): string {
+  const s = d.snippet ?? "";
+  switch (d.category) {
+    case "ssn":
+      return s.replace(/\d(?=\d{4})/g, "•");
+    case "creditCard":
+      return s.replace(/\d(?=.*\d{4})/g, "•");
+    case "phone":
+      return s.replace(/\d(?=\d{4})/g, "•");
+    case "email": {
+      const at = s.indexOf("@");
+      if (at <= 1) return s;
+      return s[0] + "•".repeat(Math.max(1, at - 1)) + s.slice(at);
+    }
+    case "iban":
+      return s.slice(0, 4) + "•".repeat(Math.max(0, s.length - 8)) + s.slice(-4);
+    default:
+      return s;
+  }
 }
 
 function ProGatedButton({
@@ -778,6 +1079,7 @@ function ProGatedButton({
     </button>
   );
 }
+
 
 function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file, editorState } = ctx;
@@ -909,7 +1211,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </p>
       </Section>
 
-      <ProRedactSection />
+      <ProRedactSection ctx={ctx} />
 
 
 

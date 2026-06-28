@@ -15,18 +15,37 @@ export type PiiCategory =
   | "phone"
   | "creditCard"
   | "date"
+  | "name"
   | "ipAddress"
   | "iban";
 
 export type Detection = {
   id: string;
   page: number;
+  // Canvas coords (scale = 1.5). Kept for backwards compatibility with the
+  // legacy /redact route renderer.
   x: number;
   y: number;
   w: number;
   h: number;
   category: PiiCategory;
   snippet: string;
+  /**
+   * Source text-item metadata captured from the PDF text layer. Required by
+   * the editor's destructive content-stream rewriter — without this the
+   * burn pass paints a black cover but the underlying glyphs survive.
+   * Absent for OCR-derived findings on scanned pages (visual cover only).
+   */
+  source?: {
+    originalString: string;
+    transform?: number[];
+    fontName?: string;
+  };
+  /**
+   * Bounding box in PDF points, top-left origin — the coordinate space the
+   * workspace editor uses for annotations. canvas_px / scale.
+   */
+  pdfRect?: { x: number; y: number; w: number; h: number };
 };
 
 const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
@@ -40,17 +59,38 @@ const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
   { category: "date", re: /\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/ },
   { category: "ipAddress", re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/ },
   { category: "iban", re: /\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b/ },
+  // Names: two or more consecutive capitalized tokens. Heuristic — we filter
+  // out common headers/words via NAME_STOPWORDS before accepting a hit so
+  // labels like "Case No." or "Page Two" don't flood the findings list.
+  {
+    category: "name",
+    re: /\b[A-Z][a-z]{1,}(?:\s+(?:[A-Z]\.?|[A-Z][a-z]{1,})){1,3}\b/,
+  },
 ];
+
+// Capitalized tokens that frequently appear in headings/forms and should not
+// promote a string to a "name" finding on their own.
+const NAME_STOPWORDS = new Set([
+  "Case", "Page", "Exhibit", "Plaintiff", "Defendant", "United", "States",
+  "District", "County", "Court", "Department", "Section", "Chapter", "Article",
+  "Schedule", "Appendix", "Attachment", "Memorandum", "Subject", "From", "To",
+  "Date", "Re", "Notice", "Order", "Motion", "Reply", "Brief",
+  "January", "February", "March", "April", "May", "June", "July", "August",
+  "September", "October", "November", "December",
+  "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+]);
 
 export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }> = {
   ssn: { label: "SSN", hint: "Social security numbers" },
   email: { label: "Email", hint: "Email addresses" },
   phone: { label: "Phone", hint: "Phone numbers" },
-  creditCard: { label: "Card #", hint: "Long digit sequences (cards / accounts)" },
+  creditCard: { label: "Card / account #", hint: "Long digit sequences (cards, accounts)" },
   date: { label: "Date", hint: "Dates (DOB / issued / expiry)" },
+  name: { label: "Name", hint: "Likely person names (heuristic)" },
   ipAddress: { label: "IP", hint: "IP addresses" },
   iban: { label: "IBAN", hint: "International bank account numbers" },
 };
+
 
 export type DetectProgress = {
   stage: "text" | "ocr";
@@ -104,15 +144,26 @@ export async function detectPiiInPdf(
       const x = m[4];
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
+      const cx = x - pad;
+      const cy = y - pad;
+      const cw = itemWidth + pad * 2;
+      const ch = fontHeight + pad * 2;
+      const fontName = (raw as { fontName?: string }).fontName;
       detections.push({
         id: `det-${i}-${detections.length}`,
         page: i,
-        x: x - pad,
-        y: y - pad,
-        w: itemWidth + pad * 2,
-        h: fontHeight + pad * 2,
+        x: cx,
+        y: cy,
+        w: cw,
+        h: ch,
         category: cat,
         snippet: snippet(str),
+        source: {
+          originalString: str,
+          transform: raw.transform,
+          fontName,
+        },
+        pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
       });
     }
   }
@@ -200,10 +251,20 @@ export async function detectPiiInPdf(
 
 function matchCategory(str: string): PiiCategory | null {
   for (const { category, re } of PATTERNS) {
-    if (re.test(str)) return category;
+    const m = re.exec(str);
+    if (!m) continue;
+    if (category === "name") {
+      // Reject if every capitalized token is a generic header/month/day.
+      const tokens = m[0].split(/\s+/).filter((t) => /^[A-Z]/.test(t));
+      if (tokens.every((t) => NAME_STOPWORDS.has(t.replace(/\.$/, "")))) continue;
+      // Reject single-token "names" (regex requires 2+, but defensive).
+      if (tokens.length < 2) continue;
+    }
+    return category;
   }
   return null;
 }
+
 
 function snippet(s: string) {
   return s.length > 60 ? s.slice(0, 57) + "…" : s;
