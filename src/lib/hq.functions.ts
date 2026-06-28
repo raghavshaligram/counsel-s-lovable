@@ -153,9 +153,6 @@ export const hqSetPlan = createServerFn({ method: "POST" })
       .select("plan, status")
       .single();
     if (error) throw new Error(error.message);
-    await supabaseAdmin
-      .from("profiles")
-      .upsert({ user_id: data.userId, plan: data.plan }, { onConflict: "user_id" });
     // Echo persisted values so the UI binds to the DB truth, not the
     // optimistic guess. Also lets the admin verify the write round-tripped.
     // eslint-disable-next-line no-console
