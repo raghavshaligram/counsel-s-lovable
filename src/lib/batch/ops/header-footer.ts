@@ -3,7 +3,8 @@
  *
  * Tokens supported in text: {page}, {pages}, {date}, {filename}.
  */
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 
 export type HFAlign = "left" | "center" | "right";
 
@@ -41,7 +42,7 @@ export async function addHeaderFooter(
   opts: HeaderFooterOpts,
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const font = await embedStandardFont(doc, "Helvetica");
   const pages = doc.getPages();
   const total = pages.length;
   const filename = opts.filename ?? "document.pdf";

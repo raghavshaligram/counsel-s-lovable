@@ -4,7 +4,8 @@
 // ocr-pdf.ts but skips all the pdf.js rasterisation since the source is
 // already pixels.
 
-import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import { PDFDocument, rgb, degrees } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import { toTesseractLang } from "./ocr-languages";
 import { importChunk } from "@/lib/chunk-import";
 
@@ -124,7 +125,7 @@ export async function ocrImageToSearchable(
   });
 
   const out = await PDFDocument.create();
-  const font = await out.embedFont(StandardFonts.Helvetica);
+  const font = await embedStandardFont(out, "Helvetica");
   const embedded = await out.embedJpg(jpegBytes);
 
   // Map pixels to PDF points 1:1 — the resulting page is sized to the

@@ -5,7 +5,8 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Hash, Lock } from "lucide-react";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import { ToolHeader, FileBar, ModeBtn, downloadBlob } from "@/routes/split";
 import { useHotkey } from "@/lib/use-hotkey";
 
@@ -67,7 +68,7 @@ function BatesPage() {
     setBusy(true);
     try {
       const src = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
-      const font = await src.embedFont(StandardFonts.HelveticaBold);
+      const font = await embedStandardFont(src, "HelveticaBold");
       const fill =
         color === "red" ? rgb(0.8, 0.05, 0.05) :
         color === "blue" ? rgb(0.05, 0.15, 0.6) : rgb(0, 0, 0);

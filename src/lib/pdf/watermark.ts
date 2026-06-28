@@ -1,7 +1,8 @@
 // Text watermark — on-device, fully in browser. Extracted from the
 // /watermark route so the workspace panel can reuse the same logic.
 
-import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import { PDFDocument, degrees, rgb } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 
 export type WatermarkPos = "diagonal" | "top" | "bottom" | "center";
 
@@ -30,7 +31,7 @@ export async function applyTextWatermark(
   const doc = await PDFDocument.load(await file.arrayBuffer(), {
     ignoreEncryption: true,
   });
-  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  const font = await embedStandardFont(doc, "HelveticaBold");
   const op = Math.max(0.05, Math.min(1, opacity / 100));
 
   for (const page of doc.getPages()) {

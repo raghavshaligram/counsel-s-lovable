@@ -8,9 +8,10 @@
 // and round-trips in Acrobat.
 
 import {
-  PDFDocument, StandardFonts, rgb, PDFName, PDFArray, PDFString,
+  PDFDocument, rgb, PDFName, PDFArray, PDFString,
   PDFNumber, PDFHexString, PDFDict, PDFRef, degrees,
 } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import type { Annot, RGB } from "./types";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
@@ -25,7 +26,7 @@ export async function exportAnnotatedPdf(
   opts: ExportOpts = { mode: "both" },
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(srcBytes);
-  const helv = await pdf.embedFont(StandardFonts.Helvetica);
+  const helv = await embedStandardFont(pdf, "Helvetica");
   const pages = pdf.getPages();
 
   const wantsFlatten = opts.mode === "flatten" || opts.mode === "both";

@@ -18,7 +18,8 @@
 //  - OffscreenCanvas when supported so the page render doesn't fight the
 //    main thread compositor.
 
-import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
+import { PDFDocument, rgb, degrees, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import { loadPdfjs } from "./worker";
 import { toTesseractLang } from "./ocr-languages";
 import { importChunk } from "@/lib/chunk-import";
@@ -185,7 +186,7 @@ export async function ocrPdfToSearchable(
   // Helvetica keeps the invisible OCR layer neutral; edit-text will detect
   // the run font as sans and won't jarringly swap a scanned word to a
   // different family on first edit. User can pick any font in the inspector.
-  const font = await outPdf.embedFont(StandardFonts.Helvetica);
+  const font = await embedStandardFont(outPdf, "Helvetica");
   const skipSet = new Set<number>((options.skipPageIndices ?? []).map((i) => i + 1));
 
   // Load the source via pdf-lib once so we can copy native pages through

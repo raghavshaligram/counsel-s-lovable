@@ -4,7 +4,8 @@
  * Stamps a sequential Bates number on every page. Mirrors the standalone
  * /bates route logic so behaviour is identical wherever it's invoked.
  */
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 
 export type BatesPosition = "tl" | "tc" | "tr" | "bl" | "bc" | "br";
 export type BatesColor = "black" | "red" | "blue";
@@ -26,7 +27,7 @@ export function formatBates(n: number, opts: Pick<BatesOpts, "prefix" | "suffix"
 
 export async function addBates(bytes: Uint8Array, opts: BatesOpts): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  const font = await embedStandardFont(doc, "HelveticaBold");
   const fill =
     opts.color === "red" ? rgb(0.8, 0.05, 0.05)
       : opts.color === "blue" ? rgb(0.05, 0.15, 0.6)

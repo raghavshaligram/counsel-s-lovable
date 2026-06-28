@@ -7,7 +7,8 @@
 // pdf.js canvas coordinates). pdf-lib uses bottom-left origin, so each draw
 // call converts: pdfY = pageHeight - (y + h).
 
-import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import { PDFDocument, rgb, degrees } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import fontkit from "@pdf-lib/fontkit";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
@@ -21,18 +22,18 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   const out = await PDFDocument.create();
   out.registerFontkit(fontkit);
   const fonts = {
-    sans: await out.embedFont(StandardFonts.Helvetica),
-    sansBold: await out.embedFont(StandardFonts.HelveticaBold),
-    sansItalic: await out.embedFont(StandardFonts.HelveticaOblique),
-    sansBoldItalic: await out.embedFont(StandardFonts.HelveticaBoldOblique),
-    serif: await out.embedFont(StandardFonts.TimesRoman),
-    serifBold: await out.embedFont(StandardFonts.TimesRomanBold),
-    serifItalic: await out.embedFont(StandardFonts.TimesRomanItalic),
-    serifBoldItalic: await out.embedFont(StandardFonts.TimesRomanBoldItalic),
-    mono: await out.embedFont(StandardFonts.Courier),
-    monoBold: await out.embedFont(StandardFonts.CourierBold),
-    monoItalic: await out.embedFont(StandardFonts.CourierOblique),
-    monoBoldItalic: await out.embedFont(StandardFonts.CourierBoldOblique),
+    sans: await embedStandardFont(out, "Helvetica"),
+    sansBold: await embedStandardFont(out, "HelveticaBold"),
+    sansItalic: await embedStandardFont(out, "HelveticaOblique"),
+    sansBoldItalic: await embedStandardFont(out, "HelveticaBoldOblique"),
+    serif: await embedStandardFont(out, "TimesRoman"),
+    serifBold: await embedStandardFont(out, "TimesRomanBold"),
+    serifItalic: await embedStandardFont(out, "TimesRomanItalic"),
+    serifBoldItalic: await embedStandardFont(out, "TimesRomanBoldItalic"),
+    mono: await embedStandardFont(out, "Courier"),
+    monoBold: await embedStandardFont(out, "CourierBold"),
+    monoItalic: await embedStandardFont(out, "CourierOblique"),
+    monoBoldItalic: await embedStandardFont(out, "CourierBoldOblique"),
   };
   const font = fonts.sans;
 
