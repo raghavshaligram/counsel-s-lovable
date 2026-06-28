@@ -4,6 +4,7 @@ import {
   Download,
   Files,
   Shield,
+  ShieldCheck,
   PenLine,
   RefreshCw,
   KeyRound,
@@ -114,7 +115,10 @@ type ToolId =
   | "secure"
   | "layout"
   | "legal"
-  | "ai";
+  | "ai"
+  | "assemble"
+  | "edit"
+  | "navigate";
 
 type ToolGroupLabel =
   | "Pages"
@@ -124,7 +128,9 @@ type ToolGroupLabel =
   | "Secure"
   | "Layout"
   | "Legal"
-  | "AI";
+  | "AI"
+  | "Assemble"
+  | "Navigate";
 
 type RailTool = {
   id: string;
@@ -137,46 +143,58 @@ type RailTool = {
 };
 
 const TOOLS: RailTool[] = [
-  // Pages
-  { id: "organize", label: "Organize", icon: LayoutGrid, group: "pages", groupLabel: "Pages" },
-  { id: "merge", label: "Merge", icon: Files, group: "pages", groupLabel: "Pages" },
-  { id: "split", label: "Split", icon: Scissors, group: "pages", groupLabel: "Pages" },
-  { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Pages" },
-  { id: "extract", label: "Extract", icon: TableIcon, group: "pages", groupLabel: "Pages" },
-  { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Pages" },
-  { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
-  // Convert
-  { id: "convert", label: "Convert", icon: FileType, group: "convert", groupLabel: "Convert" },
-  { id: "image-convert", label: "Image Convert", icon: ImageIcon, group: "convert", groupLabel: "Convert" },
-  { id: "ocr", label: "Make Searchable", icon: ScanText, group: "convert", groupLabel: "Convert" },
+  // Legal — hero tools at the top of the rail.
+  { id: "redact", label: "Redact for production", icon: Shield, group: "legal", groupLabel: "Legal" },
+  { id: "bates", label: "Bates stamp", icon: Hash, group: "legal", groupLabel: "Legal" },
+  { id: "privilege-scan", label: "Privilege review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  { id: "sanitize", label: "Sanitize", icon: ShieldCheck, group: "legal", groupLabel: "Legal" },
+  { id: "ocr", label: "Make Searchable", icon: ScanText, group: "legal", groupLabel: "Legal" },
+  { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
+
+  // Assemble
+  { id: "organize", label: "Organize", icon: LayoutGrid, group: "assemble", groupLabel: "Assemble" },
+  { id: "merge", label: "Merge", icon: Files, group: "assemble", groupLabel: "Assemble" },
+  { id: "split", label: "Split", icon: Scissors, group: "assemble", groupLabel: "Assemble" },
+  { id: "extract", label: "Extract", icon: TableIcon, group: "assemble", groupLabel: "Assemble" },
+  { id: "compare", label: "Compare versions", icon: Scale, group: "assemble", groupLabel: "Assemble" },
+
   // Edit
-  { id: "sign", label: "Sign & Fill", icon: PenLine, group: "sign", groupLabel: "Edit" },
-  { id: "comments", label: "Comments", icon: MessageSquare, group: "sign", groupLabel: "Edit" },
-  { id: "watermark", label: "Watermark", icon: Stamp, group: "secure", groupLabel: "Edit" },
-  { id: "compress", label: "Compress", icon: PackageOpen, group: "secure", groupLabel: "Edit" },
-  // Redact
-  { id: "redact", label: "Redact for production", icon: Shield, group: "redact", groupLabel: "Redact" },
+  { id: "sign", label: "Sign & Fill", icon: PenLine, group: "edit", groupLabel: "Edit" },
+  { id: "comments", label: "Comments", icon: MessageSquare, group: "edit", groupLabel: "Edit" },
+  { id: "watermark", label: "Watermark", icon: Stamp, group: "edit", groupLabel: "Edit" },
+
   // Secure
   { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Secure" },
-  { id: "compare", label: "Compare versions", icon: Scale, group: "layout", groupLabel: "Secure" },
+
+  // Navigate
+  { id: "outline", label: "Outline & links", icon: ListTree, group: "navigate", groupLabel: "Navigate" },
+  { id: "chat", label: "Search inside PDF", icon: Sparkles, group: "navigate", groupLabel: "Navigate" },
+
+  // Pages (All-tools modal only)
+  { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Pages" },
+  { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Pages" },
+  { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
+
+  // Convert (All-tools modal only)
+  { id: "convert", label: "Convert", icon: FileType, group: "convert", groupLabel: "Convert" },
+  { id: "image-convert", label: "Image Convert", icon: ImageIcon, group: "convert", groupLabel: "Convert" },
+  { id: "compress", label: "Compress", icon: PackageOpen, group: "convert", groupLabel: "Convert" },
+
   // Layout
-  { id: "outline", label: "Outline & links", icon: ListTree, group: "layout", groupLabel: "Layout" },
-  // Document settings — page numbers + header/footer. Accessed from the
-  // top-bar gear next to Export (document-level property, not a tool).
   { id: "doc-settings", label: "Document settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
-  // Legal
-  { id: "bates", label: "Bates stamp", icon: Hash, group: "legal", groupLabel: "Legal" },
-  { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
-  { id: "privilege-scan", label: "Privilege review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
-  // AI
-  { id: "chat", label: "Search inside PDF", icon: Sparkles, group: "ai", groupLabel: "AI" },
 ];
 
 
 const GROUP_ORDER: ToolGroupLabel[] = [
-  "Pages", "Convert", "Edit", "Redact", "Secure", "Layout", "Legal", "AI",
+  "Legal", "Assemble", "Edit", "Secure", "Navigate", "Pages", "Convert", "Layout", "AI",
+];
+
+/** Rail order — only these groups render in the left rail. Everything else is
+ *  accessed via the All-tools modal. */
+const RAIL_GROUP_ORDER: ToolGroupLabel[] = [
+  "Legal", "Assemble", "Edit", "Secure", "Navigate",
 ];
 
 const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
@@ -1380,7 +1398,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           className="flex w-[212px] shrink-0 flex-col border-r border-border bg-surface-1"
         >
           <div className="flex-1 overflow-y-auto no-scrollbar px-2 py-3">
-            {GROUP_ORDER.map((groupLabel) => {
+            {RAIL_GROUP_ORDER.map((groupLabel) => {
               const groupTools = TOOLS.filter(
                 (t) => !t.hidden && t.groupLabel === groupLabel,
               );
