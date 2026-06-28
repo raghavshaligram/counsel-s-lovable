@@ -294,6 +294,19 @@ export type KeywordMatch = {
   w: number;
   h: number;
   snippet: string;
+  /** PDF-point rect (top-left origin) — what the workspace editor needs. */
+  pdfRect?: { x: number; y: number; w: number; h: number };
+  /**
+   * Parent text-item metadata. Carried through to redact annotations so the
+   * destructive content-stream rewriter (src/lib/editor/text-rewrite.ts) can
+   * delete the underlying Tj operand — true deletion, not a black cover.
+   * Absent for OCR-derived matches on scanned pages.
+   */
+  source?: {
+    originalString: string;
+    transform?: number[];
+    fontName?: string;
+  };
 };
 
 // Find every text-layer item that contains `query` and return redaction-sized
