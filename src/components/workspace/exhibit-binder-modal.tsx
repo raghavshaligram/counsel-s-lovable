@@ -11,12 +11,13 @@
  * heavy steps so the UI stays responsive on large sets. Output is a single
  * PDF with a hyperlinked ToC, slip-sheets, and (optionally) numbering.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { X, GripVertical, Upload, Trash2, FilePlus2, BookOpen } from "lucide-react";
 import { downloadBytes } from "@/lib/batch/runner";
 import {
   buildExhibitBinder,
+  cleanExhibitTitle,
   exhibitLabel,
   type BinderProgress,
   type BinderNumbering,
@@ -45,20 +46,6 @@ const POSITIONS: { value: BatesPosition; label: string }[] = [
 
 function readPdf(f: File): Promise<Uint8Array> {
   return f.arrayBuffer().then((b) => new Uint8Array(b));
-}
-
-/** Turn a filename like "04_ExhibitC_Financials.pdf" into "Financials"
- *  (or the cleanest readable title we can derive). Strips:
- *   - .pdf extension
- *   - leading numeric prefixes "04_" / "04-" / "04 "
- *   - embedded "Exhibit X_" / "Exhibit X-" tokens
- *   - underscores → spaces, collapsed whitespace */
-function cleanTitleFromName(name: string): string {
-  let s = name.replace(/\.pdf$/i, "");
-  s = s.replace(/^[\s_\-.]*\d+[\s_\-.]+/i, "");
-  s = s.replace(/\bExhibit[\s_\-]*[A-Z0-9]+[\s_\-]*/gi, "");
-  s = s.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
-  return s || name.replace(/\.pdf$/i, "");
 }
 
 export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
@@ -101,7 +88,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       name: f.name,
       size: f.size,
       bytes: await readPdf(f),
-      title: cleanTitleFromName(f.name),
+      title: cleanExhibitTitle(f.name),
       labelOverride: "",
     });
   }, []);
@@ -116,7 +103,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
         name: f.name,
         size: f.size,
         bytes: await readPdf(f),
-        title: cleanTitleFromName(f.name),
+        title: cleanExhibitTitle(f.name),
         labelOverride: "",
       });
     }
@@ -149,18 +136,6 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
     setExhibits((cur) => cur.filter((r) => r.id !== id));
   }, []);
 
-  /** Per-row effective label: user override (if any) else computed from
-   *  position in the ordered array. SAME source array drives the build. */
-  const previewLabels = useMemo(
-    () =>
-      exhibits.map((r, i) =>
-        r.labelOverride.trim()
-          ? r.labelOverride.trim()
-          : `${labelPrefix}${exhibitLabel(i, labelScheme)}`,
-      ),
-    [exhibits, labelScheme, labelPrefix],
-  );
-
   /* ---------------- build ---------------- */
 
   const run = useCallback(async () => {
@@ -185,7 +160,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
           exhibits: exhibits.map((e, i) => ({
             name: e.name,
             title: e.title,
-            label: previewLabels[i], // single ordered source of truth
+            label: e.labelOverride.trim() || undefined,
             bytes: e.bytes,
           })),
           labelScheme,
@@ -219,7 +194,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       setProgress(null);
     }
   }, [
-    brief, exhibits, previewLabels, labelScheme, labelPrefix, includeToc, tocTitle,
+    brief, exhibits, labelScheme, labelPrefix, includeToc, tocTitle,
     numbering, bates, skipNumberingOnToc, outputName, onClose,
   ]);
 
