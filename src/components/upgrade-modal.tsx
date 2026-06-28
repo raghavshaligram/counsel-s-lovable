@@ -136,8 +136,8 @@ export function UpgradeModal() {
 
   const onSignIn = useCallback(() => {
     close();
-    void navigate({ to: "/auth", search: { redirect: returnTo } as never });
-  }, [close, navigate, returnTo]);
+    openLogin();
+  }, [close, openLogin]);
 
   return (
     <Dialog
