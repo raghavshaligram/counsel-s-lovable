@@ -74,7 +74,7 @@ function Landing() {
               </h1>
               <p className="mt-8 max-w-md text-base md:text-lg text-muted-foreground leading-relaxed">
                 Redact, Bates-stamp, privilege-review and sanitize PDFs entirely on your device.
-                You sign in only to verify your subscription — your files are never uploaded.
+                You sign in only to verify your subscription — your files are never uploaded. Works offline.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-4">
                 <Link
