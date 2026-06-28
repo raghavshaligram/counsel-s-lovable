@@ -218,17 +218,17 @@ function UsersTab() {
                   <select
                     value={u.plan}
                     disabled={busy === u.userId}
-                    onChange={(e) =>
-                      act(u.userId, () =>
-                        setPlan({
-                          data: {
-                            userId: u.userId,
-                            plan: e.target.value as "free" | "solo" | "firm",
-                            status: "active",
-                          },
-                        }),
-                      )
-                    }
+                    onChange={(e) => {
+                      const next = e.target.value as "free" | "solo" | "firm";
+                      void act(
+                        u.userId,
+                        () =>
+                          setPlan({
+                            data: { userId: u.userId, plan: next, status: "active" },
+                          }),
+                        { plan: next, subscriptionStatus: "active" },
+                      );
+                    }}
                     className="rounded border border-border bg-surface-1 px-1.5 py-1 text-[12px]"
                   >
                     <option value="free">free</option>
