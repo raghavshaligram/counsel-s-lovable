@@ -587,6 +587,7 @@ function surgicalRewrite(
 
     // ── Decide drop / replace ──
     let drop = false;
+    let dropReplacement: string | null = null;
     let replaceTjLiteral: string | null = null;
     let showAdvance: number | null = null;
     let showBaseTm: number[] | null = null;
@@ -608,6 +609,7 @@ function surgicalRewrite(
       showBaseTm = measured.baseTm;
       if (rects.length && measured.bbox && bboxIntersectsRects(measured.bbox.minX, measured.bbox.minY, measured.bbox.maxX, measured.bbox.maxY, rects)) {
         drop = true;
+        dropReplacement = textAdvanceReplacement(text, operands, op, showAdvance, fontSize, hScale);
       } else if ((op === "Tj" || op === "'") && editMap.size) {
         const last = operands[operands.length - 1];
         if (last?.kind === "str") {
@@ -696,6 +698,7 @@ function surgicalRewrite(
 
     if (drop) {
       if (groupStart > cursor) chunks.push(text.slice(cursor, groupStart));
+      if (dropReplacement) chunks.push(dropReplacement);
       cursor = opEnd;
       mutated = true;
       if (TEXT_SHOW_OPS.has(op)) {
