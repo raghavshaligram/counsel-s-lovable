@@ -1447,10 +1447,6 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
       const bytes = await exportEditedPdf(exportDoc);
 
-      // Download.
-      await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
-      setLastBytes(bytes);
-
       // Verify by re-parsing the exported file and confirming every
       // captured source string is absent from the text layer.
       toast.loading("Verifying removal…", { id: tid });
@@ -1458,12 +1454,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const result = await verifyRedactionRemoval(bytes, targets);
       setVerify(result);
       if (result.ok) {
+        await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
+        setLastBytes(bytes);
         toast.success(`Verified — ${result.removed}/${result.total} fragments removed`, { id: tid });
       } else {
-        toast.warning(`${result.leaks.length} fragment${result.leaks.length === 1 ? "" : "s"} still present`, {
-          id: tid,
-          description: "See verification report below.",
-        });
+        throw new Error(`${result.leaks.length} redacted fragment${result.leaks.length === 1 ? " is" : "s are"} still extractable`);
       }
     } catch (err) {
       console.error("[redact] export failed", err);
