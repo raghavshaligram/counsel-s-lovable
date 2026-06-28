@@ -1430,13 +1430,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     {groupTools.map((tool) => {
                       const isActive = activeToolId === tool.id && inspectorOpen;
                       const Icon = tool.icon;
+                      const locked = PAID_TOOL_IDS.has(tool.id) && !isPro;
                       return (
                         <li key={tool.id}>
                           <button
                             type="button"
                             onClick={() => openTool(tool.id)}
-                            aria-label={tool.label}
+                            aria-label={locked ? `${tool.label} (Pro)` : tool.label}
                             aria-pressed={isActive}
+                            title={locked ? `${tool.label} — Pro feature` : tool.label}
                             className={cn(
                               "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors",
                               "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1447,6 +1449,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                           >
                             <Icon className="h-4 w-4 shrink-0" />
                             <span className="truncate">{tool.label}</span>
+                            {locked && <LockBadge className="ml-auto" />}
                           </button>
                         </li>
                       );
