@@ -1382,7 +1382,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             Export
           </button>
           <span className="mx-0.5 h-4 w-px bg-border" />
-          <AccountMenu />
+          <AccountMenu onShowWelcome={() => setWelcomeNonce((n) => n + 1)} />
         </div>
       </header>
 
