@@ -1960,7 +1960,7 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBuilding(true);
     try {
       const bytes = await buildPdfFromCells(cells, resolveBytes);
-      downloadBytes(bytes, `vaultpdf-organized-${Date.now()}.pdf`, "application/pdf");
+      await downloadPdf(bytes, `vaultpdf-organized-${Date.now()}.pdf`);
       toast.success(`Built PDF with ${cells.length} page${cells.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error("[organize] build failed", err);
@@ -5543,7 +5543,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
       const { exportPdf } = await importChunk(() => import("@/lib/outline/write"));
       const out = await exportPdf(bytes, outline, links);
       const base = file.name.replace(/\.pdf$/i, "");
-      downloadBytes(out, `${base}-outline.pdf`, "application/pdf");
+      await downloadPdf(out, `${base}-outline.pdf`);
       toast.success("Exported PDF with updated outline & links");
     } catch (err) {
       console.error("[outline] export failed", err);
@@ -6076,7 +6076,7 @@ function SanitizePanel({ ctx }: { ctx: ToolPanelCtx }) {
       const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
       const clean = await sanitizePdfBytes(bytes);
       const base = file.name.replace(/\.pdf$/i, "");
-      downloadBytes(clean, `${base}-sanitized.pdf`, "application/pdf");
+      await downloadPdf(clean, `${base}-sanitized.pdf`);
       toast.success("Sanitized — hidden data removed");
     } catch (err) {
       console.error(err);
