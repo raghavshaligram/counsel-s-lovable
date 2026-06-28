@@ -1159,7 +1159,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setBusy(false);
     }
-  }, [file, editorState?.doc, targets]);
+  }, [file, editorState?.doc, targets, totalBoxes]);
 
   const downloadCertificate = useCallback(async () => {
     if (!file || !verify || !lastBytes) return;
