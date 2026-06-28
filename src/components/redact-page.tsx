@@ -714,12 +714,21 @@ export function RedactPage() {
         ]);
 
         try {
+          const categoryCounts: Record<string, number> = {};
+          const perPageCounts: Record<number, number> = {};
+          for (const b of allBoxes) {
+            const cat = b.category ?? (b.keywordId ? "pattern" : "manual");
+            categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+            perPageCounts[b.page] = (perPageCounts[b.page] ?? 0) + 1;
+          }
           const certBytes = await buildRedactionCertificate({
             sourceName: file.name,
             sourceBytes: file.size,
             pageCount: pages.length,
-            boxes: allBoxes,
-            stripMetadata,
+            totalRedactions: allBoxes.length,
+            categoryCounts,
+            perPageCounts,
+            verification: null,
             sourceHashSHA256: sourceHash,
             redactedHashSHA256: redactedHash,
           });
