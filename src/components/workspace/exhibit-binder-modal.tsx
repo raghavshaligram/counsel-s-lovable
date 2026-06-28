@@ -69,6 +69,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
     margin: 24,
   });
   const [skipNumberingOnToc, setSkipNumberingOnToc] = useState(true);
+  const [tocTarget, setTocTarget] = useState<"divider" | "content">("divider");
   const [outputName, setOutputName] = useState("exhibit-binder.pdf");
 
   const [busy, setBusy] = useState(false);
@@ -167,6 +168,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
           labelPrefix,
           includeToc,
           tocTitle,
+          tocTarget,
           numbering,
           bates: numbering === "bates" ? bates : undefined,
           skipNumberingOnToc,
@@ -194,7 +196,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       setProgress(null);
     }
   }, [
-    brief, exhibits, labelScheme, labelPrefix, includeToc, tocTitle,
+    brief, exhibits, labelScheme, labelPrefix, includeToc, tocTitle, tocTarget,
     numbering, bates, skipNumberingOnToc, outputName, onClose,
   ]);
 
@@ -421,6 +423,33 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
                 />
               </Field>
             )}
+            {includeToc && (
+              <Field label="Table of Contents points to">
+                <div className="flex gap-1.5">
+                  <SchemeChip
+                    active={tocTarget === "divider"}
+                    onClick={() => setTocTarget("divider")}
+                    disabled={busy}
+                  >
+                    Tab / Divider page
+                  </SchemeChip>
+                  <SchemeChip
+                    active={tocTarget === "content"}
+                    onClick={() => setTocTarget("content")}
+                    disabled={busy}
+                  >
+                    First content page
+                  </SchemeChip>
+                </div>
+                <p className="mt-1 text-[10.5px] text-text-2">
+                  {tocTarget === "divider"
+                    ? "Default — matches physical binders. Each exhibit begins at its tab."
+                    : "ToC number and link both jump to the first page of exhibit content."}
+                </p>
+              </Field>
+            )}
+
+
 
             <Field label="Continuous numbering">
               <div className="flex gap-1.5">
