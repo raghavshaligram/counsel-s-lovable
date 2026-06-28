@@ -274,6 +274,28 @@ export function EditorCanvas({
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Delete / Backspace removes the selected annotation on this page (unless
+  // the user is editing text inside the annotation, or focus is in a form
+  // input elsewhere). Critical for redact drafts: marks must be removable
+  // before the burn step.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const sel = state.selectedAnnoId;
+      if (!sel) return;
+      // Only the page that owns the selected annotation should react.
+      const owns = annos.some((a) => a.id === sel);
+      if (!owns) return;
+      if (editingId) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      dispatch({ type: "DELETE_ANNO", id: sel });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.selectedAnnoId, annos, editingId, dispatch]);
+
   // Render this page. Reuses a shared pdf.js doc when provided so we don't
   // re-parse the file per page. DPR capped at 2 to limit memory.
   useEffect(() => {
