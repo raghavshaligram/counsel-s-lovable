@@ -530,7 +530,7 @@ function OfflinePanel() {
   );
 }
 
-
+function NetworkMonitor() {
   const [ref, inView] = useInView<HTMLDivElement>();
   const rows = [
     { name: "app.bundle.js", type: "script", size: "812 KB", status: "200" },
