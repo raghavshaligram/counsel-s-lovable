@@ -119,6 +119,15 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         return [{ page: a.page, text: diagnosticText, rect: { x: a.x, y: a.y, w: a.w, h: a.h } }];
       });
       if (redactionTargets.length > 0) {
+        toast.loading("Burning redaction regions…", { id: tid });
+        const pageRedactions = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+        for (const t of redactionTargets) {
+          const arr = pageRedactions.get(t.page) ?? [];
+          arr.push(t.rect);
+          pageRedactions.set(t.page, arr);
+        }
+        const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
+        bytes = (await rasterizeRedactedPages(bytes, pageRedactions, { mode: "always", scale: 2.5 })).bytes;
         toast.loading("Verifying redaction regions…", { id: tid });
         const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
         const check = await verifyRedactionRemoval(bytes, redactionTargets);
@@ -126,6 +135,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
         }
       }
+
 
       const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
       await downloadPdf(bytes, outName);
