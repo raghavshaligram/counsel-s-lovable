@@ -1211,7 +1211,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </p>
       </Section>
 
-      <ProRedactSection />
+      <ProRedactSection ctx={ctx} />
 
 
 
