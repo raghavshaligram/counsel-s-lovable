@@ -81,3 +81,57 @@ function FormatPill({
     </button>
   );
 }
+
+/**
+ * Compact dropdown variant — for tight surfaces like the workspace top bar.
+ * Reads / writes the same global preference as ExportFormatRow.
+ */
+export function ExportFormatChip({ className }: { className?: string }) {
+  const [format, setFormat] = useExportFormat();
+  const label = format === "pdf-a" ? "PDF/A" : "PDF";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          title="Output format for downloads"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2 py-1 text-[11.5px] font-medium text-text-2 transition-colors hover:bg-surface-2 hover:text-foreground",
+            format === "pdf-a" && "border-vault/40 bg-accent-soft text-vault",
+            className,
+          )}
+        >
+          <FileCheck2 className="h-3.5 w-3.5" strokeWidth={2} />
+          {label}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel className="text-[11px] uppercase tracking-[0.12em] text-text-muted">
+          Output format
+        </DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => setFormat("pdf")} className="items-start">
+          <div className="flex w-full items-start gap-2">
+            <Check className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", format === "pdf" ? "text-vault" : "opacity-0")} strokeWidth={2.5} />
+            <div className="min-w-0">
+              <div className="text-[12.5px] font-medium text-foreground">PDF</div>
+              <div className="text-[10.5px] text-text-muted">Standard PDF · maximum compatibility</div>
+            </div>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setFormat("pdf-a")} className="items-start">
+          <div className="flex w-full items-start gap-2">
+            <Check className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", format === "pdf-a" ? "text-vault" : "opacity-0")} strokeWidth={2.5} />
+            <div className="min-w-0">
+              <div className="text-[12.5px] font-medium text-foreground">PDF/A-2b</div>
+              <div className="text-[10.5px] text-text-muted">{PDFA_NOTE}</div>
+            </div>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <div className="px-2 py-1.5 text-[10.5px] leading-snug text-text-muted">
+          Applies to every PDF you export — Redact, Bates, Convert, Sanitize and more. Conversion runs on-device.
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
