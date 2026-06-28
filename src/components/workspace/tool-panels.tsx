@@ -1057,12 +1057,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setScanning(true);
     setFindings(null);
     setUsedOcr(false);
+    setScannedPages([]);
+    setTotalPagesScanned(0);
     setSelected(new Set());
     setProgress("Reading text layer…");
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+      const { detections, usedOcr, scannedPages: scanned, totalPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
         setProgress(
           p.stage === "ocr"
             ? `OCR scanning ${p.page}/${p.totalPages}`
@@ -1071,15 +1073,22 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       });
       setFindings(detections);
       setUsedOcr(usedOcr);
-      // Default selection: auto-check structured / high-confidence findings.
-      // Heuristic name matches are left UNCHECKED so users opt into them
-      // (avoids 50+ false positives from headings on business docs).
-      const autoSelect = detections.filter(
-        (d) => d.confidence !== "low",
-      );
+      setScannedPages(scanned);
+      setTotalPagesScanned(totalPages);
+      const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
+      const hasScanned = scanned.length > 0;
       if (detections.length === 0) {
-        toast.info("No sensitive data found", { description: "Nothing matched the built-in patterns." });
+        if (hasScanned) {
+          toast.warning("Scanned/image document — detection cannot read it", {
+            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. Run OCR first, or mark regions manually. Do NOT rely on auto-detect here.`,
+            duration: 12000,
+          });
+        } else {
+          toast.info("No sensitive data matched", {
+            description: "Nothing matched the built-in patterns on the readable text layer.",
+          });
+        }
       } else {
         const lowCount = detections.length - autoSelect.length;
         toast.success(`${detections.length} finding${detections.length === 1 ? "" : "s"}`, {
@@ -1087,6 +1096,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             ? `${autoSelect.length} auto-selected · ${lowCount} low-confidence name${lowCount === 1 ? "" : "s"} unchecked — review and opt in.`
             : "Review then click Redact selected.",
         });
+        if (hasScanned) {
+          toast.warning("Some pages are scanned — detection may miss items", {
+            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
+            duration: 12000,
+          });
+        }
       }
 
     } catch (err) {
