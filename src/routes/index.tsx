@@ -245,8 +245,8 @@ function Landing() {
             />
             <PriceCard
               eyebrow="Small-firm annual pass"
-              price="Contact"
-              cadence="up to 10 seats"
+              price="$1,490"
+              cadence="/year · up to 10 seats"
               note="One invoice. One renewal. No per-seat seat-counting."
               features={[
                 "Everything in Solo",
@@ -254,7 +254,7 @@ function Landing() {
                 "Priority email support",
                 "Onboarding for paralegals",
               ]}
-              cta="Talk to us"
+              cta="Get the firm pass"
             />
           </div>
         </div>
