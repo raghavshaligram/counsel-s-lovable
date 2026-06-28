@@ -1382,15 +1382,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
   const totalBoxes = redactAnnos.length;
   const targets = useMemo(() => {
-    const out: { page: number; text: string }[] = [];
+    const out: { page: number; text?: string; rect: { x: number; y: number; w: number; h: number } }[] = [];
     for (const a of redactAnnos) {
-      if (a.kind !== "redact" || !a.sources?.length) continue;
-      for (const s of a.sources) {
-        const text = (s.redactText || s.originalString || "").trim();
-        if (text) {
-          out.push({ page: a.page, text });
-        }
-      }
+      if (a.kind !== "redact") continue;
+      const text = a.sources?.map((s) => (s.redactText || s.originalString || "").trim()).find(Boolean);
+      out.push({ page: a.page, text, rect: { x: a.x, y: a.y, w: a.w, h: a.h } });
     }
     return out;
   }, [redactAnnos]);
@@ -1448,8 +1444,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
       const bytes = await exportEditedPdf(exportDoc);
 
-      // Verify by re-parsing the exported file and confirming every
-      // captured source string is absent from the text layer.
+      // Verify by re-parsing the exported file and confirming no text remains
+      // inside any redaction region. This works for custom fonts/CMaps where
+      // glyph bytes do not decode to the visible string.
       toast.loading("Verifying removal…", { id: tid });
       const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
       const result = await verifyRedactionRemoval(bytes, targets);
@@ -1457,9 +1454,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       if (result.ok) {
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
-        toast.success(`Verified — ${result.removed}/${result.total} fragments removed`, { id: tid });
+        toast.success(`Verified — ${result.removed}/${result.total} regions cleared`, { id: tid });
       } else {
-        throw new Error(`${result.leaks.length} redacted fragment${result.leaks.length === 1 ? " is" : "s are"} still extractable`);
+        throw new Error(`${result.leaks.length} redaction region${result.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
     } catch (err) {
       console.error("[redact] export failed", err);
@@ -1570,8 +1567,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           {busy ? "Working…" : "Redact, export & verify"}
         </button>
         <p className="mt-1.5 text-[10.5px] text-text-muted">
-          Exports a redacted PDF, then re-parses the exported file and confirms each
-          captured fragment is gone from the text layer.
+          Exports a redacted PDF, then re-parses the exported file and confirms no
+          extractable text remains inside each redaction region.
         </p>
       </Section>
 
@@ -1589,7 +1586,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
           >
             <div className="font-medium">
-              {verify.removed} of {verify.total} text fragment{verify.total === 1 ? "" : "s"} removed
+              {verify.removed} of {verify.total} redaction region{verify.total === 1 ? "" : "s"} cleared
             </div>
             <div className="mt-0.5 text-[10.5px] opacity-80">
               Scanned {new Date(verify.scannedAt).toLocaleString()}
@@ -1598,7 +1595,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               <ul className="mt-2 space-y-1 text-[11px] text-foreground">
                 {verify.leaks.slice(0, 6).map((l, i) => (
                   <li key={i} className="font-mono">
-                    p.{l.page + 1}: <span className="text-text-2">{l.text.length > 40 ? l.text.slice(0, 40) + "…" : l.text}</span>
+                    p.{l.page + 1}: <span className="text-text-2">text remains in region</span>
                   </li>
                 ))}
                 {verify.leaks.length > 6 && (
@@ -1608,10 +1605,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
             {!verify.ok && (
               <p className="mt-2 text-[10.5px] leading-snug text-text-2">
-                These fragments still appear in the exported file&apos;s text layer (likely a
-                custom font / CMap whose Tj operand doesn&apos;t match the visible string).
-                Visual overlay still hides them on screen, but search/copy can recover them.
-                Consider exporting via Print → PDF or applying Flatten in Document Settings.
+                Extractable text still intersects one or more redaction boxes in the exported file.
+                Visual overlay still hides it on screen, but search/copy can recover it.
               </p>
             )}
           </div>

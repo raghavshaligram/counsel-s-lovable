@@ -284,16 +284,15 @@ function Editor() {
       };
       const bytes = await exportEditedPdf(state.doc, settings);
       const redactionTargets = state.doc.annotations.flatMap((a) => {
-        if (a.kind !== "redact" || !a.sources?.length) return [];
-        return a.sources
-          .map((s) => ({ page: a.page, text: (s.redactText || s.originalString || "").trim() }))
-          .filter((t) => t.text.length > 0);
+        if (a.kind !== "redact") return [];
+        const text = a.sources?.map((s) => (s.redactText || s.originalString || "").trim()).find(Boolean);
+        return [{ page: a.page, text, rect: { x: a.x, y: a.y, w: a.w, h: a.h } }];
       });
       if (redactionTargets.length > 0) {
-        toast.loading("Verifying redactions…", { id: "exp" });
+        toast.loading("Verifying redaction regions…", { id: "exp" });
         const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
         const check = await verifyRedactionRemoval(bytes, redactionTargets);
-        if (!check.ok) throw new Error(`${check.leaks.length} redacted fragment${check.leaks.length === 1 ? " is" : "s are"} still extractable`);
+        if (!check.ok) throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
       toast.success("Done", { id: "exp" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });

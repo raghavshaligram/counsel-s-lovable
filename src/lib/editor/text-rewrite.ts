@@ -1,19 +1,14 @@
 // Destructive content-stream surgery.
 //
-// For redaction, we DO NOT rely on string matching. We tokenize each page's
-// content stream, track the graphics state (CTM via cm/q/Q) and the text
-// state (Tm/Tlm via BT/ET/Td/TD/Tm/T*/TL), compute the user-space START
-// position of every text-show operator (Tj/TJ/'/"), and delete the entire
-// operator + its operands when that start position falls inside any redact
-// rectangle. This handles `(literal) Tj`, `<hex> Tj`, and `[...] TJ` arrays
-// uniformly because the trigger is glyph POSITION, not glyph bytes.
+// For redaction, we DO NOT rely on string matching. Custom PDF fonts/CMaps
+// routinely encode visible text as private glyph codes, so decoded Tj/TJ bytes
+// cannot be trusted. We tokenize each page content stream, track graphics and
+// text state, estimate the rendered bounding box of every text-show operator,
+// and remove the operator solely when that box intersects a redaction region.
 //
 // In addition we:
 //   - drop image `Do` operators whose CTM-mapped bounding box lies fully
 //     inside a redact rectangle
-//   - keep a string-equality fallback (operand literal == captured source
-//     string) for Tj/' in case the position tracker drifts on a stream that
-//     uses implicit-advance text runs without per-glyph Tm resets
 //   - preserve the legacy text-edit string-replacement path used by Edit-text
 //     annotations (handles only `(literal) Tj` / `'`, like before)
 //
@@ -62,6 +57,22 @@ export interface RewriteStats {
   textTargetsMatched: number;
   skippedStreams: number;
 }
+
+type FontMetrics = {
+  widths: Map<number, number>;
+  defaultWidth: number;
+  missingWidth: number;
+  firstChar: number;
+  codeSize: 1 | 2;
+};
+
+const DEFAULT_FONT: FontMetrics = {
+  widths: new Map(),
+  defaultWidth: 500,
+  missingWidth: 500,
+  firstChar: 0,
+  codeSize: 1,
+};
 
 const emptyStats = (): RewriteStats => ({
   pagesVisited: 0,
@@ -130,19 +141,21 @@ function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite): Rewrite
     if ((contents as any).contents || typeof (contents as any).getContents === "function") streams.push(contents as any);
   }
 
-  for (const stream of streams) addStats(stats, rewriteStream(stream, job));
+  const fonts = collectPageFonts(page);
+  for (const stream of streams) addStats(stats, rewriteStream(stream, job, fonts));
   return stats;
 }
 
-function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite): RewriteStats {
+function rewriteStream(
+  stream: import("pdf-lib").PDFRawStream,
+  job: PageRewrite,
+  fonts: Map<string, FontMetrics>,
+): RewriteStats {
   const stats = emptyStats();
   stats.streamsVisited = 1;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const s: any = stream;
   const dict = s.dict;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = (dict?.context ?? null) as any;
-
   // Read /Filter — may be a name or an array of names.
   let filterNames: string[] = [];
   try {
@@ -161,14 +174,11 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   let bytes: Uint8Array = s.contents ?? (typeof s.getContents === "function" ? s.getContents() : undefined);
   if (!bytes || !bytes.length) return stats;
 
-  const wasFlate = filterNames.length === 1 && (filterNames[0] === "FlateDecode" || filterNames[0] === "Fl");
-  if (filterNames.length && !wasFlate) {
-    // Other filters (ASCII85, LZW, DCTDecode, etc.) — too risky to round-trip.
+  try {
+    bytes = decodeContentBytes(bytes, filterNames);
+  } catch {
     stats.skippedStreams = 1;
     return stats;
-  }
-  if (wasFlate) {
-    try { bytes = unzlibSync(bytes); } catch { stats.skippedStreams = 1; return stats; }
   }
 
   // latin1 decode — operators are ASCII; non-ASCII bytes only appear inside
@@ -176,25 +186,162 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   let text = "";
   for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
 
-  const result = surgicalRewrite(text, job);
+  const result = surgicalRewrite(text, job, fonts);
   if (!result.mutated) return stats;
 
   let newBytes = new Uint8Array(result.text.length);
   for (let n = 0; n < result.text.length; n++) newBytes[n] = result.text.charCodeAt(n) & 0xff;
 
-  if (wasFlate) {
-    try { newBytes = zlibSync(newBytes); } catch { stats.skippedStreams = 1; return stats; }
-  }
+  // Normalize supported input filters to FlateDecode after mutation. This is
+  // safe for content streams and avoids needing a binary-exact ASCII85 encoder.
+  try { newBytes = zlibSync(newBytes); } catch { stats.skippedStreams = 1; return stats; }
   s.contents = newBytes;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const lenKey = PDFName.of("Length");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     dict.set?.(lenKey, (dict.context as any).obj(newBytes.length));
+    dict.set?.(PDFName.of("Filter"), PDFName.of("FlateDecode"));
+    dict.delete?.(PDFName.of("DecodeParms"));
   } catch { /* pdf-lib will recompute on save */ }
   stats.streamsMutated = 1;
   addStats(stats, result.stats);
   return stats;
+}
+
+function decodeContentBytes(bytes: Uint8Array, filters: string[]): Uint8Array {
+  let out = bytes;
+  for (const raw of filters) {
+    const f = raw.replace(/^\//, "");
+    if (f === "FlateDecode" || f === "Fl") {
+      out = unzlibSync(out);
+    } else if (f === "ASCII85Decode" || f === "A85") {
+      out = ascii85Decode(out);
+    } else if (!f) {
+      continue;
+    } else {
+      throw new Error(`Unsupported content stream filter: ${f}`);
+    }
+  }
+  return out;
+}
+
+function ascii85Decode(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let tuple: number[] = [];
+  const flush = (final = false) => {
+    if (tuple.length === 0) return;
+    const actual = tuple.length;
+    if (final) while (tuple.length < 5) tuple.push(84); // 'u'
+    if (tuple.length < 5) return;
+    let value = 0;
+    for (const n of tuple) value = value * 85 + n;
+    const bytes = [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+    out.push(...bytes.slice(0, final ? Math.max(0, actual - 1) : 4));
+    tuple = [];
+  };
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (c === 0x25) { while (i < input.length && input[i] !== 0x0a && input[i] !== 0x0d) i++; continue; }
+    if (c <= 0x20) continue;
+    if (c === 0x7e && input[i + 1] === 0x3e) { flush(true); break; }
+    if (c === 0x7a && tuple.length === 0) { out.push(0, 0, 0, 0); continue; }
+    if (c < 33 || c > 117) continue;
+    tuple.push(c - 33);
+    if (tuple.length === 5) flush(false);
+  }
+  flush(true);
+  return new Uint8Array(out);
+}
+
+function collectPageFonts(page: import("pdf-lib").PDFPage): Map<string, FontMetrics> {
+  const fonts = new Map<string, FontMetrics>();
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const node: any = page.node;
+    const entries = typeof node.normalizedEntries === "function" ? node.normalizedEntries() : null;
+    const fontDict = entries?.Font ?? node.Resources?.()?.lookup?.(PDFName.of("Font"));
+    if (!fontDict || typeof fontDict.entries !== "function") return fonts;
+    for (const [name, obj] of fontDict.entries() as Array<[unknown, unknown]>) {
+      const key = String(name).replace(/^\//, "");
+      const dict = lookupDict(page.doc.context, obj);
+      if (dict) fonts.set(key, readFontMetrics(page.doc.context, dict));
+    }
+  } catch {
+    /* best effort; caller falls back to default metrics */
+  }
+  return fonts;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lookupDict(ctx: any, obj: unknown): any | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolved: any = obj && typeof (obj as any).entries === "function" ? obj : ctx.lookup(obj as never);
+    return resolved && typeof resolved.entries === "function" ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function readFontMetrics(ctx: any, font: any): FontMetrics {
+  const subtype = nameValue(font.get?.(PDFName.of("Subtype")));
+  if (subtype === "Type0") {
+    const descendants = font.lookup?.(PDFName.of("DescendantFonts"));
+    const cid = descendants?.lookup?.(0) ?? descendants?.asArray?.()[0];
+    const cidDict = lookupDict(ctx, cid) ?? font;
+    return readCidMetrics(cidDict);
+  }
+  return readSimpleMetrics(font);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function readSimpleMetrics(font: any): FontMetrics {
+  const firstChar = numObj(font.get?.(PDFName.of("FirstChar"))) ?? 0;
+  const widths = new Map<number, number>();
+  const arr = font.lookup?.(PDFName.of("Widths"));
+  const values = typeof arr?.asArray === "function" ? arr.asArray() : [];
+  for (let i = 0; i < values.length; i++) widths.set(firstChar + i, numObj(values[i]) ?? 500);
+  const fd = lookupDict(font.context, font.get?.(PDFName.of("FontDescriptor")));
+  const missingWidth = numObj(fd?.get?.(PDFName.of("MissingWidth"))) ?? 500;
+  return { widths, defaultWidth: 500, missingWidth, firstChar, codeSize: 1 };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function readCidMetrics(font: any): FontMetrics {
+  const widths = new Map<number, number>();
+  const defaultWidth = numObj(font.get?.(PDFName.of("DW"))) ?? 1000;
+  const wArr = font.lookup?.(PDFName.of("W"));
+  const values = typeof wArr?.asArray === "function" ? wArr.asArray() : [];
+  for (let i = 0; i < values.length;) {
+    const first = numObj(values[i++]);
+    if (first === undefined || i >= values.length) break;
+    const next = values[i++];
+    if (typeof next?.asArray === "function") {
+      const ws = next.asArray();
+      for (let j = 0; j < ws.length; j++) widths.set(first + j, numObj(ws[j]) ?? defaultWidth);
+    } else {
+      const last = numObj(next);
+      const width = numObj(values[i++]);
+      if (last === undefined || width === undefined) break;
+      for (let c = first; c <= last; c++) widths.set(c, width);
+    }
+  }
+  const fd = lookupDict(font.context, font.get?.(PDFName.of("FontDescriptor")));
+  const missingWidth = numObj(fd?.get?.(PDFName.of("MissingWidth"))) ?? defaultWidth;
+  return { widths, defaultWidth, missingWidth, firstChar: 0, codeSize: 2 };
+}
+
+function nameValue(v: unknown): string {
+  return String(v ?? "").replace(/^\//, "");
+}
+
+function numObj(v: unknown): number | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const any = v as any;
+  const n = typeof any?.asNumber === "function" ? any.asNumber() : typeof any?.value === "function" ? any.value() : Number(String(v));
+  return Number.isFinite(n) ? n : undefined;
 }
 
 // ─── Tokenizer + content-stream walker ──────────────────────────────────────
@@ -351,6 +498,14 @@ function bboxInRects(minX: number, minY: number, maxX: number, maxY: number, rec
   }
   return false;
 }
+function bboxIntersectsRects(minX: number, minY: number, maxX: number, maxY: number, rects: RedactRect[]): boolean {
+  for (const r of rects) {
+    const x1 = Math.min(r.x1, r.x2), x2 = Math.max(r.x1, r.x2);
+    const y1 = Math.min(r.y1, r.y2), y2 = Math.max(r.y1, r.y2);
+    if (maxX >= x1 && minX <= x2 && maxY >= y1 && minY <= y2) return true;
+  }
+  return false;
+}
 
 function decodeLiteral(s: string): string {
   let out = "";
@@ -395,11 +550,13 @@ function encodeLiteral(s: string): string {
 
 const TEXT_SHOW_OPS = new Set(["Tj", "TJ", "'", '"']);
 
-function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutated: boolean; stats: Partial<RewriteStats> } {
+function surgicalRewrite(
+  text: string,
+  job: PageRewrite,
+  fonts: Map<string, FontMetrics>,
+): { text: string; mutated: boolean; stats: Partial<RewriteStats> } {
   const tokens = tokenize(text);
   const editMap = new Map(job.edits.map((e) => [e.original, e.replacement]));
-  const redactStrings = new Set(job.redactStrings ?? []);
-  const redactTargets = job.redactTargets ?? [];
   const rects = job.redacts;
   const stats: Partial<RewriteStats> = {};
 
@@ -410,6 +567,12 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
   let tm = identity();
   let tlm = identity();
   let tLeading = 0;
+  let fontName = "";
+  let fontSize = 12;
+  let charSpacing = 0;
+  let wordSpacing = 0;
+  let hScale = 100;
+  let textRise = 0;
 
   let operands: Tok[] = [];
   let cursor = 0;
@@ -424,50 +587,43 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
 
     // ── Decide drop / replace ──
     let drop = false;
+    let dropReplacement: string | null = null;
     let replaceTjLiteral: string | null = null;
-    let replaceOperand: { token: Tok; value: string } | null = null;
-    let rewriteMatchedTarget = false;
+    let showAdvance: number | null = null;
+    let showBaseTm: number[] | null = null;
 
     if (TEXT_SHOW_OPS.has(op) && inText) {
-      const [ux, uy] = txp(ctm, tm[4], tm[5]);
-      const inRect = rects.length ? pointInRects(ux, uy, rects) : false;
-
-      let stringMatchRedact = false;
-      if (!inRect && (redactStrings.size || redactTargets.length) && (op === "Tj" || op === "'")) {
-        const last = operands[operands.length - 1];
-        const decoded = decodeStringToken(text, last);
-        if (last && decoded !== null) {
-          const rewritten = redactTextValue(decoded, redactTargets, redactStrings);
-          if (rewritten.matched) {
-            rewriteMatchedTarget = true;
-            if (rewritten.value.length === 0) {
-              stringMatchRedact = true;
-            } else if (rewritten.value !== decoded) {
-              replaceOperand = { token: last, value: rewritten.value };
-            }
-          } else if (redactStrings.has(decoded)) {
-            stringMatchRedact = true;
-            rewriteMatchedTarget = true;
-          }
+      const measured = measureTextShow(text, operands, op, {
+        ctm,
+        tm,
+        tlm,
+        leading: tLeading,
+        font: fonts.get(fontName) ?? DEFAULT_FONT,
+        fontSize,
+        charSpacing,
+        wordSpacing,
+        hScale,
+        textRise,
+      });
+      showAdvance = measured.advance;
+      showBaseTm = measured.baseTm;
+      if (rects.length && measured.bbox && bboxIntersectsRects(measured.bbox.minX, measured.bbox.minY, measured.bbox.maxX, measured.bbox.maxY, rects)) {
+        const positional = rewriteTextShowByPosition(text, operands, op, rects, {
+          ctm,
+          baseTm: measured.baseTm,
+          tlm,
+          leading: tLeading,
+          font: fonts.get(fontName) ?? DEFAULT_FONT,
+          fontSize,
+          charSpacing,
+          wordSpacing,
+          hScale,
+          textRise,
+        });
+        if (positional?.removed) {
+          drop = true;
+          dropReplacement = positional.replacement ?? textAdvanceReplacement(text, operands, op, showAdvance, fontSize, hScale);
         }
-      }
-
-      if (!inRect && !stringMatchRedact && !replaceOperand && redactTargets.length && op === "TJ") {
-        const arr = collectArrayOperand(text, operands);
-        if (arr) {
-          const rewritten = redactTextValue(arr.value, redactTargets, redactStrings);
-          if (rewritten.matched) {
-            rewriteMatchedTarget = true;
-            // TJ arrays interleave kerning adjustments, so preserve surrounding
-            // text by replacing the whole array with one literal string. This
-            // keeps the non-redacted words searchable instead of dropping the line.
-            replaceOperand = { token: arr.token, value: rewritten.value };
-          }
-        }
-      }
-
-      if (inRect || stringMatchRedact) {
-        drop = true;
       } else if ((op === "Tj" || op === "'") && editMap.size) {
         const last = operands[operands.length - 1];
         if (last?.kind === "str") {
@@ -524,10 +680,29 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
         tm = tlm.slice();
       } else if (op === "TL" && operands.length >= 1) {
         tLeading = num(operands[operands.length - 1]);
+      } else if (op === "Tf" && operands.length >= 2) {
+        const nameTok = operands[operands.length - 2];
+        fontName = nameTok?.kind === "name" ? text.slice(nameTok.start + 1, nameTok.end) : fontName;
+        fontSize = num(operands[operands.length - 1]) || fontSize;
+      } else if (op === "Tc" && operands.length >= 1) {
+        charSpacing = num(operands[operands.length - 1]);
+      } else if (op === "Tw" && operands.length >= 1) {
+        wordSpacing = num(operands[operands.length - 1]);
+      } else if (op === "Tz" && operands.length >= 1) {
+        hScale = num(operands[operands.length - 1]) || 100;
+      } else if (op === "Ts" && operands.length >= 1) {
+        textRise = num(operands[operands.length - 1]);
       } else if (op === "'" || op === '"') {
+        if (op === '"' && operands.length >= 3) {
+          wordSpacing = num(operands[operands.length - 3]);
+          charSpacing = num(operands[operands.length - 2]);
+        }
         const m = [1, 0, 0, 1, 0, -tLeading];
         tlm = mul(m, tlm);
         tm = tlm.slice();
+        if (showAdvance !== null) tm = mul([1, 0, 0, 1, showAdvance, 0], tm);
+      } else if ((op === "Tj" || op === "TJ") && showAdvance !== null) {
+        tm = mul([1, 0, 0, 1, showAdvance, 0], showBaseTm ?? tm);
       }
     }
 
@@ -537,21 +712,13 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
 
     if (drop) {
       if (groupStart > cursor) chunks.push(text.slice(cursor, groupStart));
+      if (dropReplacement) chunks.push(dropReplacement);
       cursor = opEnd;
       mutated = true;
       if (TEXT_SHOW_OPS.has(op)) {
         stats.textOpsDropped = (stats.textOpsDropped ?? 0) + 1;
-        if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
+        stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
       }
-    } else if (replaceOperand) {
-      const t = replaceOperand.token;
-      if (t.start > cursor) chunks.push(text.slice(cursor, t.start));
-      chunks.push("(" + encodeLiteral(replaceOperand.value) + ")");
-      chunks.push(text.slice(t.end, opEnd));
-      cursor = opEnd;
-      mutated = true;
-      stats.textOperandsRewritten = (stats.textOperandsRewritten ?? 0) + 1;
-      if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
     } else if (replaceTjLiteral !== null) {
       const last = operands[operands.length - 1];
       if (last.start > cursor) chunks.push(text.slice(cursor, last.start));
@@ -568,6 +735,307 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
   if (cursor < text.length) chunks.push(text.slice(cursor));
 
   return { text: chunks.join(""), mutated, stats };
+}
+
+function measureTextShow(
+  text: string,
+  operands: Tok[],
+  op: string,
+  state: {
+    ctm: number[];
+    tm: number[];
+    tlm: number[];
+    leading: number;
+    font: FontMetrics;
+    fontSize: number;
+    charSpacing: number;
+    wordSpacing: number;
+    hScale: number;
+    textRise: number;
+  },
+): { advance: number; baseTm: number[]; bbox: { minX: number; minY: number; maxX: number; maxY: number } | null } {
+  let baseTm = state.tm.slice();
+  let charSpacing = state.charSpacing;
+  let wordSpacing = state.wordSpacing;
+  let tokens: Tok[] = [];
+  let tjAdjust = 0;
+
+  if (op === "'" || op === '"') {
+    baseTm = mul([1, 0, 0, 1, 0, -state.leading], state.tlm);
+    if (op === '"' && operands.length >= 3) {
+      wordSpacing = parseFloat(text.slice(operands[operands.length - 3].start, operands[operands.length - 3].end)) || 0;
+      charSpacing = parseFloat(text.slice(operands[operands.length - 2].start, operands[operands.length - 2].end)) || 0;
+    }
+    tokens = operands.length ? [operands[operands.length - 1]] : [];
+  } else if (op === "Tj") {
+    tokens = operands.length ? [operands[operands.length - 1]] : [];
+  } else if (op === "TJ") {
+    const arr = arrayOperandTokens(operands);
+    tokens = arr.filter((t) => t.kind === "str" || t.kind === "hexstr");
+    for (const t of arr) if (t.kind === "num") tjAdjust += parseFloat(text.slice(t.start, t.end)) || 0;
+  }
+
+  const bytes = tokens.flatMap((t) => stringTokenBytes(text, t));
+  if (bytes.length === 0) return { advance: 0, baseTm, bbox: null };
+  const fontSize = Math.max(Math.abs(state.fontSize) || 12, 0.1);
+  const scale = (state.hScale || 100) / 100;
+  const design = glyphDesignWidth(bytes, state.font);
+  const codeCount = Math.max(1, countGlyphCodes(bytes, state.font));
+  const spaces = countSpaceCodes(bytes, state.font);
+  const spacing = codeCount * charSpacing + spaces * wordSpacing;
+  const advance = ((design / 1000) * fontSize + spacing - (tjAdjust / 1000) * fontSize) * scale;
+  const widthEm = Math.max(Math.abs(advance) / Math.max(fontSize * Math.abs(scale), 0.1), design / 1000, 0.05);
+  const heightEm = 1.2;
+  const riseEm = state.textRise / fontSize;
+  const trm = mul([fontSize * scale, 0, 0, fontSize, 0, state.textRise], mul(baseTm, state.ctm));
+  const corners: Array<[number, number]> = [
+    [0, -0.25 + riseEm],
+    [widthEm, -0.25 + riseEm],
+    [widthEm, heightEm - 0.25 + riseEm],
+    [0, heightEm - 0.25 + riseEm],
+  ].map(([x, y]) => txp(trm, x, y));
+  const xs = corners.map((p) => p[0]);
+  const ys = corners.map((p) => p[1]);
+  return {
+    advance,
+    baseTm,
+    bbox: { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) },
+  };
+}
+
+function textAdvanceReplacement(
+  text: string,
+  operands: Tok[],
+  op: string,
+  advance: number | null,
+  fontSize: number,
+  hScale: number,
+): string | null {
+  if (advance === null || !Number.isFinite(advance)) return null;
+  const denom = (Math.abs(fontSize) || 12) * ((hScale || 100) / 100);
+  if (!Number.isFinite(denom) || Math.abs(denom) < 0.001) return null;
+  const adjust = -advance * 1000 / denom;
+  const tj = `[${fmtNum(adjust)}] TJ`;
+  if (op === "Tj" || op === "TJ") return tj;
+  if (op === "'") return `T* ${tj}`;
+  if (op === '"' && operands.length >= 3) {
+    const word = text.slice(operands[operands.length - 3].start, operands[operands.length - 3].end);
+    const char = text.slice(operands[operands.length - 2].start, operands[operands.length - 2].end);
+    return `${word} Tw ${char} Tc T* ${tj}`;
+  }
+  return null;
+}
+
+function fmtNum(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  const s = n.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+  return s === "-0" ? "0" : s;
+}
+
+function rewriteTextShowByPosition(
+  text: string,
+  operands: Tok[],
+  op: string,
+  rects: RedactRect[],
+  state: {
+    ctm: number[];
+    baseTm: number[];
+    tlm: number[];
+    leading: number;
+    font: FontMetrics;
+    fontSize: number;
+    charSpacing: number;
+    wordSpacing: number;
+    hScale: number;
+    textRise: number;
+  },
+): { removed: boolean; replacement: string | null } | null {
+  const fontSize = Math.max(Math.abs(state.fontSize) || 12, 0.1);
+  const scale = (state.hScale || 100) / 100;
+  const denom = fontSize * scale;
+  if (!Number.isFinite(denom) || Math.abs(denom) < 0.001) return null;
+
+  let baseTm = state.baseTm;
+  let charSpacing = state.charSpacing;
+  let wordSpacing = state.wordSpacing;
+  let prefix = "";
+  let parts: Tok[] = [];
+  if (op === "'" || op === '"') {
+    baseTm = mul([1, 0, 0, 1, 0, -state.leading], state.tlm);
+    prefix = "T* ";
+    if (op === '"' && operands.length >= 3) {
+      const wordTok = operands[operands.length - 3];
+      const charTok = operands[operands.length - 2];
+      wordSpacing = parseFloat(text.slice(wordTok.start, wordTok.end)) || 0;
+      charSpacing = parseFloat(text.slice(charTok.start, charTok.end)) || 0;
+      prefix = `${text.slice(wordTok.start, wordTok.end)} Tw ${text.slice(charTok.start, charTok.end)} Tc T* `;
+    }
+    if (operands.length) parts = [operands[operands.length - 1]];
+  } else if (op === "Tj") {
+    if (operands.length) parts = [operands[operands.length - 1]];
+  } else if (op === "TJ") {
+    parts = arrayOperandTokens(operands);
+  }
+  if (!parts.length) return null;
+
+  const out: string[] = [];
+  let removed = false;
+  let kept = false;
+  let x = 0;
+  let pendingAdvance = 0;
+  let keptRun: number[] = [];
+  const flushRun = () => {
+    if (keptRun.length) {
+      out.push(`<${bytesToHex(keptRun)}>`);
+      keptRun = [];
+      kept = true;
+    }
+  };
+  const pushAdvance = (adv: number) => {
+    if (Math.abs(adv) < 0.0001) return;
+    flushRun();
+    out.push(fmtNum(-adv * 1000 / denom));
+  };
+
+  for (const part of parts) {
+    if (part.kind === "num") {
+      flushRun();
+      if (pendingAdvance) { pushAdvance(pendingAdvance); pendingAdvance = 0; }
+      const adjust = parseFloat(text.slice(part.start, part.end)) || 0;
+      out.push(fmtNum(adjust));
+      x += -(adjust / 1000) * fontSize * scale;
+      continue;
+    }
+    if (part.kind !== "str" && part.kind !== "hexstr") continue;
+    const bytes = stringTokenBytes(text, part);
+    for (const g of glyphByteRuns(bytes, state.font)) {
+      const width = state.font.widths.get(g.code) ?? state.font.missingWidth ?? state.font.defaultWidth;
+      const adv = ((width / 1000) * fontSize + charSpacing + (g.code === 32 ? wordSpacing : 0)) * scale;
+      const bbox = glyphBbox(baseTm, state.ctm, x, adv, fontSize, scale, state.textRise);
+      if (bboxIntersectsRects(bbox.minX, bbox.minY, bbox.maxX, bbox.maxY, rects)) {
+        removed = true;
+        pendingAdvance += adv;
+      } else {
+        if (pendingAdvance) { pushAdvance(pendingAdvance); pendingAdvance = 0; }
+        keptRun.push(...g.bytes);
+      }
+      x += adv;
+    }
+  }
+  flushRun();
+  if (pendingAdvance) pushAdvance(pendingAdvance);
+  if (!removed) return null;
+  if (!kept && out.every((p) => !p.startsWith("<"))) {
+    return { removed: true, replacement: textAdvanceReplacement(text, operands, op, x, state.fontSize, state.hScale) };
+  }
+  return { removed: true, replacement: `${prefix}[${out.join(" ")}] TJ` };
+}
+
+function glyphBbox(baseTm: number[], ctm: number[], x: number, advance: number, fontSize: number, scale: number, textRise: number) {
+  const trm = mul([fontSize * scale, 0, 0, fontSize, 0, textRise], mul(baseTm, ctm));
+  const denom = Math.max(Math.abs(fontSize * scale), 0.001);
+  const x1 = x / denom;
+  const x2 = (x + advance) / denom;
+  const riseEm = textRise / fontSize;
+  const corners: Array<[number, number]> = [
+    [x1, -0.25 + riseEm], [x2, -0.25 + riseEm], [x2, 0.95 + riseEm], [x1, 0.95 + riseEm],
+  ].map(([px, py]) => txp(trm, px, py));
+  const xs = corners.map((p) => p[0]);
+  const ys = corners.map((p) => p[1]);
+  return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+}
+
+function glyphByteRuns(bytes: number[], font: FontMetrics): Array<{ code: number; bytes: number[] }> {
+  const out: Array<{ code: number; bytes: number[] }> = [];
+  if (font.codeSize === 2) {
+    for (let i = 0; i < bytes.length; i += 2) {
+      const run = [bytes[i] ?? 0, bytes[i + 1] ?? 0];
+      out.push({ code: (run[0] << 8) | run[1], bytes: run });
+    }
+  } else {
+    for (const b of bytes) out.push({ code: b, bytes: [b] });
+  }
+  return out;
+}
+
+function bytesToHex(bytes: number[]): string {
+  return bytes.map((b) => (b & 0xff).toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+function arrayOperandTokens(operands: Tok[]): Tok[] {
+  let start = -1;
+  for (let i = operands.length - 1; i >= 0; i--) {
+    if (operands[i].kind === "lbrack") { start = i; break; }
+  }
+  if (start < 0 || operands[operands.length - 1]?.kind !== "rbrack") return [];
+  return operands.slice(start + 1, -1);
+}
+
+function stringTokenBytes(text: string, tok: Tok | undefined): number[] {
+  if (!tok) return [];
+  if (tok.kind === "str") return literalBytes(text.slice(tok.start + 1, tok.end - 1));
+  if (tok.kind === "hexstr") return hexBytes(text.slice(tok.start + 1, tok.end - 1));
+  return [];
+}
+
+function literalBytes(s: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i) & 0xff;
+    if (s[i] !== "\\") { out.push(c); continue; }
+    const n = s[i + 1];
+    if (n === undefined) break;
+    if (n === "n") { out.push(0x0a); i++; continue; }
+    if (n === "r") { out.push(0x0d); i++; continue; }
+    if (n === "t") { out.push(0x09); i++; continue; }
+    if (n === "b") { out.push(0x08); i++; continue; }
+    if (n === "f") { out.push(0x0c); i++; continue; }
+    if (n >= "0" && n <= "7") {
+      let oct = n;
+      if (s[i + 2] >= "0" && s[i + 2] <= "7") { oct += s[i + 2]; i++; }
+      if (s[i + 2] >= "0" && s[i + 2] <= "7") { oct += s[i + 2]; i++; }
+      out.push(parseInt(oct, 8) & 0xff);
+      i++; continue;
+    }
+    out.push(n.charCodeAt(0) & 0xff); i++;
+  }
+  return out;
+}
+
+function hexBytes(hex: string): number[] {
+  const clean = hex.replace(/\s+/g, "");
+  const out: number[] = [];
+  for (let i = 0; i < clean.length; i += 2) {
+    const n = Number.parseInt(clean.slice(i, i + 2).padEnd(2, "0"), 16);
+    if (Number.isFinite(n)) out.push(n & 0xff);
+  }
+  return out;
+}
+
+function glyphDesignWidth(bytes: number[], font: FontMetrics): number {
+  let width = 0;
+  for (const code of iterCodes(bytes, font)) width += font.widths.get(code) ?? font.missingWidth ?? font.defaultWidth;
+  return width || font.defaultWidth;
+}
+
+function countGlyphCodes(bytes: number[], font: FontMetrics): number {
+  let n = 0;
+  for (const _ of iterCodes(bytes, font)) n++;
+  return n;
+}
+
+function countSpaceCodes(bytes: number[], font: FontMetrics): number {
+  let n = 0;
+  for (const code of iterCodes(bytes, font)) if (code === 32) n++;
+  return n;
+}
+
+function* iterCodes(bytes: number[], font: FontMetrics): Generator<number> {
+  if (font.codeSize === 2) {
+    for (let i = 0; i < bytes.length; i += 2) yield ((bytes[i] ?? 0) << 8) | (bytes[i + 1] ?? 0);
+  } else {
+    for (const b of bytes) yield b;
+  }
 }
 
 function decodeStringToken(text: string, tok: Tok | undefined): string | null {
