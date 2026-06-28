@@ -386,11 +386,19 @@ function matchCategory(str: string): CatHit | null {
   for (const { category, re } of PATTERNS) {
     if (re.test(str)) return { category };
   }
-  // Names — much stricter, with a confidence signal.
+  // Names — only emit when we have a STRONG signal (title prefix like
+  // Mr/Dr/Hon/"signed by", suffix like Jr/Esq/PhD, middle initial, or
+  // surname marker like O'/Mc/Mac). Bare title-case phrases ("The Problem
+  // with Current Agency Models", "Data Architecture") are NOT names —
+  // emitting them at all produced the heading-spam bug, so low-confidence
+  // candidates are dropped entirely rather than shown unchecked. Real-name
+  // documents still flag correctly via the strong signals.
   const nm = NAME_CANDIDATE_RE.exec(str);
   if (nm) {
     const verdict = classifyName(str, nm[0], nm.index);
-    if (verdict.ok) return { category: "name", confidence: verdict.confidence };
+    if (verdict.ok && verdict.confidence === "high") {
+      return { category: "name", confidence: "high" };
+    }
   }
   return null;
 }
