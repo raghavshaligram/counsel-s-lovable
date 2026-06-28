@@ -1114,6 +1114,12 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   const exportRedacted = useCallback(async () => {
     if (!file || !editorState?.doc) return;
+    // Two-phase commit: marks are drafts up to this point. Confirm before
+    // we permanently remove the underlying content.
+    const ok = window.confirm(
+      `This permanently removes the content under ${totalBoxes} redaction${totalBoxes === 1 ? "" : "s"}. Continue?`,
+    );
+    if (!ok) return;
     setBusy(true);
     setVerify(null);
     const tid = "wsx-redact-export";
@@ -1153,7 +1159,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setBusy(false);
     }
-  }, [file, editorState?.doc, targets]);
+  }, [file, editorState?.doc, targets, totalBoxes]);
 
   const downloadCertificate = useCallback(async () => {
     if (!file || !verify || !lastBytes) return;

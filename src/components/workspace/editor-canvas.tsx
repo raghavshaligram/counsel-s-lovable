@@ -274,6 +274,28 @@ export function EditorCanvas({
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Delete / Backspace removes the selected annotation on this page (unless
+  // the user is editing text inside the annotation, or focus is in a form
+  // input elsewhere). Critical for redact drafts: marks must be removable
+  // before the burn step.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const sel = state.selectedAnnoId;
+      if (!sel) return;
+      // Only the page that owns the selected annotation should react.
+      const owns = annos.some((a) => a.id === sel);
+      if (!owns) return;
+      if (editingId) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      dispatch({ type: "DELETE_ANNO", id: sel });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.selectedAnnoId, annos, editingId, dispatch]);
+
   // Render this page. Reuses a shared pdf.js doc when provided so we don't
   // re-parse the file per page. DPR capped at 2 to limit memory.
   useEffect(() => {
@@ -576,10 +598,13 @@ export function EditorCanvas({
     const w = maxX - minX, h = maxY - minY;
 
     const isEditingThis = editingId === a.id;
-    const interactive = state.tool === "select" || isEditingThis || selected;
+    // Redact marks stay editable (select / drag / resize / delete) while the
+    // redact tool is active — they are drafts until the user commits the burn.
+    const redactEditable = state.tool === "redact" && a.kind === "redact";
+    const interactive = state.tool === "select" || isEditingThis || selected || redactEditable;
 
     const onDownAnno = (e: React.MouseEvent) => {
-      if (!(state.tool === "select" || selected)) return;
+      if (!(state.tool === "select" || selected || redactEditable)) return;
       if (isEditingThis) return;
       e.stopPropagation();
       dispatch({ type: "SELECT_ANNO", id: a.id });
@@ -693,7 +718,19 @@ export function EditorCanvas({
         break;
       }
       case "redact":
-        inner = <div style={{ width: "100%", height: "100%", background: "#000" }} />;
+        // Draft visual: solid-but-slightly-transparent black with a dashed red
+        // outline so users can tell marks are reviewable (not yet burned).
+        inner = (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "rgba(0,0,0,0.82)",
+              outline: "1.5px dashed rgba(220,38,38,0.95)",
+              outlineOffset: -1,
+            }}
+          />
+        );
         break;
       case "line":
       case "arrow": {
@@ -889,6 +926,11 @@ export function EditorCanvas({
         key={a.id}
         style={baseStyle}
         onMouseDown={onDownAnno}
+        onPointerDown={(e) => {
+          // Prevent the underlying canvas from starting a new draw (e.g. a new
+          // redact box) when the user clicks an existing interactive mark.
+          if (interactive) e.stopPropagation();
+        }}
         onDoubleClick={(e) => {
           if (a.kind === "text" || a.kind === "note" || a.kind === "text-edit") {
             e.stopPropagation(); setEditingId(a.id);
@@ -1419,7 +1461,7 @@ function DrawingPreview({
   if (state.tool === "strikethrough") return <div style={{ ...style, borderTop: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, marginTop: h / 2 }} />;
   if (state.tool === "ellipse") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, borderRadius: "50%", background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
   if (state.tool === "rect") return <div style={{ ...style, border: `${state.stroke}px solid ${rgbCss(state.color, state.opacity)}`, background: state.fillShape ? rgbCss(state.color, state.opacity) : "transparent" }} />;
-  if (state.tool === "redact") return <div style={{ ...style, background: "#000" }} />;
+  if (state.tool === "redact") return <div style={{ ...style, background: "rgba(0,0,0,0.82)", outline: "1.5px dashed rgba(220,38,38,0.95)", outlineOffset: -1 }} />;
   if (state.tool === "page-crop") return <div style={{ ...style, border: "1.5px dashed var(--vault)", background: "rgba(245, 158, 11, 0.08)" }} />;
   if (state.tool === "line" || state.tool === "arrow") {
     return (
