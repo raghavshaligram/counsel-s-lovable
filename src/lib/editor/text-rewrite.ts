@@ -395,11 +395,13 @@ function encodeLiteral(s: string): string {
 
 const TEXT_SHOW_OPS = new Set(["Tj", "TJ", "'", '"']);
 
-function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutated: boolean } {
+function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutated: boolean; stats: Partial<RewriteStats> } {
   const tokens = tokenize(text);
   const editMap = new Map(job.edits.map((e) => [e.original, e.replacement]));
   const redactStrings = new Set(job.redactStrings ?? []);
+  const redactTargets = job.redactTargets ?? [];
   const rects = job.redacts;
+  const stats: Partial<RewriteStats> = {};
 
   let ctm = identity();
   const gStack: number[][] = [];
@@ -423,17 +425,44 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
     // ── Decide drop / replace ──
     let drop = false;
     let replaceTjLiteral: string | null = null;
+    let replaceOperand: { token: Tok; value: string } | null = null;
+    let rewriteMatchedTarget = false;
 
     if (TEXT_SHOW_OPS.has(op) && inText) {
       const [ux, uy] = txp(ctm, tm[4], tm[5]);
       const inRect = rects.length ? pointInRects(ux, uy, rects) : false;
 
       let stringMatchRedact = false;
-      if (!inRect && redactStrings.size && (op === "Tj" || op === "'")) {
+      if (!inRect && (redactStrings.size || redactTargets.length) && (op === "Tj" || op === "'")) {
         const last = operands[operands.length - 1];
-        if (last?.kind === "str") {
-          const lit = decodeLiteral(text.slice(last.start + 1, last.end - 1));
-          if (redactStrings.has(lit)) stringMatchRedact = true;
+        const decoded = decodeStringToken(text, last);
+        if (last && decoded !== null) {
+          const rewritten = redactTextValue(decoded, redactTargets, redactStrings);
+          if (rewritten.matched) {
+            rewriteMatchedTarget = true;
+            if (rewritten.value.length === 0) {
+              stringMatchRedact = true;
+            } else if (rewritten.value !== decoded) {
+              replaceOperand = { token: last, value: rewritten.value };
+            }
+          } else if (redactStrings.has(decoded)) {
+            stringMatchRedact = true;
+            rewriteMatchedTarget = true;
+          }
+        }
+      }
+
+      if (!inRect && !stringMatchRedact && !replaceOperand && redactTargets.length && op === "TJ") {
+        const arr = collectArrayOperand(text, operands);
+        if (arr) {
+          const rewritten = redactTextValue(arr.value, redactTargets, redactStrings);
+          if (rewritten.matched) {
+            rewriteMatchedTarget = true;
+            // TJ arrays interleave kerning adjustments, so preserve surrounding
+            // text by replacing the whole array with one literal string. This
+            // keeps the non-redacted words searchable instead of dropping the line.
+            replaceOperand = { token: arr.token, value: rewritten.value };
+          }
         }
       }
 
@@ -457,6 +486,7 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
       const ys = usrs.map((u) => u[1]);
       if (bboxInRects(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), rects)) {
         drop = true;
+        stats.imageOpsDropped = (stats.imageOpsDropped ?? 0) + 1;
       }
     }
 
@@ -509,6 +539,19 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
       if (groupStart > cursor) chunks.push(text.slice(cursor, groupStart));
       cursor = opEnd;
       mutated = true;
+      if (TEXT_SHOW_OPS.has(op)) {
+        stats.textOpsDropped = (stats.textOpsDropped ?? 0) + 1;
+        if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
+      }
+    } else if (replaceOperand) {
+      const t = replaceOperand.token;
+      if (t.start > cursor) chunks.push(text.slice(cursor, t.start));
+      chunks.push("(" + encodeLiteral(replaceOperand.value) + ")");
+      chunks.push(text.slice(t.end, opEnd));
+      cursor = opEnd;
+      mutated = true;
+      stats.textOperandsRewritten = (stats.textOperandsRewritten ?? 0) + 1;
+      if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
     } else if (replaceTjLiteral !== null) {
       const last = operands[operands.length - 1];
       if (last.start > cursor) chunks.push(text.slice(cursor, last.start));
@@ -524,5 +567,77 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
   }
   if (cursor < text.length) chunks.push(text.slice(cursor));
 
-  return { text: chunks.join(""), mutated };
+  return { text: chunks.join(""), mutated, stats };
+}
+
+function decodeStringToken(text: string, tok: Tok | undefined): string | null {
+  if (!tok) return null;
+  if (tok.kind === "str") return decodeLiteral(text.slice(tok.start + 1, tok.end - 1));
+  if (tok.kind === "hexstr") return decodeHexString(text.slice(tok.start + 1, tok.end - 1));
+  return null;
+}
+
+function decodeHexString(hex: string): string {
+  const clean = hex.replace(/\s+/g, "");
+  const bytes: number[] = [];
+  for (let i = 0; i < clean.length; i += 2) {
+    const pair = clean.slice(i, i + 2).padEnd(2, "0");
+    const n = Number.parseInt(pair, 16);
+    if (Number.isFinite(n)) bytes.push(n);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    let out = "";
+    for (let i = 2; i + 1 < bytes.length; i += 2) out += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+    return out;
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    let out = "";
+    for (let i = 2; i + 1 < bytes.length; i += 2) out += String.fromCharCode(bytes[i] | (bytes[i + 1] << 8));
+    return out;
+  }
+  return bytes.map((b) => String.fromCharCode(b)).join("");
+}
+
+function collectArrayOperand(text: string, operands: Tok[]): { token: Tok; value: string } | null {
+  let start = -1;
+  for (let i = operands.length - 1; i >= 0; i--) {
+    if (operands[i].kind === "lbrack") { start = i; break; }
+  }
+  if (start < 0 || operands[operands.length - 1]?.kind !== "rbrack") return null;
+  let value = "";
+  for (let i = start + 1; i < operands.length - 1; i++) {
+    const decoded = decodeStringToken(text, operands[i]);
+    if (decoded !== null) value += decoded;
+  }
+  return { token: { kind: "str", start: operands[start].start, end: operands[operands.length - 1].end }, value };
+}
+
+function redactTextValue(
+  value: string,
+  targets: RedactTextTarget[],
+  fallback: Set<string>,
+): { value: string; matched: boolean } {
+  let next = value;
+  let matched = false;
+  for (const t of targets) {
+    const sensitive = t.text || t.original;
+    if (!sensitive) continue;
+    if (t.original && t.original === value && Number.isFinite(t.start) && Number.isFinite(t.length)) {
+      const start = Math.max(0, Math.min(value.length, t.start ?? 0));
+      const end = Math.max(start, Math.min(value.length, start + (t.length ?? sensitive.length)));
+      next = next.slice(0, start) + next.slice(end);
+      matched = true;
+      continue;
+    }
+    if (next.includes(sensitive)) {
+      next = next.split(sensitive).join("");
+      matched = true;
+    }
+  }
+  for (const s of fallback) {
+    if (!s) continue;
+    if (next === s) { next = ""; matched = true; }
+    else if (next.includes(s)) { next = next.split(s).join(""); matched = true; }
+  }
+  return { value: next, matched };
 }
