@@ -1477,21 +1477,29 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         hash(new Uint8Array(await file.arrayBuffer())),
         hash(lastBytes),
       ]);
-      const boxes = redactAnnos.map((a, idx) => ({
-        id: a.id ?? `r${idx}`,
-        page: a.page + 1,
-        x: (a as { x?: number }).x ?? 0,
-        y: (a as { y?: number }).y ?? 0,
-        w: (a as { w?: number }).w ?? 0,
-        h: (a as { h?: number }).h ?? 0,
-        label: verify.ok ? "removed" : "see report",
-      }));
+      const categoryCounts: Record<string, number> = {};
+      const perPageCounts: Record<number, number> = {};
+      for (const a of redactAnnos) {
+        if (a.kind !== "redact") continue;
+        const cat = (a as { category?: string }).category ?? "manual";
+        categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+        const p = a.page + 1;
+        perPageCounts[p] = (perPageCounts[p] ?? 0) + 1;
+      }
       const cert = await buildRedactionCertificate({
         sourceName: file.name,
         sourceBytes: file.size,
         pageCount: editorState?.doc?.pages.length ?? 0,
-        boxes,
-        stripMetadata: false,
+        totalRedactions: redactAnnos.length,
+        categoryCounts,
+        perPageCounts,
+        verification: {
+          ok: verify.ok,
+          total: verify.total,
+          removed: verify.removed,
+          scannedAt: verify.scannedAt,
+          leaks: verify.leaks.length,
+        },
         sourceHashSHA256: sourceHash,
         redactedHashSHA256: redactedHash,
       });
