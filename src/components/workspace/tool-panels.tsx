@@ -850,6 +850,7 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
           x: rect.x, y: rect.y, w: rect.w, h: rect.h,
           color: { r: 0, g: 0, b: 0 },
           opacity: 1,
+          category: "pattern",
           sources: m.source?.originalString
             ? [{
                 originalString: m.source.originalString,
