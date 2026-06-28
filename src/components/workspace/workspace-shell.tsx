@@ -572,8 +572,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     });
   }, []);
 
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+
   const openTool = useCallback(
     (toolId: string, opts?: { bump?: boolean; focusSection?: string }) => {
+      // Whole-tool gating for paid-only tools (privilege review, private AI).
+      if (PAID_TOOL_IDS.has(toolId) && !isPro) {
+        const tool = toolById(toolId);
+        if (!requirePro(tool?.label)) return;
+      }
       // Bates lives inside Document Settings now (next to Page Numbers).
       // Selecting "Bates" anywhere (rail, all-tools search) deep-links into
       // that panel and scrolls to the Bates section.
@@ -593,7 +601,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setToolModalOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
-    [bumpUsage, patchActive],
+    [bumpUsage, patchActive, isPro, requirePro],
   );
 
   // ----------------- Tab operations -----------------------------------
