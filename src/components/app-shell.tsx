@@ -18,66 +18,47 @@ import {
 } from "@/components/ui/sheet";
 import { TrayDock } from "@/components/tray/tray-dock";
 
-type Tool = { to: string; label: string; desc: string; icon: any; beta?: boolean };
+type Tool = { id: string; label: string; desc: string; icon: any; beta?: boolean };
 type Group = { id: string; label: string; tagline: string; items: Tool[] };
 
+/**
+ * Every tool entry points at the workspace via `?tool=<id>` so the unified
+ * workspace shell deep-links to that tool. Free tools open immediately —
+ * Pro-only tools (privilege review, private AI assist) show the lock badge
+ * inside the workspace and prompt sign-in when activated.
+ */
 const groups: Group[] = [
   {
-    id: "organize",
-    label: "Organize",
-    tagline: "Reshape pages without uploading them.",
+    id: "assemble",
+    label: "Assemble",
+    tagline: "Reshape and combine PDFs without uploading them.",
     items: [
-      { to: "/organize", label: "Organize Pages", icon: Layers, desc: "Cross-document page grid — drag, rotate, build" },
-      { to: "/merge", label: "Mail Merge", icon: FileStackIcon, desc: "Batch fill PDFs from CSV data" },
-      { to: "/split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
-      { to: "/rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
-      { to: "/extract", label: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
-    ],
-  },
-  {
-    id: "convert",
-    label: "Convert",
-    tagline: "Move between formats — fully on-device.",
-    items: [
-      { to: "/to-word", label: "PDF → Word", icon: FileTextIcon, desc: "Editable .docx from any text PDF" },
-      { to: "/word-to-pdf", label: "Word → PDF", icon: WordToPdfIcon, desc: "Convert .docx to a clean PDF" },
+      { id: "organize", label: "Organize", icon: Layers, desc: "Cross-document page grid — drag, rotate, build" },
+      { id: "merge", label: "Merge", icon: FileStackIcon, desc: "Combine PDFs into one document" },
+      { id: "split", label: "Split", icon: ScissorsIcon, desc: "Separate pages into new PDFs" },
+      { id: "rotate", label: "Rotate", icon: RotateCwIcon, desc: "Fix page orientation" },
+      { id: "extract", label: "Extract", icon: Table2Icon, desc: "Pull tables & text from PDFs" },
+      { id: "compare", label: "Compare", icon: CompareIcon, desc: "Visual diff between two PDFs" },
     ],
   },
   {
     id: "edit",
     label: "Edit",
-    tagline: "Mark up, sign, and shrink in the browser.",
+    tagline: "Mark up and finalise documents in the browser.",
     items: [
-      { to: "/editor", label: "Editor", icon: EditIcon, desc: "Edit pages, text, images — and annotate" },
-      { to: "/sign", label: "Sign & Fill", icon: PenIcon, desc: "Draw, type, or upload your signature" },
-      { to: "/watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
-      { to: "/redact", label: "Redact", icon: ShieldCheckIcon, desc: "AI-powered PII detection & removal" },
-      { to: "/compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
+      { id: "watermark", label: "Watermark", icon: StampIcon, desc: "Add text stamps to pages" },
+      { id: "page-crop", label: "Crop", icon: Crop, desc: "Trim pages with rulers, presets, auto-detect" },
+      { id: "outline", label: "Outline & Links", icon: ListTree, desc: "Edit bookmarks and link annotations" },
     ],
   },
   {
     id: "secure",
     label: "Secure",
-    tagline: "Lock, unlock, and verify your documents.",
+    tagline: "Lock, unlock, repair and shrink documents.",
     items: [
-      { to: "/protect", label: "Protect", icon: Lock, desc: "Password-encrypt PDFs with AES-128" },
-      { to: "/unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
-      { to: "/compare", label: "Compare", icon: CompareIcon, desc: "Visual diff between two PDFs" },
-      { to: "/ocr", label: "Make Searchable", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
-    ],
-  },
-  {
-    id: "structure",
-    label: "Structure",
-    tagline: "Re-shape, number, and lock down documents.",
-    items: [
-      { to: "/outline", label: "Outline & Links", icon: ListTree, desc: "Edit bookmarks tree and link annotations" },
-      { to: "/crop", label: "Crop", icon: Crop, desc: "Trim pages with rulers, presets, auto-detect" },
-
-      { to: "/page-numbers", label: "Page Numbers", icon: HashIcon, desc: "Stamp numbers — position, format, skip first N" },
-      { to: "/header-footer", label: "Header & Footer", icon: HashIcon, desc: "Custom text with tokens — {page}, {date}, {filename}" },
-      { to: "/flatten", label: "Flatten", icon: Lock, desc: "Bake forms and annotations into static content" },
-      { to: "/to-excel", label: "PDF → Excel", icon: Table2Icon, desc: "Lift tables into editable .xlsx" },
+      { id: "unlock", label: "Unlock", icon: UnlockIcon, desc: "Remove password from PDFs you own" },
+      { id: "compress", label: "Compress", icon: CompressIcon, desc: "Shrink PDFs without uploading" },
+      { id: "repair", label: "Repair PDF", icon: Lock, desc: "Recover broken or partial PDFs" },
     ],
   },
   {
@@ -85,9 +66,9 @@ const groups: Group[] = [
     label: "Legal",
     tagline: "Courtroom-grade tooling for paralegals and counsel.",
     items: [
-      { to: "/bates", label: "Bates Numbering", icon: HashIcon, desc: "Stamp sequential discovery IDs across every page" },
-      { to: "/verifiable-redaction", label: "Verifiable Redaction", icon: ShieldCheckIcon, desc: "Mandatory codes + signed Certificate + Privilege Log" },
-      { to: "/privilege-scan", label: "Privilege Scan", icon: ScanSearchIcon, desc: "Catch attorney–client language before production" },
+      { id: "ocr", label: "Make Searchable (OCR)", icon: ScanTextIcon, desc: "On-device OCR for scanned PDFs" },
+      { id: "privilege-scan", label: "Privilege review", icon: ScanSearchIcon, desc: "AI scan for attorney–client language" },
+      { id: "sanitize", label: "Sanitize", icon: ShieldCheckIcon, desc: "Strip metadata and hidden traces" },
     ],
   },
   {
@@ -95,18 +76,20 @@ const groups: Group[] = [
     label: "AI",
     tagline: "Smart features that still respect your privacy.",
     items: [
-      { to: "/chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
+      { id: "chat", label: "Search inside PDF", icon: ChatIcon, desc: "Find any passage instantly — local BM25 search", beta: true },
     ],
   },
 ];
 
-const primaryNav: { to: string; label: string }[] = [
-  { to: "/workspace", label: "Workspace" },
-  { to: "/redact", label: "Redact" },
-  { to: "/sign", label: "Sign & Fill" },
-  { to: "/protect", label: "Protect" },
-  { to: "/merge", label: "Merge" },
+/** Top-level nav. `tool` undefined → workspace home; otherwise deep-link. */
+const primaryNav: { label: string; tool?: string }[] = [
+  { label: "Workspace" },
+  { label: "Redact", tool: "redact" },
+  { label: "Bates stamp", tool: "bates" },
+  { label: "Sign & Fill", tool: "sign" },
+  { label: "Protect", tool: "protect" },
 ];
+
 
 
 function HashIcon({ className }: { className?: string }) {
@@ -299,7 +282,8 @@ function StampIcon({ className }: { className?: string }) {
 function ToolCard({ tool, onClick, isActive }: { tool: Tool; onClick?: () => void; isActive?: boolean }) {
   return (
     <Link
-      to={tool.to}
+      to="/workspace"
+      search={{ tool: tool.id }}
       onClick={onClick}
       className={cn(
         "group/card flex items-start gap-3 rounded-lg p-3 hover:bg-accent/60 transition-colors",
@@ -325,60 +309,40 @@ function ToolCard({ tool, onClick, isActive }: { tool: Tool; onClick?: () => voi
   );
 }
 
-function MegaPanel({ group, isActive }: { group: Group; isActive: (path: string) => boolean }) {
-  return (
-    <div className="w-[640px] p-4">
-      <div className="grid grid-cols-[1fr_180px] gap-4">
-        <div className="grid grid-cols-2 gap-1">
-          {group.items.map((t) => (
-            <ToolCard key={t.to} tool={t} isActive={isActive(t.to)} />
-          ))}
-        </div>
-        <div className="rounded-lg border border-vault/20 bg-vault/5 p-4 flex flex-col justify-between">
-          <div>
-            <div className="font-display text-base text-vault">{group.label}</div>
-            <p className="text-sm text-muted-foreground mt-2 leading-snug">{group.tagline}</p>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-4">
-            <span className="h-1.5 w-1.5 rounded-full bg-vault" />
-            <span>Stays in your tab</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AllToolsPanel({ isActive }: { isActive: (path: string) => boolean }) {
+function AllToolsPanel({ activeTool }: { activeTool: string | null }) {
   return (
     <div className="w-[860px] p-3 grid grid-cols-3 gap-x-4 gap-y-3">
       {groups.map((group) => (
         <div key={group.id}>
           <div className="font-display text-xs text-vault mb-1.5 px-1">{group.label}</div>
           <div className="flex flex-col">
-            {group.items.map((t) => (
-              <Link
-                key={t.to}
-                to={t.to}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60 transition-colors",
-                  isActive(t.to) && "bg-vault/10"
-                )}
-              >
-                <span className={cn(
-                  "grid h-6 w-6 shrink-0 place-items-center rounded bg-vault/10 text-vault",
-                  isActive(t.to) && "bg-vault/20"
-                )}>
-                  <t.icon className="h-3.5 w-3.5" />
-                </span>
-                <span className={cn("text-sm leading-tight truncate", isActive(t.to) && "text-vault font-medium")}>
-                  {t.label}
-                </span>
-                {t.beta && (
-                  <span className="text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px ml-auto">Beta</span>
-                )}
-              </Link>
-            ))}
+            {group.items.map((t) => {
+              const isActive = activeTool === t.id;
+              return (
+                <Link
+                  key={t.id}
+                  to="/workspace"
+                  search={{ tool: t.id }}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60 transition-colors",
+                    isActive && "bg-vault/10"
+                  )}
+                >
+                  <span className={cn(
+                    "grid h-6 w-6 shrink-0 place-items-center rounded bg-vault/10 text-vault",
+                    isActive && "bg-vault/20"
+                  )}>
+                    <t.icon className="h-3.5 w-3.5" />
+                  </span>
+                  <span className={cn("text-sm leading-tight truncate", isActive && "text-vault font-medium")}>
+                    {t.label}
+                  </span>
+                  {t.beta && (
+                    <span className="text-[9px] uppercase tracking-[0.16em] rounded-sm bg-vault/15 text-vault px-1 py-px ml-auto">Beta</span>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         </div>
       ))}
@@ -388,10 +352,18 @@ function AllToolsPanel({ isActive }: { isActive: (path: string) => boolean }) {
 
 
 
+
 export function AppShell({ children }: { children: ReactNode }) {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
+  const currentSearch = useRouterState({ select: (s) => s.location.search as { tool?: string } });
+  const activeTool = currentPath === "/workspace" ? currentSearch?.tool ?? null : null;
   const [mobileOpen, setMobileOpen] = useState(false);
-  const isActive = (path: string) => currentPath === path;
+
+  const isPrimaryActive = (p: { tool?: string }) => {
+    if (currentPath !== "/workspace") return false;
+    if (!p.tool) return !activeTool; // "Workspace" only when no tool query
+    return activeTool === p.tool;
+  };
 
   return (
     <div className="flex min-h-svh w-full flex-col">
@@ -404,35 +376,41 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="font-display text-[19px] leading-none">VaultPDF</span>
           </Link>
 
-          {/* Desktop nav — 5 primary tools + All tools disclosure */}
+          {/* Desktop nav — primary tools + All tools disclosure. Every entry
+              deep-links into the workspace; no login required. */}
           <NavigationMenu className="hidden md:flex flex-1 justify-center">
             <NavigationMenuList className="gap-1">
-              {primaryNav.map((p) => (
-                <NavigationMenuItem key={p.to}>
-                  <Link
-                    to={p.to}
-                    className={cn(
-                      "inline-flex h-9 items-center rounded-md px-3 text-sm transition-colors hover:bg-accent/60",
-                      isActive(p.to) && "text-vault"
-                    )}
-                  >
-                    {p.label}
-                  </Link>
-                </NavigationMenuItem>
-              ))}
+              {primaryNav.map((p) => {
+                const active = isPrimaryActive(p);
+                return (
+                  <NavigationMenuItem key={p.label}>
+                    <Link
+                      to="/workspace"
+                      search={p.tool ? { tool: p.tool } : {}}
+                      className={cn(
+                        "inline-flex h-9 items-center rounded-md px-3 text-sm transition-colors hover:bg-accent/60",
+                        active && "text-vault"
+                      )}
+                    >
+                      {p.label}
+                    </Link>
+                  </NavigationMenuItem>
+                );
+              })}
               <NavigationMenuItem>
                 <NavigationMenuTrigger
                   className={cn(
                     "h-9 bg-transparent text-sm",
-                    groups.some((g) => g.items.some((t) => isActive(t.to))) &&
-                      !primaryNav.some((p) => isActive(p.to)) &&
+                    activeTool &&
+                      groups.some((g) => g.items.some((t) => t.id === activeTool)) &&
+                      !primaryNav.some(isPrimaryActive) &&
                       "text-vault"
                   )}
                 >
                   All tools
                 </NavigationMenuTrigger>
                 <NavigationMenuContent>
-                  <AllToolsPanel isActive={isActive} />
+                  <AllToolsPanel activeTool={activeTool} />
                 </NavigationMenuContent>
               </NavigationMenuItem>
             </NavigationMenuList>
@@ -469,6 +447,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <SheetTitle>All tools</SheetTitle>
                 </SheetHeader>
                 <div className="mt-4 space-y-6">
+                  <Link
+                    to="/workspace"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-between rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-vault">Open workspace</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">All tools, one canvas.</div>
+                    </div>
+                    <span className="text-vault text-xs">→</span>
+                  </Link>
                   {groups.map((group) => (
                     <div key={group.id}>
                       <div className="font-display text-sm text-vault mb-2 px-1">
@@ -477,28 +466,23 @@ export function AppShell({ children }: { children: ReactNode }) {
 
                       <div className="flex flex-col">
                         {group.items.map((t) => (
-                          <ToolCard key={t.to} tool={t} onClick={() => setMobileOpen(false)} isActive={isActive(t.to)} />
+                          <ToolCard
+                            key={t.id}
+                            tool={t}
+                            onClick={() => setMobileOpen(false)}
+                            isActive={activeTool === t.id}
+                          />
                         ))}
                       </div>
                     </div>
                   ))}
-                  <Link
-                    to="/pricing"
-                    onClick={() => setMobileOpen(false)}
-                    className="flex items-center justify-between rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-vault">Pricing &amp; sign in</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Founder's rate — locked for life.</div>
-                    </div>
-                    <span className="text-vault text-xs">→</span>
-                  </Link>
                 </div>
               </SheetContent>
             </Sheet>
           </div>
         </div>
       </header>
+
 
       <main className="flex-1 min-h-0 pb-28">{children}</main>
 
