@@ -100,6 +100,7 @@ import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 import { importChunk } from "@/lib/chunk-import";
+import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
