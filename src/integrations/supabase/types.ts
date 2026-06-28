@@ -14,6 +14,181 @@ export type Database = {
   }
   public: {
     Tables: {
+      notification_dismissals: {
+        Row: {
+          dismissed_at: string
+          notification_id: string
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string
+          notification_id: string
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string
+          notification_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_dismissals_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          enabled: boolean
+          ends_at: string | null
+          id: string
+          link_url: string | null
+          starts_at: string | null
+          target_plan: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          enabled?: boolean
+          ends_at?: string | null
+          id?: string
+          link_url?: string | null
+          starts_at?: string | null
+          target_plan?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          enabled?: boolean
+          ends_at?: string | null
+          id?: string
+          link_url?: string | null
+          starts_at?: string | null
+          target_plan?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      offer_dismissals: {
+        Row: {
+          dismissed_at: string
+          offer_id: string
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string
+          offer_id: string
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string
+          offer_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_dismissals_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offers: {
+        Row: {
+          checkout_url: string | null
+          created_at: string
+          description: string | null
+          discount_type: string
+          discount_value: number
+          enabled: boolean
+          ends_at: string | null
+          id: string
+          name: string
+          starts_at: string | null
+          stripe_coupon_id: string | null
+          target_plan: string
+          updated_at: string
+        }
+        Insert: {
+          checkout_url?: string | null
+          created_at?: string
+          description?: string | null
+          discount_type: string
+          discount_value: number
+          enabled?: boolean
+          ends_at?: string | null
+          id?: string
+          name: string
+          starts_at?: string | null
+          stripe_coupon_id?: string | null
+          target_plan?: string
+          updated_at?: string
+        }
+        Update: {
+          checkout_url?: string | null
+          created_at?: string
+          description?: string | null
+          discount_type?: string
+          discount_value?: number
+          enabled?: boolean
+          ends_at?: string | null
+          id?: string
+          name?: string
+          starts_at?: string | null
+          stripe_coupon_id?: string | null
+          target_plan?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          email: string | null
+          full_name: string | null
+          last_active_at: string | null
+          plan: string
+          suspended_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          last_active_at?: string | null
+          plan?: string
+          suspended_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          last_active_at?: string | null
+          plan?: string
+          suspended_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           created_at: string
