@@ -446,9 +446,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <Link
               to="/pricing"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-vault px-3.5 py-1.5 text-sm font-medium text-vault-foreground hover:opacity-90 transition-opacity"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 text-sm font-medium hover:bg-card transition-colors"
             >
-              Lifetime deal
+              Sign in
             </Link>
 
 
