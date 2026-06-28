@@ -18,6 +18,7 @@ import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as ToWordRouteImport } from './routes/to-word'
 import { Route as ToExcelRouteImport } from './routes/to-excel'
 import { Route as SplitRouteImport } from './routes/split'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SignRouteImport } from './routes/sign'
 import { Route as SecurityArchitectureRouteImport } from './routes/security-architecture'
 import { Route as RotateRouteImport } from './routes/rotate'
@@ -89,6 +90,11 @@ const ToExcelRoute = ToExcelRouteImport.update({
 const SplitRoute = SplitRouteImport.update({
   id: '/split',
   path: '/split',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignRoute = SignRouteImport.update({
@@ -251,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
   '/to-word': typeof ToWordRoute
@@ -288,6 +295,7 @@ export interface FileRoutesByTo {
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
   '/to-word': typeof ToWordRoute
@@ -327,6 +335,7 @@ export interface FileRoutesById {
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/split': typeof SplitRoute
   '/to-excel': typeof ToExcelRoute
   '/to-word': typeof ToWordRoute
@@ -366,6 +375,7 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/security-architecture'
     | '/sign'
+    | '/sitemap.xml'
     | '/split'
     | '/to-excel'
     | '/to-word'
@@ -403,6 +413,7 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/security-architecture'
     | '/sign'
+    | '/sitemap.xml'
     | '/split'
     | '/to-excel'
     | '/to-word'
@@ -441,6 +452,7 @@ export interface FileRouteTypes {
     | '/rotate'
     | '/security-architecture'
     | '/sign'
+    | '/sitemap.xml'
     | '/split'
     | '/to-excel'
     | '/to-word'
@@ -480,6 +492,7 @@ export interface RootRouteChildren {
   RotateRoute: typeof RotateRoute
   SecurityArchitectureRoute: typeof SecurityArchitectureRoute
   SignRoute: typeof SignRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SplitRoute: typeof SplitRoute
   ToExcelRoute: typeof ToExcelRoute
   ToWordRoute: typeof ToWordRoute
@@ -554,6 +567,13 @@ declare module '@tanstack/react-router' {
       path: '/split'
       fullPath: '/split'
       preLoaderRoute: typeof SplitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sign': {
@@ -787,6 +807,7 @@ const rootRouteChildren: RootRouteChildren = {
   RotateRoute: RotateRoute,
   SecurityArchitectureRoute: SecurityArchitectureRoute,
   SignRoute: SignRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   SplitRoute: SplitRoute,
   ToExcelRoute: ToExcelRoute,
   ToWordRoute: ToWordRoute,
