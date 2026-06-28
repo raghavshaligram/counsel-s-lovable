@@ -1059,6 +1059,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setFindings(null);
     setUsedOcr(false);
     setScannedPages([]);
+    setLowConfOcrPages([]);
     setTotalPagesScanned(0);
     setSelected(new Set());
     setProgress("Reading text layer…");
@@ -1075,16 +1076,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setFindings(detections);
       setUsedOcr(usedOcr);
       setScannedPages(scanned);
+      setLowConfOcrPages(lowConfidenceOcrPages);
       setTotalPagesScanned(totalPages);
       const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
       const hasScanned = scanned.length > 0;
       const lowConf = lowConfidenceOcrPages.length;
+      // OCR "succeeded" on a scanned page when we ran it AND confidence was
+      // not flagged low. Only the genuinely-failed pages get the hard
+      // "manual redaction required" warning.
+      const ocrFailedPages = lowConfidenceOcrPages;
+      const ocrSucceededCount = scanned.length - ocrFailedPages.length;
       if (detections.length === 0) {
-        if (hasScanned) {
-          toast.warning("Scanned/image document — detection may have missed items", {
-            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only.${lowConf > 0 ? ` OCR confidence was LOW on ${lowConf} page${lowConf === 1 ? "" : "s"} (${lowConfidenceOcrPages.slice(0, 6).join(", ")}${lowConf > 6 ? "…" : ""}) — treat detection as unreliable there.` : " OCR was attempted but recall is imperfect."} Review manually — do NOT treat silence as "clean".`,
+        if (ocrFailedPages.length > 0) {
+          toast.warning("OCR couldn't reliably read this scanned document", {
+            description: `Pages ${ocrFailedPages.slice(0, 8).join(", ")}${ocrFailedPages.length > 8 ? "…" : ""}: text was unreadable. Redact manually — don't rely on automatic detection here.`,
             duration: 14000,
+          });
+        } else if (hasScanned) {
+          toast.info("Scanned document — OCR ran, nothing matched", {
+            description: `Detection ran on OCR-recognized text from ${ocrSucceededCount} scanned page${ocrSucceededCount === 1 ? "" : "s"}. OCR can miss low-quality or handwritten text — review manually to be sure.`,
+            duration: 10000,
           });
         } else {
           toast.info("No sensitive data matched", {
@@ -1098,18 +1110,16 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             ? `${autoSelect.length} auto-selected · ${lowCount} low-confidence name${lowCount === 1 ? "" : "s"} unchecked — review and opt in.`
             : "Review then click Redact selected.",
         });
-        if (hasScanned) {
-          toast.warning(
-            lowConf > 0
-              ? `Low OCR confidence on ${lowConf} scanned page${lowConf === 1 ? "" : "s"} — manual review required`
-              : "Some pages are scanned — detection may miss items",
-            {
-              description: lowConf > 0
-                ? `Pages ${lowConfidenceOcrPages.slice(0, 8).join(", ")}${lowConf > 8 ? "…" : ""}: OCR text could not be read reliably. Mark sensitive regions on those pages manually.`
-                : `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
-              duration: 14000,
-            },
-          );
+        if (ocrFailedPages.length > 0) {
+          toast.warning(`OCR failed on ${ocrFailedPages.length} scanned page${ocrFailedPages.length === 1 ? "" : "s"} — redact those manually`, {
+            description: `Pages ${ocrFailedPages.slice(0, 8).join(", ")}${ocrFailedPages.length > 8 ? "…" : ""}: text couldn't be read reliably. Don't rely on automatic detection there.`,
+            duration: 14000,
+          });
+        } else if (hasScanned) {
+          toast.info(`Scanned document · OCR ran on ${ocrSucceededCount} page${ocrSucceededCount === 1 ? "" : "s"}`, {
+            description: "OCR can miss low-quality or handwritten text — give scanned pages a manual review.",
+            duration: 10000,
+          });
         }
       }
 
