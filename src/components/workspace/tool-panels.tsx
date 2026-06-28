@@ -174,6 +174,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ImageConvertPanel ctx={ctx} />;
     case "doc-settings":
       return <DocumentSettingsPanel ctx={ctx} />;
+    case "bates":
+      return <BatesPanel ctx={ctx} />;
     case "comments":
       return <CommentsInspectorPanel ctx={ctx} />;
     case "outline":
