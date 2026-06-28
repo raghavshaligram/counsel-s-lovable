@@ -7,6 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: (s: Record<string, unknown>) => ({
+    redirect: typeof s.redirect === "string" ? s.redirect : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Sign in — VaultPDF" },
@@ -20,6 +23,15 @@ export const Route = createFileRoute("/auth")({
   }),
   component: AuthPage,
 });
+
+/** Only allow same-origin paths starting with `/` and no protocol-relative trick. */
+function safeRedirect(raw: string | undefined): string {
+  if (!raw) return "/workspace";
+  if (!raw.startsWith("/")) return "/workspace";
+  if (raw.startsWith("//")) return "/workspace";
+  if (raw.toLowerCase().includes("://")) return "/workspace";
+  return raw;
+}
 
 type Mode = "magic" | "password" | "signup" | "forgot";
 
