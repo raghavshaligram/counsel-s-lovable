@@ -542,7 +542,11 @@ function encodeLiteral(s: string): string {
 
 const TEXT_SHOW_OPS = new Set(["Tj", "TJ", "'", '"']);
 
-function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutated: boolean; stats: Partial<RewriteStats> } {
+function surgicalRewrite(
+  text: string,
+  job: PageRewrite,
+  fonts: Map<string, FontMetrics>,
+): { text: string; mutated: boolean; stats: Partial<RewriteStats> } {
   const tokens = tokenize(text);
   const editMap = new Map(job.edits.map((e) => [e.original, e.replacement]));
   const redactStrings = new Set(job.redactStrings ?? []);
