@@ -144,15 +144,26 @@ export async function detectPiiInPdf(
       const x = m[4];
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
+      const cx = x - pad;
+      const cy = y - pad;
+      const cw = itemWidth + pad * 2;
+      const ch = fontHeight + pad * 2;
+      const fontName = (raw as { fontName?: string }).fontName;
       detections.push({
         id: `det-${i}-${detections.length}`,
         page: i,
-        x: x - pad,
-        y: y - pad,
-        w: itemWidth + pad * 2,
-        h: fontHeight + pad * 2,
+        x: cx,
+        y: cy,
+        w: cw,
+        h: ch,
         category: cat,
         snippet: snippet(str),
+        source: {
+          originalString: str,
+          transform: raw.transform,
+          fontName,
+        },
+        pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
       });
     }
   }
