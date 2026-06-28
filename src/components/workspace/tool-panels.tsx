@@ -1434,6 +1434,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!ok) return;
     setBusy(true);
     setVerify(null);
+    setLastBytes(null);
     const tid = "wsx-redact-export";
     toast.loading("Building redacted PDF…", { id: tid });
     try {
