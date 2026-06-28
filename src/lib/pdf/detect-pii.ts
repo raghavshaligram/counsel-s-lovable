@@ -46,6 +46,13 @@ export type Detection = {
    * workspace editor uses for annotations. canvas_px / scale.
    */
   pdfRect?: { x: number; y: number; w: number; h: number };
+  /**
+   * "high" = strong signal this is a real person name / PII (e.g. preceded
+   * by Mr/Dr/"signed by", or matched by a structured regex). "low" = weak
+   * heuristic match; UI should leave these unchecked by default so the user
+   * opts in. Absent on structured findings — treat as "high".
+   */
+  confidence?: "high" | "low";
 };
 
 const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
