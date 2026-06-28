@@ -186,11 +186,11 @@ export async function buildRedactionCertificate({
   drawText("VERIFICATION", { size: 9, font: bold, color: vault, gapAfter: 8 });
   if (verification && verification.ok && verification.total > 0) {
     drawWrapped(
-      "The content beneath each redaction has been permanently removed from the document. Verified: every captured text fragment is no longer present in the document's text layer.",
+      "The content beneath each redaction has been permanently removed from the document. Verified: no extractable text remains inside the redaction regions in the exported document's text layer.",
       { size: 10, gapAfter: 4 },
     );
     drawText(
-      `Result: ${verification.removed} of ${verification.total} fragments confirmed removed — 0 leaks.`,
+      `Result: ${verification.removed} of ${verification.total} redaction regions confirmed clear — 0 leaks.`,
       { size: 10, font: mono, color: vault, gapAfter: 4 },
     );
     drawText(`Scanned: ${new Date(verification.scannedAt).toISOString().replace("T", " ").replace(/\..+/, " UTC")}`, {
@@ -205,7 +205,7 @@ export async function buildRedactionCertificate({
     );
   } else if (verification && !verification.ok) {
     drawWrapped(
-      `Partial verification: ${verification.removed} of ${verification.total} fragments confirmed removed; ${verification.leaks} fragment(s) may still appear in the text layer. Review the verification report in the workspace before relying on this output.`,
+      `Partial verification: ${verification.removed} of ${verification.total} redaction regions confirmed clear; ${verification.leaks} region(s) may still contain extractable text. Review the verification report in the workspace before relying on this output.`,
       { size: 10, gapAfter: 12 },
     );
   } else {
