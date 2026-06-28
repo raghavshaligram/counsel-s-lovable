@@ -1398,7 +1398,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           className="flex w-[212px] shrink-0 flex-col border-r border-border bg-surface-1"
         >
           <div className="flex-1 overflow-y-auto no-scrollbar px-2 py-3">
-            {GROUP_ORDER.map((groupLabel) => {
+            {RAIL_GROUP_ORDER.map((groupLabel) => {
               const groupTools = TOOLS.filter(
                 (t) => !t.hidden && t.groupLabel === groupLabel,
               );
