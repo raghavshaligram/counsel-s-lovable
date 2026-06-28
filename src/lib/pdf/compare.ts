@@ -1,3 +1,4 @@
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 /**
  * Compare — visual diff between two PDFs. Pure on-device: pdf.js renders
  * each page to a canvas, pixelmatch compares the two raster images, and
@@ -152,10 +153,10 @@ export async function exportDiffPdf(opts: ExportDiffOptions): Promise<{ blob: Bl
   const pageWidth = opts.pageWidth ?? 1100;
   const total = Math.max(pdfA.pageCount, pdfB.pageCount);
 
-  const { PDFDocument, StandardFonts, rgb } = await importChunk(() => import("pdf-lib"));
+  const { PDFDocument, rgb } = await importChunk(() => import("pdf-lib"));
   const out = await PDFDocument.create();
-  const font = await out.embedFont(StandardFonts.Helvetica);
-  const fontBold = await out.embedFont(StandardFonts.HelveticaBold);
+  const font = await embedStandardFont(out, "Helvetica");
+  const fontBold = await embedStandardFont(out, "HelveticaBold");
 
   // Offscreen canvases reused per page.
   const cA = document.createElement("canvas");

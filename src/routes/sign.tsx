@@ -20,7 +20,8 @@ import {
   Download,
   Plus,
 } from "lucide-react";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 
@@ -245,7 +246,7 @@ function SignPage() {
       const doc = await PDFDocument.load(await file.arrayBuffer(), {
         ignoreEncryption: true,
       });
-      const font = await doc.embedFont(StandardFonts.Helvetica);
+      const font = await embedStandardFont(doc, "Helvetica");
       const pdfPages = doc.getPages();
 
       // Cache embedded PNGs by dataUrl

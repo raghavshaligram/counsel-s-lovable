@@ -4,7 +4,8 @@
  * Adds a page number string to each page at a chosen anchor with
  * configurable format, font size, margin, and skip-first-N.
  */
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 
 export type PageNumberAnchor =
   | "top-left" | "top-center" | "top-right"
@@ -51,7 +52,7 @@ export async function addPageNumbers(
   opts: PageNumbersOpts,
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const font = await embedStandardFont(doc, "Helvetica");
   const pages = doc.getPages();
   const totalNumbered = Math.max(0, pages.length - opts.skipFirst);
 

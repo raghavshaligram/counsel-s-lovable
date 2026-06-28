@@ -20,8 +20,11 @@ export function setExportFormat(v: ExportFormat) {
 }
 
 export function useExportFormat(): [ExportFormat, (v: ExportFormat) => void] {
-  const [v, setV] = useState<ExportFormat>(() => getExportFormat());
+  // Always start as "pdf" so SSR and the first client render agree;
+  // hydrate the stored value after mount to avoid a hydration mismatch.
+  const [v, setV] = useState<ExportFormat>("pdf");
   useEffect(() => {
+    setV(getExportFormat());
     const cb = (next: ExportFormat) => setV(next);
     subs.add(cb);
     return () => { subs.delete(cb); };

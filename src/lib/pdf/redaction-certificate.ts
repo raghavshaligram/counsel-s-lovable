@@ -1,4 +1,5 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 
 type Box = {
   id: string;
@@ -32,9 +33,9 @@ export async function buildRedactionCertificate({
   doc.setProducer("VaultPDF");
   doc.setCreator("VaultPDF");
 
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const mono = await doc.embedFont(StandardFonts.Courier);
+  const font = await embedStandardFont(doc, "Helvetica");
+  const bold = await embedStandardFont(doc, "HelveticaBold");
+  const mono = await embedStandardFont(doc, "Courier");
 
   const ink = rgb(0.07, 0.09, 0.15);
   const muted = rgb(0.45, 0.48, 0.55);
