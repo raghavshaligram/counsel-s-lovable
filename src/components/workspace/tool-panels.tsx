@@ -180,6 +180,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <OutlinePanel ctx={ctx} />;
     case "sanitize":
       return <SanitizePanel ctx={ctx} />;
+    case "exhibit-binder":
+      return <ExhibitBinderPanel />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -5613,6 +5615,59 @@ function MultiFileBatesButton() {
     </>
   );
 }
+
+/* ============================ Exhibit Binder ============================ */
+/**
+ * Inspector panel for the Pro Exhibit Binder. The actual builder is a
+ * multi-file modal (similar to Multi-file Bates) — the panel explains the
+ * feature and launches the modal lazily.
+ */
+function ExhibitBinderPanel() {
+  const requirePro = useRequirePro();
+  const [open, setOpen] = useState(false);
+  const [Modal, setModal] = useState<
+    null | React.ComponentType<{ onClose: () => void }>
+  >(null);
+
+  const launch = useCallback(async () => {
+    if (!requirePro("Exhibit Binder")) return;
+    if (!Modal) {
+      const mod = await importChunk(() => import("./exhibit-binder-modal"));
+      setModal(() => mod.ExhibitBinderModal);
+    }
+    setOpen(true);
+  }, [requirePro, Modal]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-md border border-border bg-surface-2 p-3 text-[12px] text-text-2">
+        <div className="mb-1 text-foreground">Court-ready exhibit binder</div>
+        Combine a brief and multiple exhibits into a single PDF with a
+        hyperlinked Table of Contents, labeled slip-sheets
+        (<span className="font-mono">Exhibit A</span>,{" "}
+        <span className="font-mono">Exhibit B</span>…), and optional
+        continuous page or Bates numbering across the bundle.
+      </div>
+
+      <ul className="flex flex-col gap-1 text-[11.5px] text-text-2">
+        <li>· Drag-and-drop ordering, rename per-exhibit labels</li>
+        <li>· Letter (A, B, C…) or numeric (1, 2, 3…) label scheme</li>
+        <li>· ToC links jump straight to each exhibit's slip-sheet</li>
+        <li>· On-device — nothing uploads</li>
+      </ul>
+
+      <button
+        type="button"
+        onClick={() => void launch()}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90"
+      >
+        Build exhibit binder…
+      </button>
+      {open && Modal && <Modal onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
 
 /* Compact on/off row used by Document Settings to gate detailed config. */
 function DisclosureToggle({
