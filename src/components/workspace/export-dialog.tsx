@@ -114,17 +114,16 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       }
 
       const redactionTargets = doc.annotations.flatMap((a) => {
-        if (a.kind !== "redact" || !a.sources?.length) return [];
-        return a.sources
-          .map((s) => ({ page: a.page, text: (s.redactText || s.originalString || "").trim() }))
-          .filter((t) => t.text.length > 0);
+        if (a.kind !== "redact") return [];
+        const diagnosticText = a.sources?.map((s) => (s.redactText || s.originalString || "").trim()).find(Boolean);
+        return [{ page: a.page, text: diagnosticText, rect: { x: a.x, y: a.y, w: a.w, h: a.h } }];
       });
       if (redactionTargets.length > 0) {
-        toast.loading("Verifying redactions…", { id: tid });
+        toast.loading("Verifying redaction regions…", { id: tid });
         const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
         const check = await verifyRedactionRemoval(bytes, redactionTargets);
         if (!check.ok) {
-          throw new Error(`${check.leaks.length} redacted fragment${check.leaks.length === 1 ? " is" : "s are"} still extractable`);
+          throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
         }
       }
 
