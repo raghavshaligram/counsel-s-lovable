@@ -16,6 +16,7 @@ import { requestPersistentStorage } from "../lib/storage-persist";
 import { isChunkLoadError, reloadForFreshChunks } from "../lib/chunk-import";
 import { useLicenseActivation } from "../lib/use-license-activation";
 import { supabase } from "@/integrations/supabase/client";
+import { UpgradeModal } from "@/components/upgrade-modal";
 
 function NotFoundComponent() {
   return (
