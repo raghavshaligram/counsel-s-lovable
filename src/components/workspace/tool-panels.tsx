@@ -94,6 +94,8 @@ import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-stor
 import { buildPdfFromCells } from "@/lib/pdf/organize";
 import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "./export-format-row";
 import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
