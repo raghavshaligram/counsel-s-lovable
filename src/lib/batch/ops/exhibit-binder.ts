@@ -321,12 +321,14 @@ function drawToc(args: {
     for (const e of slice) {
       const right = String(e.targetPageNumber);
       const rw = font.widthOfTextAtSize(right, itemSize);
-      const labelW = fontBold.widthOfTextAtSize(e.label, itemSize);
-      const titleX = 72 + labelW + 12;
+      const sep = " — ";
+      const labelWithSep = e.label + sep;
+      const labelW = fontBold.widthOfTextAtSize(labelWithSep, itemSize);
+      const titleX = 72 + labelW;
       const titleMax = width - 72 - rw - 18 - titleX;
       const titleTxt = truncateToWidth(e.title, font, itemSize, Math.max(40, titleMax));
 
-      page.drawText(e.label, { x: 72, y, size: itemSize, font: fontBold, color: linkColor });
+      page.drawText(labelWithSep, { x: 72, y, size: itemSize, font: fontBold, color: linkColor });
       page.drawText(titleTxt, { x: titleX, y, size: itemSize, font, color: linkColor });
       page.drawText(right, { x: width - 72 - rw, y, size: itemSize, font, color: linkColor });
 
