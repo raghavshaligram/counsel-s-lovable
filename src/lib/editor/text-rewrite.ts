@@ -789,6 +789,35 @@ function measureTextShow(
   };
 }
 
+function textAdvanceReplacement(
+  text: string,
+  operands: Tok[],
+  op: string,
+  advance: number | null,
+  fontSize: number,
+  hScale: number,
+): string | null {
+  if (advance === null || !Number.isFinite(advance)) return null;
+  const denom = (Math.abs(fontSize) || 12) * ((hScale || 100) / 100);
+  if (!Number.isFinite(denom) || Math.abs(denom) < 0.001) return null;
+  const adjust = -advance * 1000 / denom;
+  const tj = `[${fmtNum(adjust)}] TJ`;
+  if (op === "Tj" || op === "TJ") return tj;
+  if (op === "'") return `T* ${tj}`;
+  if (op === '"' && operands.length >= 3) {
+    const word = text.slice(operands[operands.length - 3].start, operands[operands.length - 3].end);
+    const char = text.slice(operands[operands.length - 2].start, operands[operands.length - 2].end);
+    return `${word} Tw ${char} Tc T* ${tj}`;
+  }
+  return null;
+}
+
+function fmtNum(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  const s = n.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+  return s === "-0" ? "0" : s;
+}
+
 function arrayOperandTokens(operands: Tok[]): Tok[] {
   let start = -1;
   for (let i = operands.length - 1; i >= 0; i--) {
