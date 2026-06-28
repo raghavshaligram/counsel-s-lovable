@@ -725,28 +725,288 @@ function ProRedactSection({ ctx }: { ctx: ToolPanelCtx }) {
   const isPro = useIsPro();
   const requirePro = useRequirePro();
   return (
-    <Section title="Find redactions automatically" icon={<Shield className="h-3 w-3" />}>
-      <div className="flex flex-col gap-1.5">
+    <>
+      <Section title="Find redactions automatically" icon={<Shield className="h-3 w-3" />}>
+        <div className="flex flex-col gap-1.5">
+          {isPro ? (
+            <AutoDetectSensitive ctx={ctx} />
+          ) : (
+            <ProGatedButton
+              isPro={isPro}
+              locked={!isPro}
+              onClick={() => requirePro("AI detect sensitive info")}
+              label="AI detect sensitive info"
+              hint="Names, emails, SSNs, phones, dates, cards/accounts — proposed as draft boxes you review before redacting."
+            />
+          )}
+        </div>
+      </Section>
+      <Section title="Pattern / bulk redact" icon={<Shield className="h-3 w-3" />}>
         {isPro ? (
-          <AutoDetectSensitive ctx={ctx} />
+          <PatternRedact ctx={ctx} />
         ) : (
           <ProGatedButton
             isPro={isPro}
-            locked={!isPro}
-            onClick={() => requirePro("AI detect sensitive info")}
-            label="AI detect sensitive info"
-            hint="Names, emails, SSNs, phones, dates, cards/accounts — proposed as draft boxes you review before redacting."
+            locked
+            onClick={() => requirePro("Pattern / bulk redaction")}
+            label="Redact every match"
+            hint='Find every match of a term or regex (e.g. "Acme, Inc." or a phone-number pattern) across all pages, review locations, then burn them all at once.'
           />
         )}
-        <ProGatedButton
-          isPro={isPro}
-          locked={!isPro}
-          onClick={() => requirePro("Pattern / bulk redaction")}
-          label="Pattern / bulk redact"
-          hint='Find every match of a term or regex (e.g. "Acme, Inc.") and box it across all pages.'
-        />
+      </Section>
+    </>
+  );
+}
+
+/**
+ * PatternRedact — Pro-only. User enters a term (optionally a regex), we
+ * scan every page's text layer for occurrences, list them by page, and
+ * stage them as redact annotations with `sources` populated so the existing
+ * true-deletion burn (text-rewrite.ts → exportEditedPdf → verifyRedactionRemoval)
+ * removes them from the content stream — not just covers them.
+ */
+function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, editorDispatch, editorState } = ctx;
+  type KM = import("@/lib/pdf/detect-pii").KeywordMatch;
+  const [query, setQuery] = useState("");
+  const [matchCase, setMatchCase] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [regex, setRegex] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [matches, setMatches] = useState<KM[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  const existingKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of editorState?.doc?.annotations ?? []) {
+      if (a.kind !== "redact") continue;
+      s.add(`${a.page}|${Math.round(a.x)}|${Math.round(a.y)}|${Math.round(a.w)}|${Math.round(a.h)}`);
+    }
+    return s;
+  }, [editorState?.doc?.annotations]);
+
+  const runFind = useCallback(async () => {
+    if (!file || !query.trim()) return;
+    setBusy(true);
+    setError(null);
+    setMatches(null);
+    setSelected(new Set());
+    setProgress("Scanning text layer…");
+    try {
+      const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
+      // Yield to the main thread between pages so a 50+ page doc doesn't
+      // freeze the UI. pdf.js text extraction itself is already async.
+      const found = await mod.findKeywordInPdf(
+        file,
+        query,
+        {
+          matchCase,
+          wholeWord: regex ? false : wholeWord,
+          regex,
+          scope: "word",
+          onProgress: (p) =>
+            setProgress(`${p.stage === "ocr" ? "OCR" : "Reading"} page ${p.page}/${p.totalPages}`),
+        },
+      );
+      setMatches(found);
+      setSelected(new Set(found.map((m) => m.id)));
+      if (found.length === 0) {
+        toast.info("No matches found");
+      } else {
+        toast.success(`${found.length} match${found.length === 1 ? "" : "es"} across the document`);
+      }
+    } catch (err) {
+      console.error("[pattern-redact] scan failed", err);
+      setError((err as Error).message);
+      toast.error("Pattern scan failed", { description: (err as Error).message });
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  }, [file, query, matchCase, wholeWord, regex]);
+
+  const stageSelected = useCallback(() => {
+    if (!matches || selected.size === 0) return;
+    let added = 0;
+    let skipped = 0;
+    for (const m of matches) {
+      if (!selected.has(m.id)) continue;
+      const rect = m.pdfRect ?? { x: m.x / 1.5, y: m.y / 1.5, w: m.w / 1.5, h: m.h / 1.5 };
+      const key = `${m.page - 1}|${Math.round(rect.x)}|${Math.round(rect.y)}|${Math.round(rect.w)}|${Math.round(rect.h)}`;
+      if (existingKeys.has(key)) { skipped++; continue; }
+      editorDispatch({
+        type: "ADD_ANNO",
+        a: {
+          id: `pat-${m.id}-${Date.now().toString(36)}`,
+          kind: "redact",
+          page: m.page - 1,
+          x: rect.x, y: rect.y, w: rect.w, h: rect.h,
+          color: { r: 0, g: 0, b: 0 },
+          opacity: 1,
+          sources: m.source?.originalString
+            ? [{
+                originalString: m.source.originalString,
+                transform: m.source.transform,
+                fontName: m.source.fontName,
+              }]
+            : undefined,
+        },
+      });
+      added++;
+    }
+    if (added > 0) {
+      toast.success(`${added} redaction box${added === 1 ? "" : "es"} staged`, {
+        description: 'Click "Redact, export & verify" below to permanently burn them.',
+      });
+      setSelected(new Set());
+    } else if (skipped > 0) {
+      toast.info("Already staged", { description: `${skipped} of these matches are already marked.` });
+    }
+  }, [matches, selected, editorDispatch, existingKeys]);
+
+  const allSelected = !!matches && matches.length > 0 && selected.size === matches.length;
+  const groupedByPage = useMemo(() => {
+    if (!matches) return null;
+    const m = new Map<number, KM[]>();
+    for (const r of matches) {
+      const arr = m.get(r.page) ?? [];
+      arr.push(r);
+      m.set(r.page, arr);
+    }
+    return Array.from(m.entries()).sort((a, b) => a[0] - b[0]);
+  }, [matches]);
+  const withoutSource = matches?.filter((m) => !m.source).length ?? 0;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-foreground">Find every match</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-vault">Pro · On-device</span>
       </div>
-    </Section>
+      <p className="text-[10.5px] leading-snug text-text-muted">
+        Enter a term, phrase, or regex. We find every occurrence across all pages,
+        you review and confirm, then the existing burn removes them from the content stream.
+      </p>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && !busy) void runFind(); }}
+        placeholder={regex ? "e.g. \\b\\d{3}-\\d{2}-\\d{4}\\b" : 'e.g. "Acme, Inc."'}
+        spellCheck={false}
+        className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-text-muted focus:border-vault/50 focus:outline-none"
+      />
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-2">
+        <label className="inline-flex items-center gap-1.5">
+          <input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} className="h-3 w-3 accent-vault" />
+          Match case
+        </label>
+        <label className={cn("inline-flex items-center gap-1.5", regex && "opacity-50")}>
+          <input type="checkbox" disabled={regex} checked={wholeWord} onChange={(e) => setWholeWord(e.target.checked)} className="h-3 w-3 accent-vault" />
+          Whole word
+        </label>
+        <label className="inline-flex items-center gap-1.5">
+          <input type="checkbox" checked={regex} onChange={(e) => setRegex(e.target.checked)} className="h-3 w-3 accent-vault" />
+          Regex
+        </label>
+      </div>
+      <button
+        type="button"
+        onClick={() => void runFind()}
+        disabled={!file || !query.trim() || busy}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2.5 py-1.5 text-[12px] font-medium text-vault hover:bg-vault/15",
+          (!file || !query.trim() || busy) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Shield className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy ? progress || "Scanning…" : matches ? "Search again" : "Find all matches"}
+      </button>
+      {error && (
+        <p className="text-[10.5px] text-destructive">{error}</p>
+      )}
+
+      {matches && matches.length > 0 && (
+        <div className="rounded-md border border-border bg-surface-2/60">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
+            <label className="flex items-center gap-1.5 text-[11px] text-text-2">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) =>
+                  setSelected(e.target.checked ? new Set(matches.map((m) => m.id)) : new Set())
+                }
+                className="h-3 w-3 accent-vault"
+              />
+              {selected.size} / {matches.length} selected
+            </label>
+            <button
+              type="button"
+              onClick={stageSelected}
+              disabled={selected.size === 0}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90",
+                selected.size === 0 && "cursor-not-allowed opacity-50",
+              )}
+            >
+              <Shield className="h-3 w-3" strokeWidth={2.5} />
+              Stage as redactions
+            </button>
+          </div>
+          <ul className="max-h-[260px] overflow-y-auto py-1">
+            {groupedByPage?.map(([pageNum, list]) => (
+              <li key={pageNum}>
+                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                  Page {pageNum} · {list.length}
+                </div>
+                <ul>
+                  {list.map((m) => {
+                    const checked = selected.has(m.id);
+                    return (
+                      <li key={m.id} className="flex items-center gap-2 px-2.5 py-1 hover:bg-surface-3/60">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = new Set(selected);
+                            if (e.target.checked) next.add(m.id); else next.delete(m.id);
+                            setSelected(next);
+                          }}
+                          className="h-3 w-3 accent-vault"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => editorDispatch({ type: "SET_PAGE", n: Math.max(0, m.page - 1) })}
+                          className="flex-1 truncate text-left text-[11.5px] text-foreground hover:text-vault"
+                          title={m.snippet}
+                        >
+                          {m.snippet}
+                        </button>
+                        {!m.source && (
+                          <span className="text-[9.5px] uppercase tracking-wide text-text-muted" title="OCR-derived — cover-only on export">
+                            cover
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            ))}
+          </ul>
+          {withoutSource > 0 && (
+            <p className="border-t border-border px-2.5 py-1.5 text-[10.5px] text-text-muted">
+              {withoutSource} match{withoutSource === 1 ? "" : "es"} on scanned pages — painted black, no text-layer to remove.
+            </p>
+          )}
+        </div>
+      )}
+      {matches && matches.length === 0 && !busy && (
+        <p className="text-[11px] text-text-muted">No matches across {editorState?.doc?.pages.length ?? 0} page{(editorState?.doc?.pages.length ?? 0) === 1 ? "" : "s"}.</p>
+      )}
+    </div>
   );
 }
 
