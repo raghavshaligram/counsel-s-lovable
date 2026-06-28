@@ -294,6 +294,19 @@ export type KeywordMatch = {
   w: number;
   h: number;
   snippet: string;
+  /** PDF-point rect (top-left origin) — what the workspace editor needs. */
+  pdfRect?: { x: number; y: number; w: number; h: number };
+  /**
+   * Parent text-item metadata. Carried through to redact annotations so the
+   * destructive content-stream rewriter (src/lib/editor/text-rewrite.ts) can
+   * delete the underlying Tj operand — true deletion, not a black cover.
+   * Absent for OCR-derived matches on scanned pages.
+   */
+  source?: {
+    originalString: string;
+    transform?: number[];
+    fontName?: string;
+  };
 };
 
 // Find every text-layer item that contains `query` and return redaction-sized
@@ -308,6 +321,7 @@ export async function findKeywordInPdf(
   opts: {
     matchCase?: boolean;
     wholeWord?: boolean;
+    regex?: boolean;
     ocr?: boolean;
     scope?: KeywordScope;
     onProgress?: (p: { stage: "text" | "ocr"; page: number; totalPages: number }) => void;
@@ -323,13 +337,26 @@ export async function findKeywordInPdf(
     (opts.preloadedDoc as unknown as Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>) ??
     (await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise);
 
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = opts.wholeWord ? `\\b${escaped}\\b` : escaped;
-  const reGlobal = new RegExp(pattern, opts.matchCase ? "g" : "gi");
-  const wordRe = new RegExp(
-    opts.wholeWord ? `^${escaped}$` : escaped,
-    opts.matchCase ? "" : "i",
-  );
+  // When `regex` is on, treat the input as a raw pattern (the caller is
+  // responsible for valid syntax). Otherwise escape and optionally wrap in
+  // word boundaries.
+  const pattern = opts.regex
+    ? q
+    : opts.wholeWord
+    ? `\\b${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`
+    : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const flags = opts.matchCase ? "g" : "gi";
+  let reGlobal: RegExp;
+  let wordRe: RegExp;
+  try {
+    reGlobal = new RegExp(pattern, flags);
+    wordRe = new RegExp(
+      opts.regex ? pattern : opts.wholeWord ? `^${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$` : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      opts.matchCase ? "" : "i",
+    );
+  } catch (err) {
+    throw new Error(`Invalid regular expression: ${(err as Error).message}`);
+  }
 
   const matches: KeywordMatch[] = [];
   const scannedPages: number[] = [];
@@ -398,14 +425,21 @@ export async function findKeywordInPdf(
         }
         const xStart = baseX + perChar * segStart;
         const wSeg = perChar * (segEnd - segStart);
+        const bx = xStart - pad;
+        const by = baseY - pad;
+        const bw = wSeg + pad * 2;
+        const bh = fontHeight + pad * 2;
+        const fontName = (raw as { fontName?: string }).fontName;
         matches.push({
           id: `kw-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
           page: i,
-          x: xStart - pad,
-          y: baseY - pad,
-          w: wSeg + pad * 2,
-          h: fontHeight + pad * 2,
+          x: bx,
+          y: by,
+          w: bw,
+          h: bh,
           snippet: snippet(segText),
+          pdfRect: { x: bx / scale, y: by / scale, w: bw / scale, h: bh / scale },
+          source: { originalString: str, transform: raw.transform, fontName },
         });
       }
     }
