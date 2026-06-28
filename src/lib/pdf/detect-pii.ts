@@ -321,6 +321,7 @@ export async function findKeywordInPdf(
   opts: {
     matchCase?: boolean;
     wholeWord?: boolean;
+    regex?: boolean;
     ocr?: boolean;
     scope?: KeywordScope;
     onProgress?: (p: { stage: "text" | "ocr"; page: number; totalPages: number }) => void;
