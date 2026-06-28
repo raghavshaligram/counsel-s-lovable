@@ -1374,6 +1374,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
             Export
           </button>
+          <span className="mx-0.5 h-4 w-px bg-border" />
+          <AccountMenu />
         </div>
       </header>
 
