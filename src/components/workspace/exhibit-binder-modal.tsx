@@ -219,7 +219,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       setProgress(null);
     }
   }, [
-    brief, exhibits, labelScheme, labelPrefix, includeToc, tocTitle,
+    brief, exhibits, previewLabels, labelScheme, labelPrefix, includeToc, tocTitle,
     numbering, bates, skipNumberingOnToc, outputName, onClose,
   ]);
 
