@@ -17,6 +17,7 @@ import {
   SheetHeader,
 } from "@/components/ui/sheet";
 import { TrayDock } from "@/components/tray/tray-dock";
+import { AccountMenu } from "@/components/workspace/account-menu";
 
 type Tool = { id: string; label: string; desc: string; icon: any; beta?: boolean };
 type Group = { id: string; label: string; tagline: string; items: Tool[] };
