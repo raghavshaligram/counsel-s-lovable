@@ -99,6 +99,10 @@ async function networkFirstNav(req) {
     const cached = await cache.match(req);
     if (cached) return cached;
     const shell = await caches.open(SHELL_CACHE);
+    // Prefer the branded offline page so users never see the browser's
+    // default "no internet" error. Fall back to the cached app shell.
+    const offline = await shell.match(OFFLINE_URL);
+    if (offline) return offline;
     const fallback = await shell.match("/");
     if (fallback) return fallback;
     return new Response("Offline", { status: 503, statusText: "Offline" });
