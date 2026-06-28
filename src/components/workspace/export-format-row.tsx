@@ -4,13 +4,21 @@
  * subsequent export. The selection is persisted globally so other panels,
  * dialogs and the main Export button all reflect the same default.
  */
-import { FileCheck2 } from "lucide-react";
+import { FileCheck2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   useExportFormat,
   type ExportFormat,
   PDFA_NOTE,
 } from "@/lib/workspace/export-format-store";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function ExportFormatRow({ className }: { className?: string }) {
   const [format, setFormat] = useExportFormat();
