@@ -11,7 +11,7 @@
  * heavy steps so the UI stays responsive on large sets. Output is a single
  * PDF with a hyperlinked ToC, slip-sheets, and (optionally) numbering.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { X, GripVertical, Upload, Trash2, FilePlus2, BookOpen } from "lucide-react";
 import { downloadBytes } from "@/lib/batch/runner";
@@ -136,18 +136,6 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
     setExhibits((cur) => cur.filter((r) => r.id !== id));
   }, []);
 
-  /** Per-row effective label: user override (if any) else computed from
-   *  position in the ordered array. SAME source array drives the build. */
-  const previewLabels = useMemo(
-    () =>
-      exhibits.map((r, i) =>
-        r.labelOverride.trim()
-          ? r.labelOverride.trim()
-          : `${labelPrefix}${exhibitLabel(i, labelScheme)}`,
-      ),
-    [exhibits, labelScheme, labelPrefix],
-  );
-
   /* ---------------- build ---------------- */
 
   const run = useCallback(async () => {
@@ -206,7 +194,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       setProgress(null);
     }
   }, [
-    brief, exhibits, previewLabels, labelScheme, labelPrefix, includeToc, tocTitle,
+    brief, exhibits, labelScheme, labelPrefix, includeToc, tocTitle,
     numbering, bates, skipNumberingOnToc, outputName, onClose,
   ]);
 
