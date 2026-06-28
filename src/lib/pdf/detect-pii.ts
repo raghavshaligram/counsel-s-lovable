@@ -457,7 +457,7 @@ function snippet(s: string) {
   return s.length > 60 ? s.slice(0, 57) + "…" : s;
 }
 
-type OcrWord = { text: string; bbox: { x0: number; y0: number; x1: number; y1: number } };
+type OcrWord = { text: string; confidence?: number; bbox: { x0: number; y0: number; x1: number; y1: number } };
 function collectWords(data: unknown): OcrWord[] {
   const out: OcrWord[] = [];
   const visit = (node: Record<string, unknown> | null | undefined) => {
