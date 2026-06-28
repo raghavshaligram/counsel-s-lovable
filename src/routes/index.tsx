@@ -250,9 +250,9 @@ function Landing() {
                 className="font-display leading-[0.95] tracking-tight"
                 style={{ fontSize: "clamp(2.25rem, 7vw, 5.5rem)" }}
               >
-                Pull the plug.
+                Works offline
                 <br />
-                <span className="italic text-vault">It still works.</span>
+                <span className="italic text-vault">— no installation.</span>
               </h2>
               <div className="mt-10 space-y-5 max-w-lg text-muted-foreground leading-relaxed">
                 <p>
