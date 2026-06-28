@@ -445,7 +445,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               100% in your browser
             </span>
             <Link
-              to="/pricing"
+              to="/auth"
               className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 text-sm font-medium hover:bg-card transition-colors"
             >
               Sign in

@@ -21,6 +21,7 @@ import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
 import { Route as SecurityArchitectureRouteImport } from './routes/security-architecture'
 import { Route as RotateRouteImport } from './routes/rotate'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PrivilegeScanRouteImport } from './routes/privilege-scan'
@@ -39,6 +40,7 @@ import { Route as CompressRouteImport } from './routes/compress'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as BatesRouteImport } from './routes/bates'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
@@ -99,6 +101,11 @@ const SecurityArchitectureRoute = SecurityArchitectureRouteImport.update({
 const RotateRoute = RotateRouteImport.update({
   id: '/rotate',
   path: '/rotate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RedactRoute = RedactRouteImport.update({
@@ -191,6 +198,11 @@ const BatesRoute = BatesRouteImport.update({
   path: '/bates',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -199,6 +211,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/bates': typeof BatesRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
@@ -217,6 +230,7 @@ export interface FileRoutesByFullPath {
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
@@ -232,6 +246,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/bates': typeof BatesRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
@@ -250,6 +265,7 @@ export interface FileRoutesByTo {
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
@@ -266,6 +282,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/bates': typeof BatesRoute
   '/chat': typeof ChatRoute
   '/compare': typeof CompareRoute
@@ -284,6 +301,7 @@ export interface FileRoutesById {
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
@@ -301,6 +319,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/auth'
     | '/bates'
     | '/chat'
     | '/compare'
@@ -319,6 +338,7 @@ export interface FileRouteTypes {
     | '/privilege-scan'
     | '/protect'
     | '/redact'
+    | '/reset-password'
     | '/rotate'
     | '/security-architecture'
     | '/sign'
@@ -334,6 +354,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/auth'
     | '/bates'
     | '/chat'
     | '/compare'
@@ -352,6 +373,7 @@ export interface FileRouteTypes {
     | '/privilege-scan'
     | '/protect'
     | '/redact'
+    | '/reset-password'
     | '/rotate'
     | '/security-architecture'
     | '/sign'
@@ -367,6 +389,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/auth'
     | '/bates'
     | '/chat'
     | '/compare'
@@ -385,6 +408,7 @@ export interface FileRouteTypes {
     | '/privilege-scan'
     | '/protect'
     | '/redact'
+    | '/reset-password'
     | '/rotate'
     | '/security-architecture'
     | '/sign'
@@ -401,6 +425,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   BatesRoute: typeof BatesRoute
   ChatRoute: typeof ChatRoute
   CompareRoute: typeof CompareRoute
@@ -419,6 +444,7 @@ export interface RootRouteChildren {
   PrivilegeScanRoute: typeof PrivilegeScanRoute
   ProtectRoute: typeof ProtectRoute
   RedactRoute: typeof RedactRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   RotateRoute: typeof RotateRoute
   SecurityArchitectureRoute: typeof SecurityArchitectureRoute
   SignRoute: typeof SignRoute
@@ -517,6 +543,13 @@ declare module '@tanstack/react-router' {
       path: '/rotate'
       fullPath: '/rotate'
       preLoaderRoute: typeof RotateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/redact': {
@@ -645,6 +678,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BatesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -657,6 +697,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   BatesRoute: BatesRoute,
   ChatRoute: ChatRoute,
   CompareRoute: CompareRoute,
@@ -675,6 +716,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivilegeScanRoute: PrivilegeScanRoute,
   ProtectRoute: ProtectRoute,
   RedactRoute: RedactRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   RotateRoute: RotateRoute,
   SecurityArchitectureRoute: SecurityArchitectureRoute,
   SignRoute: SignRoute,
