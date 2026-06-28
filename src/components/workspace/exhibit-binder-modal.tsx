@@ -344,14 +344,20 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
                       className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px]"
                     >
                       <GripVertical className="h-3.5 w-3.5 cursor-grab text-text-2" />
-                      <span className="shrink-0 rounded bg-vault/15 px-1.5 py-0.5 font-mono text-[10.5px] text-vault">
-                        {previewLabels[idx]}
-                      </span>
+                      <input
+                        value={r.labelOverride}
+                        disabled={busy}
+                        onChange={(e) => setLabelFor(r.id, e.target.value)}
+                        placeholder={`${labelPrefix}${exhibitLabel(idx, labelScheme)}`}
+                        title="Exhibit label (leave blank to auto-assign in order)"
+                        className="w-[88px] shrink-0 rounded bg-vault/15 px-1.5 py-0.5 text-center font-mono text-[10.5px] text-vault outline-none placeholder:text-vault/60 focus:ring-1 focus:ring-vault/40"
+                      />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <input
                           value={r.title}
                           disabled={busy}
                           onChange={(e) => rename(r.id, e.target.value)}
+                          placeholder="Exhibit title"
                           className="w-full truncate bg-transparent text-foreground outline-none focus:ring-1 focus:ring-vault/40"
                         />
                         <span className="truncate text-[10.5px] text-text-2">{r.name}</span>
