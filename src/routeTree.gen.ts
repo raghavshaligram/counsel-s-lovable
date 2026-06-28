@@ -32,6 +32,7 @@ import { Route as OutlineRouteImport } from './routes/outline'
 import { Route as OrganizeRouteImport } from './routes/organize'
 import { Route as OcrRouteImport } from './routes/ocr'
 import { Route as MergeRouteImport } from './routes/merge'
+import { Route as HqRouteImport } from './routes/hq'
 import { Route as HeaderFooterRouteImport } from './routes/header-footer'
 import { Route as FlattenRouteImport } from './routes/flatten'
 import { Route as ExtractRouteImport } from './routes/extract'
@@ -162,6 +163,11 @@ const MergeRoute = MergeRouteImport.update({
   path: '/merge',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HqRoute = HqRouteImport.update({
+  id: '/hq',
+  path: '/hq',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HeaderFooterRoute = HeaderFooterRouteImport.update({
   id: '/header-footer',
   path: '/header-footer',
@@ -244,6 +250,7 @@ export interface FileRoutesByFullPath {
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
   '/header-footer': typeof HeaderFooterRoute
+  '/hq': typeof HqRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
@@ -282,6 +289,7 @@ export interface FileRoutesByTo {
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
   '/header-footer': typeof HeaderFooterRoute
+  '/hq': typeof HqRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/extract': typeof ExtractRoute
   '/flatten': typeof FlattenRoute
   '/header-footer': typeof HeaderFooterRoute
+  '/hq': typeof HqRoute
   '/merge': typeof MergeRoute
   '/ocr': typeof OcrRoute
   '/organize': typeof OrganizeRoute
@@ -362,6 +371,7 @@ export interface FileRouteTypes {
     | '/extract'
     | '/flatten'
     | '/header-footer'
+    | '/hq'
     | '/merge'
     | '/ocr'
     | '/organize'
@@ -400,6 +410,7 @@ export interface FileRouteTypes {
     | '/extract'
     | '/flatten'
     | '/header-footer'
+    | '/hq'
     | '/merge'
     | '/ocr'
     | '/organize'
@@ -439,6 +450,7 @@ export interface FileRouteTypes {
     | '/extract'
     | '/flatten'
     | '/header-footer'
+    | '/hq'
     | '/merge'
     | '/ocr'
     | '/organize'
@@ -479,6 +491,7 @@ export interface RootRouteChildren {
   ExtractRoute: typeof ExtractRoute
   FlattenRoute: typeof FlattenRoute
   HeaderFooterRoute: typeof HeaderFooterRoute
+  HqRoute: typeof HqRoute
   MergeRoute: typeof MergeRoute
   OcrRoute: typeof OcrRoute
   OrganizeRoute: typeof OrganizeRoute
@@ -667,6 +680,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MergeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/hq': {
+      id: '/hq'
+      path: '/hq'
+      fullPath: '/hq'
+      preLoaderRoute: typeof HqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/header-footer': {
       id: '/header-footer'
       path: '/header-footer'
@@ -794,6 +814,7 @@ const rootRouteChildren: RootRouteChildren = {
   ExtractRoute: ExtractRoute,
   FlattenRoute: FlattenRoute,
   HeaderFooterRoute: HeaderFooterRoute,
+  HqRoute: HqRoute,
   MergeRoute: MergeRoute,
   OcrRoute: OcrRoute,
   OrganizeRoute: OrganizeRoute,
