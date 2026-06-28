@@ -55,17 +55,11 @@ export function useRequirePro() {
       if (isPro) return true;
       const dest = href;
       toast.message("Sign in to unlock VaultPDF Pro", {
-        description: featureName ? `${featureName} requires a Pro subscription.` : undefined,
-        action: {
-          label: "Sign in",
-          onClick: () =>
-            void navigate({ to: "/auth", search: { redirect: dest } as never }),
-        },
+        description: featureName
+          ? `${featureName} requires a Pro subscription.`
+          : "This feature requires a Pro subscription.",
       });
-      // Defer the navigation so the toast renders before the route changes.
-      window.setTimeout(() => {
-        void navigate({ to: "/auth", search: { redirect: dest } as never });
-      }, 250);
+      void navigate({ to: "/auth", search: { redirect: dest } as never });
       return false;
     },
     [isPro, navigate, href],
