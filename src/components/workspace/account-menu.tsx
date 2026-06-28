@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle } from "lucide-react";
+import { useLoginModal } from "@/components/login-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useLicenseActivation } from "@/lib/use-license-activation";
 import { clearLicense } from "@/lib/license-store";
