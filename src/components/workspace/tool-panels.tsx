@@ -3768,7 +3768,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           onProgress: (s) => setProgress(s),
         });
         const base = file.name.replace(/\.docx$/i, "");
-        downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
+        await downloadPdf(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
         toast.success(`Converted ${pages} page${pages === 1 ? "" : "s"}`, { id: tid });
       } else if (kind === "images" && target === "pdf") {
         const { buildPdfFromImages } = await importChunk(() => import("@/lib/pdf/images-to-pdf"));
