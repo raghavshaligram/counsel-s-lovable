@@ -31,6 +31,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useLoginModal } from "@/components/login-modal";
 
 type UpgradeReason = {
   featureName?: string;
