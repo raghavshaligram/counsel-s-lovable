@@ -51,9 +51,9 @@ export function useRequirePro() {
   const navigate = useNavigate();
   const href = useRouterState({ select: (s) => s.location.href });
   return useCallback(
-    (featureName?: string): boolean => {
+    (featureName?: string, returnTo?: string): boolean => {
       if (isPro) return true;
-      const dest = href;
+      const dest = returnTo ?? href;
       toast.message("Sign in to unlock VaultPDF Pro", {
         description: featureName
           ? `${featureName} requires a Pro subscription.`
