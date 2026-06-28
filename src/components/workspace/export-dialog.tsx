@@ -113,13 +113,8 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         });
       }
 
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
+      const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
+      await downloadPdf(bytes, outName);
 
       toast.success("Saved", { id: tid });
       onOpenChange(false);
