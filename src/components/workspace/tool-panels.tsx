@@ -1331,7 +1331,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       )}
 
       {findings && !scanning && scannedPages.length > 0 && lowConfOcrPages.length < scannedPages.length && (
-        <div className="rounded-md border border-vault/30 bg-vault/10 px-2.5 py-2 text-[11px] leading-snug text-text-1">
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
           <div className="font-semibold mb-0.5">Scanned document · OCR ran on {scannedPages.length - lowConfOcrPages.length} page{scannedPages.length - lowConfOcrPages.length === 1 ? "" : "s"}</div>
           Detection ran on OCR-recognized text. OCR can miss low-quality or handwritten text — review scanned pages manually to be sure.
         </div>
