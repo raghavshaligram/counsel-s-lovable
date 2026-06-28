@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Check, X, ArrowRight, Minus } from "lucide-react";
 
@@ -245,8 +245,8 @@ function Landing() {
             />
             <PriceCard
               eyebrow="Small-firm annual pass"
-              price="Contact"
-              cadence="up to 10 seats"
+              price="$1,490"
+              cadence="/year · up to 10 seats"
               note="One invoice. One renewal. No per-seat seat-counting."
               features={[
                 "Everything in Solo",
@@ -254,7 +254,7 @@ function Landing() {
                 "Priority email support",
                 "Onboarding for paralegals",
               ]}
-              cta="Talk to us"
+              cta="Get the firm pass"
             />
           </div>
         </div>
@@ -385,24 +385,79 @@ function RedactStamp({
   );
 }
 
+/* ——— useInView hook ——— */
+
+function useInView<T extends HTMLElement>(once = true) {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setInView(true);
+            if (once) io.unobserve(e.target);
+          } else if (!once) {
+            setInView(false);
+          }
+        });
+      },
+      { threshold: 0.2 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [once]);
+  return [ref, inView] as const;
+}
+
 /* ——— Network monitor mock ——— */
 
 function NetworkMonitor() {
-  const rows: Array<{ name: string; type: string; size: string; status: string; muted?: boolean }> = [
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const rows = [
     { name: "app.bundle.js", type: "script", size: "812 KB", status: "200" },
     { name: "ocr.worker.wasm", type: "wasm", size: "1.4 MB", status: "200" },
     { name: "pdfium.js", type: "script", size: "624 KB", status: "200" },
     { name: "/api/subscription/verify", type: "fetch", size: "182 B", status: "200" },
   ];
+
   return (
-    <div className="reveal rounded-lg border border-border bg-background shadow-[var(--shadow-float)] overflow-hidden">
+    <div
+      ref={ref}
+      className="reveal rounded-lg border border-border bg-background shadow-[var(--shadow-float)] overflow-hidden"
+    >
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card/60 text-[11px] font-mono text-muted-foreground">
         <span className="h-2 w-2 rounded-full bg-evidence" />
         <span className="h-2 w-2 rounded-full bg-vault/60" />
         <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
         <span className="ml-2">DevTools — Network</span>
-        <span className="ml-auto">Filter: all · Recording</span>
+        <span className="ml-auto flex items-center gap-1.5">
+          <span
+            className={`h-1.5 w-1.5 rounded-full bg-evidence ${inView ? "motion-safe:animate-pulse" : ""}`}
+          />
+          Recording
+        </span>
       </div>
+
+      {/* Processing chip */}
+      <div className="px-4 py-2.5 border-b border-border flex items-center gap-2 text-[11px] font-mono">
+        <span className="text-muted-foreground">file:</span>
+        <span className="text-foreground truncate">production_set_vol3.pdf</span>
+        <span
+          className={`ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-vault/10 text-vault transition-opacity duration-500 ${
+            inView ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-vault motion-safe:animate-pulse" />
+          processing on device
+        </span>
+      </div>
+
       <div className="px-4 py-3 grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-[11px] font-mono text-muted-foreground border-b border-border">
         <span>Name</span><span>Type</span><span>Size</span><span>Status</span>
       </div>
@@ -410,8 +465,12 @@ function NetworkMonitor() {
         {rows.map((r, i) => (
           <div
             key={r.name}
-            className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 py-1.5 opacity-0 motion-safe:animate-[fade-in_400ms_ease-out_forwards]"
-            style={{ animationDelay: `${i * 350 + 200}ms` }}
+            className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 py-1.5 transition-all duration-500 ease-out"
+            style={{
+              opacity: inView ? 1 : 0,
+              transform: inView ? "translateY(0)" : "translateY(4px)",
+              transitionDelay: `${i * 300 + 250}ms`,
+            }}
           >
             <span className="text-foreground truncate">{r.name}</span>
             <span className="text-muted-foreground">{r.type}</span>
@@ -419,9 +478,19 @@ function NetworkMonitor() {
             <span className="text-vault">{r.status}</span>
           </div>
         ))}
-        <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-[11px]">
+
+        <div
+          className="mt-3 pt-3 border-t border-border flex items-center justify-between text-[11px] transition-opacity duration-500"
+          style={{ opacity: inView ? 1 : 0, transitionDelay: "1700ms" }}
+        >
           <span className="text-muted-foreground">Uploaded from your documents</span>
-          <span className="font-semibold text-vault">0 bytes</span>
+          <span
+            className={`font-semibold text-vault tabular-nums px-2 py-0.5 rounded-sm bg-vault/5 ${
+              inView ? "motion-safe:animate-[pulse-zero_2s_ease-in-out_1.7s_2]" : ""
+            }`}
+          >
+            0 bytes
+          </span>
         </div>
       </div>
     </div>
@@ -430,26 +499,32 @@ function NetworkMonitor() {
 
 /* ——— Comparison table ——— */
 
-type Mark = true | false | "partial";
+type MarkValue = true | false | "partial";
 
-const COMP_ROWS: Array<{ label: string; vals: [Mark, Mark, Mark, Mark] }> = [
-  { label: "Built for legal workflows", vals: [true, "partial", "partial", true] },
-  { label: "Documents stay on your device", vals: [true, "partial", "partial", false] },
+const COMP_ROWS: Array<{ label: string; vals: [MarkValue, MarkValue, MarkValue, MarkValue] }> = [
+  { label: "Built for legal workflows", vals: [true, false, false, false] },
+  { label: "Documents stay on your device", vals: [true, false, true, false] },
   { label: "AI redaction runs locally (not cloud)", vals: [true, false, false, false] },
-  { label: "Works offline", vals: [true, true, true, false] },
+  { label: "Works offline", vals: [true, "partial", true, false] },
   { label: "No installation — any device", vals: [true, false, false, true] },
   { label: "Bates stamp across files", vals: [true, true, true, false] },
-  { label: "Affordable for solo / small firm", vals: [true, false, false, "partial"] },
+  { label: "Affordable for solo / small firm", vals: [true, "partial", "partial", false] },
 ];
 
 function ComparisonTable() {
+  const [ref, inView] = useInView<HTMLDivElement>();
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-background/40 reveal">
+    <div
+      ref={ref}
+      className="overflow-x-auto rounded-xl border border-border bg-background/40 reveal"
+    >
       <table className="w-full text-sm min-w-[720px]">
         <thead className="text-xs text-muted-foreground">
           <tr>
             <th className="text-left p-4 font-medium w-[34%]">Capability</th>
-            <th className="p-4 text-center font-semibold text-vault">VaultPDF</th>
+            <th className="p-4 text-center font-semibold text-vault bg-vault/[0.06] border-x border-vault/20">
+              VaultPDF
+            </th>
             <th className="p-4 text-center font-medium">Adobe Acrobat</th>
             <th className="p-4 text-center font-medium">Kofax Power PDF</th>
             <th className="p-4 text-center font-medium">Cloud redaction (e.g. Redactable)</th>
@@ -462,10 +537,16 @@ function ComparisonTable() {
               {row.vals.map((v, j) => (
                 <td
                   key={j}
-                  className={`p-4 text-center ${j === 0 ? "bg-vault/5" : ""} opacity-0 motion-safe:animate-[fade-in_350ms_ease-out_forwards]`}
-                  style={{ animationDelay: `${i * 90 + j * 50}ms` }}
+                  className={`p-4 text-center transition-all duration-400 ease-out ${
+                    j === 0 ? "bg-vault/[0.06] border-x border-vault/20" : ""
+                  }`}
+                  style={{
+                    opacity: inView ? 1 : 0,
+                    transform: inView ? "scale(1)" : "scale(0.85)",
+                    transitionDelay: `${i * 90 + j * 60 + 150}ms`,
+                  }}
                 >
-                  <Mark v={v} highlight={j === 0} />
+                  <MarkIcon v={v} highlight={j === 0} />
                 </td>
               ))}
             </tr>
@@ -476,11 +557,21 @@ function ComparisonTable() {
   );
 }
 
-function Mark({ v, highlight }: { v: Mark; highlight?: boolean }) {
+function MarkIcon({ v, highlight }: { v: MarkValue; highlight?: boolean }) {
   if (v === true)
-    return <Check className={`h-4 w-4 mx-auto ${highlight ? "text-vault" : "text-foreground/80"}`} />;
-  if (v === false) return <X className="h-4 w-4 text-muted-foreground/40 mx-auto" />;
-  return <Minus className="h-4 w-4 text-muted-foreground/60 mx-auto" />;
+    return (
+      <Check
+        className={`h-5 w-5 mx-auto ${highlight ? "text-vault" : "text-foreground/80"}`}
+        strokeWidth={highlight ? 2.5 : 2}
+      />
+    );
+  if (v === false) return <X className="h-5 w-5 text-muted-foreground/40 mx-auto" />;
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
+      <Minus className="h-3.5 w-3.5" />
+      partial
+    </span>
+  );
 }
 
 /* ——— Use case card ——— */
@@ -550,6 +641,7 @@ function PriceCard({
   );
 }
 
+
 /* ——— Keyframes + reveal-on-scroll ——— */
 
 function Keyframes() {
@@ -566,6 +658,9 @@ function Keyframes() {
         18% { transform: scaleX(1); opacity: 1; }
         88% { transform: scaleX(1); opacity: 1; }
         96%, 100% { transform: scaleX(1); opacity: 0; }
+      @keyframes pulse-zero {
+        0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--vault) 35%, transparent); }
+        50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--vault) 0%, transparent); }
       }
       .reveal { opacity: 0; transform: translateY(8px); transition: opacity 600ms ease-out, transform 600ms ease-out; }
       .reveal.is-visible { opacity: 1; transform: none; }
