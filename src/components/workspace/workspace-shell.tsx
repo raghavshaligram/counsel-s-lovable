@@ -59,6 +59,7 @@ import {
   Wrench,
   Printer,
   ShieldOff,
+  BookOpen,
 } from "lucide-react";
 
 import { Link, useNavigate } from "@tanstack/react-router";
