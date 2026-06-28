@@ -373,7 +373,7 @@ export function RedactPage() {
     setPendingUsedOcr(false);
     try {
       const { detectPiiInPdf } = await importChunk(() => import("@/lib/pdf/detect-pii"));
-      const { detections: found, usedOcr, scannedPages, totalPages: scannedTotal, lowConfidenceOcrPages } = await detectPiiInPdf(
+      const { detections: found, usedOcr, scannedPages, lowConfidenceOcrPages } = await detectPiiInPdf(
         file,
         1.5,
         (p) => {
