@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { refreshLicense } from "@/lib/use-license-activation";
+import { confirmDialog } from "@/components/confirm-dialog";
+import { toast } from "sonner";
 import {
   hqAmOwner,
   hqListUsers,
@@ -178,7 +180,7 @@ function UsersTab() {
       await fn();
       reload(true);
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message);
       reload(true);
     } finally {
       setBusy(null);
@@ -244,7 +246,7 @@ function UsersTab() {
                           const { data: me } = await supabase.auth.getUser();
                           if (me.user?.id === u.userId) await refreshLicense();
                         } catch (err) {
-                          alert((err as Error).message);
+                          toast.error((err as Error).message);
                           reload(true);
                         } finally {
                           setBusy(null);
@@ -311,8 +313,14 @@ function UsersTab() {
                     ) : (
                       <button
                         disabled={busy === u.userId}
-                        onClick={() => {
-                          if (!confirm(`Soft-delete ${u.email ?? u.userId}?`)) return;
+                        onClick={async () => {
+                          const ok = await confirmDialog({
+                            title: "Soft-delete user?",
+                            description: `${u.email ?? u.userId} will be marked deleted. You can restore them later.`,
+                            confirmText: "Soft-delete",
+                            tone: "danger",
+                          });
+                          if (!ok) return;
                           void act(u.userId, () => softDelete({ data: { userId: u.userId } }));
                         }}
                         className="rounded border border-red-500/40 px-2 py-0.5 text-red-400 hover:bg-red-500/10"
@@ -489,7 +497,7 @@ function OffersTab() {
       setForm({ ...form, name: "", description: "" });
       reload();
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message);
     }
   };
 
@@ -595,7 +603,13 @@ function OffersTab() {
                 <td className="px-3 py-2">
                   <button
                     onClick={async () => {
-                      if (!confirm(`Delete offer “${o.name}”?`)) return;
+                      const ok = await confirmDialog({
+                        title: "Delete offer?",
+                        description: `“${o.name}” will be removed.`,
+                        confirmText: "Delete",
+                        tone: "danger",
+                      });
+                      if (!ok) return;
                       await del({ data: { id: o.id } });
                       reload();
                     }}
@@ -667,7 +681,7 @@ function NotifsTab() {
       setForm({ ...form, title: "", body: "", linkUrl: "" });
       reload();
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message);
     }
   };
 
@@ -743,7 +757,13 @@ function NotifsTab() {
                 <td className="px-3 py-2">
                   <button
                     onClick={async () => {
-                      if (!confirm(`Delete notification “${n.title}”?`)) return;
+                      const ok = await confirmDialog({
+                        title: "Delete notification?",
+                        description: `“${n.title}” will be removed.`,
+                        confirmText: "Delete",
+                        tone: "danger",
+                      });
+                      if (!ok) return;
                       await del({ data: { id: n.id } });
                       reload();
                     }}
