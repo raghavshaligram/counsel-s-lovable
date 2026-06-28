@@ -282,7 +282,8 @@ export async function detectPiiInPdf(
         y: cy,
         w: cw,
         h: ch,
-        category: cat,
+        category: cat.category,
+        confidence: cat.confidence,
         snippet: snippet(str),
         source: {
           originalString: str,
@@ -291,6 +292,7 @@ export async function detectPiiInPdf(
         },
         pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
       });
+
     }
   }
 
