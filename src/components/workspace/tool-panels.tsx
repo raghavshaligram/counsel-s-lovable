@@ -5580,23 +5580,37 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
 function MultiFileBatesButton() {
   const isPro = useIsPro();
   const requirePro = useRequirePro();
+  const [open, setOpen] = useState(false);
+  const [Modal, setModal] = useState<
+    null | React.ComponentType<{ onClose: () => void }>
+  >(null);
+
+  const launch = useCallback(async () => {
+    if (!requirePro("Multi-file Bates")) return;
+    if (!Modal) {
+      const mod = await importChunk(() => import("./multi-file-bates-modal"));
+      setModal(() => mod.MultiFileBatesModal);
+    }
+    setOpen(true);
+  }, [requirePro, Modal]);
+
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!requirePro("Multi-file Bates")) return;
-        toast.info("Multi-file Bates", { description: "Open the Batch tray to stamp Bates across multiple PDFs." });
-      }}
-      className={cn(
-        "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
-      )}
-    >
-      <span>Apply to multiple files…</span>
-      {!isPro && <LockBadge />}
-      {isPro && (
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-vault">Pro</span>
-      )}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => void launch()}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+        )}
+      >
+        <span>Apply to multiple files…</span>
+        {!isPro && <LockBadge />}
+        {isPro && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-vault">Pro</span>
+        )}
+      </button>
+      {open && Modal && <Modal onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
