@@ -251,10 +251,20 @@ export async function detectPiiInPdf(
 
 function matchCategory(str: string): PiiCategory | null {
   for (const { category, re } of PATTERNS) {
-    if (re.test(str)) return category;
+    const m = re.exec(str);
+    if (!m) continue;
+    if (category === "name") {
+      // Reject if every capitalized token is a generic header/month/day.
+      const tokens = m[0].split(/\s+/).filter((t) => /^[A-Z]/.test(t));
+      if (tokens.every((t) => NAME_STOPWORDS.has(t.replace(/\.$/, "")))) continue;
+      // Reject single-token "names" (regex requires 2+, but defensive).
+      if (tokens.length < 2) continue;
+    }
+    return category;
   }
   return null;
 }
+
 
 function snippet(s: string) {
   return s.length > 60 ? s.slice(0, 57) + "…" : s;
