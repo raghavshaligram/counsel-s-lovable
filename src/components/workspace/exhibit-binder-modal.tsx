@@ -101,7 +101,8 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       name: f.name,
       size: f.size,
       bytes: await readPdf(f),
-      title: f.name.replace(/\.pdf$/i, ""),
+      title: cleanTitleFromName(f.name),
+      labelOverride: "",
     });
   }, []);
 
@@ -115,7 +116,8 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
         name: f.name,
         size: f.size,
         bytes: await readPdf(f),
-        title: f.name.replace(/\.pdf$/i, ""),
+        title: cleanTitleFromName(f.name),
+        labelOverride: "",
       });
     }
     if (incoming.length === 0) {
