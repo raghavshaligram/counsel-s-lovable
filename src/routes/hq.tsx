@@ -8,6 +8,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { refreshLicense } from "@/lib/use-license-activation";
 import {
   hqAmOwner,
   hqListUsers,
@@ -220,14 +221,35 @@ function UsersTab() {
                     disabled={busy === u.userId}
                     onChange={(e) => {
                       const next = e.target.value as "free" | "solo" | "firm";
-                      void act(
-                        u.userId,
-                        () =>
-                          setPlan({
+                      // Optimistic: show the new plan immediately. The await
+                      // resolves with the DB-persisted row and we re-bind to
+                      // that — never to a default — so the dropdown reflects
+                      // the saved value, not a guess.
+                      void (async () => {
+                        patchRow(u.userId, { plan: next, subscriptionStatus: "active" });
+                        setBusy(u.userId);
+                        try {
+                          const res = await setPlan({
                             data: { userId: u.userId, plan: next, status: "active" },
-                          }),
-                        { plan: next, subscriptionStatus: "active" },
-                      );
+                          });
+                          patchRow(u.userId, {
+                            plan: res.plan,
+                            subscriptionStatus: res.status,
+                          });
+                          // eslint-disable-next-line no-console
+                          console.info(`[hq] dropdown bound to plan=${res.plan} status=${res.status} for ${u.userId}`);
+                          // If the admin just changed their OWN plan, the
+                          // workspace's cached license is stale — force a
+                          // re-fetch so Pro gating updates without a refresh.
+                          const { data: me } = await supabase.auth.getUser();
+                          if (me.user?.id === u.userId) await refreshLicense();
+                        } catch (err) {
+                          alert((err as Error).message);
+                          reload(true);
+                        } finally {
+                          setBusy(null);
+                        }
+                      })();
                     }}
                     className="rounded border border-border bg-surface-1 px-1.5 py-1 text-[12px]"
                   >
