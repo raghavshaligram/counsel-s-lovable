@@ -1287,11 +1287,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       {/* TOP BAR */}
       <header className="flex h-[46px] shrink-0 items-center justify-between border-b border-border bg-surface-1 px-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <button
-            type="button"
-            onClick={goHome}
-            title="New tab (Start screen)"
-            aria-label="New tab"
+          <Link
+            to="/"
+            title="Back to VaultPDF home"
+            aria-label="Back to VaultPDF home"
             className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-0.5 hover:bg-surface-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span
@@ -1301,7 +1300,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
             </span>
             <span className="font-display text-[15px] leading-none">VaultPDF</span>
-          </button>
+          </Link>
           <button
             type="button"
             onClick={goHome}
