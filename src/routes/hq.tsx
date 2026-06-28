@@ -756,7 +756,13 @@ function NotifsTab() {
                 <td className="px-3 py-2">
                   <button
                     onClick={async () => {
-                      if (!confirm(`Delete notification “${n.title}”?`)) return;
+                      const ok = await confirmDialog({
+                        title: "Delete notification?",
+                        description: `“${n.title}” will be removed.`,
+                        confirmText: "Delete",
+                        tone: "danger",
+                      });
+                      if (!ok) return;
                       await del({ data: { id: n.id } });
                       reload();
                     }}
