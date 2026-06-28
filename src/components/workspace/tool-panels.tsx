@@ -4997,7 +4997,9 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         >
           Apply to active tab
         </button>
+        <MultiFileBatesButton />
       </div>
+
 
       <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <Info className="h-3 w-3" />
