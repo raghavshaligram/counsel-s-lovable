@@ -398,7 +398,7 @@ export async function detectPiiInPdf(
   }
 
 
-  return { detections, usedOcr: ocrPages.length > 0 };
+  return { detections, usedOcr: ocrPages.length > 0, scannedPages: ocrPages.slice(), totalPages: doc.numPages };
 }
 
 type CatHit = {
