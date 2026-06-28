@@ -1861,6 +1861,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         doc={editorState.doc ?? null}
         file={active.file ?? null}
       />
+      <WelcomeModal forceOpen={welcomeNonce > 0 ? true : undefined} key={welcomeNonce} />
     </div>
   );
 }
