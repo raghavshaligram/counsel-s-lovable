@@ -49,6 +49,13 @@ export interface BinderOpts {
   bates?: BatesOpts;
   /** When numbering is on, skip the ToC pages. Default true. */
   skipNumberingOnToc?: boolean;
+  /**
+   * What the Table of Contents should cite (and link to) for each exhibit:
+   *   - "divider" (default): the tab/slip-sheet page — matches physical binders.
+   *   - "content": the first page of the exhibit's actual content.
+   * The cited number AND the hyperlink target always agree.
+   */
+  tocTarget?: "divider" | "content";
 }
 
 export interface BinderEntry {
@@ -213,17 +220,28 @@ export async function buildExhibitBinder(
 
   // 3. Draw ToC after assembly from the same ordered array and its recorded
   //    actualStartPage values. No guessed page numbers or separate lists.
+  // The cited page number AND the hyperlink target are derived from the same
+  // value, so they cannot disagree.
+  const tocTarget = opts.tocTarget ?? "divider";
   if (tocPages.length > 0) {
     onProgress?.({ phase: "toc", current: 0, total: orderedExhibits.length });
     drawToc({
       doc: out,
       tocPages,
-      entries: orderedExhibits.map((entry) => ({
-        label: entry.label,
-        title: entry.title,
-        targetPage: out.getPage(entry.actualStartPage - 1),
-        targetPageNumber: entry.actualStartPage,
-      })),
+      entries: orderedExhibits.map((entry) => {
+        // divider = slip-sheet page (actualStartPage)
+        // content = page immediately after the slip-sheet
+        const targetPageNumber =
+          tocTarget === "content" && entry.pageCount > 0
+            ? entry.actualStartPage + 1
+            : entry.actualStartPage;
+        return {
+          label: entry.label,
+          title: entry.title,
+          targetPage: out.getPage(targetPageNumber - 1),
+          targetPageNumber,
+        };
+      }),
       title: opts.tocTitle ?? "Table of Contents",
       font: helv,
       fontBold: helvBold,
