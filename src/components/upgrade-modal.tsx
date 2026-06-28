@@ -17,7 +17,7 @@
 import { useCallback, useState } from "react";
 import { create } from "zustand";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Lock, Check, X as XIcon, Loader2, ArrowRight } from "lucide-react";
+import { Lock, Check, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { useServerFn } from "@tanstack/react-start";
