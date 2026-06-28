@@ -854,12 +854,12 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
           sources: m.source?.originalString
             ? [{
                 originalString: m.source.originalString,
-                  redactText: m.source.redactText,
-                  matchStart: m.source.matchStart,
-                  matchLength: m.source.matchLength,
+                redactText: m.source.redactText,
+                matchStart: m.source.matchStart,
+                matchLength: m.source.matchLength,
                 transform: m.source.transform,
                 fontName: m.source.fontName,
-                  bounds: m.source.bounds,
+                bounds: m.source.bounds,
               }]
             : undefined,
         },
