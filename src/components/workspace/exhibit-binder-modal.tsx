@@ -182,9 +182,10 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
           brief: brief
             ? { name: brief.name, title: brief.title, bytes: brief.bytes }
             : null,
-          exhibits: exhibits.map((e) => ({
+          exhibits: exhibits.map((e, i) => ({
             name: e.name,
             title: e.title,
+            label: previewLabels[i], // single ordered source of truth
             bytes: e.bytes,
           })),
           labelScheme,
