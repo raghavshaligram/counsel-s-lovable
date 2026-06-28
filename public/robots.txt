@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Disallow: /workspace
+Disallow: /account
+Disallow: /billing
+Disallow: /auth
+Disallow: /reset-password
