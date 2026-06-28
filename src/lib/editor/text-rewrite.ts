@@ -557,8 +557,6 @@ function surgicalRewrite(
 ): { text: string; mutated: boolean; stats: Partial<RewriteStats> } {
   const tokens = tokenize(text);
   const editMap = new Map(job.edits.map((e) => [e.original, e.replacement]));
-  const redactStrings = new Set(job.redactStrings ?? []);
-  const redactTargets = job.redactTargets ?? [];
   const rects = job.redacts;
   const stats: Partial<RewriteStats> = {};
 
@@ -569,6 +567,12 @@ function surgicalRewrite(
   let tm = identity();
   let tlm = identity();
   let tLeading = 0;
+  let fontName = "";
+  let fontSize = 12;
+  let charSpacing = 0;
+  let wordSpacing = 0;
+  let hScale = 100;
+  let textRise = 0;
 
   let operands: Tok[] = [];
   let cursor = 0;
@@ -584,48 +588,25 @@ function surgicalRewrite(
     // ── Decide drop / replace ──
     let drop = false;
     let replaceTjLiteral: string | null = null;
-    let replaceOperand: { token: Tok; value: string } | null = null;
-    let rewriteMatchedTarget = false;
+    let showAdvance: number | null = null;
+    let showBaseTm: number[] | null = null;
 
     if (TEXT_SHOW_OPS.has(op) && inText) {
-      const [ux, uy] = txp(ctm, tm[4], tm[5]);
-      const inRect = rects.length ? pointInRects(ux, uy, rects) : false;
-
-      let stringMatchRedact = false;
-      if (!inRect && (redactStrings.size || redactTargets.length) && (op === "Tj" || op === "'")) {
-        const last = operands[operands.length - 1];
-        const decoded = decodeStringToken(text, last);
-        if (last && decoded !== null) {
-          const rewritten = redactTextValue(decoded, redactTargets, redactStrings);
-          if (rewritten.matched) {
-            rewriteMatchedTarget = true;
-            if (rewritten.value.length === 0) {
-              stringMatchRedact = true;
-            } else if (rewritten.value !== decoded) {
-              replaceOperand = { token: last, value: rewritten.value };
-            }
-          } else if (redactStrings.has(decoded)) {
-            stringMatchRedact = true;
-            rewriteMatchedTarget = true;
-          }
-        }
-      }
-
-      if (!inRect && !stringMatchRedact && !replaceOperand && redactTargets.length && op === "TJ") {
-        const arr = collectArrayOperand(text, operands);
-        if (arr) {
-          const rewritten = redactTextValue(arr.value, redactTargets, redactStrings);
-          if (rewritten.matched) {
-            rewriteMatchedTarget = true;
-            // TJ arrays interleave kerning adjustments, so preserve surrounding
-            // text by replacing the whole array with one literal string. This
-            // keeps the non-redacted words searchable instead of dropping the line.
-            replaceOperand = { token: arr.token, value: rewritten.value };
-          }
-        }
-      }
-
-      if (inRect || stringMatchRedact) {
+      const measured = measureTextShow(text, operands, op, {
+        ctm,
+        tm,
+        tlm,
+        leading: tLeading,
+        font: fonts.get(fontName) ?? DEFAULT_FONT,
+        fontSize,
+        charSpacing,
+        wordSpacing,
+        hScale,
+        textRise,
+      });
+      showAdvance = measured.advance;
+      showBaseTm = measured.baseTm;
+      if (rects.length && measured.bbox && bboxIntersectsRects(measured.bbox.minX, measured.bbox.minY, measured.bbox.maxX, measured.bbox.maxY, rects)) {
         drop = true;
       } else if ((op === "Tj" || op === "'") && editMap.size) {
         const last = operands[operands.length - 1];
@@ -683,10 +664,29 @@ function surgicalRewrite(
         tm = tlm.slice();
       } else if (op === "TL" && operands.length >= 1) {
         tLeading = num(operands[operands.length - 1]);
+      } else if (op === "Tf" && operands.length >= 2) {
+        const nameTok = operands[operands.length - 2];
+        fontName = nameTok?.kind === "name" ? text.slice(nameTok.start + 1, nameTok.end) : fontName;
+        fontSize = num(operands[operands.length - 1]) || fontSize;
+      } else if (op === "Tc" && operands.length >= 1) {
+        charSpacing = num(operands[operands.length - 1]);
+      } else if (op === "Tw" && operands.length >= 1) {
+        wordSpacing = num(operands[operands.length - 1]);
+      } else if (op === "Tz" && operands.length >= 1) {
+        hScale = num(operands[operands.length - 1]) || 100;
+      } else if (op === "Ts" && operands.length >= 1) {
+        textRise = num(operands[operands.length - 1]);
       } else if (op === "'" || op === '"') {
+        if (op === '"' && operands.length >= 3) {
+          wordSpacing = num(operands[operands.length - 3]);
+          charSpacing = num(operands[operands.length - 2]);
+        }
         const m = [1, 0, 0, 1, 0, -tLeading];
         tlm = mul(m, tlm);
         tm = tlm.slice();
+        if (showAdvance !== null) tm = mul([1, 0, 0, 1, showAdvance, 0], tm);
+      } else if ((op === "Tj" || op === "TJ") && showAdvance !== null) {
+        tm = mul([1, 0, 0, 1, showAdvance, 0], showBaseTm ?? tm);
       }
     }
 
@@ -700,17 +700,8 @@ function surgicalRewrite(
       mutated = true;
       if (TEXT_SHOW_OPS.has(op)) {
         stats.textOpsDropped = (stats.textOpsDropped ?? 0) + 1;
-        if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
+        stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
       }
-    } else if (replaceOperand) {
-      const t = replaceOperand.token;
-      if (t.start > cursor) chunks.push(text.slice(cursor, t.start));
-      chunks.push("(" + encodeLiteral(replaceOperand.value) + ")");
-      chunks.push(text.slice(t.end, opEnd));
-      cursor = opEnd;
-      mutated = true;
-      stats.textOperandsRewritten = (stats.textOperandsRewritten ?? 0) + 1;
-      if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
     } else if (replaceTjLiteral !== null) {
       const last = operands[operands.length - 1];
       if (last.start > cursor) chunks.push(text.slice(cursor, last.start));
