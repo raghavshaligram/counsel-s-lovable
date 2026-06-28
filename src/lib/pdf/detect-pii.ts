@@ -336,13 +336,26 @@ export async function findKeywordInPdf(
     (opts.preloadedDoc as unknown as Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>) ??
     (await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise);
 
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = opts.wholeWord ? `\\b${escaped}\\b` : escaped;
-  const reGlobal = new RegExp(pattern, opts.matchCase ? "g" : "gi");
-  const wordRe = new RegExp(
-    opts.wholeWord ? `^${escaped}$` : escaped,
-    opts.matchCase ? "" : "i",
-  );
+  // When `regex` is on, treat the input as a raw pattern (the caller is
+  // responsible for valid syntax). Otherwise escape and optionally wrap in
+  // word boundaries.
+  const pattern = opts.regex
+    ? q
+    : opts.wholeWord
+    ? `\\b${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`
+    : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const flags = opts.matchCase ? "g" : "gi";
+  let reGlobal: RegExp;
+  let wordRe: RegExp;
+  try {
+    reGlobal = new RegExp(pattern, flags);
+    wordRe = new RegExp(
+      opts.regex ? pattern : opts.wholeWord ? `^${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$` : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      opts.matchCase ? "" : "i",
+    );
+  } catch (err) {
+    throw new Error(`Invalid regular expression: ${(err as Error).message}`);
+  }
 
   const matches: KeywordMatch[] = [];
   const scannedPages: number[] = [];
