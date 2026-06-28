@@ -904,6 +904,11 @@ export function EditorCanvas({
         key={a.id}
         style={baseStyle}
         onMouseDown={onDownAnno}
+        onPointerDown={(e) => {
+          // Prevent the underlying canvas from starting a new draw (e.g. a new
+          // redact box) when the user clicks an existing interactive mark.
+          if (interactive) e.stopPropagation();
+        }}
         onDoubleClick={(e) => {
           if (a.kind === "text" || a.kind === "note" || a.kind === "text-edit") {
             e.stopPropagation(); setEditingId(a.id);
