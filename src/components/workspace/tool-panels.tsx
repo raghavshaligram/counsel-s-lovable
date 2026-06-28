@@ -5321,19 +5321,6 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
   const [flOn, setFlOn] = useState(false);
-  const [batesOn, setBatesOn] = useState(false);
-  const batesRef = useRef<HTMLDivElement | null>(null);
-
-  // Deep-link from the command bar ("search Bates") opens the Bates
-  // disclosure and scrolls it into view.
-  useEffect(() => {
-    if (ctx.focusSection !== "bates") return;
-    setBatesOn(true);
-    requestAnimationFrame(() => {
-      batesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    ctx.clearFocusSection?.();
-  }, [ctx.focusSection, ctx]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -5357,24 +5344,6 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      <div ref={batesRef} className="flex flex-col gap-2" id="doc-settings-bates">
-        <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
-          # Bates Numbering
-        </div>
-        <DisclosureToggle
-          label="Stamp Bates numbers on export"
-          on={batesOn}
-          onChange={setBatesOn}
-        />
-        <p className="text-[10.5px] leading-snug text-text-muted">
-          Sequential discovery stamps (e.g. <code>ABC000123</code>) on every page. Court-ready.
-        </p>
-      </div>
-      {batesOn && (
-        <div className="rounded-md border border-border bg-surface-2/40 p-3">
-          <BatesSection ctx={ctx} />
-        </div>
-      )}
 
       <div className="flex flex-col gap-2">
         <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
