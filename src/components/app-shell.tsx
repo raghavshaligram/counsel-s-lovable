@@ -17,6 +17,7 @@ import {
   SheetHeader,
 } from "@/components/ui/sheet";
 import { TrayDock } from "@/components/tray/tray-dock";
+import { AccountMenu } from "@/components/workspace/account-menu";
 
 type Tool = { id: string; label: string; desc: string; icon: any; beta?: boolean };
 type Group = { id: string; label: string; tagline: string; items: Tool[] };
@@ -422,12 +423,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Lock className="h-3 w-3 text-vault" strokeWidth={2} />
               100% in your browser
             </span>
-            <Link
-              to="/auth"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-1.5 text-sm font-medium hover:bg-card transition-colors"
-            >
-              Sign in
-            </Link>
+            <div className="hidden sm:inline-flex">
+              <AccountMenu />
+            </div>
 
 
 
