@@ -145,6 +145,42 @@ function Landing() {
         </div>
       </section>
 
+      {/* OFFLINE */}
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-6xl px-5 md:px-8 py-24 md:py-32">
+          <div className="grid lg:grid-cols-[1fr_1.05fr] gap-12 lg:gap-16 items-center">
+            <OfflinePanel />
+            <div className="reveal">
+              <div className="font-mono text-[11px] text-muted-foreground mb-8 flex items-center gap-2">
+                <Plane className="h-3 w-3 text-vault" />
+                Airplane · courthouse · anywhere
+              </div>
+              <h2
+                className="font-display leading-[0.95] tracking-tight"
+                style={{ fontSize: "clamp(2.25rem, 7vw, 5.5rem)" }}
+              >
+                Pull the plug.
+                <br />
+                <span className="italic text-vault">It still works.</span>
+              </h2>
+              <div className="mt-10 space-y-5 max-w-lg text-muted-foreground leading-relaxed">
+                <p>
+                  Once loaded, VaultPDF runs entirely in your browser with no connection. Redact,
+                  Bates-stamp, OCR and sanitize on a plane, in a courthouse, or anywhere with no Wi-Fi —
+                  your work never depends on a server being up.
+                </p>
+                <p className="text-foreground/90">
+                  Disconnect and see for yourself. Working offline is the proof that nothing needed to
+                  leave your device in the first place.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+
       {/* LEGAL USE CASES */}
       <section className="border-b border-border">
         <div className="mx-auto max-w-6xl px-5 md:px-8 py-20 md:py-28">
