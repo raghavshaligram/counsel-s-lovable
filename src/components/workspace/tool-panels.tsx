@@ -1064,7 +1064,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr, scannedPages: scanned, totalPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
         setProgress(
           p.stage === "ocr"
             ? `OCR scanning ${p.page}/${p.totalPages}`
@@ -1078,11 +1078,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
       const hasScanned = scanned.length > 0;
+      const lowConf = lowConfidenceOcrPages.length;
       if (detections.length === 0) {
         if (hasScanned) {
-          toast.warning("Scanned/image document — detection cannot read it", {
-            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. Run OCR first, or mark regions manually. Do NOT rely on auto-detect here.`,
-            duration: 12000,
+          toast.warning("Scanned/image document — detection may have missed items", {
+            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only.${lowConf > 0 ? ` OCR confidence was LOW on ${lowConf} page${lowConf === 1 ? "" : "s"} (${lowConfidenceOcrPages.slice(0, 6).join(", ")}${lowConf > 6 ? "…" : ""}) — treat detection as unreliable there.` : " OCR was attempted but recall is imperfect."} Review manually — do NOT treat silence as "clean".`,
+            duration: 14000,
           });
         } else {
           toast.info("No sensitive data matched", {
@@ -1097,10 +1098,17 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             : "Review then click Redact selected.",
         });
         if (hasScanned) {
-          toast.warning("Some pages are scanned — detection may miss items", {
-            description: `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
-            duration: 12000,
-          });
+          toast.warning(
+            lowConf > 0
+              ? `Low OCR confidence on ${lowConf} scanned page${lowConf === 1 ? "" : "s"} — manual review required`
+              : "Some pages are scanned — detection may miss items",
+            {
+              description: lowConf > 0
+                ? `Pages ${lowConfidenceOcrPages.slice(0, 8).join(", ")}${lowConf > 8 ? "…" : ""}: OCR text could not be read reliably. Mark sensitive regions on those pages manually.`
+                : `${scanned.length} of ${totalPages} page${scanned.length === 1 ? "" : "s"} are image-only. OCR was attempted but recall is imperfect — review those pages manually.`,
+              duration: 14000,
+            },
+          );
         }
       }
 
@@ -1510,8 +1518,6 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         for (const leak of result.leaks) {
           if (!leak.rect) continue;
           const arr = leakedPages.get(leak.page) ?? [];
-          // Use the original redaction rects for that page (not just the
-          // single leaking rect) so we cover everything marked.
           const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
           arr.push(...pageRects);
           leakedPages.set(leak.page, arr);
@@ -1519,7 +1525,31 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         if (leakedPages.size > 0) {
           const forced = await rasterizeRedactedPages(bytes, leakedPages, { mode: "always", scale: 2.5 });
           bytes = forced.bytes;
+          rasterResult.rasterizedPages.push(
+            ...forced.rasterizedPages.filter((p) => !rasterResult.rasterizedPages.includes(p)),
+          );
           result = await verifyRedactionRemoval(bytes, targets);
+        }
+      }
+
+      // Pixel-level re-OCR check for every page we rasterized — pdf.js sees
+      // no text layer on those pages, so it can't prove the underlying
+      // pixels were actually destroyed. Tesseract is the only way to verify.
+      if (rasterResult.rasterizedPages.length > 0) {
+        toast.loading("Re-OCR check on burned pages…", { id: tid });
+        const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
+        const pixelTargets = targets
+          .filter((t) => !!t.rect)
+          .map((t) => ({ page: t.page, rect: t.rect! }));
+        const pixelResult = await verifyPixelRedaction(
+          bytes,
+          pixelTargets,
+          new Set(rasterResult.rasterizedPages),
+        );
+        if (!pixelResult.ok) {
+          throw new Error(
+            `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still show recognizable text after pixel burn — refusing to download.`,
+          );
         }
       }
 
@@ -1528,7 +1558,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
         const flatNote = rasterResult.rasterizedPages.length
-          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} flattened`
+          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
         toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
       } else {
