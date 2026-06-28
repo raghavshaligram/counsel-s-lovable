@@ -1370,12 +1370,19 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
   const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
+  // "always" = rasterize every page that carries a redaction (default, safest).
+  // "fallback" = attempt content-stream surgery first, rasterize only pages
+  // where text still intersects a redaction rect after verification.
+  const [maxSecurity, setMaxSecurity] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const v = window.localStorage.getItem("vault.redact.maxSecurity");
+    return v === null ? true : v === "1";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("vault.redact.maxSecurity", maxSecurity ? "1" : "0");
+  }, [maxSecurity]);
 
-  // Pull redact annotations from the active editor state. Each one may
-  // carry `sources[]` — the captured text fragments under the drawn box —
-  // which the destructive content-stream rewriter uses to erase the actual
-  // Tj operands at export. Boxes drawn over images/regions with no captured
-  // sources still get the visual overlay, but can't be verified for removal.
   const redactAnnos = useMemo(
     () => (editorState?.doc?.annotations ?? []).filter((a) => a.kind === "redact"),
     [editorState?.doc?.annotations],
@@ -1391,6 +1398,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     return out;
   }, [redactAnnos]);
   const boxesWithoutText = redactAnnos.filter((a) => a.kind === "redact" && !a.sources?.length).length;
+
 
   const exportRedacted = useCallback(async () => {
     if (!file || !editorState?.doc) return;
