@@ -1,19 +1,14 @@
 // Destructive content-stream surgery.
 //
-// For redaction, we DO NOT rely on string matching. We tokenize each page's
-// content stream, track the graphics state (CTM via cm/q/Q) and the text
-// state (Tm/Tlm via BT/ET/Td/TD/Tm/T*/TL), compute the user-space START
-// position of every text-show operator (Tj/TJ/'/"), and delete the entire
-// operator + its operands when that start position falls inside any redact
-// rectangle. This handles `(literal) Tj`, `<hex> Tj`, and `[...] TJ` arrays
-// uniformly because the trigger is glyph POSITION, not glyph bytes.
+// For redaction, we DO NOT rely on string matching. Custom PDF fonts/CMaps
+// routinely encode visible text as private glyph codes, so decoded Tj/TJ bytes
+// cannot be trusted. We tokenize each page content stream, track graphics and
+// text state, estimate the rendered bounding box of every text-show operator,
+// and remove the operator solely when that box intersects a redaction region.
 //
 // In addition we:
 //   - drop image `Do` operators whose CTM-mapped bounding box lies fully
 //     inside a redact rectangle
-//   - keep a string-equality fallback (operand literal == captured source
-//     string) for Tj/' in case the position tracker drifts on a stream that
-//     uses implicit-advance text runs without per-glyph Tm resets
 //   - preserve the legacy text-edit string-replacement path used by Edit-text
 //     annotations (handles only `(literal) Tj` / `'`, like before)
 //
@@ -62,6 +57,22 @@ export interface RewriteStats {
   textTargetsMatched: number;
   skippedStreams: number;
 }
+
+type FontMetrics = {
+  widths: Map<number, number>;
+  defaultWidth: number;
+  missingWidth: number;
+  firstChar: number;
+  codeSize: 1 | 2;
+};
+
+const DEFAULT_FONT: FontMetrics = {
+  widths: new Map(),
+  defaultWidth: 500,
+  missingWidth: 500,
+  firstChar: 0,
+  codeSize: 1,
+};
 
 const emptyStats = (): RewriteStats => ({
   pagesVisited: 0,
