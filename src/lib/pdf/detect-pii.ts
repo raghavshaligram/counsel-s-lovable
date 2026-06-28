@@ -425,14 +425,21 @@ export async function findKeywordInPdf(
         }
         const xStart = baseX + perChar * segStart;
         const wSeg = perChar * (segEnd - segStart);
+        const bx = xStart - pad;
+        const by = baseY - pad;
+        const bw = wSeg + pad * 2;
+        const bh = fontHeight + pad * 2;
+        const fontName = (raw as { fontName?: string }).fontName;
         matches.push({
           id: `kw-${i}-${matches.length}-${Math.random().toString(36).slice(2, 7)}`,
           page: i,
-          x: xStart - pad,
-          y: baseY - pad,
-          w: wSeg + pad * 2,
-          h: fontHeight + pad * 2,
+          x: bx,
+          y: by,
+          w: bw,
+          h: bh,
           snippet: snippet(segText),
+          pdfRect: { x: bx / scale, y: by / scale, w: bw / scale, h: bh / scale },
+          source: { originalString: str, transform: raw.transform, fontName },
         });
       }
     }
