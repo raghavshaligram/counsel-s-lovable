@@ -696,7 +696,19 @@ export function EditorCanvas({
         break;
       }
       case "redact":
-        inner = <div style={{ width: "100%", height: "100%", background: "#000" }} />;
+        // Draft visual: solid-but-slightly-transparent black with a dashed red
+        // outline so users can tell marks are reviewable (not yet burned).
+        inner = (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "rgba(0,0,0,0.82)",
+              outline: "1.5px dashed rgba(220,38,38,0.95)",
+              outlineOffset: -1,
+            }}
+          />
+        );
         break;
       case "line":
       case "arrow": {
