@@ -68,7 +68,7 @@ export function useRequirePro() {
       }, 250);
       return false;
     },
-    [isPro, navigate, pathname, search],
+    [isPro, navigate, href],
   );
 }
 
