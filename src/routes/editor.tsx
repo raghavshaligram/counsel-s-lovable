@@ -283,6 +283,18 @@ function Editor() {
         protect: state.protect ?? undefined,
       };
       const bytes = await exportEditedPdf(state.doc, settings);
+      const redactionTargets = state.doc.annotations.flatMap((a) => {
+        if (a.kind !== "redact" || !a.sources?.length) return [];
+        return a.sources
+          .map((s) => ({ page: a.page, text: (s.redactText || s.originalString || "").trim() }))
+          .filter((t) => t.text.length > 0);
+      });
+      if (redactionTargets.length > 0) {
+        toast.loading("Verifying redactions…", { id: "exp" });
+        const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
+        const check = await verifyRedactionRemoval(bytes, redactionTargets);
+        if (!check.ok) throw new Error(`${check.leaks.length} redacted fragment${check.leaks.length === 1 ? " is" : "s are"} still extractable`);
+      }
       toast.success("Done", { id: "exp" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -952,7 +964,15 @@ function PageCanvas({
         const ox = Math.max(0, Math.min(a.x + w, ix2) - Math.max(a.x, it.x));
         const oy = Math.max(0, Math.min(a.y + h, iy2) - Math.max(a.y, it.y));
         if (ox > 1 && oy > it.h * 0.35) {
-          sources.push({ originalString: it.str, transform: it.transform, fontName: it.fontName });
+          sources.push({
+            originalString: it.str,
+            redactText: it.str,
+            matchStart: 0,
+            matchLength: it.str.length,
+            transform: it.transform,
+            fontName: it.fontName,
+            bounds: { x: it.x, y: it.y, w: it.w, h: it.h },
+          });
         }
       }
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: state.current, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });

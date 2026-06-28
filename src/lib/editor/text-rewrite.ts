@@ -21,7 +21,7 @@
 // bottom-left, matching PDF native coordinates) — the caller is responsible
 // for flipping the editor's top-left rects into user space.
 
-import type { PDFDocument } from "pdf-lib";
+import { PDFName, type PDFDocument } from "pdf-lib";
 import { unzlibSync, zlibSync } from "fflate";
 
 export interface RedactRect {
@@ -36,28 +36,74 @@ export interface PageRewrite {
   redacts: RedactRect[];
   /** Best-effort string fallback for redaction (Tj/' literals). */
   redactStrings?: string[];
+  /** Exact strings/spans that must be deleted from text-show operators. */
+  redactTargets?: RedactTextTarget[];
   /** Text-edit string replacements (Tj/' literal equality). */
   edits: { original: string; replacement: string }[];
+}
+
+export interface RedactTextTarget {
+  /** Full pdf.js text item, when known. */
+  original: string;
+  /** Exact sensitive value to remove. */
+  text: string;
+  /** Optional span in `original`. */
+  start?: number;
+  length?: number;
+}
+
+export interface RewriteStats {
+  pagesVisited: number;
+  streamsVisited: number;
+  streamsMutated: number;
+  textOpsDropped: number;
+  textOperandsRewritten: number;
+  imageOpsDropped: number;
+  textTargetsMatched: number;
+  skippedStreams: number;
+}
+
+const emptyStats = (): RewriteStats => ({
+  pagesVisited: 0,
+  streamsVisited: 0,
+  streamsMutated: 0,
+  textOpsDropped: 0,
+  textOperandsRewritten: 0,
+  imageOpsDropped: 0,
+  textTargetsMatched: 0,
+  skippedStreams: 0,
+});
+
+function addStats(into: RewriteStats, next: Partial<RewriteStats>) {
+  into.pagesVisited += next.pagesVisited ?? 0;
+  into.streamsVisited += next.streamsVisited ?? 0;
+  into.streamsMutated += next.streamsMutated ?? 0;
+  into.textOpsDropped += next.textOpsDropped ?? 0;
+  into.textOperandsRewritten += next.textOperandsRewritten ?? 0;
+  into.imageOpsDropped += next.imageOpsDropped ?? 0;
+  into.textTargetsMatched += next.textTargetsMatched ?? 0;
+  into.skippedStreams += next.skippedStreams ?? 0;
 }
 
 export async function rewriteDocument(
   out: PDFDocument,
   byPage: Map<number, PageRewrite>,
-): Promise<void> {
+): Promise<RewriteStats> {
   const pages = out.getPages();
+  const stats = emptyStats();
   for (let i = 0; i < pages.length; i++) {
     const job = byPage.get(i);
     if (!job || (!job.edits.length && !job.redacts.length)) continue;
-    try {
-      rewritePage(pages[i], job);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[redact] page rewrite failed", i, err);
-    }
+    addStats(stats, { pagesVisited: 1 });
+    addStats(stats, rewritePage(pages[i], job));
   }
+  // eslint-disable-next-line no-console
+  console.info("[redact] rewriteDocument", stats);
+  return stats;
 }
 
-function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite) {
+function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite): RewriteStats {
+  const stats = emptyStats();
   // pdf-lib internals: coalesce a multi-stream Contents into a single stream
   // when possible so we only rewrite one buffer per page.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,25 +114,29 @@ function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite) {
 
   const ctx = page.doc.context;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contents = node.Contents?.() ?? node.get?.(node.context?.obj?.("Contents"));
-  if (!contents) return;
+  const contents = node.Contents?.() ?? node.get?.(PDFName.of("Contents"));
+  if (!contents) return stats;
 
-  const streams: import("pdf-lib").PDFRawStream[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const streams: any[] = [];
   if ("asArray" in contents && typeof contents.asArray === "function") {
     for (const ref of contents.asArray()) {
       const obj = ctx.lookup(ref);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (obj && (obj as any).contents) streams.push(obj as import("pdf-lib").PDFRawStream);
+      if (obj && ((obj as any).contents || typeof (obj as any).getContents === "function")) streams.push(obj as any);
     }
   } else {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((contents as any).contents) streams.push(contents as import("pdf-lib").PDFRawStream);
+    if ((contents as any).contents || typeof (contents as any).getContents === "function") streams.push(contents as any);
   }
 
-  for (const stream of streams) rewriteStream(stream, job);
+  for (const stream of streams) addStats(stats, rewriteStream(stream, job));
+  return stats;
 }
 
-function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite) {
+function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite): RewriteStats {
+  const stats = emptyStats();
+  stats.streamsVisited = 1;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const s: any = stream;
   const dict = s.dict;
@@ -96,7 +146,7 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   // Read /Filter — may be a name or an array of names.
   let filterNames: string[] = [];
   try {
-    const filter = dict?.get?.(ctx.obj("Filter"));
+    const filter = dict?.get?.(PDFName.of("Filter"));
     if (filter) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const f: any = filter;
@@ -108,16 +158,17 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
     }
   } catch { /* ignore */ }
 
-  let bytes: Uint8Array = s.contents;
-  if (!bytes || !bytes.length) return;
+  let bytes: Uint8Array = s.contents ?? (typeof s.getContents === "function" ? s.getContents() : undefined);
+  if (!bytes || !bytes.length) return stats;
 
   const wasFlate = filterNames.length === 1 && (filterNames[0] === "FlateDecode" || filterNames[0] === "Fl");
   if (filterNames.length && !wasFlate) {
     // Other filters (ASCII85, LZW, DCTDecode, etc.) — too risky to round-trip.
-    return;
+    stats.skippedStreams = 1;
+    return stats;
   }
   if (wasFlate) {
-    try { bytes = unzlibSync(bytes); } catch { return; }
+    try { bytes = unzlibSync(bytes); } catch { stats.skippedStreams = 1; return stats; }
   }
 
   // latin1 decode — operators are ASCII; non-ASCII bytes only appear inside
@@ -126,21 +177,24 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
 
   const result = surgicalRewrite(text, job);
-  if (!result.mutated) return;
+  if (!result.mutated) return stats;
 
   let newBytes = new Uint8Array(result.text.length);
   for (let n = 0; n < result.text.length; n++) newBytes[n] = result.text.charCodeAt(n) & 0xff;
 
   if (wasFlate) {
-    try { newBytes = zlibSync(newBytes); } catch { return; }
+    try { newBytes = zlibSync(newBytes); } catch { stats.skippedStreams = 1; return stats; }
   }
   s.contents = newBytes;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lenKey = (dict.context as any).obj("Length");
+    const lenKey = PDFName.of("Length");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     dict.set?.(lenKey, (dict.context as any).obj(newBytes.length));
   } catch { /* pdf-lib will recompute on save */ }
+  stats.streamsMutated = 1;
+  addStats(stats, result.stats);
+  return stats;
 }
 
 // ─── Tokenizer + content-stream walker ──────────────────────────────────────
@@ -341,11 +395,13 @@ function encodeLiteral(s: string): string {
 
 const TEXT_SHOW_OPS = new Set(["Tj", "TJ", "'", '"']);
 
-function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutated: boolean } {
+function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutated: boolean; stats: Partial<RewriteStats> } {
   const tokens = tokenize(text);
   const editMap = new Map(job.edits.map((e) => [e.original, e.replacement]));
   const redactStrings = new Set(job.redactStrings ?? []);
+  const redactTargets = job.redactTargets ?? [];
   const rects = job.redacts;
+  const stats: Partial<RewriteStats> = {};
 
   let ctm = identity();
   const gStack: number[][] = [];
@@ -369,17 +425,44 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
     // ── Decide drop / replace ──
     let drop = false;
     let replaceTjLiteral: string | null = null;
+    let replaceOperand: { token: Tok; value: string } | null = null;
+    let rewriteMatchedTarget = false;
 
     if (TEXT_SHOW_OPS.has(op) && inText) {
       const [ux, uy] = txp(ctm, tm[4], tm[5]);
       const inRect = rects.length ? pointInRects(ux, uy, rects) : false;
 
       let stringMatchRedact = false;
-      if (!inRect && redactStrings.size && (op === "Tj" || op === "'")) {
+      if (!inRect && (redactStrings.size || redactTargets.length) && (op === "Tj" || op === "'")) {
         const last = operands[operands.length - 1];
-        if (last?.kind === "str") {
-          const lit = decodeLiteral(text.slice(last.start + 1, last.end - 1));
-          if (redactStrings.has(lit)) stringMatchRedact = true;
+        const decoded = decodeStringToken(text, last);
+        if (last && decoded !== null) {
+          const rewritten = redactTextValue(decoded, redactTargets, redactStrings);
+          if (rewritten.matched) {
+            rewriteMatchedTarget = true;
+            if (rewritten.value.length === 0) {
+              stringMatchRedact = true;
+            } else if (rewritten.value !== decoded) {
+              replaceOperand = { token: last, value: rewritten.value };
+            }
+          } else if (redactStrings.has(decoded)) {
+            stringMatchRedact = true;
+            rewriteMatchedTarget = true;
+          }
+        }
+      }
+
+      if (!inRect && !stringMatchRedact && !replaceOperand && redactTargets.length && op === "TJ") {
+        const arr = collectArrayOperand(text, operands);
+        if (arr) {
+          const rewritten = redactTextValue(arr.value, redactTargets, redactStrings);
+          if (rewritten.matched) {
+            rewriteMatchedTarget = true;
+            // TJ arrays interleave kerning adjustments, so preserve surrounding
+            // text by replacing the whole array with one literal string. This
+            // keeps the non-redacted words searchable instead of dropping the line.
+            replaceOperand = { token: arr.token, value: rewritten.value };
+          }
         }
       }
 
@@ -403,6 +486,7 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
       const ys = usrs.map((u) => u[1]);
       if (bboxInRects(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), rects)) {
         drop = true;
+        stats.imageOpsDropped = (stats.imageOpsDropped ?? 0) + 1;
       }
     }
 
@@ -455,6 +539,19 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
       if (groupStart > cursor) chunks.push(text.slice(cursor, groupStart));
       cursor = opEnd;
       mutated = true;
+      if (TEXT_SHOW_OPS.has(op)) {
+        stats.textOpsDropped = (stats.textOpsDropped ?? 0) + 1;
+        if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
+      }
+    } else if (replaceOperand) {
+      const t = replaceOperand.token;
+      if (t.start > cursor) chunks.push(text.slice(cursor, t.start));
+      chunks.push("(" + encodeLiteral(replaceOperand.value) + ")");
+      chunks.push(text.slice(t.end, opEnd));
+      cursor = opEnd;
+      mutated = true;
+      stats.textOperandsRewritten = (stats.textOperandsRewritten ?? 0) + 1;
+      if (rewriteMatchedTarget) stats.textTargetsMatched = (stats.textTargetsMatched ?? 0) + 1;
     } else if (replaceTjLiteral !== null) {
       const last = operands[operands.length - 1];
       if (last.start > cursor) chunks.push(text.slice(cursor, last.start));
@@ -470,5 +567,77 @@ function surgicalRewrite(text: string, job: PageRewrite): { text: string; mutate
   }
   if (cursor < text.length) chunks.push(text.slice(cursor));
 
-  return { text: chunks.join(""), mutated };
+  return { text: chunks.join(""), mutated, stats };
+}
+
+function decodeStringToken(text: string, tok: Tok | undefined): string | null {
+  if (!tok) return null;
+  if (tok.kind === "str") return decodeLiteral(text.slice(tok.start + 1, tok.end - 1));
+  if (tok.kind === "hexstr") return decodeHexString(text.slice(tok.start + 1, tok.end - 1));
+  return null;
+}
+
+function decodeHexString(hex: string): string {
+  const clean = hex.replace(/\s+/g, "");
+  const bytes: number[] = [];
+  for (let i = 0; i < clean.length; i += 2) {
+    const pair = clean.slice(i, i + 2).padEnd(2, "0");
+    const n = Number.parseInt(pair, 16);
+    if (Number.isFinite(n)) bytes.push(n);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    let out = "";
+    for (let i = 2; i + 1 < bytes.length; i += 2) out += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+    return out;
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    let out = "";
+    for (let i = 2; i + 1 < bytes.length; i += 2) out += String.fromCharCode(bytes[i] | (bytes[i + 1] << 8));
+    return out;
+  }
+  return bytes.map((b) => String.fromCharCode(b)).join("");
+}
+
+function collectArrayOperand(text: string, operands: Tok[]): { token: Tok; value: string } | null {
+  let start = -1;
+  for (let i = operands.length - 1; i >= 0; i--) {
+    if (operands[i].kind === "lbrack") { start = i; break; }
+  }
+  if (start < 0 || operands[operands.length - 1]?.kind !== "rbrack") return null;
+  let value = "";
+  for (let i = start + 1; i < operands.length - 1; i++) {
+    const decoded = decodeStringToken(text, operands[i]);
+    if (decoded !== null) value += decoded;
+  }
+  return { token: { kind: "str", start: operands[start].start, end: operands[operands.length - 1].end }, value };
+}
+
+function redactTextValue(
+  value: string,
+  targets: RedactTextTarget[],
+  fallback: Set<string>,
+): { value: string; matched: boolean } {
+  let next = value;
+  let matched = false;
+  for (const t of targets) {
+    const sensitive = t.text || t.original;
+    if (!sensitive) continue;
+    if (next.includes(sensitive)) {
+      next = next.split(sensitive).join("");
+      matched = true;
+      continue;
+    }
+    if (t.original && next === value && t.original === value && Number.isFinite(t.start) && Number.isFinite(t.length)) {
+      const start = Math.max(0, Math.min(value.length, t.start ?? 0));
+      const end = Math.max(start, Math.min(value.length, start + (t.length ?? sensitive.length)));
+      next = next.slice(0, start) + next.slice(end);
+      matched = true;
+    }
+  }
+  for (const s of fallback) {
+    if (!s) continue;
+    if (next === s) { next = ""; matched = true; }
+    else if (next.includes(s)) { next = next.split(s).join(""); matched = true; }
+  }
+  return { value: next, matched };
 }

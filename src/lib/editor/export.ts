@@ -144,11 +144,11 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   const rewrites = new Map<number, PageRewrite>();
   for (const a of doc.annotations) {
     if (a.kind === "text-edit" && a.source?.originalString) {
-      const job = rewrites.get(a.page) ?? { edits: [], redacts: [], redactStrings: [] };
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [], redactStrings: [], redactTargets: [] };
       job.edits.push({ original: a.source.originalString, replacement: a.text });
       rewrites.set(a.page, job);
     } else if (a.kind === "redact") {
-      const job = rewrites.get(a.page) ?? { edits: [], redacts: [], redactStrings: [] };
+      const job = rewrites.get(a.page) ?? { edits: [], redacts: [], redactStrings: [], redactTargets: [] };
       const outPage = outPages[a.page];
       if (outPage) {
         const ph = outPage.getSize().height;
@@ -161,13 +161,32 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       }
       if (a.sources?.length) {
         for (const s of a.sources) {
-          if (s.originalString) job.redactStrings!.push(s.originalString);
+          const targetText = (s.redactText || s.originalString || "").trim();
+          if (!targetText) continue;
+          job.redactStrings!.push(targetText);
+          if (s.originalString && s.originalString !== targetText) job.redactStrings!.push(s.originalString);
+          job.redactTargets!.push({
+            original: s.originalString || targetText,
+            text: targetText,
+            start: s.matchStart,
+            length: s.matchLength,
+          });
         }
       }
       rewrites.set(a.page, job);
     }
   }
-  if (rewrites.size) await rewriteDocument(out, rewrites);
+  if (rewrites.size) {
+    const stats = await rewriteDocument(out, rewrites);
+    const expectedTargets = Array.from(rewrites.values()).reduce((n, job) => n + (job.redactTargets?.length ?? 0), 0);
+    // eslint-disable-next-line no-console
+    console.info("[redact] export rewrite summary", {
+      pages: rewrites.size,
+      boxes: doc.annotations.filter((a) => a.kind === "redact").length,
+      expectedTargets,
+      ...stats,
+    });
+  }
 
 
   let bytes = await out.save();

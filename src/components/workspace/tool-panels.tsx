@@ -854,8 +854,12 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
           sources: m.source?.originalString
             ? [{
                 originalString: m.source.originalString,
+                redactText: m.source.redactText,
+                matchStart: m.source.matchStart,
+                matchLength: m.source.matchLength,
                 transform: m.source.transform,
                 fontName: m.source.fontName,
+                bounds: m.source.bounds,
               }]
             : undefined,
         },
@@ -1130,8 +1134,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             ? [
                 {
                   originalString: d.source.originalString,
+                  redactText: d.source.redactText,
+                  matchStart: d.source.matchStart,
+                  matchLength: d.source.matchLength,
                   transform: d.source.transform,
                   fontName: d.source.fontName,
+                  bounds: d.source.bounds,
                 },
               ]
             : undefined,
@@ -1378,8 +1386,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     for (const a of redactAnnos) {
       if (a.kind !== "redact" || !a.sources?.length) continue;
       for (const s of a.sources) {
-        if (s.originalString && s.originalString.trim()) {
-          out.push({ page: a.page, text: s.originalString });
+        const text = (s.redactText || s.originalString || "").trim();
+        if (text) {
+          out.push({ page: a.page, text });
         }
       }
     }
@@ -1425,6 +1434,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!ok) return;
     setBusy(true);
     setVerify(null);
+    setLastBytes(null);
     const tid = "wsx-redact-export";
     toast.loading("Building redacted PDF…", { id: tid });
     try {
@@ -1438,10 +1448,6 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
       const bytes = await exportEditedPdf(exportDoc);
 
-      // Download.
-      await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
-      setLastBytes(bytes);
-
       // Verify by re-parsing the exported file and confirming every
       // captured source string is absent from the text layer.
       toast.loading("Verifying removal…", { id: tid });
@@ -1449,12 +1455,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const result = await verifyRedactionRemoval(bytes, targets);
       setVerify(result);
       if (result.ok) {
+        await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
+        setLastBytes(bytes);
         toast.success(`Verified — ${result.removed}/${result.total} fragments removed`, { id: tid });
       } else {
-        toast.warning(`${result.leaks.length} fragment${result.leaks.length === 1 ? "" : "s"} still present`, {
-          id: tid,
-          description: "See verification report below.",
-        });
+        throw new Error(`${result.leaks.length} redacted fragment${result.leaks.length === 1 ? " is" : "s are"} still extractable`);
       }
     } catch (err) {
       console.error("[redact] export failed", err);

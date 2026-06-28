@@ -38,8 +38,12 @@ export type Detection = {
    */
   source?: {
     originalString: string;
+    redactText?: string;
+    matchStart?: number;
+    matchLength?: number;
     transform?: number[];
     fontName?: string;
+    bounds?: { x: number; y: number; w: number; h: number };
   };
   /**
    * Bounding box in PDF points, top-left origin — the coordinate space the
@@ -296,8 +300,12 @@ export async function detectPiiInPdf(
           snippet: snippet(hit.text),
           source: {
             originalString: str,
+            redactText: hit.text,
+            matchStart: hit.start,
+            matchLength: hit.length,
             transform: raw.transform,
             fontName,
+            bounds: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
           },
           pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
         });
@@ -483,8 +491,12 @@ export type KeywordMatch = {
    */
   source?: {
     originalString: string;
+    redactText?: string;
+    matchStart?: number;
+    matchLength?: number;
     transform?: number[];
     fontName?: string;
+    bounds?: { x: number; y: number; w: number; h: number };
   };
 };
 
@@ -618,7 +630,15 @@ export async function findKeywordInPdf(
           h: bh,
           snippet: snippet(segText),
           pdfRect: { x: bx / scale, y: by / scale, w: bw / scale, h: bh / scale },
-          source: { originalString: str, transform: raw.transform, fontName },
+          source: {
+            originalString: str,
+            redactText: segText,
+            matchStart: segStart,
+            matchLength: segEnd - segStart,
+            transform: raw.transform,
+            fontName,
+            bounds: { x: bx / scale, y: by / scale, w: bw / scale, h: bh / scale },
+          },
         });
       }
     }
