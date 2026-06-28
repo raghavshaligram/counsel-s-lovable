@@ -576,10 +576,13 @@ export function EditorCanvas({
     const w = maxX - minX, h = maxY - minY;
 
     const isEditingThis = editingId === a.id;
-    const interactive = state.tool === "select" || isEditingThis || selected;
+    // Redact marks stay editable (select / drag / resize / delete) while the
+    // redact tool is active — they are drafts until the user commits the burn.
+    const redactEditable = state.tool === "redact" && a.kind === "redact";
+    const interactive = state.tool === "select" || isEditingThis || selected || redactEditable;
 
     const onDownAnno = (e: React.MouseEvent) => {
-      if (!(state.tool === "select" || selected)) return;
+      if (!(state.tool === "select" || selected || redactEditable)) return;
       if (isEditingThis) return;
       e.stopPropagation();
       dispatch({ type: "SELECT_ANNO", id: a.id });
