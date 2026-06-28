@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { Check, X, ArrowRight, Minus } from "lucide-react";
+import { Check, X, ArrowRight, Minus, WifiOff, Plane } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -74,7 +74,7 @@ function Landing() {
               </h1>
               <p className="mt-8 max-w-md text-base md:text-lg text-muted-foreground leading-relaxed">
                 Redact, Bates-stamp, privilege-review and sanitize PDFs entirely on your device.
-                You sign in only to verify your subscription — your files are never uploaded.
+                You sign in only to verify your subscription — your files are never uploaded. Works offline.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-4">
                 <Link
@@ -144,6 +144,42 @@ function Landing() {
           </div>
         </div>
       </section>
+
+      {/* OFFLINE */}
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-6xl px-5 md:px-8 py-24 md:py-32">
+          <div className="grid lg:grid-cols-[1fr_1.05fr] gap-12 lg:gap-16 items-center">
+            <OfflinePanel />
+            <div className="reveal">
+              <div className="font-mono text-[11px] text-muted-foreground mb-8 flex items-center gap-2">
+                <Plane className="h-3 w-3 text-vault" />
+                Airplane · courthouse · anywhere
+              </div>
+              <h2
+                className="font-display leading-[0.95] tracking-tight"
+                style={{ fontSize: "clamp(2.25rem, 7vw, 5.5rem)" }}
+              >
+                Pull the plug.
+                <br />
+                <span className="italic text-vault">It still works.</span>
+              </h2>
+              <div className="mt-10 space-y-5 max-w-lg text-muted-foreground leading-relaxed">
+                <p>
+                  Once loaded, VaultPDF runs entirely in your browser with no connection. Redact,
+                  Bates-stamp, OCR and sanitize on a plane, in a courthouse, or anywhere with no Wi-Fi —
+                  your work never depends on a server being up.
+                </p>
+                <p className="text-foreground/90">
+                  Disconnect and see for yourself. Working offline is the proof that nothing needed to
+                  leave your device in the first place.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
 
       {/* LEGAL USE CASES */}
       <section className="border-b border-border">
@@ -416,6 +452,83 @@ function useInView<T extends HTMLElement>(once = true) {
 }
 
 /* ——— Network monitor mock ——— */
+
+/* ——— Offline panel ——— */
+
+function OfflinePanel() {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  const tools = ["Redact", "Bates stamp", "OCR", "Sanitize"];
+  return (
+    <div
+      ref={ref}
+      className="reveal rounded-lg border border-border bg-background shadow-[var(--shadow-float)] overflow-hidden"
+    >
+      {/* Browser-style chrome */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card/60 text-[11px] font-mono text-muted-foreground">
+        <span className="h-2 w-2 rounded-full bg-evidence" />
+        <span className="h-2 w-2 rounded-full bg-vault/60" />
+        <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+        <span className="ml-2 truncate">vaultpdf.app/workspace</span>
+        <span
+          className={`ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border transition-colors duration-500 ${
+            inView
+              ? "border-vault/30 bg-vault/10 text-vault"
+              : "border-border text-muted-foreground"
+          }`}
+        >
+          <WifiOff className="h-3 w-3" strokeWidth={2.25} />
+          {inView ? "Offline — fully functional" : "Online"}
+        </span>
+      </div>
+
+      {/* Body */}
+      <div className="p-6 md:p-8">
+        <div className="font-mono text-[10px] text-muted-foreground mb-4">/ on-device task queue</div>
+        <ul className="space-y-3">
+          {tools.map((t, i) => (
+            <li
+              key={t}
+              className="flex items-center gap-3 text-sm transition-all duration-500 ease-out"
+              style={{
+                opacity: inView ? 1 : 0.25,
+                transform: inView ? "translateX(0)" : "translateX(-6px)",
+                transitionDelay: `${i * 220 + 350}ms`,
+              }}
+            >
+              <span
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
+                  inView ? "border-vault/40 bg-vault/10" : "border-border"
+                }`}
+              >
+                <Check
+                  className="h-3.5 w-3.5 text-vault"
+                  strokeWidth={2.75}
+                  style={{
+                    opacity: inView ? 1 : 0,
+                    transition: "opacity 300ms ease-out",
+                    transitionDelay: `${i * 220 + 500}ms`,
+                  }}
+                />
+              </span>
+              <span className="text-foreground">{t}</span>
+              <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+                done · on-device
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <div
+          className="mt-6 pt-5 border-t border-border flex items-center justify-between text-[11px] font-mono transition-opacity duration-500"
+          style={{ opacity: inView ? 1 : 0, transitionDelay: "1300ms" }}
+        >
+          <span className="text-muted-foreground">Network requests during work</span>
+          <span className="font-semibold text-vault tabular-nums">0</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function NetworkMonitor() {
   const [ref, inView] = useInView<HTMLDivElement>();
