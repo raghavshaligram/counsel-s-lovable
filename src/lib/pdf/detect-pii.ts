@@ -262,37 +262,46 @@ export async function detectPiiInPdf(
     for (const raw of items) {
       const str = raw.str;
       if (!str || !str.trim()) continue;
-      const cat = matchCategory(str);
-      if (!cat) continue;
+      const hits = matchAllCategories(str);
+      if (hits.length === 0) continue;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
-      const x = m[4];
+      const x0 = m[4];
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
-      const cx = x - pad;
-      const cy = y - pad;
-      const cw = itemWidth + pad * 2;
-      const ch = fontHeight + pad * 2;
       const fontName = (raw as { fontName?: string }).fontName;
-      detections.push({
-        id: `det-${i}-${detections.length}`,
-        page: i,
-        x: cx,
-        y: cy,
-        w: cw,
-        h: ch,
-        category: cat.category,
-        confidence: cat.confidence,
-        snippet: snippet(str),
-        source: {
-          originalString: str,
-          transform: raw.transform,
-          fontName,
-        },
-        pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
-      });
-
+      // Approximate per-character width across the text item. PDF.js doesn't
+      // give us per-glyph positions for native text, but glyphs in a single
+      // text-run are typeset in a continuous strip, so a uniform divide
+      // produces a tight box around the matched substring rather than the
+      // whole sentence/line.
+      const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
+      for (const hit of hits) {
+        const subX = x0 + charW * hit.start;
+        const subW = Math.max(charW, charW * hit.length);
+        const cx = subX - pad;
+        const cy = y - pad;
+        const cw = subW + pad * 2;
+        const ch = fontHeight + pad * 2;
+        detections.push({
+          id: `det-${i}-${detections.length}`,
+          page: i,
+          x: cx,
+          y: cy,
+          w: cw,
+          h: ch,
+          category: hit.category,
+          confidence: hit.confidence,
+          snippet: snippet(hit.text),
+          source: {
+            originalString: str,
+            transform: raw.transform,
+            fontName,
+          },
+          pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
+        });
+      }
     }
   }
 
