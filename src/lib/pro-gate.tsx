@@ -49,12 +49,11 @@ export function useIsPro(): boolean {
 export function useRequirePro() {
   const isPro = useIsPro();
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const search = useRouterState({ select: (s) => s.location.searchStr });
+  const href = useRouterState({ select: (s) => s.location.href });
   return useCallback(
     (featureName?: string): boolean => {
       if (isPro) return true;
-      const dest = pathname + (search ?? "");
+      const dest = href;
       toast.message("Sign in to unlock VaultPDF Pro", {
         description: featureName ? `${featureName} requires a Pro subscription.` : undefined,
         action: {
