@@ -24,6 +24,8 @@ import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk-import";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "./export-format-row";
 
 type Props = {
   open: boolean;
@@ -111,13 +113,8 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         });
       }
 
-      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
+      const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
+      await downloadPdf(bytes, outName);
 
       toast.success("Saved", { id: tid });
       onOpenChange(false);
@@ -150,6 +147,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         </DialogHeader>
 
         <div className="flex flex-col gap-2.5">
+          <ExportFormatRow />
           <OptionRow
             icon={<Hash className="h-3.5 w-3.5" />}
             label="Page numbers"

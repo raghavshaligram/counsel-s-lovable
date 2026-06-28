@@ -94,6 +94,8 @@ import { densityToGridColumns, useOrganize } from "@/lib/workspace/organize-stor
 import { buildPdfFromCells } from "@/lib/pdf/organize";
 import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "./export-format-row";
 import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
@@ -760,7 +762,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const bytes = await exportEditedPdf(exportDoc);
 
       // Download.
-      downloadBytes(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf", "application/pdf");
+      await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
       setLastBytes(bytes);
 
       // Verify by re-parsing the exported file and confirming every
@@ -816,7 +818,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         sourceHashSHA256: sourceHash,
         redactedHashSHA256: redactedHash,
       });
-      downloadBytes(cert, file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction.pdf", "application/pdf");
+      await downloadPdf(cert, file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction.pdf");
       toast.success("Certificate of redaction downloaded");
 
     } catch (err) {
@@ -1368,7 +1370,7 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
               ? ({ mode: "everyN", n: Math.max(1, Math.floor(everyN)) } as const)
               : ({ mode: "splitPoints", points } as const);
       const result = await splitPdf(file, opts);
-      downloadBlob(result.blob, result.filename);
+      await triggerDownload(result.blob, result.filename);
       if (result.kind === "pdf") {
         toast.success(`Saved ${result.pageCount} pages`, {
           description: `${result.filename} · nothing was uploaded.`,
@@ -1604,7 +1606,7 @@ function RotatePanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBusy(true);
     try {
       const result = await rotatePdf(file, { angle, scope, custom });
-      downloadBlob(result.blob, result.filename);
+      await triggerDownload(result.blob, result.filename);
       toast.success(
         `Rotated ${result.rotatedCount} page${result.rotatedCount === 1 ? "" : "s"}`,
         { description: `${result.filename} · nothing was uploaded.` },
@@ -1958,7 +1960,7 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBuilding(true);
     try {
       const bytes = await buildPdfFromCells(cells, resolveBytes);
-      downloadBytes(bytes, `vaultpdf-organized-${Date.now()}.pdf`, "application/pdf");
+      await downloadPdf(bytes, `vaultpdf-organized-${Date.now()}.pdf`);
       toast.success(`Built PDF with ${cells.length} page${cells.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error("[organize] build failed", err);
@@ -2562,7 +2564,13 @@ function ExtractDataPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+async function triggerDownload(blob: Blob, filename: string) {
+  // Route PDFs through downloadPdf so the user's PDF/A preference applies.
+  if (/\.pdf$/i.test(filename) || blob.type === "application/pdf") {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    await downloadPdf(bytes, filename);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -3535,7 +3543,7 @@ function WordToPdfPanel() {
         onProgress: setProgress,
       });
       const base = file.name.replace(/\.docx$/i, "");
-      downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
+      await downloadPdf(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
       toast.success(`Converted ${pages} page${pages === 1 ? "" : "s"}`, { id: tid });
     } catch (err) {
       console.error("[word-to-pdf] failed", err);
@@ -3766,7 +3774,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           onProgress: (s) => setProgress(s),
         });
         const base = file.name.replace(/\.docx$/i, "");
-        downloadBytes(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
+        await downloadPdf(new Uint8Array(await blob.arrayBuffer()), `${base}.pdf`);
         toast.success(`Converted ${pages} page${pages === 1 ? "" : "s"}`, { id: tid });
       } else if (kind === "images" && target === "pdf") {
         const { buildPdfFromImages } = await importChunk(() => import("@/lib/pdf/images-to-pdf"));
@@ -4538,7 +4546,7 @@ function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
         prefix: prefix || undefined,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf");
         toast.success("Page numbers added", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
@@ -4798,7 +4806,7 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         position: s.position, fontSize: s.fontSize, color: s.color, margin: s.margin,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-bates.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-bates.pdf");
         toast.success("Bates numbers added", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
@@ -5000,7 +5008,7 @@ function HeaderFooterSection({ ctx }: { ctx: ToolPanelCtx }) {
         filename: file.name,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf");
         toast.success("Header/footer added", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
@@ -5116,7 +5124,7 @@ function FlattenSection({ ctx }: { ctx: ToolPanelCtx }) {
         annotations: true,
       });
       if (apply === "download") {
-        downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf", "application/pdf");
+        await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf");
         toast.success("Flattened PDF downloaded", { id: tid });
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
@@ -5541,7 +5549,7 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
       const { exportPdf } = await importChunk(() => import("@/lib/outline/write"));
       const out = await exportPdf(bytes, outline, links);
       const base = file.name.replace(/\.pdf$/i, "");
-      downloadBytes(out, `${base}-outline.pdf`, "application/pdf");
+      await downloadPdf(out, `${base}-outline.pdf`);
       toast.success("Exported PDF with updated outline & links");
     } catch (err) {
       console.error("[outline] export failed", err);
@@ -6074,7 +6082,7 @@ function SanitizePanel({ ctx }: { ctx: ToolPanelCtx }) {
       const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
       const clean = await sanitizePdfBytes(bytes);
       const base = file.name.replace(/\.pdf$/i, "");
-      downloadBytes(clean, `${base}-sanitized.pdf`, "application/pdf");
+      await downloadPdf(clean, `${base}-sanitized.pdf`);
       toast.success("Sanitized — hidden data removed");
     } catch (err) {
       console.error(err);

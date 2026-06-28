@@ -98,6 +98,7 @@ import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
+import { ExportFormatChip } from "./export-format-row";
 import { PrivacyShield } from "./privacy-shield";
 import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
 import { useHotkey } from "@/lib/use-hotkey";
@@ -1367,6 +1368,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             Print
           </button>
 
+          <ExportFormatChip />
           <button
             type="button"
             onClick={onExport}
