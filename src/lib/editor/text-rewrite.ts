@@ -622,15 +622,15 @@ function redactTextValue(
   for (const t of targets) {
     const sensitive = t.text || t.original;
     if (!sensitive) continue;
-    if (t.original && t.original === value && Number.isFinite(t.start) && Number.isFinite(t.length)) {
-      const start = Math.max(0, Math.min(value.length, t.start ?? 0));
-      const end = Math.max(start, Math.min(value.length, start + (t.length ?? sensitive.length)));
-      next = next.slice(0, start) + next.slice(end);
+    if (next.includes(sensitive)) {
+      next = next.split(sensitive).join("");
       matched = true;
       continue;
     }
-    if (next.includes(sensitive)) {
-      next = next.split(sensitive).join("");
+    if (t.original && next === value && t.original === value && Number.isFinite(t.start) && Number.isFinite(t.length)) {
+      const start = Math.max(0, Math.min(value.length, t.start ?? 0));
+      const end = Math.max(start, Math.min(value.length, start + (t.length ?? sensitive.length)));
+      next = next.slice(0, start) + next.slice(end);
       matched = true;
     }
   }
