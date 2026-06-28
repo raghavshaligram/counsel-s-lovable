@@ -1532,7 +1532,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
         const pixelTargets = targets
           .filter((t) => !!t.rect)
-          .map((t) => ({ page: t.page, rect: t.rect!, label: t.label }));
+          .map((t) => ({ page: t.page, rect: t.rect! }));
         const pixelResult = await verifyPixelRedaction(
           bytes,
           pixelTargets,
