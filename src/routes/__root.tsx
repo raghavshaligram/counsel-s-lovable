@@ -247,6 +247,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <Outlet />
       <UpgradeModal />
+      <LoginModal />
       <Toaster theme="dark" position="bottom-right" />
     </QueryClientProvider>
   );
