@@ -373,7 +373,7 @@ export function RedactPage() {
     setPendingUsedOcr(false);
     try {
       const { detectPiiInPdf } = await importChunk(() => import("@/lib/pdf/detect-pii"));
-      const { detections: found, usedOcr } = await detectPiiInPdf(
+      const { detections: found, usedOcr, scannedPages, totalPages: scannedTotal } = await detectPiiInPdf(
         file,
         1.5,
         (p) => {
@@ -385,12 +385,20 @@ export function RedactPage() {
         },
         docRef.current ?? undefined,
       );
+      const hasScanned = scannedPages.length > 0;
       if (found.length === 0) {
-        toast.info("No obvious PII patterns found.", {
-          description: usedOcr
-            ? "OCR ran but no SSNs, emails, phones, cards, or dates matched. Mark regions manually."
-            : "Mark sensitive regions manually with click-and-drag.",
-        });
+        if (hasScanned) {
+          toast.warning("Scanned/image document — auto-detect cannot read it", {
+            description: `${scannedPages.length} of ${scannedTotal} page${scannedPages.length === 1 ? "" : "s"} are image-only. Run OCR first, or mark regions manually. Do NOT treat this as "nothing found".`,
+            duration: 12000,
+          });
+        } else {
+          toast.info("No obvious PII patterns found on the readable text layer.", {
+            description: usedOcr
+              ? "OCR ran but no SSNs, emails, phones, cards, or dates matched. Mark regions manually."
+              : "Mark sensitive regions manually with click-and-drag.",
+          });
+        }
       } else {
         // Stage — do NOT commit to `detections` yet.
         setPendingDetections(found);
@@ -400,6 +408,12 @@ export function RedactPage() {
         toast.info(
           `Found ${found.length} potential PII region${found.length === 1 ? "" : "s"} — review before redacting`,
         );
+        if (hasScanned) {
+          toast.warning("Some pages are scanned — auto-detect may miss items", {
+            description: `${scannedPages.length} of ${scannedTotal} image-only page${scannedPages.length === 1 ? "" : "s"} were OCR'd, but recall is imperfect. Review those pages manually.`,
+            duration: 12000,
+          });
+        }
       }
     } catch (err) {
       console.error(err);
