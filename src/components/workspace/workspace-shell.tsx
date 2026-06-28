@@ -98,6 +98,7 @@ import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
+import { AnnouncementBanner } from "./announcement-banner";
 import { ExportFormatChip } from "./export-format-row";
 import { WelcomeModal } from "./welcome-modal";
 import { PrivacyShield } from "./privacy-shield";
