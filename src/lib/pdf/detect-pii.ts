@@ -262,37 +262,46 @@ export async function detectPiiInPdf(
     for (const raw of items) {
       const str = raw.str;
       if (!str || !str.trim()) continue;
-      const cat = matchCategory(str);
-      if (!cat) continue;
+      const hits = matchAllCategories(str);
+      if (hits.length === 0) continue;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
-      const x = m[4];
+      const x0 = m[4];
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
-      const cx = x - pad;
-      const cy = y - pad;
-      const cw = itemWidth + pad * 2;
-      const ch = fontHeight + pad * 2;
       const fontName = (raw as { fontName?: string }).fontName;
-      detections.push({
-        id: `det-${i}-${detections.length}`,
-        page: i,
-        x: cx,
-        y: cy,
-        w: cw,
-        h: ch,
-        category: cat.category,
-        confidence: cat.confidence,
-        snippet: snippet(str),
-        source: {
-          originalString: str,
-          transform: raw.transform,
-          fontName,
-        },
-        pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
-      });
-
+      // Approximate per-character width across the text item. PDF.js doesn't
+      // give us per-glyph positions for native text, but glyphs in a single
+      // text-run are typeset in a continuous strip, so a uniform divide
+      // produces a tight box around the matched substring rather than the
+      // whole sentence/line.
+      const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
+      for (const hit of hits) {
+        const subX = x0 + charW * hit.start;
+        const subW = Math.max(charW, charW * hit.length);
+        const cx = subX - pad;
+        const cy = y - pad;
+        const cw = subW + pad * 2;
+        const ch = fontHeight + pad * 2;
+        detections.push({
+          id: `det-${i}-${detections.length}`,
+          page: i,
+          x: cx,
+          y: cy,
+          w: cw,
+          h: ch,
+          category: hit.category,
+          confidence: hit.confidence,
+          snippet: snippet(hit.text),
+          source: {
+            originalString: str,
+            transform: raw.transform,
+            fontName,
+          },
+          pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
+        });
+      }
     }
   }
 
@@ -351,22 +360,27 @@ export async function detectPiiInPdf(
 
           for (const w of words) {
             if (!w.text || !w.text.trim()) continue;
-            const cat = matchCategory(w.text);
-            if (!cat) continue;
+            const hits = matchAllCategories(w.text);
+            if (hits.length === 0) continue;
             const { x0, y0, x1, y1 } = w.bbox;
+            const wWidth = x1 - x0;
             const pad = Math.max(2, (y1 - y0) * 0.15);
-            detections.push({
-              id: `det-ocr-${i}-${detections.length}`,
-              page: i,
-              x: x0 - pad,
-              y: y0 - pad,
-              w: x1 - x0 + pad * 2,
-              h: y1 - y0 + pad * 2,
-              category: cat.category,
-              confidence: cat.confidence,
-              snippet: snippet(w.text),
-            });
-
+            const charW = w.text.length > 0 ? wWidth / w.text.length : wWidth;
+            for (const hit of hits) {
+              const subX = x0 + charW * hit.start;
+              const subW = Math.max(charW, charW * hit.length);
+              detections.push({
+                id: `det-ocr-${i}-${detections.length}`,
+                page: i,
+                x: subX - pad,
+                y: y0 - pad,
+                w: subW + pad * 2,
+                h: y1 - y0 + pad * 2,
+                category: hit.category,
+                confidence: hit.confidence,
+                snippet: snippet(hit.text),
+              });
+            }
           }
         }),
       );
@@ -379,28 +393,54 @@ export async function detectPiiInPdf(
   return { detections, usedOcr: ocrPages.length > 0 };
 }
 
-type CatHit = { category: PiiCategory; confidence?: "high" | "low" };
+type CatHit = {
+  category: PiiCategory;
+  confidence?: "high" | "low";
+  /** Substring span within the source text item. */
+  start: number;
+  length: number;
+  /** The matched text itself (used for the snippet shown in the UI). */
+  text: string;
+};
 
-function matchCategory(str: string): CatHit | null {
-  // Structured patterns first — these are reliable.
+function matchAllCategories(str: string): CatHit[] {
+  const hits: CatHit[] = [];
+  // Structured patterns — emit ONLY the value span, not the surrounding label
+  // or line ("Client SSN: 123-45-6789" → just "123-45-6789").
   for (const { category, re } of PATTERNS) {
-    if (re.test(str)) return { category };
+    const global = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    let m: RegExpExecArray | null;
+    while ((m = global.exec(str)) !== null) {
+      hits.push({
+        category,
+        start: m.index,
+        length: m[0].length,
+        text: m[0],
+      });
+      if (m[0].length === 0) global.lastIndex++;
+    }
   }
   // Names — only emit when we have a STRONG signal (title prefix like
   // Mr/Dr/Hon/"signed by", suffix like Jr/Esq/PhD, middle initial, or
-  // surname marker like O'/Mc/Mac). Bare title-case phrases ("The Problem
-  // with Current Agency Models", "Data Architecture") are NOT names —
-  // emitting them at all produced the heading-spam bug, so low-confidence
-  // candidates are dropped entirely rather than shown unchecked. Real-name
-  // documents still flag correctly via the strong signals.
-  const nm = NAME_CANDIDATE_RE.exec(str);
-  if (nm) {
+  // surname marker like O'/Mc/Mac). The match span is the person name
+  // ONLY — not the surrounding sentence ("signed by Mr. John Anderson"
+  // → just "John Anderson" with optional honorific captured by regex).
+  const nameGlobal = new RegExp(NAME_CANDIDATE_RE.source, "g");
+  let nm: RegExpExecArray | null;
+  while ((nm = nameGlobal.exec(str)) !== null) {
     const verdict = classifyName(str, nm[0], nm.index);
     if (verdict.ok && verdict.confidence === "high") {
-      return { category: "name", confidence: "high" };
+      hits.push({
+        category: "name",
+        confidence: "high",
+        start: nm.index,
+        length: nm[0].length,
+        text: nm[0],
+      });
     }
+    if (nm[0].length === 0) nameGlobal.lastIndex++;
   }
-  return null;
+  return hits;
 }
 
 
