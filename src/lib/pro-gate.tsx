@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { Lock } from "lucide-react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { useRouterState } from "@tanstack/react-router";
 import { useLicenseActivation } from "@/lib/use-license-activation";
+import { useUpgradeModal } from "@/components/upgrade-modal";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,7 +17,7 @@ export const PAID_TOOL_IDS = new Set<string>([
 
 /**
  * Granular paid capabilities — keyed by stable id, so each call site can
- * report its own feature name for the sign-in CTA. UI-only registry; the
+ * report its own feature name for the upgrade modal. UI-only registry; the
  * actual entitlement check is just `useIsPro()` on the same boolean.
  */
 export const PAID_FEATURES = {
@@ -41,30 +41,25 @@ export function useIsPro(): boolean {
 
 /**
  * Returns a guard fn. Call with the feature name being requested; if the
- * user isn't a paid subscriber it shows a toast and routes to /auth with
- * a `redirect` back to the current path so they return to the same tool.
- * Returns `true` when the call should proceed (already Pro), `false` when
- * it was intercepted.
+ * user isn't a paid subscriber it opens the Upgrade modal (with tiers +
+ * "already a subscriber? Sign in") and `returnTo` set so they return to
+ * the same tool after subscribing / signing in. Returns `true` when the
+ * call should proceed (already Pro), `false` when it was intercepted.
  */
 export function useRequirePro() {
   const isPro = useIsPro();
-  const navigate = useNavigate();
+  const openModal = useUpgradeModal((s) => s.openModal);
   const href = useRouterState({ select: (s) => s.location.href });
   return useCallback(
     (featureName?: string, returnTo?: string): boolean => {
       if (isPro) return true;
-      const dest = returnTo ?? href;
-      toast.message("Sign in to unlock VaultPDF Pro", {
-        description: featureName
-          ? `${featureName} requires a Pro subscription.`
-          : "This feature requires a Pro subscription.",
-      });
-      void navigate({ to: "/auth", search: { redirect: dest } as never });
+      openModal({ featureName, returnTo: returnTo ?? href });
       return false;
     },
-    [isPro, navigate, href],
+    [isPro, openModal, href],
   );
 }
+
 
 /** Small lock chip rendered next to gated controls. */
 export function LockBadge({
