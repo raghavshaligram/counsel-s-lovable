@@ -128,91 +128,121 @@ function randomHexString(byteLen: number): PDFHexString {
 }
 
 export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(bytes, {
-    ignoreEncryption: true,
-    updateMetadata: false,
-  });
+  const step = async <T,>(name: string, fn: () => Promise<T> | T): Promise<T> => {
+    // eslint-disable-next-line no-console
+    console.info(`${TAG} ${name}…`);
+    try {
+      return await fn();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`${TAG} ${name} FAILED`, err);
+      throw new Error(`PDF/A step "${name}" failed: ${(err as Error).message}`);
+    }
+  };
+
+  const doc = await step("load source bytes", () =>
+    PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false }),
+  );
   const ctx = doc.context;
   const catalog = doc.catalog;
 
-  // 0) Reject if any non-embedded fonts remain — emitting unembedded
-  //    fonts inside a PDF/A wrapper would produce an invalid file.
-  const offenders = findUnembeddedFonts(doc);
+  // 0a) Auto-embed Standard 14 font fallbacks (Liberation TTF) for any
+  //     unembedded simple-font references inherited from the source PDF.
+  const fallback = await step("embed standard-14 font fallbacks", () =>
+    embedStandard14Fallbacks(doc),
+  );
+  if (fallback.fixed.length) {
+    // eslint-disable-next-line no-console
+    console.info(`${TAG} embedded fallbacks for:`, fallback.fixed);
+  }
+
+  // 0b) Final check — any remaining unembedded fonts (Type0/Type3, exotic
+  //     non-Standard-14 references) are unfixable here and must block.
+  const offenders = await step("verify all fonts are embedded", () =>
+    findUnembeddedFonts(doc),
+  );
   if (offenders.length > 0) {
     const unique = Array.from(new Set(offenders));
     throw new Error(
-      `PDF/A requires every font to be embedded. The document still references ` +
-      `unembedded font(s): ${unique.join(", ")}. Re-export with embedded fonts.`,
+      `Cannot embed font(s): ${unique.join(", ")}. ` +
+      `Re-export the document with embedded fonts or use a Standard 14 substitute.`,
     );
   }
 
   // 1) Strip hostile / non-PDF/A constructs ------------------------------
-  const namesAny = catalog.lookupMaybe(PDFName.of("Names"), undefined as never) as unknown;
-  if (namesAny && typeof namesAny === "object" && "delete" in (namesAny as object)) {
-    const d = (namesAny as { delete: (k: unknown) => void }).delete.bind(namesAny);
-    try { d(PDFName.of("JavaScript")); } catch { /* not a dict — ignore */ }
-  }
-  catalog.delete(PDFName.of("OpenAction"));
-  catalog.delete(PDFName.of("AA"));
-  for (const page of doc.getPages()) {
-    page.node.delete(PDFName.of("AA"));
-  }
+  await step("strip JavaScript / OpenAction / AA", () => {
+    const namesAny = catalog.lookupMaybe(PDFName.of("Names"), undefined as never) as unknown;
+    if (namesAny && typeof namesAny === "object" && "delete" in (namesAny as object)) {
+      const d = (namesAny as { delete: (k: unknown) => void }).delete.bind(namesAny);
+      try { d(PDFName.of("JavaScript")); } catch { /* not a dict — ignore */ }
+    }
+    catalog.delete(PDFName.of("OpenAction"));
+    catalog.delete(PDFName.of("AA"));
+    for (const page of doc.getPages()) {
+      page.node.delete(PDFName.of("AA"));
+    }
+  });
 
   // 2) Embed sRGB ICC profile -------------------------------------------
-  const icc = srgbIccBytes();
-  const iccStream = ctx.stream(icc, { N: 3, Length: icc.length });
-  const iccRef = ctx.register(iccStream);
+  const iccRef = await step("embed sRGB ICC profile", () => {
+    const icc = srgbIccBytes();
+    const iccStream = ctx.stream(icc, { N: 3, Length: icc.length });
+    return ctx.register(iccStream);
+  });
 
   // 3) OutputIntent dictionary ------------------------------------------
-  const outputIntentDict = ctx.obj({
-    Type: "OutputIntent",
-    S: "GTS_PDFA1",
+  await step("attach OutputIntent", () => {
+    const outputIntentDict = ctx.obj({
+      Type: "OutputIntent",
+      S: "GTS_PDFA1",
+    });
+    outputIntentDict.set(
+      PDFName.of("OutputConditionIdentifier"),
+      PDFString.of("sRGB IEC61966-2.1"),
+    );
+    outputIntentDict.set(PDFName.of("Info"), PDFString.of("sRGB IEC61966-2.1"));
+    outputIntentDict.set(PDFName.of("RegistryName"), PDFString.of("http://www.color.org"));
+    outputIntentDict.set(PDFName.of("DestOutputProfile"), iccRef);
+    catalog.set(PDFName.of("OutputIntents"), ctx.obj([outputIntentDict]));
   });
-  // OutputConditionIdentifier / Info must be PDFStrings (text), not names.
-  outputIntentDict.set(
-    PDFName.of("OutputConditionIdentifier"),
-    PDFString.of("sRGB IEC61966-2.1"),
-  );
-  outputIntentDict.set(PDFName.of("Info"), PDFString.of("sRGB IEC61966-2.1"));
-  outputIntentDict.set(PDFName.of("RegistryName"), PDFString.of("http://www.color.org"));
-  outputIntentDict.set(PDFName.of("DestOutputProfile"), iccRef);
-  catalog.set(PDFName.of("OutputIntents"), ctx.obj([outputIntentDict]));
 
   // 4) XMP /Metadata stream with PDF/A markers --------------------------
-  const xmp = buildPdfAXmp({
-    title: doc.getTitle(),
-    author: doc.getAuthor(),
-    producer: "VaultPDF (PDF/A-2b)",
-    createdAt: doc.getCreationDate() ?? new Date(),
+  await step("write XMP metadata (pdfaid part=2 conformance=B)", () => {
+    const xmp = buildPdfAXmp({
+      title: doc.getTitle(),
+      author: doc.getAuthor(),
+      producer: "VaultPDF (PDF/A-2b)",
+      createdAt: doc.getCreationDate() ?? new Date(),
+    });
+    const xmpBytes = new TextEncoder().encode(xmp);
+    const xmpStream = ctx.stream(xmpBytes, {
+      Type: "Metadata",
+      Subtype: "XML",
+      Length: xmpBytes.length,
+    });
+    const xmpRef = ctx.register(xmpStream);
+    catalog.set(PDFName.of("Metadata"), xmpRef);
   });
-  const xmpBytes = new TextEncoder().encode(xmp);
-  const xmpStream = ctx.stream(xmpBytes, {
-    Type: "Metadata",
-    Subtype: "XML",
-    Length: xmpBytes.length,
-  });
-  const xmpRef = ctx.register(xmpStream);
-  catalog.set(PDFName.of("Metadata"), xmpRef);
 
   // 5) Document info ----------------------------------------------------
-  doc.setProducer("VaultPDF (PDF/A-2b)");
-  if (!doc.getCreationDate()) doc.setCreationDate(new Date());
-  doc.setModificationDate(new Date());
-
-  // 6) Trailer /ID — clause 6.1.3 requires a non-empty File Identifier.
-  const id = PDFArray.withContext(ctx);
-  id.push(randomHexString(16));
-  id.push(randomHexString(16));
-  // trailerInfo.ID is honoured by pdf-lib's writer.
-  (ctx.trailerInfo as { ID?: PDFArray }).ID = id;
-
-  // Save without object streams for maximum validator compatibility.
-  const saved = await doc.save({
-    updateFieldAppearances: false,
-    useObjectStreams: false,
+  await step("update document info", () => {
+    doc.setProducer("VaultPDF (PDF/A-2b)");
+    if (!doc.getCreationDate()) doc.setCreationDate(new Date());
+    doc.setModificationDate(new Date());
   });
 
-  // PDF/A-2 requires header ≥ 1.7.
+  // 6) Trailer /ID — clause 6.1.3 requires a non-empty File Identifier.
+  await step("write trailer /ID", () => {
+    const id = PDFArray.withContext(ctx);
+    id.push(randomHexString(16));
+    id.push(randomHexString(16));
+    (ctx.trailerInfo as { ID?: PDFArray }).ID = id;
+  });
+
+  const saved = await step("save (no object streams, header 1.7)", () =>
+    doc.save({ updateFieldAppearances: false, useObjectStreams: false }),
+  );
+
   return ensurePdfHeader(saved, "1.7");
 }
 
