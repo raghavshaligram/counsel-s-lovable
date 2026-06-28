@@ -502,13 +502,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <main className="flex-1 min-h-0 pb-28">{children}</main>
 
-      <footer className="border-t border-border px-5 md:px-8 py-6 pb-28 text-xs text-muted-foreground flex flex-col sm:flex-row justify-between gap-2">
+      <footer className="border-t border-border px-5 md:px-8 py-6 pb-28 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>&copy; {new Date().getFullYear()} VaultPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <Link to="/verify-privacy" className="text-vault hover:underline underline-offset-4 font-medium">Verify our privacy</Link>
+          <Link to="/security-architecture" className="text-vault hover:underline underline-offset-4 font-medium">Security</Link>
+          <span className="text-border">·</span>
           <Link to="/" className="hover:text-foreground">Home</Link>
           <Link to="/pricing" className="hover:text-foreground">Pricing</Link>
-          <Link to="/verify-privacy" className="hover:text-foreground">Verify our privacy</Link>
-          <Link to="/security-architecture" className="hover:text-foreground">Security</Link>
         </div>
       </footer>
 
