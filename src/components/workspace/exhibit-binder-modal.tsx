@@ -448,11 +448,8 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
                 </p>
               </Field>
             )}
-            {false && (
-              <Field label="ToC title">
-                <input disabled className="hidden" />
-              </Field>
-            )}
+
+
 
             <Field label="Continuous numbering">
               <div className="flex gap-1.5">
