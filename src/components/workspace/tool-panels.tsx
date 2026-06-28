@@ -1037,6 +1037,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [findings, setFindings] = useState<Det[] | null>(null);
   const [usedOcr, setUsedOcr] = useState(false);
   const [scannedPages, setScannedPages] = useState<number[]>([]);
+  const [lowConfOcrPages, setLowConfOcrPages] = useState<number[]>([]);
   const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
