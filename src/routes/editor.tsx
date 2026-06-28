@@ -283,6 +283,18 @@ function Editor() {
         protect: state.protect ?? undefined,
       };
       const bytes = await exportEditedPdf(state.doc, settings);
+      const redactionTargets = state.doc.annotations.flatMap((a) => {
+        if (a.kind !== "redact" || !a.sources?.length) return [];
+        return a.sources
+          .map((s) => ({ page: a.page, text: (s.redactText || s.originalString || "").trim() }))
+          .filter((t) => t.text.length > 0);
+      });
+      if (redactionTargets.length > 0) {
+        toast.loading("Verifying redactions…", { id: "exp" });
+        const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
+        const check = await verifyRedactionRemoval(bytes, redactionTargets);
+        if (!check.ok) throw new Error(`${check.leaks.length} redacted fragment${check.leaks.length === 1 ? " is" : "s are"} still extractable`);
+      }
       toast.success("Done", { id: "exp" });
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);

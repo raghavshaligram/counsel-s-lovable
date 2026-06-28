@@ -113,6 +113,21 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         });
       }
 
+      const redactionTargets = doc.annotations.flatMap((a) => {
+        if (a.kind !== "redact" || !a.sources?.length) return [];
+        return a.sources
+          .map((s) => ({ page: a.page, text: (s.redactText || s.originalString || "").trim() }))
+          .filter((t) => t.text.length > 0);
+      });
+      if (redactionTargets.length > 0) {
+        toast.loading("Verifying redactions…", { id: tid });
+        const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
+        const check = await verifyRedactionRemoval(bytes, redactionTargets);
+        if (!check.ok) {
+          throw new Error(`${check.leaks.length} redacted fragment${check.leaks.length === 1 ? " is" : "s are"} still extractable`);
+        }
+      }
+
       const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
       await downloadPdf(bytes, outName);
 
