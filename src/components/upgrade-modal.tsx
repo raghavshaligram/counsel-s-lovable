@@ -96,6 +96,7 @@ const TIERS: Tier[] = [
 export function UpgradeModal() {
   const { open, reason, close } = useUpgradeModal();
   const navigate = useNavigate();
+  const openLogin = useLoginModal((s) => s.openLogin);
   const checkout = useServerFn(createMyCheckout);
   const [pending, setPending] = useState<Tier["id"] | null>(null);
 
