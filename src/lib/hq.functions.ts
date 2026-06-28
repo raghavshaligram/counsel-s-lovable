@@ -264,7 +264,18 @@ export const hqUpdateOffer = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { id, ...rest } = data;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const patch: Record<string, unknown> = {};
+    const patch: {
+      name?: string;
+      description?: string | null;
+      discount_type?: "percent" | "amount";
+      discount_value?: number;
+      stripe_coupon_id?: string | null;
+      checkout_url?: string | null;
+      starts_at?: string | null;
+      ends_at?: string | null;
+      enabled?: boolean;
+      target_plan?: "all" | "free" | "solo" | "firm";
+    } = {};
     if (rest.name !== undefined) patch.name = rest.name;
     if (rest.description !== undefined) patch.description = rest.description;
     if (rest.discountType !== undefined) patch.discount_type = rest.discountType;
