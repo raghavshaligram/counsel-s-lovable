@@ -3402,7 +3402,7 @@ function ToolModal({
                           >
                             {tool.label}
                           </span>
-                          {PAID_TOOL_IDS.has(tool.id) && <LockBadgeMaybe toolId={tool.id} />}
+                          {PAID_TOOL_IDS.has(tool.id) && !isPro && <LockBadge />}
                           {isPinned && (
                             <span
                               aria-hidden
