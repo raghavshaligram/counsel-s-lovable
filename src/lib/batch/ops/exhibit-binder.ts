@@ -11,7 +11,7 @@
  * responsive on large sets. Reuses `addBates` for numbering parity with
  * the rest of the app.
  */
-import { PDFDocument, PDFName, PDFArray, rgb } from "pdf-lib";
+import { PDFDocument, PDFName, PDFArray, rgb, type PDFPage } from "pdf-lib";
 import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import { addBates, type BatesOpts } from "./bates";
 
@@ -84,6 +84,30 @@ export function exhibitLabel(index: number, scheme: ExhibitLabelScheme): string 
   return s;
 }
 
+/**
+ * Clean display titles from filenames or editable title fields. This is kept
+ * in the builder (not only the modal) so exported binders never fall back to
+ * raw names like "04_ExhibitC_Financials.pdf" or "exC invoices".
+ */
+export function cleanExhibitTitle(name: string, title?: string): string {
+  const fallback = name.replace(/\.pdf$/i, "");
+  let s = (title?.trim() || fallback).replace(/\.pdf$/i, "");
+
+  s = s.replace(/^[\s_.-]*\d+[\s_.-]+/i, "");
+  s = s.replace(/(^|[\s_.-]+)(?:exhibit|exh)[\s_.-]*[A-Z0-9]{1,4}(?=$|[\s_.-]+)/gi, " ");
+  s = s.replace(/(^|[\s_.-]+)ex[\s_.-]*[A-Z0-9]{1,4}(?=$|[\s_.-]+)/gi, " ");
+  s = s.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+
+  const cleaned = s || fallback.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || name;
+  return cleaned
+    .split(" ")
+    .map((word) => {
+      if (/^[A-Z0-9-]{2,}$/.test(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
 const yieldUi = () =>
   new Promise<void>((r) => {
     if (typeof window !== "undefined" && "requestAnimationFrame" in window) {
@@ -108,13 +132,9 @@ function truncateToWidth(
 }
 
 /**
- * Build the binder. Steps:
- *   1. Copy brief pages.
- *   2. For each exhibit: append slip-sheet, then exhibit pages; record
- *      slip-sheet index (BEFORE ToC pages are prepended).
- *   3. Insert N blank ToC pages at the front, shift recorded indexes.
- *   4. Draw ToC text + GoTo link annotations to each slip-sheet.
- *   5. Save, then optionally re-open and apply Bates / page numbers.
+ * Build the binder from ONE ordered exhibit array. The same entry supplies
+ * the slip-sheet label/title, appended pages, ToC row, hyperlink target, and
+ * actual recorded start page so labels and content cannot desync.
  */
 export async function buildExhibitBinder(
   opts: BinderOpts,
@@ -124,6 +144,40 @@ export async function buildExhibitBinder(
   const helv = await embedStandardFont(out, "Helvetica");
   const helvBold = await embedStandardFont(out, "HelveticaBold");
   const labelPrefix = opts.labelPrefix ?? "Exhibit ";
+  const ENTRIES_PER_PAGE = 28;
+
+  type OrderedExhibit = {
+    file: ExhibitInput;
+    label: string;
+    title: string;
+    actualStartPage: number;
+    pageCount: number;
+  };
+
+  const orderedExhibits: OrderedExhibit[] = opts.exhibits.map((file, index) => ({
+    file,
+    label: file.label?.trim()
+      ? file.label.trim()
+      : `${labelPrefix}${exhibitLabel(index, opts.labelScheme)}`,
+    title: cleanExhibitTitle(file.name, file.title),
+    actualStartPage: 0,
+    pageCount: 0,
+  }));
+
+  logBinderDebug("ordered exhibits", orderedExhibits);
+
+  // Reserve ToC pages first so all subsequent page numbers are final physical
+  // page numbers. ToC content is drawn only after assembly, using recorded
+  // actualStartPage values from the same ordered entries.
+  const tocPageCount = opts.includeToc && orderedExhibits.length > 0
+    ? Math.max(1, Math.ceil(orderedExhibits.length / ENTRIES_PER_PAGE))
+    : 0;
+  const tocPages: PDFPage[] = [];
+  for (let i = 0; i < tocPageCount; i++) {
+    tocPages.push(out.addPage([612, 792]));
+  }
+
+  let pageCounter = tocPageCount + 1;
 
   // 1. Brief
   if (opts.brief) {
@@ -131,68 +185,51 @@ export async function buildExhibitBinder(
     const briefDoc = await PDFDocument.load(opts.brief.bytes, { ignoreEncryption: true });
     const copied = await out.copyPages(briefDoc, briefDoc.getPageIndices());
     for (const p of copied) out.addPage(p);
+    pageCounter += copied.length;
     onProgress?.({ phase: "brief", current: 1, total: 1, label: opts.brief.name });
     await yieldUi();
   }
 
-  // 2. Exhibits with slip-sheets
-  type Tracked = { label: string; title: string; slipIndex: number };
-  const tracked: Tracked[] = [];
-
-  // ORDER GUARANTEE: iterate the caller's array in-place by index.
-  // Slip-sheet, ToC entry, and merged pages for position `i` all come from
-  // opts.exhibits[i] in the same iteration — there is no second pass that
-  // could re-order them. The label is either the caller's explicit override
-  // (e.g. user-confirmed "Exhibit A") or computed from this same index `i`.
-  for (let i = 0; i < opts.exhibits.length; i++) {
-    const ex = opts.exhibits[i];
-    const label = ex.label?.trim()
-      ? ex.label.trim()
-      : `${labelPrefix}${exhibitLabel(i, opts.labelScheme)}`;
-    const title = (ex.title ?? ex.name.replace(/\.pdf$/i, "")).trim() || ex.name;
-    onProgress?.({ phase: "exhibits", current: i + 1, total: opts.exhibits.length, label });
+  // 2. Exhibits with slip-sheets. This is the only loop that adds exhibit
+  // content; the same orderedExhibits[i] entry is mutated with its real page.
+  for (let i = 0; i < orderedExhibits.length; i++) {
+    const exhibit = orderedExhibits[i];
+    onProgress?.({ phase: "exhibits", current: i + 1, total: orderedExhibits.length, label: exhibit.label });
 
     const slip = out.addPage([612, 792]); // US Letter
-    drawSlipSheet(slip, label, title, helv, helvBold);
-    const slipIndex = out.getPageCount() - 1;
+    drawSlipSheet(slip, exhibit.label, exhibit.title, helv, helvBold);
+    exhibit.actualStartPage = pageCounter;
+    pageCounter += 1;
 
-    const exDoc = await PDFDocument.load(ex.bytes, { ignoreEncryption: true });
+    const exDoc = await PDFDocument.load(exhibit.file.bytes, { ignoreEncryption: true });
     const copied = await out.copyPages(exDoc, exDoc.getPageIndices());
     for (const p of copied) out.addPage(p);
+    exhibit.pageCount = copied.length;
+    pageCounter += copied.length;
 
-    tracked.push({ label, title, slipIndex });
+    logBinderDebug("computed start page", orderedExhibits, i);
     await yieldUi();
   }
 
-  // 3. Insert ToC pages at the front (in increasing index so they end up
-  //    in order at positions 0..N-1).
-  let tocPageCount = 0;
-  const ENTRIES_PER_PAGE = 28;
-  if (opts.includeToc && tracked.length > 0) {
-    tocPageCount = Math.max(1, Math.ceil(tracked.length / ENTRIES_PER_PAGE));
-    const tocPages = [];
-    for (let i = 0; i < tocPageCount; i++) {
-      tocPages.push(out.insertPage(i, [612, 792]));
-    }
-    // Body pages have shifted by tocPageCount.
-    for (const t of tracked) t.slipIndex += tocPageCount;
-
-    onProgress?.({ phase: "toc", current: 0, total: tracked.length });
+  // 3. Draw ToC after assembly from the same ordered array and its recorded
+  //    actualStartPage values. No guessed page numbers or separate lists.
+  if (tocPages.length > 0) {
+    onProgress?.({ phase: "toc", current: 0, total: orderedExhibits.length });
     drawToc({
       doc: out,
       tocPages,
-      entries: tracked.map((t) => ({
-        label: t.label,
-        title: t.title,
-        targetPage: out.getPage(t.slipIndex),
-        targetPageNumber: t.slipIndex + 1,
+      entries: orderedExhibits.map((entry) => ({
+        label: entry.label,
+        title: entry.title,
+        targetPage: out.getPage(entry.actualStartPage - 1),
+        targetPageNumber: entry.actualStartPage,
       })),
       title: opts.tocTitle ?? "Table of Contents",
       font: helv,
       fontBold: helvBold,
       entriesPerPage: ENTRIES_PER_PAGE,
     });
-    onProgress?.({ phase: "toc", current: tracked.length, total: tracked.length });
+    onProgress?.({ phase: "toc", current: orderedExhibits.length, total: orderedExhibits.length });
     await yieldUi();
   }
 
@@ -215,16 +252,40 @@ export async function buildExhibitBinder(
 
   return {
     bytes,
-    entries: tracked.map((t) => ({
-      label: t.label,
-      title: t.title,
-      pageNumber: t.slipIndex + 1,
+    entries: orderedExhibits.map((entry) => ({
+      label: entry.label,
+      title: entry.title,
+      pageNumber: entry.actualStartPage,
     })),
-    totalPages:
-      (opts.brief ? 0 : 0) +
-      tocPageCount +
-      (await PDFDocument.load(bytes, { ignoreEncryption: true })).getPageCount(),
+    totalPages: (await PDFDocument.load(bytes, { ignoreEncryption: true })).getPageCount(),
   };
+}
+
+function logBinderDebug(
+  message: string,
+  exhibits: Array<{
+    file: ExhibitInput;
+    label: string;
+    title: string;
+    actualStartPage: number;
+    pageCount: number;
+  }>,
+  index?: number,
+) {
+  if (typeof console === "undefined") return;
+  const rows = exhibits.map((entry, i) => ({
+    position: i + 1,
+    file: entry.file.name,
+    label: entry.label,
+    title: entry.title,
+    startPage: entry.actualStartPage || null,
+    pageCount: entry.pageCount || null,
+  }));
+  if (typeof index === "number") {
+    console.debug(`[exhibit-binder] ${message}`, rows[index]);
+  } else {
+    console.debug(`[exhibit-binder] ${message}`, rows);
+  }
 }
 
 /* ───────────────────── Slip-sheet ───────────────────── */
