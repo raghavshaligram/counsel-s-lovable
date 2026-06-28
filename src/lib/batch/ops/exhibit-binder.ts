@@ -23,6 +23,10 @@ export interface ExhibitInput {
   name: string;
   /** Optional display title shown in ToC + slip-sheet. Falls back to name. */
   title?: string;
+  /** Optional explicit label override (e.g. "Exhibit A"). When provided,
+   *  this exact string is used on the slip-sheet AND ToC — no recomputation
+   *  from index. Pass this when the user has confirmed letters per row. */
+  label?: string;
   bytes: Uint8Array;
 }
 
@@ -135,9 +139,16 @@ export async function buildExhibitBinder(
   type Tracked = { label: string; title: string; slipIndex: number };
   const tracked: Tracked[] = [];
 
+  // ORDER GUARANTEE: iterate the caller's array in-place by index.
+  // Slip-sheet, ToC entry, and merged pages for position `i` all come from
+  // opts.exhibits[i] in the same iteration — there is no second pass that
+  // could re-order them. The label is either the caller's explicit override
+  // (e.g. user-confirmed "Exhibit A") or computed from this same index `i`.
   for (let i = 0; i < opts.exhibits.length; i++) {
     const ex = opts.exhibits[i];
-    const label = `${labelPrefix}${exhibitLabel(i, opts.labelScheme)}`;
+    const label = ex.label?.trim()
+      ? ex.label.trim()
+      : `${labelPrefix}${exhibitLabel(i, opts.labelScheme)}`;
     const title = (ex.title ?? ex.name.replace(/\.pdf$/i, "")).trim() || ex.name;
     onProgress?.({ phase: "exhibits", current: i + 1, total: opts.exhibits.length, label });
 
@@ -310,12 +321,14 @@ function drawToc(args: {
     for (const e of slice) {
       const right = String(e.targetPageNumber);
       const rw = font.widthOfTextAtSize(right, itemSize);
-      const labelW = fontBold.widthOfTextAtSize(e.label, itemSize);
-      const titleX = 72 + labelW + 12;
+      const sep = " — ";
+      const labelWithSep = e.label + sep;
+      const labelW = fontBold.widthOfTextAtSize(labelWithSep, itemSize);
+      const titleX = 72 + labelW;
       const titleMax = width - 72 - rw - 18 - titleX;
       const titleTxt = truncateToWidth(e.title, font, itemSize, Math.max(40, titleMax));
 
-      page.drawText(e.label, { x: 72, y, size: itemSize, font: fontBold, color: linkColor });
+      page.drawText(labelWithSep, { x: 72, y, size: itemSize, font: fontBold, color: linkColor });
       page.drawText(titleTxt, { x: titleX, y, size: itemSize, font, color: linkColor });
       page.drawText(right, { x: width - 72 - rw, y, size: itemSize, font, color: linkColor });
 

@@ -31,6 +31,7 @@ interface ExhibitRow {
   size: number;
   bytes: Uint8Array;
   title: string; // editable display title
+  labelOverride: string; // editable label (e.g. "Exhibit A"); empty = auto
 }
 
 const POSITIONS: { value: BatesPosition; label: string }[] = [
@@ -44,6 +45,20 @@ const POSITIONS: { value: BatesPosition; label: string }[] = [
 
 function readPdf(f: File): Promise<Uint8Array> {
   return f.arrayBuffer().then((b) => new Uint8Array(b));
+}
+
+/** Turn a filename like "04_ExhibitC_Financials.pdf" into "Financials"
+ *  (or the cleanest readable title we can derive). Strips:
+ *   - .pdf extension
+ *   - leading numeric prefixes "04_" / "04-" / "04 "
+ *   - embedded "Exhibit X_" / "Exhibit X-" tokens
+ *   - underscores → spaces, collapsed whitespace */
+function cleanTitleFromName(name: string): string {
+  let s = name.replace(/\.pdf$/i, "");
+  s = s.replace(/^[\s_\-.]*\d+[\s_\-.]+/i, "");
+  s = s.replace(/\bExhibit[\s_\-]*[A-Z0-9]+[\s_\-]*/gi, "");
+  s = s.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+  return s || name.replace(/\.pdf$/i, "");
 }
 
 export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
@@ -86,7 +101,8 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       name: f.name,
       size: f.size,
       bytes: await readPdf(f),
-      title: f.name.replace(/\.pdf$/i, ""),
+      title: cleanTitleFromName(f.name),
+      labelOverride: "",
     });
   }, []);
 
@@ -100,7 +116,8 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
         name: f.name,
         size: f.size,
         bytes: await readPdf(f),
-        title: f.name.replace(/\.pdf$/i, ""),
+        title: cleanTitleFromName(f.name),
+        labelOverride: "",
       });
     }
     if (incoming.length === 0) {
@@ -124,12 +141,23 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
     setExhibits((cur) => cur.map((r) => (r.id === id ? { ...r, title } : r)));
   }, []);
 
+  const setLabelFor = useCallback((id: string, labelOverride: string) => {
+    setExhibits((cur) => cur.map((r) => (r.id === id ? { ...r, labelOverride } : r)));
+  }, []);
+
   const removeAt = useCallback((id: string) => {
     setExhibits((cur) => cur.filter((r) => r.id !== id));
   }, []);
 
+  /** Per-row effective label: user override (if any) else computed from
+   *  position in the ordered array. SAME source array drives the build. */
   const previewLabels = useMemo(
-    () => exhibits.map((_, i) => `${labelPrefix}${exhibitLabel(i, labelScheme)}`),
+    () =>
+      exhibits.map((r, i) =>
+        r.labelOverride.trim()
+          ? r.labelOverride.trim()
+          : `${labelPrefix}${exhibitLabel(i, labelScheme)}`,
+      ),
     [exhibits, labelScheme, labelPrefix],
   );
 
@@ -154,9 +182,10 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
           brief: brief
             ? { name: brief.name, title: brief.title, bytes: brief.bytes }
             : null,
-          exhibits: exhibits.map((e) => ({
+          exhibits: exhibits.map((e, i) => ({
             name: e.name,
             title: e.title,
+            label: previewLabels[i], // single ordered source of truth
             bytes: e.bytes,
           })),
           labelScheme,
@@ -190,7 +219,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
       setProgress(null);
     }
   }, [
-    brief, exhibits, labelScheme, labelPrefix, includeToc, tocTitle,
+    brief, exhibits, previewLabels, labelScheme, labelPrefix, includeToc, tocTitle,
     numbering, bates, skipNumberingOnToc, outputName, onClose,
   ]);
 
@@ -315,14 +344,20 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
                       className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px]"
                     >
                       <GripVertical className="h-3.5 w-3.5 cursor-grab text-text-2" />
-                      <span className="shrink-0 rounded bg-vault/15 px-1.5 py-0.5 font-mono text-[10.5px] text-vault">
-                        {previewLabels[idx]}
-                      </span>
+                      <input
+                        value={r.labelOverride}
+                        disabled={busy}
+                        onChange={(e) => setLabelFor(r.id, e.target.value)}
+                        placeholder={`${labelPrefix}${exhibitLabel(idx, labelScheme)}`}
+                        title="Exhibit label (leave blank to auto-assign in order)"
+                        className="w-[88px] shrink-0 rounded bg-vault/15 px-1.5 py-0.5 text-center font-mono text-[10.5px] text-vault outline-none placeholder:text-vault/60 focus:ring-1 focus:ring-vault/40"
+                      />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <input
                           value={r.title}
                           disabled={busy}
                           onChange={(e) => rename(r.id, e.target.value)}
+                          placeholder="Exhibit title"
                           className="w-full truncate bg-transparent text-foreground outline-none focus:ring-1 focus:ring-vault/40"
                         />
                         <span className="truncate text-[10.5px] text-text-2">{r.name}</span>
