@@ -43,6 +43,7 @@ import { Route as BatesRouteImport } from './routes/bates'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
@@ -214,6 +215,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
   id: '/account',
   path: '/account',
@@ -255,6 +261,7 @@ export interface FileRoutesByFullPath {
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
   '/account': typeof AuthenticatedAccountRoute
+  '/billing': typeof AuthenticatedBillingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -291,6 +298,7 @@ export interface FileRoutesByTo {
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
   '/account': typeof AuthenticatedAccountRoute
+  '/billing': typeof AuthenticatedBillingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -329,6 +337,7 @@ export interface FileRoutesById {
   '/word-to-pdf': typeof WordToPdfRoute
   '/workspace': typeof WorkspaceRoute
   '/_authenticated/account': typeof AuthenticatedAccountRoute
+  '/_authenticated/billing': typeof AuthenticatedBillingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -367,6 +376,7 @@ export interface FileRouteTypes {
     | '/word-to-pdf'
     | '/workspace'
     | '/account'
+    | '/billing'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -403,6 +413,7 @@ export interface FileRouteTypes {
     | '/word-to-pdf'
     | '/workspace'
     | '/account'
+    | '/billing'
   id:
     | '__root__'
     | '/'
@@ -440,6 +451,7 @@ export interface FileRouteTypes {
     | '/word-to-pdf'
     | '/workspace'
     | '/_authenticated/account'
+    | '/_authenticated/billing'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -719,6 +731,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/billing': {
+      id: '/_authenticated/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof AuthenticatedBillingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/account': {
       id: '/_authenticated/account'
       path: '/account'
@@ -731,10 +750,12 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
+  AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccountRoute: AuthenticatedAccountRoute,
+  AuthenticatedBillingRoute: AuthenticatedBillingRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
