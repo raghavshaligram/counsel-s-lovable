@@ -4,6 +4,7 @@ import {
   Download,
   Files,
   Shield,
+  ShieldCheck,
   PenLine,
   RefreshCw,
   KeyRound,
