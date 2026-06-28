@@ -3,31 +3,108 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Check, X, ArrowRight, Minus, WifiOff, Plane } from "lucide-react";
 
+const SEO_TITLE =
+  "VaultPDF — Private PDF Redaction & Bates Stamping for Lawyers";
+const SEO_DESCRIPTION =
+  "Redact, Bates-stamp, and review PDFs for privilege entirely on your device. Built for solo and small-firm lawyers. Nothing uploaded. Works offline.";
+
+const FAQ: Array<{ q: string; a: string }> = [
+  {
+    q: "How do I redact a PDF for court?",
+    a: "Open the PDF in VaultPDF's Redact tool, let the on-device detector find names, Social Security numbers, account numbers and addresses, confirm each box, then export. VaultPDF burns the text out of the underlying content stream — it does not just paint a black rectangle over it — so the redacted version is safe to file under FRCP 5.2 and equivalent state rules.",
+  },
+  {
+    q: "Is browser-based PDF redaction secure?",
+    a: "Yes, when the tool is genuinely on-device. VaultPDF runs entirely in your browser using WebAssembly. Your documents are never uploaded to a server. You can verify this yourself: open DevTools, watch the Network panel, and run any tool on a real file — you will see the JavaScript bundle load and nothing else.",
+  },
+  {
+    q: "Does VaultPDF work offline?",
+    a: "Yes. After the first load the entire app is cached as a progressive web app. Disconnect from Wi-Fi and you can still redact, Bates-stamp, OCR, sanitize, sign and merge PDFs in an airplane, a courthouse, or any room without internet.",
+  },
+  {
+    q: "How is VaultPDF different from Adobe Acrobat?",
+    a: "Acrobat is a desktop install that processes documents locally but is priced and licensed for enterprises. Cloud redaction services upload your files to a server you do not control. VaultPDF runs in any browser on Windows, Mac or iPad, keeps every document on your device, and is priced for solo and small-firm lawyers — without giving up the legal-grade redaction, Bates and privilege-review workflows you need.",
+  },
+  {
+    q: "Can I Bates stamp a whole discovery production at once?",
+    a: "Yes. Drop a folder of PDFs into the Bates tool, set a prefix and starting number, and VaultPDF stamps every page across every file with consistent placement and padding in a single pass — without uploading anything.",
+  },
+];
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "VaultPDF — On-device PDF tools for solo & small-firm lawyers" },
-      {
-        name: "description",
-        content:
-          "Redact, Bates-stamp, privilege-review and sanitize PDFs without uploading. Your documents never leave your device — you sign in only to verify your subscription.",
-      },
-      { property: "og:title", content: "VaultPDF — Legal PDF tools that stay on your device" },
-      {
-        property: "og:description",
-        content:
-          "Built for solo and small-firm lawyers. Redaction, Bates, privilege review and sanitize — all on-device. Founder's rate available.",
-      },
+      { title: SEO_TITLE },
+      { name: "description", content: SEO_DESCRIPTION },
+      { name: "keywords", content: "redact PDF for court, Bates numbering, privileged documents, redaction software for law firms, strip metadata before filing, FRCP 5.2, discovery, on-device PDF editor" },
+      { property: "og:title", content: SEO_TITLE },
+      { property: "og:description", content: SEO_DESCRIPTION },
       { property: "og:type", content: "website" },
       { property: "og:url", content: "/" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "VaultPDF — Legal PDF tools that stay on your device" },
-      {
-        name: "twitter:description",
-        content: "Redact, Bates, privilege review, sanitize. On-device. For solo and small-firm lawyers.",
-      },
+      { name: "twitter:title", content: SEO_TITLE },
+      { name: "twitter:description", content: SEO_DESCRIPTION },
     ],
     links: [{ rel: "canonical", href: "/" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "VaultPDF",
+          description: SEO_DESCRIPTION,
+          applicationCategory: "BusinessApplication",
+          applicationSubCategory: "Legal PDF Editor",
+          operatingSystem: "Web",
+          url: "/",
+          offers: [
+            {
+              "@type": "Offer",
+              name: "Free",
+              price: "0",
+              priceCurrency: "USD",
+              description: "Free on-device PDF tools forever.",
+            },
+            {
+              "@type": "Offer",
+              name: "Solo — founder's rate",
+              price: "17",
+              priceCurrency: "USD",
+              description: "Per month, billed annually. All Pro workflows for a solo practice.",
+            },
+            {
+              "@type": "Offer",
+              name: "Small-firm annual pass",
+              price: "1490",
+              priceCurrency: "USD",
+              description: "Per year, up to 10 seats.",
+            },
+          ],
+          featureList: [
+            "On-device PDF redaction",
+            "Bates numbering across files",
+            "Privilege review",
+            "Sanitize and strip metadata before filing",
+            "OCR (make searchable)",
+            "Works offline as a PWA",
+          ],
+          publisher: { "@type": "Organization", name: "VaultPDF" },
+        }),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: FAQ.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
+        }),
+      },
+    ],
   }),
   component: Landing,
 });
@@ -69,21 +146,26 @@ function Landing() {
         <div className="relative mx-auto max-w-7xl px-5 md:px-8 pt-16 md:pt-24 pb-20 md:pb-28">
           <div className="grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 items-center">
             <div className="reveal">
-              <div className="font-mono text-[11px] text-muted-foreground mb-8 flex items-center gap-2">
+              <div className="font-mono text-[11px] text-muted-foreground mb-6 flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-vault animate-pulse" />
                 For solo &amp; small-firm lawyers
               </div>
-              <h1
+              <h1 className="text-sm md:text-base font-semibold tracking-tight text-vault mb-5">
+                Private PDF Redaction &amp; Bates Stamping, Built for Lawyers
+              </h1>
+              <p
                 className="font-display leading-[0.92] tracking-tight"
                 style={{ fontSize: "clamp(2.75rem, 7.5vw, 6.25rem)" }}
+                aria-hidden="true"
               >
                 Documents you'd
                 <br />
                 <span className="italic text-vault">never upload.</span>
-              </h1>
+              </p>
               <p className="mt-8 max-w-md text-base md:text-lg text-muted-foreground leading-relaxed">
-                Redact, Bates-stamp, privilege-review and sanitize PDFs entirely on your device.
-                You sign in only to verify your subscription — your files are never uploaded. Works offline.
+                Redact PDFs for court, Bates-stamp a discovery set, review for privilege and
+                strip metadata before filing — entirely on your device. No Adobe required.
+                Your files never upload, and VaultPDF keeps working offline.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-4">
                 <Link
@@ -126,9 +208,9 @@ function Landing() {
                 className="font-display leading-[0.95] tracking-tight"
                 style={{ fontSize: "clamp(2.25rem, 7vw, 5.5rem)" }}
               >
-                No bytes leave
+                Redact privileged documents
                 <br />
-                <span className="italic">this tab.</span>
+                <span className="italic">— on your device.</span>
               </h2>
               <div className="mt-10 space-y-5 max-w-lg text-muted-foreground leading-relaxed">
                 <p>
@@ -168,9 +250,9 @@ function Landing() {
                 className="font-display leading-[0.95] tracking-tight"
                 style={{ fontSize: "clamp(2.25rem, 7vw, 5.5rem)" }}
               >
-                Pull the plug.
+                Works offline
                 <br />
-                <span className="italic text-vault">It still works.</span>
+                <span className="italic text-vault">— no installation.</span>
               </h2>
               <div className="mt-10 space-y-5 max-w-lg text-muted-foreground leading-relaxed">
                 <p>
@@ -199,8 +281,13 @@ function Landing() {
               className="font-display leading-[1] tracking-tight"
               style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
             >
-              Built around the work you actually do.
+              Bates stamp, redact, and strip metadata before filing.
             </h2>
+            <p className="mt-4 text-sm text-muted-foreground max-w-xl">
+              Redaction software for law firms that handles the real workflows —
+              production-ready discovery sets, FRCP 5.2-compliant redactions,
+              privilege review, and sanitization before e-filing.
+            </p>
           </div>
           <div className="grid md:grid-cols-2 gap-px bg-border rounded-xl overflow-hidden border border-border">
             <UseCase
@@ -251,7 +338,7 @@ function Landing() {
               className="font-display leading-[1] tracking-tight"
               style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
             >
-              The honest comparison.
+              VaultPDF vs Adobe, Kofax, and cloud redaction tools.
             </h2>
             <p className="mt-4 text-sm text-muted-foreground">
               We compare against the tools lawyers actually evaluate — not consumer PDF sites.
@@ -305,6 +392,38 @@ function Landing() {
         </div>
       </section>
 
+      {/* FAQ — answers the questions lawyers actually search for */}
+      <section className="border-b border-border" aria-labelledby="faq-heading">
+        <div className="mx-auto max-w-4xl px-5 md:px-8 py-20 md:py-28">
+          <div className="max-w-2xl mb-10 reveal">
+            <div className="font-mono text-[11px] text-muted-foreground mb-4">/ frequently asked</div>
+            <h2
+              id="faq-heading"
+              className="font-display leading-[1] tracking-tight"
+              style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
+            >
+              Questions lawyers ask before switching.
+            </h2>
+          </div>
+          <dl className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+            {FAQ.map((item) => (
+              <div key={item.q} className="p-6 md:p-7 reveal">
+                <dt>
+                  <h3 className="text-base md:text-lg font-semibold text-foreground tracking-tight">
+                    {item.q}
+                  </h3>
+                </dt>
+                <dd className="mt-3 text-sm md:text-[15px] text-muted-foreground leading-relaxed">
+                  {item.a}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+
+
       {/* CTA — bus line kept */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: "var(--gradient-glow)" }} />
@@ -354,7 +473,11 @@ function DemoCanvas() {
         <span className="ml-auto text-vault">sha256: 4f2a9c…</span>
       </div>
 
-      <div className="relative rounded-lg border border-border bg-[#f7f3ea] text-[#1a1a1a] aspect-[8.5/11] max-h-[560px] mx-auto shadow-[var(--shadow-float)] overflow-hidden">
+      <div
+        role="img"
+        aria-label="Redacted deposition transcript with burned text layer — names, social security number, account number and email all blacked out."
+        className="relative rounded-lg border border-border bg-[#f7f3ea] text-[#1a1a1a] aspect-[8.5/11] max-h-[560px] mx-auto shadow-[var(--shadow-float)] overflow-hidden"
+      >
         <div className="p-8 text-[10px] leading-[1.6] font-mono space-y-2">
           <div className="text-center font-display text-base text-black mb-4">
             DEPOSITION TRANSCRIPT — vol. III
