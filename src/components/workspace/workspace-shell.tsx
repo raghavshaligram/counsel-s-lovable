@@ -188,7 +188,13 @@ const TOOLS: RailTool[] = [
 
 
 const GROUP_ORDER: ToolGroupLabel[] = [
-  "Pages", "Convert", "Edit", "Redact", "Secure", "Layout", "Legal", "AI",
+  "Legal", "Assemble", "Edit", "Secure", "Navigate", "Pages", "Convert", "Layout", "AI",
+];
+
+/** Rail order — only these groups render in the left rail. Everything else is
+ *  accessed via the All-tools modal. */
+const RAIL_GROUP_ORDER: ToolGroupLabel[] = [
+  "Legal", "Assemble", "Edit", "Secure", "Navigate",
 ];
 
 const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
