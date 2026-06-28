@@ -62,14 +62,15 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
 
   if (!user) {
     return (
-      <Link
-        to="/auth"
+      <button
+        type="button"
+        onClick={openLogin}
         className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-surface-2"
         title="Sign in to manage your subscription"
       >
         <LogIn className="h-3.5 w-3.5" strokeWidth={2.5} />
         Sign in
-      </Link>
+      </button>
     );
   }
 
