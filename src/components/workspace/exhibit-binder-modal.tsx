@@ -141,12 +141,23 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
     setExhibits((cur) => cur.map((r) => (r.id === id ? { ...r, title } : r)));
   }, []);
 
+  const setLabelFor = useCallback((id: string, labelOverride: string) => {
+    setExhibits((cur) => cur.map((r) => (r.id === id ? { ...r, labelOverride } : r)));
+  }, []);
+
   const removeAt = useCallback((id: string) => {
     setExhibits((cur) => cur.filter((r) => r.id !== id));
   }, []);
 
+  /** Per-row effective label: user override (if any) else computed from
+   *  position in the ordered array. SAME source array drives the build. */
   const previewLabels = useMemo(
-    () => exhibits.map((_, i) => `${labelPrefix}${exhibitLabel(i, labelScheme)}`),
+    () =>
+      exhibits.map((r, i) =>
+        r.labelOverride.trim()
+          ? r.labelOverride.trim()
+          : `${labelPrefix}${exhibitLabel(i, labelScheme)}`,
+      ),
     [exhibits, labelScheme, labelPrefix],
   );
 
