@@ -608,8 +608,22 @@ function surgicalRewrite(
       showAdvance = measured.advance;
       showBaseTm = measured.baseTm;
       if (rects.length && measured.bbox && bboxIntersectsRects(measured.bbox.minX, measured.bbox.minY, measured.bbox.maxX, measured.bbox.maxY, rects)) {
-        drop = true;
-        dropReplacement = textAdvanceReplacement(text, operands, op, showAdvance, fontSize, hScale);
+        const positional = rewriteTextShowByPosition(text, operands, op, rects, {
+          ctm,
+          baseTm: measured.baseTm,
+          tlm,
+          leading: tLeading,
+          font: fonts.get(fontName) ?? DEFAULT_FONT,
+          fontSize,
+          charSpacing,
+          wordSpacing,
+          hScale,
+          textRise,
+        });
+        if (positional?.removed) {
+          drop = true;
+          dropReplacement = positional.replacement ?? textAdvanceReplacement(text, operands, op, showAdvance, fontSize, hScale);
+        }
       } else if ((op === "Tj" || op === "'") && editMap.size) {
         const last = operands[operands.length - 1];
         if (last?.kind === "str") {
