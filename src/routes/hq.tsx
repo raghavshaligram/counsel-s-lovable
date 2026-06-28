@@ -180,7 +180,7 @@ function UsersTab() {
       await fn();
       reload(true);
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message);
       reload(true);
     } finally {
       setBusy(null);
@@ -246,7 +246,7 @@ function UsersTab() {
                           const { data: me } = await supabase.auth.getUser();
                           if (me.user?.id === u.userId) await refreshLicense();
                         } catch (err) {
-                          alert((err as Error).message);
+                          toast.error((err as Error).message);
                           reload(true);
                         } finally {
                           setBusy(null);
@@ -497,7 +497,7 @@ function OffersTab() {
       setForm({ ...form, name: "", description: "" });
       reload();
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message);
     }
   };
 
@@ -681,7 +681,7 @@ function NotifsTab() {
       setForm({ ...form, title: "", body: "", linkUrl: "" });
       reload();
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message);
     }
   };
 
