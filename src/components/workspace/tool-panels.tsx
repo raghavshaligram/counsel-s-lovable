@@ -1567,8 +1567,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           {busy ? "Working…" : "Redact, export & verify"}
         </button>
         <p className="mt-1.5 text-[10.5px] text-text-muted">
-          Exports a redacted PDF, then re-parses the exported file and confirms each
-          captured fragment is gone from the text layer.
+          Exports a redacted PDF, then re-parses the exported file and confirms no
+          extractable text remains inside each redaction region.
         </p>
       </Section>
 
@@ -1586,7 +1586,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
           >
             <div className="font-medium">
-              {verify.removed} of {verify.total} text fragment{verify.total === 1 ? "" : "s"} removed
+              {verify.removed} of {verify.total} redaction region{verify.total === 1 ? "" : "s"} cleared
             </div>
             <div className="mt-0.5 text-[10.5px] opacity-80">
               Scanned {new Date(verify.scannedAt).toLocaleString()}
@@ -1595,7 +1595,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               <ul className="mt-2 space-y-1 text-[11px] text-foreground">
                 {verify.leaks.slice(0, 6).map((l, i) => (
                   <li key={i} className="font-mono">
-                    p.{l.page + 1}: <span className="text-text-2">{l.text.length > 40 ? l.text.slice(0, 40) + "…" : l.text}</span>
+                    p.{l.page + 1}: <span className="text-text-2">text remains in region</span>
                   </li>
                 ))}
                 {verify.leaks.length > 6 && (
@@ -1605,10 +1605,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
             {!verify.ok && (
               <p className="mt-2 text-[10.5px] leading-snug text-text-2">
-                These fragments still appear in the exported file&apos;s text layer (likely a
-                custom font / CMap whose Tj operand doesn&apos;t match the visible string).
-                Visual overlay still hides them on screen, but search/copy can recover them.
-                Consider exporting via Print → PDF or applying Flatten in Document Settings.
+                Extractable text still intersects one or more redaction boxes in the exported file.
+                Visual overlay still hides it on screen, but search/copy can recover it.
               </p>
             )}
           </div>
