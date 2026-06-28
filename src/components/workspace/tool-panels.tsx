@@ -1603,6 +1603,53 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       </Section>
 
+      <Section title="Redaction mode" icon={<Shield className="h-3 w-3" />}>
+        <div className="flex flex-col gap-1.5">
+          <label className={cn(
+            "flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+            maxSecurity ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+          )}>
+            <input
+              type="radio"
+              name="redact-mode"
+              checked={maxSecurity}
+              onChange={() => setMaxSecurity(true)}
+              className="mt-0.5 accent-[var(--vault,#4C7FB8)]"
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">Maximum security (recommended)</span>
+              <span className="text-text-2">
+                Flatten every redacted page to an image. The redacted text is physically
+                unrecoverable — guaranteed regardless of font or encoding. Those pages
+                lose text selectability.
+              </span>
+            </div>
+          </label>
+          <label className={cn(
+            "flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+            !maxSecurity ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+          )}>
+            <input
+              type="radio"
+              name="redact-mode"
+              checked={!maxSecurity}
+              onChange={() => setMaxSecurity(false)}
+              className="mt-0.5 accent-[var(--vault,#4C7FB8)]"
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">Standard — keep text selectable</span>
+              <span className="text-text-2">
+                Try to delete only the redacted text from the content stream. Pages
+                still containing the text after verification are automatically
+                flattened as a safety net — a leaky file is never downloaded.
+              </span>
+            </div>
+          </label>
+        </div>
+      </Section>
+
+
+
       <Section title="Export & verify" icon={<ShieldCheck className="h-3 w-3" />}>
         <button
           type="button"
