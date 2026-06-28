@@ -832,6 +832,136 @@ function fmtNum(n: number): string {
   return s === "-0" ? "0" : s;
 }
 
+function rewriteTextShowByPosition(
+  text: string,
+  operands: Tok[],
+  op: string,
+  rects: RedactRect[],
+  state: {
+    ctm: number[];
+    baseTm: number[];
+    tlm: number[];
+    leading: number;
+    font: FontMetrics;
+    fontSize: number;
+    charSpacing: number;
+    wordSpacing: number;
+    hScale: number;
+    textRise: number;
+  },
+): { removed: boolean; replacement: string | null } | null {
+  const fontSize = Math.max(Math.abs(state.fontSize) || 12, 0.1);
+  const scale = (state.hScale || 100) / 100;
+  const denom = fontSize * scale;
+  if (!Number.isFinite(denom) || Math.abs(denom) < 0.001) return null;
+
+  let baseTm = state.baseTm;
+  let charSpacing = state.charSpacing;
+  let wordSpacing = state.wordSpacing;
+  let prefix = "";
+  let parts: Tok[] = [];
+  if (op === "'" || op === '"') {
+    baseTm = mul([1, 0, 0, 1, 0, -state.leading], state.tlm);
+    prefix = "T* ";
+    if (op === '"' && operands.length >= 3) {
+      const wordTok = operands[operands.length - 3];
+      const charTok = operands[operands.length - 2];
+      wordSpacing = parseFloat(text.slice(wordTok.start, wordTok.end)) || 0;
+      charSpacing = parseFloat(text.slice(charTok.start, charTok.end)) || 0;
+      prefix = `${text.slice(wordTok.start, wordTok.end)} Tw ${text.slice(charTok.start, charTok.end)} Tc T* `;
+    }
+    if (operands.length) parts = [operands[operands.length - 1]];
+  } else if (op === "Tj") {
+    if (operands.length) parts = [operands[operands.length - 1]];
+  } else if (op === "TJ") {
+    parts = arrayOperandTokens(operands);
+  }
+  if (!parts.length) return null;
+
+  const out: string[] = [];
+  let removed = false;
+  let kept = false;
+  let x = 0;
+  let pendingAdvance = 0;
+  let keptRun: number[] = [];
+  const flushRun = () => {
+    if (keptRun.length) {
+      out.push(`<${bytesToHex(keptRun)}>`);
+      keptRun = [];
+      kept = true;
+    }
+  };
+  const pushAdvance = (adv: number) => {
+    if (Math.abs(adv) < 0.0001) return;
+    flushRun();
+    out.push(fmtNum(-adv * 1000 / denom));
+  };
+
+  for (const part of parts) {
+    if (part.kind === "num") {
+      flushRun();
+      if (pendingAdvance) { pushAdvance(pendingAdvance); pendingAdvance = 0; }
+      const adjust = parseFloat(text.slice(part.start, part.end)) || 0;
+      out.push(fmtNum(adjust));
+      x += -(adjust / 1000) * fontSize * scale;
+      continue;
+    }
+    if (part.kind !== "str" && part.kind !== "hexstr") continue;
+    const bytes = stringTokenBytes(text, part);
+    for (const g of glyphByteRuns(bytes, state.font)) {
+      const width = state.font.widths.get(g.code) ?? state.font.missingWidth ?? state.font.defaultWidth;
+      const adv = ((width / 1000) * fontSize + charSpacing + (g.code === 32 ? wordSpacing : 0)) * scale;
+      const bbox = glyphBbox(baseTm, state.ctm, x, adv, fontSize, scale, state.textRise);
+      if (bboxIntersectsRects(bbox.minX, bbox.minY, bbox.maxX, bbox.maxY, rects)) {
+        removed = true;
+        pendingAdvance += adv;
+      } else {
+        if (pendingAdvance) { pushAdvance(pendingAdvance); pendingAdvance = 0; }
+        keptRun.push(...g.bytes);
+      }
+      x += adv;
+    }
+  }
+  flushRun();
+  if (pendingAdvance) pushAdvance(pendingAdvance);
+  if (!removed) return null;
+  if (!kept && out.every((p) => !p.startsWith("<"))) {
+    return { removed: true, replacement: textAdvanceReplacement(text, operands, op, x, state.fontSize, state.hScale) };
+  }
+  return { removed: true, replacement: `${prefix}[${out.join(" ")}] TJ` };
+}
+
+function glyphBbox(baseTm: number[], ctm: number[], x: number, advance: number, fontSize: number, scale: number, textRise: number) {
+  const trm = mul([fontSize * scale, 0, 0, fontSize, 0, textRise], mul(baseTm, ctm));
+  const denom = Math.max(Math.abs(fontSize * scale), 0.001);
+  const x1 = x / denom;
+  const x2 = (x + advance) / denom;
+  const riseEm = textRise / fontSize;
+  const corners: Array<[number, number]> = [
+    [x1, -0.25 + riseEm], [x2, -0.25 + riseEm], [x2, 0.95 + riseEm], [x1, 0.95 + riseEm],
+  ].map(([px, py]) => txp(trm, px, py));
+  const xs = corners.map((p) => p[0]);
+  const ys = corners.map((p) => p[1]);
+  return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+}
+
+function glyphByteRuns(bytes: number[], font: FontMetrics): Array<{ code: number; bytes: number[] }> {
+  const out: Array<{ code: number; bytes: number[] }> = [];
+  if (font.codeSize === 2) {
+    for (let i = 0; i < bytes.length; i += 2) {
+      const run = [bytes[i] ?? 0, bytes[i + 1] ?? 0];
+      out.push({ code: (run[0] << 8) | run[1], bytes: run });
+    }
+  } else {
+    for (const b of bytes) out.push({ code: b, bytes: [b] });
+  }
+  return out;
+}
+
+function bytesToHex(bytes: number[]): string {
+  return bytes.map((b) => (b & 0xff).toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
 function arrayOperandTokens(operands: Tok[]): Tok[] {
   let start = -1;
   for (let i = operands.length - 1; i >= 0; i--) {
