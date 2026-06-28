@@ -148,7 +148,6 @@ function RootComponent() {
   // Global auth-state navigation. On sign-out, return to the public home so
   // signed-out users land on the landing page (not a stale protected route).
   useEffect(() => {
-    const { supabase } = require("@/integrations/supabase/client") as typeof import("@/integrations/supabase/client");
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
         queryClient.clear();
