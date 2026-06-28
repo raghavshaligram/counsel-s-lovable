@@ -267,14 +267,6 @@ export function UpgradeModal() {
           </Link>
         </footer>
 
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={close}
-          className="absolute right-3 top-3 inline-grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
       </DialogContent>
     </Dialog>
   );
