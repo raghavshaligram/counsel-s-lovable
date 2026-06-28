@@ -575,35 +575,3 @@ function Keyframes() {
     `}</style>
   );
 }
-
-if (typeof window !== "undefined" && typeof IntersectionObserver !== "undefined") {
-  const setup = () => {
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            e.target.classList.add("is-visible");
-            io.unobserve(e.target);
-          }
-        });
-      },
-      { rootMargin: "0px 0px -10% 0px", threshold: 0.05 }
-    );
-    document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
-  };
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", setup);
-  } else {
-    queueMicrotask(setup);
-  }
-  const mo = new MutationObserver(() => {
-    document.querySelectorAll(".reveal:not(.is-visible)").forEach((el) => {
-      if (!(el as HTMLElement).dataset.reveal) {
-        (el as HTMLElement).dataset.reveal = "1";
-      }
-    });
-  });
-  if (typeof document !== "undefined" && document.body) {
-    mo.observe(document.body, { childList: true, subtree: true });
-  }
-}
