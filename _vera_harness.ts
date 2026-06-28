@@ -68,11 +68,13 @@ async function buildRealistic(): Promise<Uint8Array> {
   const baseBytes = await doc.save();
 
   // Run Bates stamping through the real export op
-  const stamped = await stampBates(baseBytes, {
+  const stamped = await addBates(baseBytes, {
     prefix: "ABC",
-    start: 1,
+    startAt: 1,
     digits: 6,
-    position: "bottom-right",
+    position: "br",
+    fontSize: 9,
+    color: "black",
   });
   return stamped;
 }
