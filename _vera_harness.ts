@@ -6,7 +6,7 @@ import { PDFDocument, rgb } from "pdf-lib";
 import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import { setFontLoader, type FontKind, fontFileName } from "@/lib/pdf/fonts-pdfa";
 import { toPdfA, verifyPdfAStructural, findUnembeddedFonts } from "@/lib/pdf/to-pdfa";
-import { stampBates } from "@/lib/batch/ops/bates";
+import { addBates } from "@/lib/batch/ops/bates";
 
 // Node loader: read the bundled TTF directly from /public/fonts/liberation
 setFontLoader(async (kind: FontKind) => {
