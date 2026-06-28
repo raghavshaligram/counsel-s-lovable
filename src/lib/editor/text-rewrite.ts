@@ -21,7 +21,7 @@
 // bottom-left, matching PDF native coordinates) — the caller is responsible
 // for flipping the editor's top-left rects into user space.
 
-import type { PDFDocument } from "pdf-lib";
+import { PDFName, type PDFDocument } from "pdf-lib";
 import { unzlibSync, zlibSync } from "fflate";
 
 export interface RedactRect {
@@ -36,28 +36,74 @@ export interface PageRewrite {
   redacts: RedactRect[];
   /** Best-effort string fallback for redaction (Tj/' literals). */
   redactStrings?: string[];
+  /** Exact strings/spans that must be deleted from text-show operators. */
+  redactTargets?: RedactTextTarget[];
   /** Text-edit string replacements (Tj/' literal equality). */
   edits: { original: string; replacement: string }[];
+}
+
+export interface RedactTextTarget {
+  /** Full pdf.js text item, when known. */
+  original: string;
+  /** Exact sensitive value to remove. */
+  text: string;
+  /** Optional span in `original`. */
+  start?: number;
+  length?: number;
+}
+
+export interface RewriteStats {
+  pagesVisited: number;
+  streamsVisited: number;
+  streamsMutated: number;
+  textOpsDropped: number;
+  textOperandsRewritten: number;
+  imageOpsDropped: number;
+  textTargetsMatched: number;
+  skippedStreams: number;
+}
+
+const emptyStats = (): RewriteStats => ({
+  pagesVisited: 0,
+  streamsVisited: 0,
+  streamsMutated: 0,
+  textOpsDropped: 0,
+  textOperandsRewritten: 0,
+  imageOpsDropped: 0,
+  textTargetsMatched: 0,
+  skippedStreams: 0,
+});
+
+function addStats(into: RewriteStats, next: Partial<RewriteStats>) {
+  into.pagesVisited += next.pagesVisited ?? 0;
+  into.streamsVisited += next.streamsVisited ?? 0;
+  into.streamsMutated += next.streamsMutated ?? 0;
+  into.textOpsDropped += next.textOpsDropped ?? 0;
+  into.textOperandsRewritten += next.textOperandsRewritten ?? 0;
+  into.imageOpsDropped += next.imageOpsDropped ?? 0;
+  into.textTargetsMatched += next.textTargetsMatched ?? 0;
+  into.skippedStreams += next.skippedStreams ?? 0;
 }
 
 export async function rewriteDocument(
   out: PDFDocument,
   byPage: Map<number, PageRewrite>,
-): Promise<void> {
+): Promise<RewriteStats> {
   const pages = out.getPages();
+  const stats = emptyStats();
   for (let i = 0; i < pages.length; i++) {
     const job = byPage.get(i);
     if (!job || (!job.edits.length && !job.redacts.length)) continue;
-    try {
-      rewritePage(pages[i], job);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[redact] page rewrite failed", i, err);
-    }
+    addStats(stats, { pagesVisited: 1 });
+    addStats(stats, rewritePage(pages[i], job));
   }
+  // eslint-disable-next-line no-console
+  console.info("[redact] rewriteDocument", stats);
+  return stats;
 }
 
-function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite) {
+function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite): RewriteStats {
+  const stats = emptyStats();
   // pdf-lib internals: coalesce a multi-stream Contents into a single stream
   // when possible so we only rewrite one buffer per page.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,25 +114,29 @@ function rewritePage(page: import("pdf-lib").PDFPage, job: PageRewrite) {
 
   const ctx = page.doc.context;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contents = node.Contents?.() ?? node.get?.(node.context?.obj?.("Contents"));
-  if (!contents) return;
+  const contents = node.Contents?.() ?? node.get?.(PDFName.of("Contents"));
+  if (!contents) return stats;
 
-  const streams: import("pdf-lib").PDFRawStream[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const streams: any[] = [];
   if ("asArray" in contents && typeof contents.asArray === "function") {
     for (const ref of contents.asArray()) {
       const obj = ctx.lookup(ref);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (obj && (obj as any).contents) streams.push(obj as import("pdf-lib").PDFRawStream);
+      if (obj && ((obj as any).contents || typeof (obj as any).getContents === "function")) streams.push(obj as any);
     }
   } else {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((contents as any).contents) streams.push(contents as import("pdf-lib").PDFRawStream);
+    if ((contents as any).contents || typeof (contents as any).getContents === "function") streams.push(contents as any);
   }
 
-  for (const stream of streams) rewriteStream(stream, job);
+  for (const stream of streams) addStats(stats, rewriteStream(stream, job));
+  return stats;
 }
 
-function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite) {
+function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite): RewriteStats {
+  const stats = emptyStats();
+  stats.streamsVisited = 1;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const s: any = stream;
   const dict = s.dict;
@@ -96,7 +146,7 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   // Read /Filter — may be a name or an array of names.
   let filterNames: string[] = [];
   try {
-    const filter = dict?.get?.(ctx.obj("Filter"));
+    const filter = dict?.get?.(PDFName.of("Filter"));
     if (filter) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const f: any = filter;
@@ -108,16 +158,17 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
     }
   } catch { /* ignore */ }
 
-  let bytes: Uint8Array = s.contents;
-  if (!bytes || !bytes.length) return;
+  let bytes: Uint8Array = s.contents ?? (typeof s.getContents === "function" ? s.getContents() : undefined);
+  if (!bytes || !bytes.length) return stats;
 
   const wasFlate = filterNames.length === 1 && (filterNames[0] === "FlateDecode" || filterNames[0] === "Fl");
   if (filterNames.length && !wasFlate) {
     // Other filters (ASCII85, LZW, DCTDecode, etc.) — too risky to round-trip.
-    return;
+    stats.skippedStreams = 1;
+    return stats;
   }
   if (wasFlate) {
-    try { bytes = unzlibSync(bytes); } catch { return; }
+    try { bytes = unzlibSync(bytes); } catch { stats.skippedStreams = 1; return stats; }
   }
 
   // latin1 decode — operators are ASCII; non-ASCII bytes only appear inside
@@ -126,21 +177,24 @@ function rewriteStream(stream: import("pdf-lib").PDFRawStream, job: PageRewrite)
   for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
 
   const result = surgicalRewrite(text, job);
-  if (!result.mutated) return;
+  if (!result.mutated) return stats;
 
   let newBytes = new Uint8Array(result.text.length);
   for (let n = 0; n < result.text.length; n++) newBytes[n] = result.text.charCodeAt(n) & 0xff;
 
   if (wasFlate) {
-    try { newBytes = zlibSync(newBytes); } catch { return; }
+    try { newBytes = zlibSync(newBytes); } catch { stats.skippedStreams = 1; return stats; }
   }
   s.contents = newBytes;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lenKey = (dict.context as any).obj("Length");
+    const lenKey = PDFName.of("Length");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     dict.set?.(lenKey, (dict.context as any).obj(newBytes.length));
   } catch { /* pdf-lib will recompute on save */ }
+  stats.streamsMutated = 1;
+  addStats(stats, result.stats);
+  return stats;
 }
 
 // ─── Tokenizer + content-stream walker ──────────────────────────────────────
