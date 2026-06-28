@@ -1370,7 +1370,7 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
               ? ({ mode: "everyN", n: Math.max(1, Math.floor(everyN)) } as const)
               : ({ mode: "splitPoints", points } as const);
       const result = await splitPdf(file, opts);
-      downloadBlob(result.blob, result.filename);
+      await triggerDownload(result.blob, result.filename);
       if (result.kind === "pdf") {
         toast.success(`Saved ${result.pageCount} pages`, {
           description: `${result.filename} · nothing was uploaded.`,
@@ -1606,7 +1606,7 @@ function RotatePanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBusy(true);
     try {
       const result = await rotatePdf(file, { angle, scope, custom });
-      downloadBlob(result.blob, result.filename);
+      await triggerDownload(result.blob, result.filename);
       toast.success(
         `Rotated ${result.rotatedCount} page${result.rotatedCount === 1 ? "" : "s"}`,
         { description: `${result.filename} · nothing was uploaded.` },
