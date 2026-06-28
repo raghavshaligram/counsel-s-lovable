@@ -338,7 +338,7 @@ function Landing() {
               className="font-display leading-[1] tracking-tight"
               style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
             >
-              The honest comparison.
+              VaultPDF vs Adobe, Kofax, and cloud redaction tools.
             </h2>
             <p className="mt-4 text-sm text-muted-foreground">
               We compare against the tools lawyers actually evaluate — not consumer PDF sites.
