@@ -1303,13 +1303,23 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      {findings && findings.length === 0 && !scanning && (
+      {findings && !scanning && scannedPages.length > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Scanned / image document detected</div>
+          {scannedPages.length} of {totalPagesScanned} page{scannedPages.length === 1 ? " is" : "s are"} image-only
+          (page{scannedPages.length === 1 ? "" : "s"} {scannedPages.slice(0, 8).join(", ")}{scannedPages.length > 8 ? "…" : ""}).
+          Automatic detection cannot reliably read text inside images.
+          <strong> Run OCR first, or mark regions manually — do NOT treat silence here as “clean”.</strong>
+        </div>
+      )}
+
+      {findings && findings.length === 0 && !scanning && scannedPages.length === 0 && (
         <p className="text-[11px] text-text-2">
-          No sensitive data matched the built-in patterns on this document.
+          No sensitive data matched the built-in patterns on this document’s readable text.
         </p>
       )}
 
-      {usedOcr && (
+      {usedOcr && scannedPages.length === 0 && (
         <p className="text-[10.5px] leading-snug text-text-muted">
           Some pages were image-only — OCR ran on-device to read them. Findings
           from those pages can be covered visually but the destructive burn
