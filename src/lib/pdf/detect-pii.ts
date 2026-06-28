@@ -46,6 +46,13 @@ export type Detection = {
    * workspace editor uses for annotations. canvas_px / scale.
    */
   pdfRect?: { x: number; y: number; w: number; h: number };
+  /**
+   * "high" = strong signal this is a real person name / PII (e.g. preceded
+   * by Mr/Dr/"signed by", or matched by a structured regex). "low" = weak
+   * heuristic match; UI should leave these unchecked by default so the user
+   * opts in. Absent on structured findings — treat as "high".
+   */
+  confidence?: "high" | "low";
 };
 
 const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
@@ -59,26 +66,145 @@ const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
   { category: "date", re: /\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/ },
   { category: "ipAddress", re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/ },
   { category: "iban", re: /\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b/ },
-  // Names: two or more consecutive capitalized tokens. Heuristic — we filter
-  // out common headers/words via NAME_STOPWORDS before accepting a hit so
-  // labels like "Case No." or "Page Two" don't flood the findings list.
-  {
-    category: "name",
-    re: /\b[A-Z][a-z]{1,}(?:\s+(?:[A-Z]\.?|[A-Z][a-z]{1,})){1,3}\b/,
-  },
 ];
 
-// Capitalized tokens that frequently appear in headings/forms and should not
-// promote a string to a "name" finding on their own.
-const NAME_STOPWORDS = new Set([
-  "Case", "Page", "Exhibit", "Plaintiff", "Defendant", "United", "States",
-  "District", "County", "Court", "Department", "Section", "Chapter", "Article",
-  "Schedule", "Appendix", "Attachment", "Memorandum", "Subject", "From", "To",
-  "Date", "Re", "Notice", "Order", "Motion", "Reply", "Brief",
-  "January", "February", "March", "April", "May", "June", "July", "August",
-  "September", "October", "November", "December",
-  "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+// 2–4 capitalized tokens, allowing middle initials and name connectors
+// (de / la / van / von / da / del / der / di / le). Used only as a coarse
+// candidate filter — the real decision happens in `classifyName` below.
+const NAME_CANDIDATE_RE =
+  /\b[A-Z][a-z'’\-]{1,}(?:\s+(?:[A-Z]\.?|de|la|le|van|von|da|del|der|di|du|el|al|bin|ben|mc|mac|st\.?|[A-Z][a-z'’\-]{1,})){1,3}\b/;
+
+// Strong "person follows" signals — when present, confidence is "high".
+const NAME_PREFIX_RE =
+  /(?:^|[\s(])(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Hon|Atty|Rev|Sir|Madam|Sen|Rep|Gov|Justice|Judge|Officer|Captain|Lt|Sgt|by|signed\s+by|prepared\s+by|authored\s+by|executed\s+by|attorney\s+for|counsel\s+for|witness|deponent|declarant|plaintiff|defendant|petitioner|respondent|affiant|notary|on\s+behalf\s+of|\/s\/)\.?\s*$/i;
+const NAME_SUFFIX_RE =
+  /^\s*,?\s*(?:Jr|Sr|Esq|Esquire|PhD|Ph\.D\.?|MD|M\.D\.?|JD|J\.D\.?|II|III|IV|CPA|RN|DDS|DO)\.?\b/i;
+
+// Common nouns/adjectives that appear in headings, product names, and section
+// labels. If a candidate's tokens are ALL from this set (ignoring connectors),
+// we reject — "Executive Summary", "Data Architecture", "Cost & Revenue
+// Settings", "AI Video Packages", etc. Lowercased for comparison.
+const NON_NAME_WORDS = new Set([
+  // structural / headings
+  "summary","overview","introduction","abstract","conclusion","background",
+  "objective","objectives","scope","approach","methodology","assumptions",
+  "executive","contents","table","appendix","appendices","attachment","exhibit",
+  "schedule","glossary","references","bibliography","acknowledgements","preface",
+  "foreword","index","notes","disclaimer","chapter","section","article","part",
+  "title","page","figure","table","item","items",
+  // business / tech nouns
+  "architecture","data","analytics","analysis","report","reports","plan","plans",
+  "model","models","system","systems","platform","platforms","service","services",
+  "solution","solutions","framework","frameworks","pipeline","dashboard","portal",
+  "module","modules","package","packages","product","products","feature","features",
+  "release","version","roadmap","backlog","sprint","milestone","deliverable",
+  "deliverables","timeline","schedule","budget","forecast","projection","proposal",
+  "estimate","quote","invoice","statement","ledger","balance","summary",
+  "settings","configuration","preferences","options","setup","installation",
+  "guide","tutorial","howto","faq","help","support","documentation","docs",
+  "policy","policies","procedure","procedures","standard","standards","guideline",
+  "guidelines","requirement","requirements","specification","specifications",
+  "design","designs","wireframe","prototype","mockup",
+  "cost","costs","revenue","revenues","profit","loss","margin","pricing","price",
+  "tier","tiers","plan","plans","subscription","subscriptions","billing","payment",
+  "payments","tax","taxes","fee","fees","discount","refund","invoice",
+  "ai","ml","api","apis","sdk","ui","ux","cms","crm","erp","saas","paas","iaas",
+  "video","videos","audio","image","images","photo","photos","file","files",
+  "document","documents","template","templates","asset","assets","resource",
+  "resources","content","contents","library","catalog","catalogue","collection",
+  "marketing","sales","operations","engineering","product","finance","legal",
+  "human","resources","support","customer","customers","client","clients",
+  "user","users","member","members","admin","administrator","manager","managers",
+  "team","teams","group","groups","department","departments","division",
+  "company","companies","corporation","organization","organisation","enterprise",
+  "business","industry","market","markets","sector","region","regions",
+  "phase","step","steps","stage","stages","level","levels","tier","tiers",
+  "high","medium","low","critical","major","minor","general","global","local",
+  "internal","external","public","private","standard","custom","default",
+  "north","south","east","west","central","upper","lower","inner","outer",
+  // months & days are not names
+  "january","february","march","april","may","june","july","august",
+  "september","october","november","december",
+  "monday","tuesday","wednesday","thursday","friday","saturday","sunday",
+  // legal boilerplate
+  "case","court","district","county","united","states","department","commission",
+  "agency","bureau","office","division","supreme","federal","state",
+  "plaintiff","defendant","petitioner","respondent","appellant","appellee",
+  "memorandum","motion","reply","brief","order","notice","subject","from","to",
+  "date","re","attention","cc","bcc",
 ]);
+
+const NAME_CONNECTORS = new Set([
+  "de","la","le","van","von","da","del","der","di","du","el","al","bin","ben","mc","mac","st","st.",
+]);
+
+function isLikelyHeading(fullStr: string): boolean {
+  const t = fullStr.trim();
+  if (!t) return false;
+  // ALL CAPS line (≥3 chars) — almost always a heading/label.
+  if (/^[^a-z]+$/.test(t) && /[A-Z]/.test(t) && t.replace(/[^A-Za-z]/g, "").length >= 3) return true;
+  // Contains "&" — typical of headings like "Cost & Revenue Settings".
+  if (/&/.test(t)) return true;
+  // Title-case line with no lowercase function word (of, the, and, for, in,
+  // on, at, by, to, with, from): headings capitalize every word. Real
+  // sentences containing a name almost always have lowercase glue words.
+  const words = t.split(/\s+/);
+  if (words.length >= 2 && words.length <= 8) {
+    const allTitle = words.every((w) => /^[A-Z0-9][A-Za-z0-9'’\-/&.,:]*$/.test(w));
+    const hasGlue = words.some((w) => /^(of|the|and|for|in|on|at|by|to|with|from|or|nor|but|a|an)$/.test(w));
+    if (allTitle && !hasGlue) return true;
+  }
+  return false;
+}
+
+function classifyName(
+  fullStr: string,
+  matchText: string,
+  matchIndex: number,
+): { ok: boolean; confidence?: "high" | "low" } {
+  const tokens = matchText.split(/\s+/);
+  if (tokens.length < 2) return { ok: false };
+
+  // Reject if every meaningful token is a known non-name word.
+  const meaningful = tokens.filter((t) => {
+    const lower = t.replace(/[.,'’\-]/g, "").toLowerCase();
+    return lower.length > 1 && !NAME_CONNECTORS.has(lower);
+  });
+  if (meaningful.length === 0) return { ok: false };
+  const allNonName = meaningful.every((t) => {
+    const lower = t.replace(/[.,'’\-]/g, "").toLowerCase();
+    return NON_NAME_WORDS.has(lower);
+  });
+  if (allNonName) return { ok: false };
+  // Even one non-name word in a 2-token candidate is enough to kill it
+  // ("Data Architecture", "Video Packages").
+  if (tokens.length === 2) {
+    const anyNonName = meaningful.some((t) => {
+      const lower = t.replace(/[.,'’\-]/g, "").toLowerCase();
+      return NON_NAME_WORDS.has(lower);
+    });
+    if (anyNonName) return { ok: false };
+  }
+
+  // Reject when the surrounding text item is structurally a heading and the
+  // match basically IS the heading.
+  if (isLikelyHeading(fullStr) && matchText.trim().length >= fullStr.trim().length * 0.8) {
+    return { ok: false };
+  }
+
+  // Strong signal: title prefix, name suffix, middle initial, or apostrophe
+  // / hyphen typical of surnames.
+  const before = fullStr.slice(0, matchIndex);
+  const after = fullStr.slice(matchIndex + matchText.length);
+  const hasPrefix = NAME_PREFIX_RE.test(before);
+  const hasSuffix = NAME_SUFFIX_RE.test(after);
+  const hasMiddleInitial = /\b[A-Z]\.\s/.test(matchText);
+  const hasNameMark = /['’]|(?:^|\s)(?:O['’]|D['’]|Mc|Mac|St\.)/.test(matchText);
+  const confidence: "high" | "low" =
+    hasPrefix || hasSuffix || hasMiddleInitial || hasNameMark ? "high" : "low";
+  return { ok: true, confidence };
+}
+
 
 export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }> = {
   ssn: { label: "SSN", hint: "Social security numbers" },
@@ -156,7 +282,8 @@ export async function detectPiiInPdf(
         y: cy,
         w: cw,
         h: ch,
-        category: cat,
+        category: cat.category,
+        confidence: cat.confidence,
         snippet: snippet(str),
         source: {
           originalString: str,
@@ -165,6 +292,7 @@ export async function detectPiiInPdf(
         },
         pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
       });
+
     }
   }
 
@@ -234,9 +362,11 @@ export async function detectPiiInPdf(
               y: y0 - pad,
               w: x1 - x0 + pad * 2,
               h: y1 - y0 + pad * 2,
-              category: cat,
+              category: cat.category,
+              confidence: cat.confidence,
               snippet: snippet(w.text),
             });
+
           }
         }),
       );
@@ -249,21 +379,22 @@ export async function detectPiiInPdf(
   return { detections, usedOcr: ocrPages.length > 0 };
 }
 
-function matchCategory(str: string): PiiCategory | null {
+type CatHit = { category: PiiCategory; confidence?: "high" | "low" };
+
+function matchCategory(str: string): CatHit | null {
+  // Structured patterns first — these are reliable.
   for (const { category, re } of PATTERNS) {
-    const m = re.exec(str);
-    if (!m) continue;
-    if (category === "name") {
-      // Reject if every capitalized token is a generic header/month/day.
-      const tokens = m[0].split(/\s+/).filter((t) => /^[A-Z]/.test(t));
-      if (tokens.every((t) => NAME_STOPWORDS.has(t.replace(/\.$/, "")))) continue;
-      // Reject single-token "names" (regex requires 2+, but defensive).
-      if (tokens.length < 2) continue;
-    }
-    return category;
+    if (re.test(str)) return { category };
+  }
+  // Names — much stricter, with a confidence signal.
+  const nm = NAME_CANDIDATE_RE.exec(str);
+  if (nm) {
+    const verdict = classifyName(str, nm[0], nm.index);
+    if (verdict.ok) return { category: "name", confidence: verdict.confidence };
   }
   return null;
 }
+
 
 
 function snippet(s: string) {

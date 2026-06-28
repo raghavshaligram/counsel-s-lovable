@@ -1063,16 +1063,24 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       });
       setFindings(detections);
       setUsedOcr(usedOcr);
-      // Default selection: every finding pre-checked, the user opts OUT of any
-      // they want to keep.
-      setSelected(new Set(detections.map((d) => d.id)));
+      // Default selection: auto-check structured / high-confidence findings.
+      // Heuristic name matches are left UNCHECKED so users opt into them
+      // (avoids 50+ false positives from headings on business docs).
+      const autoSelect = detections.filter(
+        (d) => d.confidence !== "low",
+      );
+      setSelected(new Set(autoSelect.map((d) => d.id)));
       if (detections.length === 0) {
         toast.info("No sensitive data found", { description: "Nothing matched the built-in patterns." });
       } else {
+        const lowCount = detections.length - autoSelect.length;
         toast.success(`${detections.length} finding${detections.length === 1 ? "" : "s"}`, {
-          description: "Review then click Redact selected.",
+          description: lowCount > 0
+            ? `${autoSelect.length} auto-selected · ${lowCount} low-confidence name${lowCount === 1 ? "" : "s"} unchecked — review and opt in.`
+            : "Review then click Redact selected.",
         });
       }
+
     } catch (err) {
       console.error("[auto-detect] failed", err);
       toast.error("Scan failed", { description: (err as Error).message });
