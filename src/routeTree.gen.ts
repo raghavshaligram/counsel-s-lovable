@@ -21,6 +21,7 @@ import { Route as SplitRouteImport } from './routes/split'
 import { Route as SignRouteImport } from './routes/sign'
 import { Route as SecurityArchitectureRouteImport } from './routes/security-architecture'
 import { Route as RotateRouteImport } from './routes/rotate'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PrivilegeScanRouteImport } from './routes/privilege-scan'
@@ -100,6 +101,11 @@ const SecurityArchitectureRoute = SecurityArchitectureRouteImport.update({
 const RotateRoute = RotateRouteImport.update({
   id: '/rotate',
   path: '/rotate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RedactRoute = RedactRouteImport.update({
@@ -224,6 +230,7 @@ export interface FileRoutesByFullPath {
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
@@ -258,6 +265,7 @@ export interface FileRoutesByTo {
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
@@ -293,6 +301,7 @@ export interface FileRoutesById {
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/rotate': typeof RotateRoute
   '/security-architecture': typeof SecurityArchitectureRoute
   '/sign': typeof SignRoute
@@ -329,6 +338,7 @@ export interface FileRouteTypes {
     | '/privilege-scan'
     | '/protect'
     | '/redact'
+    | '/reset-password'
     | '/rotate'
     | '/security-architecture'
     | '/sign'
@@ -363,6 +373,7 @@ export interface FileRouteTypes {
     | '/privilege-scan'
     | '/protect'
     | '/redact'
+    | '/reset-password'
     | '/rotate'
     | '/security-architecture'
     | '/sign'
@@ -397,6 +408,7 @@ export interface FileRouteTypes {
     | '/privilege-scan'
     | '/protect'
     | '/redact'
+    | '/reset-password'
     | '/rotate'
     | '/security-architecture'
     | '/sign'
@@ -432,6 +444,7 @@ export interface RootRouteChildren {
   PrivilegeScanRoute: typeof PrivilegeScanRoute
   ProtectRoute: typeof ProtectRoute
   RedactRoute: typeof RedactRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   RotateRoute: typeof RotateRoute
   SecurityArchitectureRoute: typeof SecurityArchitectureRoute
   SignRoute: typeof SignRoute
@@ -530,6 +543,13 @@ declare module '@tanstack/react-router' {
       path: '/rotate'
       fullPath: '/rotate'
       preLoaderRoute: typeof RotateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/redact': {
@@ -696,6 +716,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivilegeScanRoute: PrivilegeScanRoute,
   ProtectRoute: ProtectRoute,
   RedactRoute: RedactRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   RotateRoute: RotateRoute,
   SecurityArchitectureRoute: SecurityArchitectureRoute,
   SignRoute: SignRoute,

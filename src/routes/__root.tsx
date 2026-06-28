@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { requestPersistentStorage } from "../lib/storage-persist";
 import { isChunkLoadError, reloadForFreshChunks } from "../lib/chunk-import";
+import { useLicenseActivation } from "../lib/use-license-activation";
 
 function NotFoundComponent() {
   return (
