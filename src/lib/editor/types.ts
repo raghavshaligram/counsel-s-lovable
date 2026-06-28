@@ -217,6 +217,10 @@ export interface RedactAnno extends BaseAnno {
   kind: "redact";
   // captured text strings that fall inside this redaction box (best-effort)
   sources?: TextSource[];
+  // Origin/type of the box for certificate breakdown (never the value).
+  // e.g. "name", "ssn", "email", "creditCard", "phone", "date", "ipAddress",
+  // "iban", "pattern", "manual". Free-form string to stay forward-compatible.
+  category?: string;
 }
 
 export type Anno =
