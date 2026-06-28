@@ -488,8 +488,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                     className="flex items-center justify-between rounded-lg px-3 py-3 border border-vault/40 bg-vault/10 hover:bg-vault/20 transition-colors"
                   >
                     <div>
-                      <div className="text-sm font-medium text-vault">Lifetime deal</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">One payment, every tool, forever.</div>
+                      <div className="text-sm font-medium text-vault">Pricing &amp; sign in</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">Founder's rate — locked for life.</div>
                     </div>
                     <span className="text-vault text-xs">→</span>
                   </Link>
