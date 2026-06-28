@@ -360,22 +360,27 @@ export async function detectPiiInPdf(
 
           for (const w of words) {
             if (!w.text || !w.text.trim()) continue;
-            const cat = matchCategory(w.text);
-            if (!cat) continue;
+            const hits = matchAllCategories(w.text);
+            if (hits.length === 0) continue;
             const { x0, y0, x1, y1 } = w.bbox;
+            const wWidth = x1 - x0;
             const pad = Math.max(2, (y1 - y0) * 0.15);
-            detections.push({
-              id: `det-ocr-${i}-${detections.length}`,
-              page: i,
-              x: x0 - pad,
-              y: y0 - pad,
-              w: x1 - x0 + pad * 2,
-              h: y1 - y0 + pad * 2,
-              category: cat.category,
-              confidence: cat.confidence,
-              snippet: snippet(w.text),
-            });
-
+            const charW = w.text.length > 0 ? wWidth / w.text.length : wWidth;
+            for (const hit of hits) {
+              const subX = x0 + charW * hit.start;
+              const subW = Math.max(charW, charW * hit.length);
+              detections.push({
+                id: `det-ocr-${i}-${detections.length}`,
+                page: i,
+                x: subX - pad,
+                y: y0 - pad,
+                w: subW + pad * 2,
+                h: y1 - y0 + pad * 2,
+                category: hit.category,
+                confidence: hit.confidence,
+                snippet: snippet(hit.text),
+              });
+            }
           }
         }),
       );
