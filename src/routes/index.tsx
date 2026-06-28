@@ -473,7 +473,11 @@ function DemoCanvas() {
         <span className="ml-auto text-vault">sha256: 4f2a9c…</span>
       </div>
 
-      <div className="relative rounded-lg border border-border bg-[#f7f3ea] text-[#1a1a1a] aspect-[8.5/11] max-h-[560px] mx-auto shadow-[var(--shadow-float)] overflow-hidden">
+      <div
+        role="img"
+        aria-label="Redacted deposition transcript with burned text layer — names, social security number, account number and email all blacked out."
+        className="relative rounded-lg border border-border bg-[#f7f3ea] text-[#1a1a1a] aspect-[8.5/11] max-h-[560px] mx-auto shadow-[var(--shadow-float)] overflow-hidden"
+      >
         <div className="p-8 text-[10px] leading-[1.6] font-mono space-y-2">
           <div className="text-center font-display text-base text-black mb-4">
             DEPOSITION TRANSCRIPT — vol. III
