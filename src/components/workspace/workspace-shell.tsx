@@ -108,6 +108,7 @@ import { printPdfBytes } from "@/lib/workspace/print";
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 import { importChunk } from "@/lib/chunk-import";
+import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
 
 
 type ToolId =
@@ -571,8 +572,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     });
   }, []);
 
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+
   const openTool = useCallback(
     (toolId: string, opts?: { bump?: boolean; focusSection?: string }) => {
+      // Whole-tool gating for paid-only tools (privilege review, private AI).
+      if (PAID_TOOL_IDS.has(toolId) && !isPro) {
+        const tool = toolById(toolId);
+        if (!requirePro(tool?.label, `/workspace?tool=${encodeURIComponent(toolId)}`)) return;
+      }
       // Bates lives inside Document Settings now (next to Page Numbers).
       // Selecting "Bates" anywhere (rail, all-tools search) deep-links into
       // that panel and scrolls to the Bates section.
@@ -592,7 +601,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setToolModalOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
-    [bumpUsage, patchActive],
+    [bumpUsage, patchActive, isPro, requirePro],
   );
 
   // ----------------- Tab operations -----------------------------------
@@ -1421,13 +1430,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     {groupTools.map((tool) => {
                       const isActive = activeToolId === tool.id && inspectorOpen;
                       const Icon = tool.icon;
+                      const locked = PAID_TOOL_IDS.has(tool.id) && !isPro;
                       return (
                         <li key={tool.id}>
                           <button
                             type="button"
                             onClick={() => openTool(tool.id)}
-                            aria-label={tool.label}
+                            aria-label={locked ? `${tool.label} (Pro)` : tool.label}
                             aria-pressed={isActive}
+                            title={locked ? `${tool.label} — Pro feature` : tool.label}
                             className={cn(
                               "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors",
                               "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1438,6 +1449,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                           >
                             <Icon className="h-4 w-4 shrink-0" />
                             <span className="truncate">{tool.label}</span>
+                            {locked && <LockBadge className="ml-auto" />}
                           </button>
                         </li>
                       );
@@ -3293,6 +3305,7 @@ function ToolModal({
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const isPro = useIsPro();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -3390,6 +3403,7 @@ function ToolModal({
                           >
                             {tool.label}
                           </span>
+                          {PAID_TOOL_IDS.has(tool.id) && !isPro && <LockBadge />}
                           {isPinned && (
                             <span
                               aria-hidden

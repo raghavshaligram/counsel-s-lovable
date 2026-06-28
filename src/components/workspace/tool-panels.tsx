@@ -100,6 +100,7 @@ import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
 import { importChunk } from "@/lib/chunk-import";
+import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -713,6 +714,71 @@ function CsvFillSection({
 
 /* ------------------------------ Redact ------------------------------ */
 
+/**
+ * Pro capabilities that live INSIDE the (free) Redact tool. Manual redact
+ * stays free for everyone; AI sensitive-data detection and pattern/bulk
+ * redaction require a Pro subscription. Each trigger shows a lock badge
+ * and routes to /auth with a redirect back to the workspace when used.
+ */
+function ProRedactSection() {
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+  return (
+    <Section title="Find redactions automatically" icon={<Shield className="h-3 w-3" />}>
+      <div className="flex flex-col gap-1.5">
+        <ProGatedButton
+          isPro={isPro}
+          locked={!isPro}
+          onClick={() => requirePro("AI detect sensitive info")}
+          label="AI detect sensitive info"
+          hint="Names, emails, SSNs, account numbers — proposed as draft boxes."
+        />
+        <ProGatedButton
+          isPro={isPro}
+          locked={!isPro}
+          onClick={() => requirePro("Pattern / bulk redaction")}
+          label="Pattern / bulk redact"
+          hint='Find every match of a term or regex (e.g. "Acme, Inc.") and box it across all pages.'
+        />
+      </div>
+    </Section>
+  );
+}
+
+function ProGatedButton({
+  locked, isPro, onClick, label, hint,
+}: {
+  locked: boolean;
+  isPro: boolean;
+  onClick: () => void;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full flex-col items-start gap-0.5 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-left text-[12px] text-foreground transition-colors",
+        locked ? "hover:border-vault/40" : "hover:border-vault/40",
+      )}
+    >
+      <span className="flex w-full items-center gap-1.5">
+        <span className="flex-1 truncate font-medium">{label}</span>
+        {locked && <LockBadge />}
+        {!locked && isPro && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-vault">
+            Pro
+          </span>
+        )}
+      </span>
+      {hint && (
+        <span className="text-[10.5px] leading-snug text-text-muted">{hint}</span>
+      )}
+    </button>
+  );
+}
+
 function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file, editorState } = ctx;
   type Verify = import("@/lib/editor/verify-redaction").VerifyResult;
@@ -842,6 +908,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           not just covered with a black rectangle.
         </p>
       </Section>
+
+      <ProRedactSection />
+
+
 
       <Section title="Marked for removal" icon={<Shield className="h-3 w-3" />}>
         <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2.5 text-[12px]">
@@ -4927,13 +4997,38 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         >
           Apply to active tab
         </button>
+        <MultiFileBatesButton />
       </div>
+
 
       <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <Info className="h-3 w-3" />
         Settings saved with this document · also offered at export
       </div>
     </div>
+  );
+}
+
+function MultiFileBatesButton() {
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!requirePro("Multi-file Bates")) return;
+        toast.info("Multi-file Bates", { description: "Open the Batch tray to stamp Bates across multiple PDFs." });
+      }}
+      className={cn(
+        "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+      )}
+    >
+      <span>Apply to multiple files…</span>
+      {!isPro && <LockBadge />}
+      {isPro && (
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-vault">Pro</span>
+      )}
+    </button>
   );
 }
 
