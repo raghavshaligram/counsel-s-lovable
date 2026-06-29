@@ -20,7 +20,9 @@ export type PiiCategory =
   | "org"
   | "ipAddress"
   | "iban"
-  | "privilegeContext";
+  | "privilegeContext"
+  | "privilegeValue";
+
 
 export type Detection = {
   id: string;
@@ -94,6 +96,49 @@ function normalizeForDigits(s: string): string {
     .replace(/G/g, "6")
     .replace(/[‐–—]/g, "-");
 }
+
+// Currency / amount values often paired with privilege/confidentiality
+// language ("settlement of $4,750,000", "USD 250,000", "5 million dollars").
+// We search NEAR a privilege term, not globally, to avoid flagging every
+// number in the document.
+const VALUE_NEAR_PRIVILEGE_RE =
+  /(?:\$|€|£|¥|USD|EUR|GBP|JPY|CAD|AUD)\s?\d{1,3}(?:[,.\s]\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|[mMkKbB]{1,2}\b))?|\b\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:\s*(?:million|billion|thousand|dollars|euros|pounds))?\b|\b\d+(?:\.\d+)?\s*(?:million|billion|thousand)\s+(?:dollars|euros|pounds|USD|EUR|GBP)\b/gi;
+
+/**
+ * Given the text of a line and a privilege-term match span within it, return
+ * non-overlapping value spans within ±radius chars of the term. Used to
+ * surface the actual sensitive figure (e.g. "$4,750,000") next to a flag
+ * like "settlement amount" as a one-click redaction suggestion.
+ */
+function findValuesNearPrivilege(
+  text: string,
+  termStart: number,
+  termEnd: number,
+  radius = 90,
+): Array<{ start: number; end: number; text: string }> {
+  const windowStart = Math.max(0, termStart - radius);
+  const windowEnd = Math.min(text.length, termEnd + radius);
+  const out: Array<{ start: number; end: number; text: string }> = [];
+  const re = new RegExp(VALUE_NEAR_PRIVILEGE_RE.source, VALUE_NEAR_PRIVILEGE_RE.flags);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const s = m.index;
+    const e = s + m[0].length;
+    if (e < windowStart || s > windowEnd) {
+      if (m[0].length === 0) re.lastIndex++;
+      continue;
+    }
+    // Don't return the term itself.
+    if (!(e <= termStart || s >= termEnd)) {
+      if (m[0].length === 0) re.lastIndex++;
+      continue;
+    }
+    out.push({ start: s, end: e, text: m[0] });
+    if (m[0].length === 0) re.lastIndex++;
+  }
+  return out;
+}
+
 
 /** Heuristic: line looks like it should contain structured PII. */
 function looksStructured(text: string): boolean {
@@ -252,7 +297,10 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
   ipAddress: { label: "IP", hint: "IP addresses" },
   iban: { label: "IBAN", hint: "International bank account numbers" },
   privilegeContext: { label: "Context flags — review nearby content for privilege", hint: "Review signal: words like 'confidential', 'privileged', 'settlement', 'work product' nearby — not a value to redact itself" },
+  privilegeValue: { label: "Value near privilege flag", hint: "Numbers/amounts found next to a privilege/confidentiality term — review and redact if sensitive" },
 };
+
+
 
 
 export type DetectProgress = {
@@ -358,8 +406,14 @@ export async function detectPiiInPdf(
       let pm: RegExpExecArray | null;
       while ((pm = PRIVILEGE_TERMS_RE.exec(str)) !== null) {
         pushBox(pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
+        // Surface any nearby value as a redactable suggestion.
+        const values = findValuesNearPrivilege(str, pm.index, pm.index + pm[0].length);
+        for (const v of values) {
+          pushBox(v.start, v.end - v.start, "privilegeValue", "low", v.text);
+        }
         if (pm[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
       }
+
 
       // 3) On-device NER for PERSON / ORG entities — catches plain-prose
       //    names without requiring Mr./Dr./Esq. titles. Skip very short or
@@ -584,15 +638,16 @@ export async function detectPiiInPdf(
             PRIVILEGE_TERMS_RE.lastIndex = 0;
             let pmOcr: RegExpExecArray | null;
             while ((pmOcr = PRIVILEGE_TERMS_RE.exec(lineText)) !== null) {
-              pushOcrSpan(
-                pmOcr.index,
-                pmOcr.index + pmOcr[0].length,
-                "privilegeContext",
-                "low",
-                pmOcr[0],
-              );
+              const termStart = pmOcr.index;
+              const termEnd = pmOcr.index + pmOcr[0].length;
+              pushOcrSpan(termStart, termEnd, "privilegeContext", "low", pmOcr[0]);
+              const values = findValuesNearPrivilege(lineText, termStart, termEnd);
+              for (const v of values) {
+                pushOcrSpan(v.start, v.end, "privilegeValue", "low", v.text);
+              }
               if (pmOcr[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
             }
+
           }
 
           // Log the raw OCR text for this page so users / devs can compare
