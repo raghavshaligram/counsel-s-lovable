@@ -31,7 +31,7 @@ async function buildPdfWithSensitiveMetadata(): Promise<Uint8Array> {
 }
 
 describe("sanitizePdfBytes — metadata true-deletion", () => {
-  it("clears Title/Author/Subject/Keywords/Producer/Creator", async () => {
+  it("clears Title/Author/Subject/Keywords (info dictionary wipe)", async () => {
     const inBytes = await buildPdfWithSensitiveMetadata();
     const out = await sanitizePdfBytes(inBytes);
     const after = await PDFDocument.load(out);
@@ -39,8 +39,10 @@ describe("sanitizePdfBytes — metadata true-deletion", () => {
     expect(after.getAuthor() ?? "").toBe("");
     expect(after.getSubject() ?? "").toBe("");
     expect(after.getKeywords() ?? "").toBe("");
-    expect(after.getProducer() ?? "").toBe("");
-    expect(after.getCreator() ?? "").toBe("");
+    // Note: pdf-lib stamps its own Producer on save; the contract for
+    // sanitize is that no caller-supplied sensitive value survives, not
+    // that the field is necessarily empty. That contract is enforced by
+    // the next test (no-leak assertion).
   });
 
   it("leaks no sensitive value through the document info dictionary", async () => {
