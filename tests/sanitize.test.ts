@@ -8,8 +8,9 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  PDFArray, PDFBool, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, PDFString,
+  PDFArray, PDFBool, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, PDFString, StandardFonts,
 } from "pdf-lib";
+import { unzlibSync } from "fflate";
 import { sanitizePdfBytes } from "@/lib/pdf/sanitize";
 import { verifyRedactionRemoval } from "@/lib/editor/verify-redaction";
 
@@ -226,6 +227,44 @@ describe("sanitize covers EVERY text-bearing vector", () => {
     }
   });
 
+  it("clears clientSSN /V and /DV, removes /AP, and leaves the secret nowhere", async () => {
+    const secret = "FORMFIELD-SECRET: SSN 987-65-4321 Card 453914";
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([612, 792]);
+    const helv = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText("Visible non-sensitive body", { x: 72, y: 720, size: 12, font: helv });
+    const form = doc.getForm();
+    const field = form.createTextField("clientSSN");
+    field.setText(secret);
+    field.addToPage(page, { x: 72, y: 650, width: 360, height: 26 });
+    const input = await doc.save({ useObjectStreams: false });
+
+    const clean = await sanitizePdfBytes(input);
+    const after = await PDFDocument.load(clean, { ignoreEncryption: true, updateMetadata: false });
+    const ctx = after.context;
+    let clientFieldObjects = 0;
+    let fieldValueLeaks = 0;
+    let appearanceLeaks = 0;
+    for (const [, obj] of ctx.enumerateIndirectObjects()) {
+      if (!(obj instanceof PDFDict)) continue;
+      const name = pdfText(obj.get(PDFName.of("T")));
+      const v = pdfText(obj.get(PDFName.of("V")));
+      const dv = pdfText(obj.get(PDFName.of("DV")));
+      if (name === "clientSSN") clientFieldObjects++;
+      if (v.includes(secret) || dv.includes(secret)) fieldValueLeaks++;
+      if (name === "clientSSN" && obj.has(PDFName.of("AP"))) appearanceLeaks++;
+    }
+    const acroForm = after.catalog.lookupMaybe(PDFName.of("AcroForm"), PDFDict);
+    const fields = acroForm?.lookupMaybe(PDFName.of("Fields"), PDFArray);
+    expect(fields?.size() ?? 0).toBe(0);
+    expect(clientFieldObjects).toBe(0);
+    expect(fieldValueLeaks).toBe(0);
+    expect(appearanceLeaks).toBe(0);
+    expect(containsAnywhere(clean, "987-65-4321")).toBe(false);
+    expect(containsAnywhere(clean, "453914")).toBe(false);
+    expect(containsAnywhere(clean, secret)).toBe(false);
+  });
+
   it("verifyRedactionRemoval flags leaks across form/annotation/layer/attachment vectors", async () => {
     const input = await buildPdfWithAllVectors();
     const targets = Object.values(VECTOR_SECRETS).map((text) => ({ page: 0, text }));
@@ -247,4 +286,39 @@ describe("sanitize covers EVERY text-bearing vector", () => {
     expect(after.ok).toBe(true);
   });
 });
+
+function pdfText(obj: unknown): string {
+  if (!obj) return "";
+  try {
+    const o = obj as { decodeText?: () => string; asString?: () => string; toString?: () => string };
+    if (typeof o.decodeText === "function") return o.decodeText();
+    if (typeof o.asString === "function") return o.asString();
+    return o.toString?.() ?? "";
+  } catch { return ""; }
+}
+
+function containsAnywhere(bytes: Uint8Array, needle: string): boolean {
+  const txt = new TextDecoder("latin1").decode(bytes);
+  if (txt.includes(needle)) return true;
+  const hex = Array.from(needle).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+  if (txt.toLowerCase().includes(hex)) return true;
+  const u16hex = "feff" + Array.from(needle).map((c) =>
+    c.charCodeAt(0).toString(16).padStart(4, "0"),
+  ).join("");
+  if (txt.toLowerCase().includes(u16hex)) return true;
+  const re = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(txt))) {
+    try {
+      const raw = new Uint8Array(m[1].length);
+      for (let i = 0; i < m[1].length; i++) raw[i] = m[1].charCodeAt(i) & 0xff;
+      const out = unzlibSync(raw);
+      const decoded = new TextDecoder("latin1").decode(out);
+      if (decoded.includes(needle)) return true;
+      if (decoded.toLowerCase().includes(hex)) return true;
+      if (decoded.toLowerCase().includes(u16hex)) return true;
+    } catch { /* not flate */ }
+  }
+  return false;
+}
 
