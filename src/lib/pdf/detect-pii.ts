@@ -246,9 +246,11 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
   phone: { label: "Phone", hint: "Phone numbers" },
   creditCard: { label: "Card / account #", hint: "Long digit sequences (cards, accounts)" },
   date: { label: "Date", hint: "Dates (DOB / issued / expiry)" },
-  name: { label: "Name", hint: "Likely person names (heuristic)" },
+  name: { label: "Person name", hint: "People (NER + heuristic) — review before redacting" },
+  org: { label: "Organization", hint: "Organizations / companies (NER) — review before redacting" },
   ipAddress: { label: "IP", hint: "IP addresses" },
   iban: { label: "IBAN", hint: "International bank account numbers" },
+  privilegeContext: { label: "Privilege / confidentiality", hint: "Sensitive context (privileged, settlement, NDA) — review nearby values" },
 };
 
 
