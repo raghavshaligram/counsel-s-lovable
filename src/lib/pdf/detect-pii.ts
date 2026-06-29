@@ -20,7 +20,9 @@ export type PiiCategory =
   | "org"
   | "ipAddress"
   | "iban"
-  | "privilegeContext";
+  | "privilegeContext"
+  | "privilegeValue";
+
 
 export type Detection = {
   id: string;
