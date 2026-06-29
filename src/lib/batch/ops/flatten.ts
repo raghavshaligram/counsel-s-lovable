@@ -92,9 +92,11 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
         const txt = new TextDecoder("latin1").decode(decoded);
         if (txt.includes("/Tx BMC")) refsToKill.push(ref);
       }
+      console.log("[flatten-debug] refsToKill:", refsToKill.map((r) => r.objectNumber));
       for (const r of refsToKill) {
         try { ctx.delete(r); } catch { /* ignore */ }
       }
+      console.log("[flatten-debug] remaining objs after delete:", Array.from(ctx.enumerateIndirectObjects()).map(([r]) => r.objectNumber));
       doc.catalog.delete(PDFName.of("AcroForm"));
       // Also drop /Widget annotations from every page — their parents
       // are gone and they can only carry leftover /AP refs.
