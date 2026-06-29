@@ -1233,10 +1233,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       <p className="text-[10.5px] leading-snug text-text-muted">
         Scans for SSNs, emails, phones, dates, cards/accounts, person names and
         organizations (on-device NER). Privilege/confidentiality context words
-        are flagged as <em>review signals</em> — they are not values to redact
-        themselves, but they indicate nearby content may be privileged. Nothing
-        leaves your device. You confirm each finding before redacting.
+        are flagged as <em>review signals</em>; any value found nearby
+        (e.g. a dollar amount next to "settlement") is surfaced as a
+        suggested redaction you can accept with one click. Nothing leaves
+        your device. You confirm each finding before redacting.
       </p>
+
 
       <button
         type="button"
