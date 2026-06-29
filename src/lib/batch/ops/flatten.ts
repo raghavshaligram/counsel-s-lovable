@@ -71,15 +71,25 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
       // Walk the document one more time and queue any indirect object
       // whose decoded contents still carry text-show operators tagged
       // /Tx BMC (the marker pdf-lib emits for form appearance streams).
+      // Walk the document one more time and queue any Form XObject whose
+      // decoded contents carry the /Tx BMC marker — that's pdf-lib's
+      // signature for a form-field appearance stream, so anything still
+      // matching belongs to a field we just removed.
       for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
         if (!(obj instanceof PDFStream)) continue;
         const dict = obj.dict;
         const subtype = (dict.get(PDFName.of("Subtype")) as unknown as { asString?: () => string } | undefined)?.asString?.() ?? "";
-        const type = (dict.get(PDFName.of("Type")) as unknown as { asString?: () => string } | undefined)?.asString?.() ?? "";
-        if (subtype === "/Form" && type === "/XObject") {
-          // Likely a widget appearance stream the field GC missed.
-          refsToKill.push(ref);
+        if (subtype !== "/Form") continue;
+        const raw = (obj as unknown as { contents?: Uint8Array; getContents?: () => Uint8Array }).contents
+          ?? (obj as unknown as { getContents?: () => Uint8Array }).getContents?.();
+        if (!raw) continue;
+        let decoded: Uint8Array = raw;
+        const filt = (dict.get(PDFName.of("Filter")) as unknown as { asString?: () => string } | undefined)?.asString?.() ?? "";
+        if (filt === "/FlateDecode") {
+          try { decoded = unzlibSync(raw); } catch { /* keep raw */ }
         }
+        const txt = new TextDecoder("latin1").decode(decoded);
+        if (txt.includes("/Tx BMC")) refsToKill.push(ref);
       }
       for (const r of refsToKill) {
         try { ctx.delete(r); } catch { /* ignore */ }
