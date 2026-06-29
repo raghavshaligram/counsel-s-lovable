@@ -1102,8 +1102,8 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             duration: 10000,
           });
         } else {
-          toast.info("No sensitive data matched", {
-            description: "Nothing matched the built-in patterns on the readable text layer.",
+          toast.info("No patterns matched — review manually", {
+            description: "Auto-detect only finds structured patterns. Names and context-dependent secrets still need a manual pass.",
           });
         }
       } else {
