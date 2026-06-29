@@ -432,6 +432,13 @@ function Landing() {
             </p>
           </div>
 
+          <div className="mt-8 mb-10 reveal">
+            <div className="inline-flex items-center gap-2 rounded-full border border-vault/30 bg-vault/10 px-4 py-2 text-sm font-medium text-vault">
+              <WifiOff className="h-4 w-4" strokeWidth={2.25} />
+              Everything runs on your device — works offline, nothing uploaded.
+            </div>
+          </div>
+
           <div className="space-y-10">
             {PRO_GROUPS.map((group) => (
               <div key={group.title} className="reveal">
