@@ -1737,6 +1737,15 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       });
       bytes = rasterResult.bytes;
 
+      // Sanitize: wipe form-field values, annotation/comment text, document
+      // metadata (Info dict + XMP), embedded attachments, and JavaScript.
+      // These vectors carry the same sensitive data the user just redacted
+      // on-page; without this, the verification gate below would block the
+      // export because side-channel leaks would still be present.
+      toast.loading("Scrubbing form fields, comments, metadata…", { id: tid });
+      const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
+      bytes = await sanitizePdfBytes(bytes);
+
       toast.loading("Verifying removal…", { id: tid });
       const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
       let result = await verifyRedactionRemoval(bytes, targets);
