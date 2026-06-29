@@ -16,6 +16,7 @@ import {
   deleteCertificate,
   getCertificate,
   listMyCertificates,
+  saveCertificate,
   type ComplianceCertKind,
   type ComplianceCertSummary,
 } from "@/lib/certificates.functions";
