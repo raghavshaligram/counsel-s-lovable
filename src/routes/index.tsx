@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Check, X, ArrowRight, Minus, WifiOff, Plane, Sparkles } from "lucide-react";
 
@@ -875,20 +875,20 @@ function NetworkMonitor() {
 
 type MarkValue = true | false | "partial" | { note: string };
 
-const PRO_GROUPS: Array<{ title: string; items: Array<{ name: string; body: string }> }> = [
+const PRO_GROUPS: Array<{ title: string; items: Array<{ name: string; body: ReactNode }> }> = [
   {
     title: "Redaction & privilege",
     items: [
-      { name: "AI sensitive-data detection", body: "Auto-find SSNs, accounts, cards, names, and privilege markers across hundreds of pages — on your device." },
-      { name: "Pattern & bulk redaction", body: "Redact every instance of a name or term in one pass." },
-      { name: "Privilege review", body: "Surface attorney names, privilege markers, and confidential phrases for review before disclosure." },
+      { name: "AI sensitive-data detection", body: <>Auto-find SSNs, accounts, cards, names, and privilege markers across hundreds of pages — <strong className="text-foreground font-bold">on your device, works offline</strong>.</> },
+      { name: "Pattern & bulk redaction", body: <>Redact every instance of a name or term in one pass — <strong className="text-foreground font-bold">privately, nothing uploaded</strong>.</> },
+      { name: "Privilege review", body: <>Surface attorney names, privilege markers, and confidential phrases for review before disclosure — <strong className="text-foreground font-bold">on your device, never logged or uploaded</strong>.</> },
     ],
   },
   {
     title: "Discovery & production",
     items: [
-      { name: "Multi-file Bates", body: "One continuous Bates sequence across an entire discovery set." },
-      { name: "Exhibit Binder", body: "Court-ready bundle with hyperlinked ToC, labeled tabs, and continuous numbering." },
+      { name: "Multi-file Bates", body: <>One continuous Bates sequence across an entire discovery set — <strong className="text-foreground font-bold">processed entirely on your device</strong>.</> },
+      { name: "Exhibit Binder", body: <>Court-ready bundle with hyperlinked ToC, labeled tabs, and continuous numbering — <strong className="text-foreground font-bold">built locally, nothing uploaded</strong>.</> },
       { name: "Citation Hyperlinker", body: "Turn legal citations into clickable links to the public case text." },
       { name: "Court e-filing optimization", body: "Compress massive filings under court upload caps without losing readability." },
     ],
@@ -896,16 +896,16 @@ const PRO_GROUPS: Array<{ title: string; items: Array<{ name: string; body: stri
   {
     title: "Automation & AI",
     items: [
-      { name: "Workflows & automation", body: "Chain OCR → detect → redact → Bates → sanitize into one-click discovery prep." },
-      { name: "Batch processing", body: "Run any workflow across a whole folder at once." },
-      { name: "AI fact chronology", body: "Extract dates and key actors into a timeline — privately." },
-      { name: "Private AI assist", body: "Summarize a deposition or find every mention of a term — on docs you could never upload to cloud AI." },
+      { name: "Workflows & automation", body: <>Chain OCR → detect → redact → Bates → sanitize into one-click discovery prep — <strong className="text-foreground font-bold">entirely offline, nothing uploaded</strong>.</> },
+      { name: "Batch processing", body: <>Run any workflow across a whole folder at once — <strong className="text-foreground font-bold">on your device, nothing uploaded</strong>.</> },
+      { name: "AI fact chronology", body: <>Extract dates and key actors into a timeline — <strong className="text-foreground font-bold">privately, on your device</strong>.</> },
+      { name: "Private AI assist", body: <>Summarize a deposition or find every mention of a term — <strong className="text-foreground font-bold">on docs you could never upload to cloud AI, processed entirely offline</strong>.</> },
     ],
   },
   {
     title: "Integrity",
     items: [
-      { name: "Document hashing", body: "SHA-256 fingerprints to prove evidence hasn't changed since a given date." },
+      { name: "Document hashing", body: <>SHA-256 fingerprints to prove evidence hasn't changed since a given date — <strong className="text-foreground font-bold">computed locally, nothing uploaded</strong>.</> },
     ],
   },
 ];
@@ -926,7 +926,7 @@ const COMP_ROWS: Array<{ label: string; vals: [MarkValue, MarkValue, MarkValue, 
   { label: "Affordable for solo / small firm", vals: [true, "partial", "partial", false] },
 ];
 
-function ProFeatureCard({ name, body }: { name: string; body: string }) {
+function ProFeatureCard({ name, body }: { name: string; body: ReactNode }) {
   return (
     <div className="group relative rounded-xl border border-border bg-background p-5 hover:border-vault/40 hover:bg-card transition-colors h-full flex flex-col">
       <div className="flex items-start justify-between gap-3 mb-2">
