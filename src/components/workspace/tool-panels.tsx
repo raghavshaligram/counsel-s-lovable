@@ -1104,7 +1104,19 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             : `Reading page ${p.page}/${p.totalPages}`,
         );
       });
-      setFindings(detections);
+      // Side-channel scan: form fields, annotations, document metadata.
+      // These vectors are invisible on the page but ship with the file
+      // unless explicitly stripped. Sanitize handles removal during the
+      // redact export; we surface them here so the user can SEE them.
+      setProgress("Scanning form fields, comments, metadata…");
+      let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
+      try {
+        sideFindings = await mod.detectPiiInSideChannels(file);
+      } catch (e) {
+        console.warn("[auto-detect] side-channel scan failed", e);
+      }
+      const merged = [...detections, ...sideFindings];
+      setFindings(merged);
       setUsedOcr(usedOcr);
       setScannedPages(scanned);
       setLowConfOcrPages(lowConfidenceOcrPages);
