@@ -60,6 +60,7 @@ import {
   Printer,
   ShieldOff,
   BookOpen,
+  Gavel,
 } from "lucide-react";
 
 import { Link, useNavigate } from "@tanstack/react-router";
