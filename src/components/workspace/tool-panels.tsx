@@ -1188,8 +1188,17 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     if (!findings || selected.size === 0) return;
     let added = 0;
     let skipped = 0;
+    let sideChannelSelected = 0;
     for (const d of findings) {
       if (!selected.has(d.id)) continue;
+      // Side-channel findings (form fields, annotations, metadata) have no
+      // page rect — they're cleared by sanitize during the redact export,
+      // not by drawing a black cover. Count them so we can confirm to the
+      // user that they'll be wiped on export.
+      if (d.vector && d.vector !== "page") {
+        sideChannelSelected++;
+        continue;
+      }
       const rect =
         d.pdfRect ?? { x: d.x / 1.5, y: d.y / 1.5, w: d.w / 1.5, h: d.h / 1.5 };
       const key = `${d.page - 1}|${Math.round(rect.x)}|${Math.round(rect.y)}|${Math.round(rect.w)}|${Math.round(rect.h)}`;
@@ -1229,23 +1238,69 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     }
     if (added > 0) {
       toast.success(`${added} redaction box${added === 1 ? "" : "es"} added`, {
-        description: 'Click "Redact, export & verify" below to burn them into the PDF.',
+        description:
+          sideChannelSelected > 0
+            ? `+ ${sideChannelSelected} side-channel finding${sideChannelSelected === 1 ? "" : "s"} will be wiped automatically on export. Click "Redact, export & verify" below.`
+            : 'Click "Redact, export & verify" below to burn them into the PDF.',
       });
       // Clear the selection so a second scan doesn't double-add.
       setSelected(new Set());
+    } else if (sideChannelSelected > 0) {
+      toast.info(
+        `${sideChannelSelected} side-channel finding${sideChannelSelected === 1 ? "" : "s"} queued`,
+        {
+          description:
+            'Form-field / annotation / metadata values are wiped by the export. Click "Redact, export & verify" below.',
+        },
+      );
     } else if (skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
   }, [findings, selected, editorDispatch, existingRedactKeys]);
 
-  const redactableFindings = useMemo(
-    () => findings?.filter((d) => d.category !== "privilegeContext") ?? [],
+  const pageRedactableFindings = useMemo(
+    () => findings?.filter((d) => d.category !== "privilegeContext" && (!d.vector || d.vector === "page")) ?? [],
     [findings],
+  );
+  const sideChannelFindings = useMemo(
+    () => findings?.filter((d) => d.vector && d.vector !== "page") ?? [],
+    [findings],
+  );
+  const redactableFindings = useMemo(
+    () => [...pageRedactableFindings, ...sideChannelFindings],
+    [pageRedactableFindings, sideChannelFindings],
   );
   const privilegeFindings = useMemo(
-    () => findings?.filter((d) => d.category === "privilegeContext") ?? [],
+    () => findings?.filter((d) => d.category === "privilegeContext" && (!d.vector || d.vector === "page")) ?? [],
     [findings],
   );
+
+  const grouped = useMemo(() => {
+    if (!pageRedactableFindings.length) return null;
+    const m = new Map<Cat, Det[]>();
+    for (const d of pageRedactableFindings) {
+      const arr = m.get(d.category) ?? [];
+      arr.push(d);
+      m.set(d.category, arr);
+    }
+    return Array.from(m.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [pageRedactableFindings]);
+
+  const sideChannelGrouped = useMemo(() => {
+    if (!sideChannelFindings.length) return null;
+    const m = new Map<string, Det[]>();
+    for (const d of sideChannelFindings) {
+      const key = d.vector ?? "page";
+      const arr = m.get(key) ?? [];
+      arr.push(d);
+      m.set(key, arr);
+    }
+    const order = ["form-field", "annotation", "metadata"];
+    return Array.from(m.entries()).sort(
+      (a, b) => order.indexOf(a[0]) - order.indexOf(b[0]),
+    );
+  }, [sideChannelFindings]);
+
 
   const grouped = useMemo(() => {
     if (!redactableFindings.length) return null;
