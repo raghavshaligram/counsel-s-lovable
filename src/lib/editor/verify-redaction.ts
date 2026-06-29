@@ -277,8 +277,13 @@ async function verifySideChannelVectors(
         ref: refStr(ref),
       });
     }
-    // Also stream objects whose Subtype is /EmbeddedFile carry the bytes.
-    if (obj instanceof PDFStream && nameStr(obj.dict.get(PDFName.of("Subtype"))) === "/EmbeddedFile") {
+  }
+  // Stream objects whose /Subtype is /EmbeddedFile carry the bytes.
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFStream)) continue;
+    const d = obj.dict;
+    if (!(d instanceof PDFDict)) continue;
+    if (nameStr(d.get(PDFName.of("Subtype"))) === "/EmbeddedFile") {
       leaks.push({ vector: "attachment", text: "Embedded-file stream present", ref: refStr(ref) });
     }
   }
