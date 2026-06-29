@@ -1431,6 +1431,64 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
               </li>
             ))}
           </ul>
+          {sideChannelGrouped && sideChannelGrouped.length > 0 && (
+            <div className="border-t border-border/60">
+              <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-vault">
+                Hidden in document · {sideChannelFindings.length}
+              </div>
+              <p className="px-2.5 pb-1.5 text-[10.5px] leading-snug text-text-muted">
+                Sensitive data found OUTSIDE the page text — in form fields,
+                comments/annotations, and document metadata. Page redaction
+                misses these. They're wiped automatically when you export.
+              </p>
+              <ul className="max-h-[200px] overflow-y-auto pb-1">
+                {sideChannelGrouped.map(([vector, list]) => (
+                  <li key={vector}>
+                    <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                      {vector === "form-field"
+                        ? "Form fields"
+                        : vector === "annotation"
+                        ? "Comments / annotations"
+                        : "Document metadata"}{" "}
+                      · {list.length}
+                    </div>
+                    <ul>
+                      {list.map((d) => {
+                        const checked = selected.has(d.id);
+                        return (
+                          <li key={d.id}>
+                            <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setSelected((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(d.id);
+                                    else next.delete(d.id);
+                                    return next;
+                                  });
+                                }}
+                                className="mt-[3px] h-3 w-3 shrink-0 accent-vault"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="font-mono text-[11px] text-foreground">
+                                  {maskPreview(d)}
+                                </div>
+                                <div className="text-[10px] text-text-2">
+                                  {d.sourceLabel ?? vector}
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {privilegeFindings.length > 0 && (
             <div className="border-t border-border/60 px-2.5 py-2">
               <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300/90">
