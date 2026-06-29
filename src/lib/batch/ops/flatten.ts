@@ -57,9 +57,21 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
     // form wrapper rebuilds /AP from cached values and bakes them in.
     try {
       const form = doc.getForm();
+      const ctx = doc.context;
       for (const field of form.getFields()) {
+        // Collect the field's widget refs + appearance stream refs BEFORE
+        // removeField unhooks them. pdf-lib doesn't garbage-collect
+        // orphaned objects on save, so leftover /AP streams would survive
+        // in the saved file with the SSN still in them.
+        const refsToKill = collectFieldRefs(ctx, field);
         try { form.removeField(field); } catch { /* ignore */ }
+        for (const r of refsToKill) {
+          try { ctx.delete(r); } catch { /* ignore */ }
+        }
       }
+      // Belt and braces: AcroForm container itself may still reference
+      // killed refs; drop it entirely.
+      doc.catalog.delete(PDFName.of("AcroForm"));
     } catch { /* no form */ }
     // Also strip text from any sensitive annotation /Contents so a
     // subsequent annotation flatten (if a future caller adds one) can't
