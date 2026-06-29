@@ -17,7 +17,7 @@
  *   path. The legacy /flatten route can pass `clearSensitiveFirst: true`
  *   so users aren't surprised by a refusal.
  */
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, type PDFForm } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, PDFString, type PDFForm } from "pdf-lib";
 import { unzlibSync } from "fflate";
 import { matchAllCategories } from "@/lib/pdf/detect-pii";
 
@@ -46,12 +46,19 @@ export class FlattenSensitiveDataError extends Error {
 export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
 
+  // eslint-disable-next-line no-console
+  console.info("[redact:form-field] flatten requested", {
+    forms: opts.forms,
+    annotations: opts.annotations,
+    clearSensitiveFirst: !!opts.clearSensitiveFirst,
+    order: opts.clearSensitiveFirst
+      ? "scan -> clear form /V,/DV,/AP -> remove fields/widgets -> flatten"
+      : "scan -> refuse if sensitive form /V exists -> flatten only if clean",
+  });
+
   // ---- Safety gate: scan + (optionally) remove sensitive content ----
   const findings = scanFormAndAnnotationPii(doc);
   if (findings.length > 0) {
-    if (!opts.clearSensitiveFirst) {
-      throw new FlattenSensitiveDataError(findings);
-    }
     if (!opts.clearSensitiveFirst) {
       throw new FlattenSensitiveDataError(findings);
     }
@@ -66,6 +73,8 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
       const ctx = doc.context;
       const refsToKill: PDFRef[] = [];
       for (const field of form.getFields()) {
+        const acroField = (field as unknown as { acroField?: { ref?: PDFRef; dict?: PDFDict } }).acroField;
+        if (acroField?.dict instanceof PDFDict) clearFieldBeforeFlatten(acroField.dict, acroField.ref, refsToKill);
         // Empty the value first so any re-render produces nothing.
         const anyField = field as unknown as { setText?: (s: string) => void };
         try { anyField.setText?.(""); } catch { /* ignore non-text fields */ }
@@ -99,6 +108,11 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
         try { ctx.delete(r); } catch { /* ignore */ }
       }
       doc.catalog.delete(PDFName.of("AcroForm"));
+      // eslint-disable-next-line no-console
+      console.info("[redact:form-field] cleared fields before flatten", {
+        removedRefs: refsToKill.length,
+        flattenedYet: false,
+      });
       // Also drop /Widget annotations from every page — their parents
       // are gone and they can only carry leftover /AP refs.
       for (const page of doc.getPages()) {
@@ -133,6 +147,8 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
       const form = doc.getForm();
       // form.flatten() bakes /V → /AP → page. We've removed every sensitive
       // field above, so any remaining fields are safe to flatten.
+      // eslint-disable-next-line no-console
+      console.info("[redact:form-field] flatten executing after clear", { forms: true });
       form.flatten();
     } catch {
       // No form — ignore.
@@ -146,6 +162,45 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
   }
 
   return doc.save();
+}
+
+function clearFieldBeforeFlatten(dict: PDFDict, ref: unknown, refsToKill: PDFRef[]): void {
+  const name = extractStr(dict.get(PDFName.of("T"))) || "(anon)";
+  const beforeV = extractStr(dict.get(PDFName.of("V")));
+  const beforeDV = extractStr(dict.get(PDFName.of("DV")));
+  const hadAP = dict.has(PDFName.of("AP"));
+  collectAppearanceRefs(dict, (r) => pushUniqueRef(refsToKill, r));
+  dict.set(PDFName.of("V"), PDFString.of(""));
+  dict.set(PDFName.of("DV"), PDFString.of(""));
+  dict.delete(PDFName.of("RV"));
+  dict.delete(PDFName.of("AP"));
+  // eslint-disable-next-line no-console
+  console.info("[redact:form-field] flatten clear field", {
+    ref: refStr(ref),
+    field: name,
+    vBefore: beforeV.slice(0, 160),
+    dvBefore: beforeDV.slice(0, 160),
+    vAfter: extractStr(dict.get(PDFName.of("V"))),
+    dvAfter: extractStr(dict.get(PDFName.of("DV"))),
+    hadAP,
+    hasAPAfter: dict.has(PDFName.of("AP")),
+    order: "cleared before form.flatten()",
+  });
+  dict.delete(PDFName.of("V"));
+  dict.delete(PDFName.of("DV"));
+}
+
+function refStr(ref: unknown): string {
+  return ref && typeof ref === "object" && "objectNumber" in ref && "generationNumber" in ref
+    ? `${(ref as PDFRef).objectNumber} ${(ref as PDFRef).generationNumber} R`
+    : "direct";
+}
+
+function pushUniqueRef(refs: PDFRef[], obj: unknown): void {
+  if (!obj || typeof obj !== "object" || !("objectNumber" in obj) || !("generationNumber" in obj)) return;
+  const ref = obj as PDFRef;
+  if (refs.some((r) => r.objectNumber === ref.objectNumber && r.generationNumber === ref.generationNumber)) return;
+  refs.push(ref);
 }
 
 function scrubAnnotationText(doc: PDFDocument): void {

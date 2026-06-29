@@ -72,6 +72,8 @@ export type Detection = {
   vector?: "page" | "form-field" | "annotation" | "metadata";
   /** Human label of the source, e.g. "Form field: SSN" or "Metadata: Author". */
   sourceLabel?: string;
+  /** Full sensitive value for non-page vectors. Snippet may be only the regex match. */
+  sensitiveText?: string;
 };
 
 /**
@@ -1144,6 +1146,7 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
           category: h.category,
           confidence: h.confidence ?? "high",
           snippet: snippet(h.text),
+          sensitiveText: t,
           vector,
           sourceLabel,
         });
