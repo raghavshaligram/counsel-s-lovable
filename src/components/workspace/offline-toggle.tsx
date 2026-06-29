@@ -55,7 +55,7 @@ export function OfflineToggle({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!hasDocument) return null;
+  
 
   return (
     <div className="relative">
