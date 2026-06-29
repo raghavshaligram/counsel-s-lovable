@@ -678,6 +678,38 @@ function matchAllCategories(str: string): CatHit[] {
     }
     if (nm[0].length === 0) nameGlobal.lastIndex++;
   }
+  // Case caption "X v. Y" / "X vs. Y" — flag BOTH party names. Parties may
+  // be people or organizations; we tag both as "name" so the redaction UI
+  // groups them with the other person/party suggestions.
+  const CAPTION_RE =
+    /\b([A-Z][A-Za-z.&'’\-]+(?:\s+[A-Z][A-Za-z.&'’\-]+){0,4})\s+(?:v\.?|vs\.?)\s+([A-Z][A-Za-z.&'’\-]+(?:\s+[A-Z][A-Za-z.&'’\-]+){0,4})\b/g;
+  let cm: RegExpExecArray | null;
+  while ((cm = CAPTION_RE.exec(str)) !== null) {
+    const left = cm[1];
+    const right = cm[2];
+    const leftStart = cm.index;
+    const rightStart = cm.index + cm[0].lastIndexOf(right);
+    for (const [text, start] of [
+      [left, leftStart] as const,
+      [right, rightStart] as const,
+    ]) {
+      // Skip if it's a known non-name heading word only.
+      const tokens = text.split(/\s+/);
+      const meaningful = tokens.filter((t) => t.replace(/[.,'’\-]/g, "").length > 1);
+      const allNonName = meaningful.length > 0 && meaningful.every((t) =>
+        NON_NAME_WORDS.has(t.replace(/[.,'’\-]/g, "").toLowerCase()),
+      );
+      if (allNonName) continue;
+      hits.push({
+        category: "name",
+        confidence: "high",
+        start,
+        length: text.length,
+        text,
+      });
+    }
+    if (cm[0].length === 0) CAPTION_RE.lastIndex++;
+  }
   return hits;
 }
 
