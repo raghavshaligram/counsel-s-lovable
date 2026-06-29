@@ -188,6 +188,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <SanitizePanel ctx={ctx} />;
     case "exhibit-binder":
       return <ExhibitBinderPanel />;
+    case "court-readiness":
+      return <CourtReadinessPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
