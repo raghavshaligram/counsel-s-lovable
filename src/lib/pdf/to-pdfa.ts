@@ -584,7 +584,19 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     doc.save({ updateFieldAppearances: false, useObjectStreams: false }),
   );
 
-  return ensurePdfHeader(saved, "1.7");
+  const out = ensurePdfHeader(saved, "1.7");
+
+  // Final self-check — programmatic gate. We refuse to return a buffer
+  // labeled "court-ready" if any structural requirement still fails.
+  const report = await verifyPdfAStructuralAsync(out);
+  if (!report.ok) {
+    // eslint-disable-next-line no-console
+    console.error(`${TAG} self-check FAIL after conformance pass`, report.missing);
+    throw new Error(`PDF/A self-check failed: ${report.missing.join("; ")}`);
+  }
+  // eslint-disable-next-line no-console
+  console.info(`${TAG} self-check PASS`);
+  return out;
 }
 
 function ensurePdfHeader(bytes: Uint8Array, version: "1.7"): Uint8Array {
