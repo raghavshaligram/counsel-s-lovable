@@ -9,13 +9,26 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
+type Json = string | number | boolean | null | { [k: string]: Json } | Json[];
+
+const jsonSchema: z.ZodType<Json> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonSchema),
+    z.record(z.string(), jsonSchema),
+  ]),
+);
+
 const certKind = z.enum(["redaction", "sanitize", "bates", "sovereignty"]);
 
 const saveSchema = z.object({
   kind: certKind,
   sourceName: z.string().trim().min(1).max(255),
   caseLabel: z.string().trim().max(120).optional().nullable(),
-  payload: z.unknown(),
+  payload: jsonSchema,
 });
 
 const idSchema = z.object({ id: z.string().uuid() });
