@@ -251,7 +251,7 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
   org: { label: "Organization", hint: "Organizations / companies (NER) — review before redacting" },
   ipAddress: { label: "IP", hint: "IP addresses" },
   iban: { label: "IBAN", hint: "International bank account numbers" },
-  privilegeContext: { label: "Privilege / confidentiality", hint: "Sensitive context (privileged, settlement, NDA) — review nearby values" },
+  privilegeContext: { label: "Context flags — review nearby content for privilege", hint: "Review signal: words like 'confidential', 'privileged', 'settlement', 'work product' nearby — not a value to redact itself" },
 };
 
 

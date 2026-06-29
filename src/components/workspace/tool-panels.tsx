@@ -1197,19 +1197,28 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [findings, selected, editorDispatch, existingRedactKeys]);
 
+  const redactableFindings = useMemo(
+    () => findings?.filter((d) => d.category !== "privilegeContext") ?? [],
+    [findings],
+  );
+  const privilegeFindings = useMemo(
+    () => findings?.filter((d) => d.category === "privilegeContext") ?? [],
+    [findings],
+  );
+
   const grouped = useMemo(() => {
-    if (!findings) return null;
+    if (!redactableFindings.length) return null;
     const m = new Map<Cat, Det[]>();
-    for (const d of findings) {
+    for (const d of redactableFindings) {
       const arr = m.get(d.category) ?? [];
       arr.push(d);
       m.set(d.category, arr);
     }
     return Array.from(m.entries()).sort((a, b) => b[1].length - a[1].length);
-  }, [findings]);
+  }, [redactableFindings]);
 
   const allSelected =
-    !!findings && findings.length > 0 && selected.size === findings.length;
+    redactableFindings.length > 0 && selected.size === redactableFindings.length;
 
   return (
     <div className="flex flex-col gap-2">
@@ -1223,9 +1232,10 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       </div>
       <p className="text-[10.5px] leading-snug text-text-muted">
         Scans for SSNs, emails, phones, dates, cards/accounts, person names and
-        organizations (on-device NER), plus privilege/confidentiality context —
-        all proposed as draft boxes. Nothing leaves your device. You confirm
-        each before redacting.
+        organizations (on-device NER). Privilege/confidentiality context words
+        are flagged as <em>review signals</em> — they are not values to redact
+        themselves, but they indicate nearby content may be privileged. Nothing
+        leaves your device. You confirm each finding before redacting.
       </p>
 
       <button
@@ -1260,14 +1270,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                 checked={allSelected}
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelected(new Set(findings.map((d) => d.id)));
+                    setSelected(new Set(redactableFindings.map((d) => d.id)));
                   } else {
                     setSelected(new Set());
                   }
                 }}
                 className="h-3 w-3 accent-vault"
               />
-              {selected.size} / {findings.length} selected
+              {selected.size} / {redactableFindings.length} selected
             </label>
             <button
               type="button"
@@ -1333,6 +1343,41 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
               </li>
             ))}
           </ul>
+          {privilegeFindings.length > 0 && (
+            <div className="border-t border-border/60 px-2.5 py-2">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300/90">
+                <Info className="h-3 w-3" />
+                Context flags — review nearby content for privilege
+              </div>
+              <ul>
+                {privilegeFindings.map((d) => (
+                  <li key={d.id}>
+                    <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
+                      <Info className="mt-[3px] h-3 w-3 shrink-0 text-amber-300/70" />
+                      <button
+                        type="button"
+                        onClick={() => jumpToFinding(d)}
+                        className="min-w-0 flex-1 text-left"
+                        title="Jump to this context flag"
+                      >
+                        <div className="text-[11px] text-foreground">
+                          {d.snippet}
+                        </div>
+                        <div className="text-[10px] text-text-2">
+                          Page {d.page}
+                          {!d.source && (
+                            <span className="ml-1 text-amber-400/80">
+                              · visual-only (scanned)
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
