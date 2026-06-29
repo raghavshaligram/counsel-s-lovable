@@ -53,25 +53,60 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
     }
     // Use pdf-lib's form API so the wrapped PDFTextField cache (which
     // form.flatten() consults to regenerate /AP appearance streams) is
-    // also cleared. Low-level dict deletion alone is not enough — the
-    // form wrapper rebuilds /AP from cached values and bakes them in.
+    // also cleared. Then remove the field outright AND drop every
+    // indirect object the field touched — pdf-lib does not garbage-
+    // collect orphan refs on save, so leftover /AP appearance streams
+    // would otherwise still carry the SSN in the output file.
     try {
       const form = doc.getForm();
       const ctx = doc.context;
+      const refsToKill: PDFRef[] = [];
       for (const field of form.getFields()) {
-        // Collect the field's widget refs + appearance stream refs BEFORE
-        // removeField unhooks them. pdf-lib doesn't garbage-collect
-        // orphaned objects on save, so leftover /AP streams would survive
-        // in the saved file with the SSN still in them.
-        const refsToKill = collectFieldRefs(ctx, field);
+        // Empty the value first so any re-render produces nothing.
+        const anyField = field as unknown as { setText?: (s: string) => void };
+        try { anyField.setText?.(""); } catch { /* ignore non-text fields */ }
+        refsToKill.push(...collectFieldRefs(ctx, field));
         try { form.removeField(field); } catch { /* ignore */ }
-        for (const r of refsToKill) {
-          try { ctx.delete(r); } catch { /* ignore */ }
+      }
+      // Walk the document one more time and queue any indirect object
+      // whose decoded contents still carry text-show operators tagged
+      // /Tx BMC (the marker pdf-lib emits for form appearance streams).
+      for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+        if (!(obj instanceof PDFStream)) continue;
+        const dict = obj.dict;
+        const subtype = (dict.get(PDFName.of("Subtype")) as unknown as { asString?: () => string } | undefined)?.asString?.() ?? "";
+        const type = (dict.get(PDFName.of("Type")) as unknown as { asString?: () => string } | undefined)?.asString?.() ?? "";
+        if (subtype === "/Form" && type === "/XObject") {
+          // Likely a widget appearance stream the field GC missed.
+          refsToKill.push(ref);
         }
       }
-      // Belt and braces: AcroForm container itself may still reference
-      // killed refs; drop it entirely.
+      for (const r of refsToKill) {
+        try { ctx.delete(r); } catch { /* ignore */ }
+      }
       doc.catalog.delete(PDFName.of("AcroForm"));
+      // Also drop /Widget annotations from every page — their parents
+      // are gone and they can only carry leftover /AP refs.
+      for (const page of doc.getPages()) {
+        const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+        if (!annots) continue;
+        const keep: unknown[] = [];
+        for (const item of annots.asArray()) {
+          const a = resolveDict(ctx, item);
+          if (!a) { keep.push(item); continue; }
+          const st = (a.get(PDFName.of("Subtype")) as unknown as { asString?: () => string } | undefined)?.asString?.() ?? "";
+          if (st === "/Widget") {
+            if (item && typeof item === "object" && "objectNumber" in item) {
+              try { ctx.delete(item as PDFRef); } catch { /* ignore */ }
+            }
+            continue;
+          }
+          keep.push(item);
+        }
+        const next = PDFArray.withContext(ctx);
+        for (const k of keep) next.push(k as never);
+        page.node.set(PDFName.of("Annots"), next);
+      }
     } catch { /* no form */ }
     // Also strip text from any sensitive annotation /Contents so a
     // subsequent annotation flatten (if a future caller adds one) can't
