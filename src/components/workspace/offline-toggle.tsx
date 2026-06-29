@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { WifiOff, Wifi, X } from "lucide-react";
+import { WifiOff, Wifi, X, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import {
+  setOfflineMode,
+  subscribeOffline,
+  isOfflineEnabled,
+  getBlockedCount,
+} from "@/lib/network-isolation";
 
 const OFFLINE_KEY = "counselpdf:work-offline";
 
@@ -15,12 +21,16 @@ export function loadOfflinePref(): boolean {
 }
 
 export function saveOfflinePref(value: boolean) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(OFFLINE_KEY, value ? "true" : "false");
-  } catch {
-    /* ignore */
-  }
+  setOfflineMode(value);
+}
+
+function useOfflineState() {
+  const [state, setState] = useState(() => ({
+    enabled: typeof window !== "undefined" ? isOfflineEnabled() : false,
+    blocked: typeof window !== "undefined" ? getBlockedCount() : 0,
+  }));
+  useEffect(() => subscribeOffline(setState), []);
+  return state;
 }
 
 export function OfflineToggle({
@@ -34,6 +44,7 @@ export function OfflineToggle({
 }) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const { blocked } = useOfflineState();
 
   useEffect(() => {
     if (!open) return;
@@ -59,8 +70,12 @@ export function OfflineToggle({
           open && enabled && "bg-vault/25",
           open && !enabled && "bg-surface-3",
         )}
-        title={enabled ? "Offline mode is on — click to adjust" : "Work Offline — click to enable"}
-        aria-label={enabled ? "Offline mode enabled" : "Work Offline toggle"}
+        title={
+          enabled
+            ? `Isolated — ${blocked} request${blocked === 1 ? "" : "s"} blocked`
+            : "Work Offline — click to enable"
+        }
+        aria-label={enabled ? "Network isolation enabled" : "Work Offline toggle"}
         aria-expanded={open}
       >
         {enabled ? (
@@ -69,11 +84,9 @@ export function OfflineToggle({
           <Wifi className="h-3 w-3" strokeWidth={2.5} />
         )}
         <span className="hidden md:inline">
-          {enabled ? "Offline" : "Work Offline"}
+          {enabled ? `Isolated — ${blocked} blocked` : "Work Offline"}
         </span>
-        <span className="md:hidden">
-          {enabled ? "Offline" : "Offline"}
-        </span>
+        <span className="md:hidden">{enabled ? "Isolated" : "Offline"}</span>
       </button>
 
       {open && (
@@ -85,7 +98,7 @@ export function OfflineToggle({
           />
           <div
             ref={panelRef}
-            className="absolute right-0 top-[calc(100%+6px)] z-50 w-80 rounded-xl border border-border bg-surface-2 p-4 shadow-[var(--shadow-float)]"
+            className="absolute right-0 top-[calc(100%+6px)] z-50 w-[22rem] rounded-xl border border-border bg-surface-2 p-4 shadow-[var(--shadow-float)]"
             role="dialog"
             aria-label="Work Offline settings"
           >
@@ -116,13 +129,19 @@ export function OfflineToggle({
                   Work Offline
                 </div>
                 <p className="mt-1.5 text-[12px] leading-relaxed text-text-2">
-                  When enabled, CounselPDF confirms it is operating without any
-                  network connection. Your documents remain on this device.
+                  When enabled, CounselPDF blocks all of its own network
+                  activity — every <code className="font-mono text-[11px]">fetch</code>,
+                  XHR, WebSocket and beacon this app would send is rejected.
+                  Your documents cannot leave through this app.
+                </p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-text-muted">
+                  Verify it yourself: open DevTools → Network, toggle this on,
+                  use any tool — zero requests will leave.
                 </p>
 
                 <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-surface-1 px-3 py-2.5">
                   <span className="text-[12px] font-medium text-foreground">
-                    Offline mode
+                    Network isolation
                   </span>
                   <Switch
                     checked={enabled}
@@ -130,14 +149,17 @@ export function OfflineToggle({
                       onChange(next);
                       saveOfflinePref(next);
                     }}
-                    aria-label="Toggle offline mode"
+                    aria-label="Toggle network isolation"
                   />
                 </div>
 
                 {enabled && (
-                  <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-md border border-vault/30 bg-vault/10 px-2 py-1 text-[11px] font-medium text-vault">
-                    <WifiOff className="h-3 w-3" strokeWidth={2.5} />
-                    Offline mode — your documents never leave this device
+                  <div className="mt-2.5 flex items-center gap-1.5 rounded-md border border-vault/30 bg-vault/10 px-2 py-1.5 text-[11px] font-medium text-vault">
+                    <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+                    <span>
+                      Isolated — {blocked} outgoing request
+                      {blocked === 1 ? "" : "s"} blocked this session
+                    </span>
                   </div>
                 )}
               </div>
@@ -150,11 +172,15 @@ export function OfflineToggle({
 }
 
 export function OfflineBadge({ enabled }: { enabled: boolean }) {
+  const { blocked } = useOfflineState();
   if (!enabled) return null;
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-vault/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-vault">
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-vault/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-vault"
+      title={`${blocked} outgoing request${blocked === 1 ? "" : "s"} blocked`}
+    >
       <WifiOff className="h-2.5 w-2.5" strokeWidth={2.5} />
-      Offline
+      Isolated — {blocked} blocked
     </span>
   );
 }
