@@ -18,6 +18,7 @@ import { useLicenseActivation } from "../lib/use-license-activation";
 import { supabase } from "@/integrations/supabase/client";
 import { UpgradeModal } from "@/components/upgrade-modal";
 import { LoginModal } from "@/components/login-modal";
+import { CertificateGate } from "@/components/workspace/certificate-gate";
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
 
 function NotFoundComponent() {
