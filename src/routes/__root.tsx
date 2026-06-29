@@ -22,6 +22,7 @@ import { LoginModal } from "@/components/login-modal";
 import { CertificateGate } from "@/components/workspace/certificate-gate";
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
 import { UnsupportedBrowserGate } from "@/components/unsupported-browser";
+import { initNetworkIsolation } from "@/lib/network-isolation";
 
 function NotFoundComponent() {
   return (
