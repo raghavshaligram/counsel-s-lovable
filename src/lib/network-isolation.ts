@@ -94,7 +94,7 @@ function install() {
         "NetworkError",
       );
     }
-    return origXhrSend!.call(this, body as Document | BodyInit | null);
+    return origXhrSend!.call(this, body as XMLHttpRequestBodyInit | null);
   } as typeof XMLHttpRequest.prototype.send;
 
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
