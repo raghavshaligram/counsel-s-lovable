@@ -85,11 +85,12 @@ export async function runNer(text: string): Promise<NerEntity[]> {
       const clean = text.slice(start, end).trim();
       if (clean.length < 2) continue;
       // Confidence filter — the pipeline returns junk on noisy OCR text.
-      // PER/ORG use a looser threshold (0.5) so plain-prose names with
-      // middle initials or unusual surnames ("Jonathan A. Meriwether",
-      // "Sarah Kline", "Acme Holdings") still surface as suggestions.
-      // LOC/MISC stay stricter — they're noisier.
-      const minScore = group === "PER" || group === "ORG" ? 0.5 : 0.7;
+      // PER/ORG run at a LOW threshold (0.35) so plain bare-prose names
+      // ("Sarah Kline", "Jonathan A. Meriwether", "Acme Holdings") still
+      // surface. We accept the false-positive cost — the human deselects
+      // wrong suggestions in the UI before any redaction is applied.
+      // LOC/MISC stay stricter — they're noisier and lower value.
+      const minScore = group === "PER" || group === "ORG" ? 0.35 : 0.7;
       if ((r.score ?? 0) < minScore) continue;
       out.push({
         type: group as NerEntityType,
@@ -119,6 +120,41 @@ export async function runNer(text: string): Promise<NerEntity[]> {
       }
       merged.push(e);
     }
+    // ALL-OCCURRENCES sweep — the model often flags a name on its first
+    // mention only and skips later occurrences in the same passage. For
+    // every unique PER/ORG span we found, regex-scan the input for the
+    // same literal string and emit a synthetic entity at every additional
+    // hit. This guarantees that selecting "Sarah Kline" once redacts every
+    // place she's named, not just the first.
+    const seenSpans = new Set(merged.map((e) => `${e.start}:${e.end}`));
+    const uniqueByText = new Map<string, NerEntity>();
+    for (const e of merged) {
+      if (e.type !== "PER" && e.type !== "ORG") continue;
+      const key = `${e.type}::${e.text}`;
+      if (!uniqueByText.has(key)) uniqueByText.set(key, e);
+    }
+    for (const proto of uniqueByText.values()) {
+      const needle = proto.text;
+      if (needle.length < 3) continue;
+      const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "g");
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) {
+        const s = m.index;
+        const eEnd = s + m[0].length;
+        const spanKey = `${s}:${eEnd}`;
+        if (seenSpans.has(spanKey)) continue;
+        seenSpans.add(spanKey);
+        merged.push({
+          type: proto.type,
+          text: needle,
+          start: s,
+          end: eEnd,
+          score: Math.max(0.5, proto.score * 0.9),
+        });
+      }
+    }
+    merged.sort((a, b) => a.start - b.start);
     return merged;
   } catch (err) {
     // eslint-disable-next-line no-console
