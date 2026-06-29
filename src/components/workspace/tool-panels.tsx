@@ -3768,6 +3768,19 @@ function WatermarkPanel({ ctx }: { ctx: ToolPanelCtx }) {
         )}
       </button>
 
+      <FirmTemplatesMenu
+        kind="stamp"
+        getConfig={() => ({ text, pos, size, opacity })}
+        onApply={(cfg: { text?: string; pos?: typeof pos; size?: number; opacity?: number }) => {
+          if (typeof cfg.text === "string") setText(cfg.text);
+          if (cfg.pos) setPos(cfg.pos);
+          if (typeof cfg.size === "number") setSize(cfg.size);
+          if (typeof cfg.opacity === "number") setOpacity(cfg.opacity);
+        }}
+        sourceName={file?.name ?? null}
+      />
+
+
       <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
