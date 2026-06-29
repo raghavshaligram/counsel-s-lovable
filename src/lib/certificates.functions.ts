@@ -99,7 +99,7 @@ export const getCertificate = createServerFn({ method: "POST" })
       sourceName: row.source_name as string,
       caseLabel: (row.case_label as string | null) ?? null,
       createdAt: row.created_at as string,
-      payload: (row.payload as Record<string, unknown>) ?? {},
+      payload: (row.payload as Json) ?? {},
     };
   });
 
