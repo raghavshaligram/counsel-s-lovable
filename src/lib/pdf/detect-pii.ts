@@ -64,7 +64,12 @@ export type Detection = {
   confidence?: "high" | "low";
 };
 
-const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
+/**
+ * Exported for regression tests in tests/detect-patterns.test.ts —
+ * the structured detection regexes are part of the legal-critical
+ * contract and must not silently drift. See CHANGELOG.md.
+ */
+export const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
   { category: "ssn", re: /\b\d{3}-\d{2}-\d{4}\b/ },
   { category: "email", re: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i },
   {
