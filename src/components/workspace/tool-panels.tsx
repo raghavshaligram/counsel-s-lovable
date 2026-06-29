@@ -1068,7 +1068,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
         setProgress(
           p.stage === "ocr"
             ? `OCR scanning ${p.page}/${p.totalPages}`
@@ -1079,6 +1079,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setUsedOcr(usedOcr);
       setScannedPages(scanned);
       setLowConfOcrPages(lowConfidenceOcrPages);
+      setUnderDetectedOcrPages(ocrUnderDetectedPages ?? []);
       setTotalPagesScanned(totalPages);
       const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
