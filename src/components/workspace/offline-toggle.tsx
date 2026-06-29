@@ -25,20 +25,20 @@ export function saveOfflinePref(value: boolean) {
 }
 
 function useOfflineState() {
-  const [state, setState] = useState(() => ({
-    enabled: typeof window !== "undefined" ? isOfflineEnabled() : false,
-    blocked: typeof window !== "undefined" ? getBlockedCount() : 0,
-  }));
-  useEffect(() => subscribeOffline(setState), []);
+  // Start from a stable value so SSR and the first client render match.
+  // Hydrate real values after mount.
+  const [state, setState] = useState({ enabled: false, blocked: 0 });
+  useEffect(() => {
+    setState({ enabled: isOfflineEnabled(), blocked: getBlockedCount() });
+    return subscribeOffline(setState);
+  }, []);
   return state;
 }
 
 export function OfflineToggle({
-  hasDocument,
   enabled,
   onChange,
 }: {
-  hasDocument: boolean;
   enabled: boolean;
   onChange: (next: boolean) => void;
 }) {
@@ -55,7 +55,7 @@ export function OfflineToggle({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!hasDocument) return null;
+  
 
   return (
     <div className="relative">
