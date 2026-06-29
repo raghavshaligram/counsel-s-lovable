@@ -1278,11 +1278,15 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         const { verifyRedactionRemoval } = await importChunk(
           () => import("@/lib/editor/verify-redaction"),
         );
-        const sideTargets = sideChannelDets.map((d) => ({
-          page: 0,
-          text: d.sensitiveText || d.snippet,
-          label: d.sourceLabel,
-        }));
+        const sideTargets = sideChannelDets.flatMap((d) => {
+          const full = (d.sensitiveText || "").trim();
+          const snip = (d.snippet || "").replace(/…$/, "").trim();
+          return Array.from(new Set([full, snip].filter(Boolean))).map((text) => ({
+            page: 0,
+            text,
+            label: d.sourceLabel,
+          }));
+        });
         const verify = await verifyRedactionRemoval(cleaned, sideTargets);
         if (!verify.ok) {
           throw new Error(
