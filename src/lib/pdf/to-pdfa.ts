@@ -615,19 +615,37 @@ export interface PdfAStructuralReport {
   outputIntent: boolean;
   xmpPart: boolean;
   xmpConformance: boolean;
+  xmpDatesValid: boolean;
   trailerId: boolean;
   fontsEmbedded: boolean;
   noEncryption: boolean;
   noJavaScript: boolean;
+  noInterpolate: boolean;
   /** Human-readable list of failed requirements, empty when ok. */
   missing: string[];
   /** Font BaseFont names still unembedded after conformance (should be []). */
   unembeddedFonts: string[];
+  /** Image XObject refs that still have /Interpolate true (should be []). */
+  interpolateOffenders: string[];
   fonts: FontDiagnostic[];
   outputIntents: OutputIntentDiagnostic[];
   xmp: XmpDiagnostic;
   forbiddenConstructs: ForbiddenConstructsDiagnostic;
   transparency: TransparencyDiagnostic;
+}
+
+// ISO 8601 without fractional seconds, e.g. 2026-06-29T14:30:00Z or +01:00
+const XMP_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/;
+
+function xmpDatesValid(xmpText: string): boolean {
+  const tags = ["xmp:CreateDate", "xmp:ModifyDate", "xmp:MetadataDate"];
+  for (const tag of tags) {
+    const re = new RegExp(`<${tag}>\\s*([^<]+)\\s*</${tag}>`);
+    const m = re.exec(xmpText);
+    if (!m) continue;
+    if (!XMP_DATE_RE.test(m[1].trim())) return false;
+  }
+  return true;
 }
 
 export async function verifyPdfAStructuralAsync(bytes: Uint8Array): Promise<PdfAStructuralReport> {
@@ -644,16 +662,20 @@ export async function verifyPdfAStructuralAsync(bytes: Uint8Array): Promise<PdfA
   };
   let transparency: TransparencyDiagnostic = { groupsWithoutColorSpace: [] };
   let unembeddedFonts: string[] = [];
+  let interpolateOffenders: string[] = [];
+  let xmpRaw = "";
   try {
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
     fonts = inspectFonts(doc);
     outputIntents = inspectOutputIntents(doc);
     xmp = inspectXmp(doc);
+    const metaStream = resolveStream(doc, doc.catalog.get(PDFName.of("Metadata")));
+    xmpRaw = metaStream ? new TextDecoder().decode(metaStream.getContents()) : "";
     forbiddenConstructs = inspectForbiddenConstructs(doc, text);
     transparency = inspectTransparency(doc);
     unembeddedFonts = fonts.filter((font) => !font.embedded).map((font) => font.baseFont);
+    interpolateOffenders = inspectInterpolate(doc);
   } catch {
-    // Parse failure → treat as font check failed.
     unembeddedFonts = ["<parse-failed>"];
   }
   const fontsEmbedded = unembeddedFonts.length === 0;
@@ -662,27 +684,32 @@ export async function verifyPdfAStructuralAsync(bytes: Uint8Array): Promise<PdfA
   );
   const xmpPart = xmp.part === "2";
   const xmpConformance = xmp.conformance === "B";
+  const xmpDatesOk = xmpDatesValid(xmpRaw);
   const noEncryption = !forbiddenConstructs.encrypted;
   const noJavaScript = forbiddenConstructs.javaScriptActions.length === 0 && !/\/JavaScript\b/.test(text) && !/\/JS\s*[\(<]/.test(text);
   const noForbiddenActions = forbiddenConstructs.launchActions.length === 0 && forbiddenConstructs.externalRefs.length === 0;
   const transparencyOk = transparency.groupsWithoutColorSpace.length === 0;
+  const noInterpolate = interpolateOffenders.length === 0;
 
   const missing: string[] = [];
   if (!outputIntent) missing.push("sRGB OutputIntent with embedded ICC stream (N=3)");
   if (!xmpPart) missing.push("XMP pdfaid:part=2");
   if (!xmpConformance) missing.push("XMP pdfaid:conformance=B");
+  if (!xmpDatesOk) missing.push("XMP xmp:CreateDate/ModifyDate ISO-8601 format");
   if (!xmp.consistentWithDocInfo) missing.push("XMP/docinfo producer consistency");
   if (!trailerId) missing.push("trailer /ID");
   if (!noEncryption) missing.push("no /Encrypt");
   if (!noJavaScript) missing.push("no JavaScript actions");
   if (!noForbiddenActions) missing.push("no Launch/external-reference actions");
   if (!transparencyOk) missing.push(`transparency group color spaces (${transparency.groupsWithoutColorSpace.join(", ")})`);
+  if (!noInterpolate) missing.push(`image /Interpolate true (${interpolateOffenders.join(", ")})`);
   if (!fontsEmbedded) missing.push(`embedded fonts (unembedded: ${unembeddedFonts.join(", ")})`);
 
   return {
-    outputIntent, xmpPart, xmpConformance, trailerId,
-    fontsEmbedded, noEncryption, noJavaScript,
-    unembeddedFonts, missing, fonts, outputIntents, xmp, forbiddenConstructs, transparency,
+    outputIntent, xmpPart, xmpConformance, xmpDatesValid: xmpDatesOk, trailerId,
+    fontsEmbedded, noEncryption, noJavaScript, noInterpolate,
+    unembeddedFonts, interpolateOffenders,
+    missing, fonts, outputIntents, xmp, forbiddenConstructs, transparency,
     ok: missing.length === 0,
   };
 }
