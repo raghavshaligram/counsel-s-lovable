@@ -294,30 +294,31 @@ function Landing() {
               kicker="Production"
               title="Redact a deposition for production."
               body="On-device detection of names, SSNs, account numbers and addresses. Confirm each box. Burn the text layer — not just black rectangles over it."
-              to="/redact"
+              tool="redact"
               cta="Open Redact"
             />
             <UseCase
               kicker="Discovery"
               title="Bates stamp a discovery set."
               body="Stamp a prefix and starting number across hundreds of files in one pass. Consistent placement, configurable padding, no round-trip."
-              to="/bates"
+              tool="bates"
               cta="Open Bates"
             />
             <UseCase
               kicker="Privilege"
               title="Review for privilege."
               body="Scan a production set for attorney names, common privilege markers and sensitive phrases — flagged for your eyes only, never logged."
-              to="/privilege-scan"
+              tool="privilege-scan"
               cta="Open Privilege Review"
             />
             <UseCase
               kicker="Filing"
               title="Sanitize before filing."
               body="Strip metadata, comments, hidden text and embedded files so the version you file is the version opposing counsel sees."
-              to="/flatten"
+              tool="sanitize"
               cta="Open Sanitize"
             />
+
           </div>
           <p className="mt-8 text-sm text-muted-foreground reveal">
             Also does: OCR (make searchable), merge / split / extract, compare versions, sign &amp; fill,
