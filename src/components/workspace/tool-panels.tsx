@@ -104,6 +104,7 @@ import { importChunk } from "@/lib/chunk-import";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import { FirmTemplatesMenu } from "./firm-templates-menu";
+import { CourtReadinessSection } from "./court-readiness";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -187,12 +188,38 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <SanitizePanel ctx={ctx} />;
     case "exhibit-binder":
       return <ExhibitBinderPanel />;
+    case "court-readiness":
+      return <CourtReadinessPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
 }
 
 
+/* ======================= Court Readiness ======================= */
+
+function CourtReadinessPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const getBytes = useCallback(async () => {
+    if (!file) throw new Error("Open a PDF first");
+    return new Uint8Array(await file.arrayBuffer());
+  }, [file]);
+  if (!file) {
+    return (
+      <InspectorEmpty>
+        Open a PDF to run the free Court Readiness scan — checks PACER size caps, font embedding, and hidden metadata.
+      </InspectorEmpty>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[11.5px] leading-snug text-text-muted">
+        Pre-flight your filing against court standards. The scan is free; one-click Auto-Fix requires a free account.
+      </p>
+      <CourtReadinessSection getBytes={getBytes} sourceName={file.name} />
+    </div>
+  );
+}
 
 
 /* ============================ Sign & Fill ============================ */
