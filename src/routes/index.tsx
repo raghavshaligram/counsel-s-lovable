@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { Check, X, ArrowRight, Minus, WifiOff, Plane } from "lucide-react";
+import { Check, X, ArrowRight, Minus, WifiOff, Plane, Sparkles } from "lucide-react";
 
 const SEO_TITLE =
   "CounselPDF — Private PDF Redaction & Bates Stamping for Lawyers";
