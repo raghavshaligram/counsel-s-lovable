@@ -45,20 +45,33 @@ export class FlattenSensitiveDataError extends Error {
 export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
 
-  // ---- Safety gate: scan + (optionally) clear sensitive content -----
+  // ---- Safety gate: scan + (optionally) remove sensitive content ----
   const findings = scanFormAndAnnotationPii(doc);
   if (findings.length > 0) {
     if (!opts.clearSensitiveFirst) {
       throw new FlattenSensitiveDataError(findings);
     }
-    clearSensitiveFormAndAnnotations(doc);
+    // Use pdf-lib's form API so the wrapped PDFTextField cache (which
+    // form.flatten() consults to regenerate /AP appearance streams) is
+    // also cleared. Low-level dict deletion alone is not enough — the
+    // form wrapper rebuilds /AP from cached values and bakes them in.
+    try {
+      const form = doc.getForm();
+      for (const field of form.getFields()) {
+        try { form.removeField(field); } catch { /* ignore */ }
+      }
+    } catch { /* no form */ }
+    // Also strip text from any sensitive annotation /Contents so a
+    // subsequent annotation flatten (if a future caller adds one) can't
+    // bake it either.
+    scrubAnnotationText(doc);
   }
 
   if (opts.forms) {
     try {
       const form = doc.getForm();
-      // updateFieldAppearances + flatten bakes current values into content stream.
-      // Because we cleared sensitive /V above, the baked glyphs cannot leak PII.
+      // form.flatten() bakes /V → /AP → page. We've removed every sensitive
+      // field above, so any remaining fields are safe to flatten.
       form.flatten();
     } catch {
       // No form — ignore.
@@ -66,13 +79,27 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
   }
 
   if (opts.annotations) {
-    // Drop /Annots from each page entirely (after form flatten removed widgets).
     for (const page of doc.getPages()) {
       page.node.delete(PDFName.of("Annots"));
     }
   }
 
   return doc.save();
+}
+
+function scrubAnnotationText(doc: PDFDocument): void {
+  const ctx = doc.context;
+  for (const page of doc.getPages()) {
+    const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+    if (!annots) continue;
+    for (const item of annots.asArray()) {
+      const a = resolveDict(ctx, item);
+      if (!a) continue;
+      for (const k of ["Contents", "RC", "Subj", "T"]) {
+        if (a.has(PDFName.of(k))) a.delete(PDFName.of(k));
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
