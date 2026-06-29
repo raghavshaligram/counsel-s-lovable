@@ -1648,6 +1648,62 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
         toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+
+        // Offer the formal Redaction Certificate as a free-signup value gate.
+        // Only fires when verification PASSED — never claim unverified compliance.
+        try {
+          const { requestCertificate } = await import("@/components/workspace/certificate-gate");
+          const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
+          const hash = async (data: Uint8Array): Promise<string> => {
+            const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+            return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
+          };
+          const [sourceHash, redactedHash] = await Promise.all([
+            hash(new Uint8Array(await file.arrayBuffer())),
+            hash(bytes),
+          ]);
+          const categoryCounts: Record<string, number> = {};
+          const perPageCounts: Record<number, number> = {};
+          for (const a of (editorState?.doc?.annotations ?? [])) {
+            if (a.kind !== "redact") continue;
+            const cat = (a as { category?: string }).category ?? "manual";
+            categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+            const p = a.page + 1;
+            perPageCounts[p] = (perPageCounts[p] ?? 0) + 1;
+          }
+          const totalRedactions = (editorState?.doc?.annotations ?? []).filter((a) => a.kind === "redact").length;
+          const pageCount = editorState?.doc?.pages.length ?? 0;
+          const payload = {
+            sourceName: file.name,
+            sourceBytes: file.size,
+            pageCount,
+            totalRedactions,
+            categoryCounts,
+            perPageCounts,
+            verification: {
+              ok: result.ok,
+              total: result.total,
+              removed: result.removed,
+              scannedAt: result.scannedAt,
+              leaks: result.leaks.length,
+            },
+            sourceHashSHA256: sourceHash,
+            redactedHashSHA256: redactedHash,
+          };
+          requestCertificate({
+            kind: "redaction",
+            actionLabel: "Redaction",
+            sourceName: file.name,
+            downloadBaseName: file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction",
+            payload,
+            build: () => buildRedactionCertificate({
+              ...payload,
+              verification: payload.verification,
+            }),
+          });
+        } catch (gateErr) {
+          console.warn("[redact] cert gate failed", gateErr);
+        }
       } else {
         throw new Error(`${result.leaks.length} redaction region${result.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
@@ -5748,6 +5804,38 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
         toast.success("Bates applied to active tab", { id: tid });
+      }
+
+      // Offer a Discovery Production Audit Log — only reflect this run's actual numbers.
+      try {
+        const { requestCertificate } = await import("@/components/workspace/certificate-gate");
+        const { buildBatesCertificate } = await import("@/lib/pdf/certificates");
+        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const pdfjs = await loadPdfjs();
+        const probe = await pdfjs.getDocument({ data: new Uint8Array(out as unknown as Uint8Array).slice() }).promise;
+        const pageCount = probe.numPages;
+        try { (probe as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        const fmtNum = (n: number) =>
+          `${s.prefix}${String(n).padStart(s.digits, "0")}${s.suffix ?? ""}`;
+        const endAt = s.startAt + pageCount - 1;
+        const payload = {
+          documents: [
+            { name: file.name, pageCount, firstNumber: fmtNum(s.startAt), lastNumber: fmtNum(endAt) },
+          ],
+          prefix: s.prefix, suffix: s.suffix, digits: s.digits,
+          startAt: s.startAt, endAt, totalPages: pageCount,
+          overlaps: 0, skipped: 0,
+        };
+        requestCertificate({
+          kind: "bates",
+          actionLabel: "Discovery Production",
+          sourceName: file.name,
+          downloadBaseName: file.name.replace(/\.pdf$/i, "") + "-bates-audit-log",
+          payload,
+          build: () => buildBatesCertificate(payload),
+        });
+      } catch (gateErr) {
+        console.warn("[bates] cert gate failed", gateErr);
       }
     } catch (err) {
       console.error("[bates] failed", err);

@@ -46,3 +46,27 @@ Runtime safety gate (defense in depth) remains in
 `verifyRedactionRemoval` runs on every export and `throw`s before
 `downloadPdf` if any redacted region still contains extractable text.
 This gate must never be removed or downgraded to a warning.
+
+## v1.1.0 — 2026-06-29
+
+Compliance certificates (free-signup value gate).
+
+- Added `src/lib/pdf/certificates.ts` — sanitize / Bates / on-device
+  sovereignty certificate generators. Redaction certificate continues to
+  live in `src/lib/pdf/redaction-certificate.ts` unchanged.
+- Added `src/lib/certificates.functions.ts` and the
+  `compliance_certificates` table (RLS scoped to `auth.uid()`). Only
+  counts, hashes, page totals, and the source file name are persisted —
+  never the redacted/sanitized values themselves.
+- Added `src/components/workspace/certificate-gate.tsx` — value-gate card
+  fired after a verified action. Redaction gate ONLY fires when
+  `verifyRedactionRemoval` passes. Sanitize gate uses real
+  `SanitizeReport` counts. Bates gate reports the actual run's range with
+  0 overlaps / 0 skipped by construction (sequential numbering).
+- Updated `src/lib/pdf/sanitize.ts` to expose
+  `sanitizePdfBytesWithReport`. The existing `sanitizePdfBytes` signature
+  is preserved; the regression tests in `tests/sanitize.test.ts` continue
+  to cover it.
+- Added `src/routes/_authenticated/certificates.tsx` — Compliance
+  Portfolio dashboard for re-downloading saved certificates.
+

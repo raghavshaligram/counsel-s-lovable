@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      compliance_certificates: {
+        Row: {
+          case_label: string | null
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          source_name: string
+          user_id: string
+        }
+        Insert: {
+          case_label?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          payload: Json
+          source_name: string
+          user_id: string
+        }
+        Update: {
+          case_label?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          source_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notification_dismissals: {
         Row: {
           dismissed_at: string

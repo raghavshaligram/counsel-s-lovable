@@ -196,11 +196,50 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
   }
 
   function runSanitize() {
-    const op = (target: File) =>
-      processWithFile(target, "Sanitize", "sanitized", async (bytes) => {
-        const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
-        return sanitizePdfBytes(bytes);
-      });
+    const op = async (target: File) => {
+      setBusy(true);
+      const toastId = "qa-sanitize";
+      toast.loading("Sanitize…", { id: toastId });
+      try {
+        const bytes = new Uint8Array(await target.arrayBuffer());
+        const { sanitizePdfBytesWithReport } = await importChunk(() => import("@/lib/pdf/sanitize"));
+        const { bytes: out, report, pageCount } = await sanitizePdfBytesWithReport(bytes);
+        downloadBytes(out, `${baseName(target.name)}-sanitized.pdf`, "application/pdf");
+        toast.success("Sanitize — saved", { id: toastId });
+
+        try {
+          const { requestCertificate } = await import("@/components/workspace/certificate-gate");
+          const { buildSanitizeCertificate, sha256Hex } = await import("@/lib/pdf/certificates");
+          const [sourceHash, outputHash] = await Promise.all([sha256Hex(bytes), sha256Hex(out)]);
+          const payload = {
+            sourceName: target.name,
+            sourceBytes: target.size,
+            pageCount,
+            removed: report,
+            sourceHashSHA256: sourceHash,
+            outputHashSHA256: outputHash,
+          };
+          requestCertificate({
+            kind: "sanitize",
+            actionLabel: "Sanitize",
+            sourceName: target.name,
+            downloadBaseName: `${baseName(target.name)}-sanitization-report`,
+            payload,
+            build: () => buildSanitizeCertificate(payload),
+          });
+        } catch (gateErr) {
+          console.warn("[sanitize] cert gate failed", gateErr);
+        }
+      } catch (err) {
+        console.error("[quick-actions] Sanitize failed", err);
+        toast.error("Sanitize failed", {
+          id: toastId,
+          description: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setBusy(false);
+      }
+    };
     if (file) void op(file);
     else pickFileThen(op);
   }

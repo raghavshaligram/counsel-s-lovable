@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle } from "lucide-react";
+import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle, FileBadge2 } from "lucide-react";
 import { useLoginModal } from "@/components/login-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useLicenseActivation } from "@/lib/use-license-activation";
@@ -138,6 +138,10 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
         <DropdownMenuItem onSelect={() => void navigate({ to: "/account" })}>
           <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2} />
           Account settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void navigate({ to: "/certificates" })}>
+          <FileBadge2 className="h-3.5 w-3.5" strokeWidth={2} />
+          Compliance portfolio
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={(e) => { e.preventDefault(); void showWelcome(); }}>
           <HelpCircle className="h-3.5 w-3.5" strokeWidth={2} />
