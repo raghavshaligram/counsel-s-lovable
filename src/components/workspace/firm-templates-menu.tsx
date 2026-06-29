@@ -98,7 +98,7 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
         data: {
           kind,
           name: name.trim(),
-          config: getConfig() as unknown as Parameters<typeof saveFirmTemplate>[0]["data"]["config"],
+          config: getConfig() as never,
           sourceName: sourceName ?? null,
         },
       });
