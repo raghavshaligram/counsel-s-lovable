@@ -1222,9 +1222,10 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         </span>
       </div>
       <p className="text-[10.5px] leading-snug text-text-muted">
-        Scans this document for SSNs, emails, phones, dates, cards/accounts and
-        likely names — proposed as draft boxes. Nothing leaves your device. You
-        confirm each before redacting.
+        Scans for SSNs, emails, phones, dates, cards/accounts, person names and
+        organizations (on-device NER), plus privilege/confidentiality context —
+        all proposed as draft boxes. Nothing leaves your device. You confirm
+        each before redacting.
       </p>
 
       <button
