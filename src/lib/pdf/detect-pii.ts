@@ -529,6 +529,70 @@ export async function detectPiiInPdf(
                 });
               }
             }
+
+            // NER + privilege-context pass on the OCR line text. Maps
+            // entity char ranges back to the line's word boxes for the
+            // detection rectangle.
+            const pushOcrSpan = (
+              spanStart: number,
+              spanEnd: number,
+              category: PiiCategory,
+              confidence: "high" | "low" | undefined,
+              text: string,
+            ) => {
+              const covered = new Set<number>();
+              for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
+                const wi = charToWord[c];
+                if (wi >= 0) covered.add(wi);
+              }
+              if (covered.size === 0) return;
+              const wordIdx = [...covered];
+              const key = `${category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
+              if (matchedSpans.has(key)) return;
+              matchedSpans.add(key);
+              const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
+              const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
+              const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
+              const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
+              const pad = Math.max(2, (y1 - y0) * 0.15);
+              detections.push({
+                id: `det-ocr-${i}-${detections.length}`,
+                page: i,
+                x: (x0 - pad) * toCanvas,
+                y: (y0 - pad) * toCanvas,
+                w: (x1 - x0 + pad * 2) * toCanvas,
+                h: (y1 - y0 + pad * 2) * toCanvas,
+                category,
+                confidence,
+                snippet: snippet(text),
+              });
+            };
+
+            if (lineText.trim().length >= 8 && /[A-Za-z]/.test(lineText)) {
+              const ents = await runNer(lineText);
+              for (const e of ents) {
+                if (e.type !== "PER" && e.type !== "ORG") continue;
+                pushOcrSpan(
+                  e.start,
+                  e.end,
+                  e.type === "PER" ? "name" : "org",
+                  "high",
+                  e.text,
+                );
+              }
+            }
+            PRIVILEGE_TERMS_RE.lastIndex = 0;
+            let pmOcr: RegExpExecArray | null;
+            while ((pmOcr = PRIVILEGE_TERMS_RE.exec(lineText)) !== null) {
+              pushOcrSpan(
+                pmOcr.index,
+                pmOcr.index + pmOcr[0].length,
+                "privilegeContext",
+                "low",
+                pmOcr[0],
+              );
+              if (pmOcr[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
+            }
           }
 
           // Log the raw OCR text for this page so users / devs can compare
