@@ -253,7 +253,15 @@ function RootComponent() {
       <LoginModal />
       <CertificateGate />
       <ConfirmDialogHost />
-      <Toaster theme="dark" position="bottom-right" />
+      <Toaster
+        theme="dark"
+        position="bottom-center"
+        closeButton
+        richColors={false}
+        duration={4000}
+        offset={24}
+        visibleToasts={4}
+      />
     </QueryClientProvider>
   );
 }
