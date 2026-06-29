@@ -938,7 +938,7 @@ const COMP_ROWS: Array<{ label: string; vals: [MarkValue, MarkValue, MarkValue, 
   { label: "One-click legal workflows", vals: [true, false, false, "partial"] },
   { label: "Private AI assist (on-device)", vals: [true, false, false, false] },
   { label: "Works offline", vals: [true, "partial", true, false] },
-  { label: "No installation, any device", vals: [true, false, false, true] },
+  { label: "Access from any device (laptop, iPad, courthouse)", vals: [true, { note: "cloud only" }, false, true], emphasize: true },
   { label: "Affordable for solo / small firm", vals: [true, "partial", "partial", false] },
 ];
 
