@@ -168,8 +168,8 @@ function inspectFontDict(doc: PDFDocument, font: PDFDict, ref: unknown): FontDia
   const baseFont = pdfName(font.get(PDFName.of("BaseFont"))) || "<unknown>";
   if (subtype === "/Type0") {
     const descArr = font.lookup(PDFName.of("DescendantFonts"));
-    const items: unknown[] = descArr && typeof (descArr as { asArray?: unknown }).asArray === "function"
-      ? (descArr as { asArray: () => unknown[] }).asArray()
+    const items: unknown[] = descArr && typeof (descArr as unknown as { asArray?: unknown }).asArray === "function"
+      ? (descArr as unknown as { asArray: () => unknown[] }).asArray()
       : [];
     const descendantFonts = items.flatMap((item) => {
       const cid = resolveDict(doc, item);
