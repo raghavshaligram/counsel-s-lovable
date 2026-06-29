@@ -201,13 +201,19 @@ function inspectHidden(doc: PDFDocument): {
 
   let javascript = 0;
   let embeddedFiles = 0;
-  const names = catalog.lookup(PDFName.of("Names"), PDFDict);
-  if (names) {
-    if (names.has(PDFName.of("JavaScript"))) javascript++;
-    if (names.has(PDFName.of("EmbeddedFiles"))) embeddedFiles++;
+  if (catalog.has(PDFName.of("Names"))) {
+    try {
+      const names = catalog.lookup(PDFName.of("Names"), PDFDict);
+      if (names?.has(PDFName.of("JavaScript"))) javascript++;
+      if (names?.has(PDFName.of("EmbeddedFiles"))) embeddedFiles++;
+    } catch { /* not a dict */ }
   }
-  const openAction = catalog.lookup(PDFName.of("OpenAction"), PDFDict);
-  if (openAction && openAction.has(PDFName.of("JS"))) javascript++;
+  if (catalog.has(PDFName.of("OpenAction"))) {
+    try {
+      const openAction = catalog.lookup(PDFName.of("OpenAction"), PDFDict);
+      if (openAction && openAction.has(PDFName.of("JS"))) javascript++;
+    } catch { /* OpenAction may be an array (destination), not a dict */ }
+  }
 
   let actions = catalog.has(PDFName.of("AA")) ? 1 : 0;
   for (const page of doc.getPages()) {
