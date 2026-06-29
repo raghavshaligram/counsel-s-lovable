@@ -406,8 +406,14 @@ export async function detectPiiInPdf(
       let pm: RegExpExecArray | null;
       while ((pm = PRIVILEGE_TERMS_RE.exec(str)) !== null) {
         pushBox(pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
+        // Surface any nearby value as a redactable suggestion.
+        const values = findValuesNearPrivilege(str, pm.index, pm.index + pm[0].length);
+        for (const v of values) {
+          pushBox(v.start, v.end - v.start, "privilegeValue", "low", v.text);
+        }
         if (pm[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
       }
+
 
       // 3) On-device NER for PERSON / ORG entities — catches plain-prose
       //    names without requiring Mr./Dr./Esq. titles. Skip very short or
