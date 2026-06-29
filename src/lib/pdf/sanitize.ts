@@ -312,12 +312,29 @@ async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promis
 }
 
 /** Recursively clear /V (and /DV, /RV) on a form field tree.
- *  Returns the count of fields whose /V was non-empty before clearing. */
+ *  Returns the count of fields whose /V was non-empty before clearing.
+ *  Logs before/after for each cleared field so a regression where the
+ *  value is "covered but not removed" is immediately visible in DevTools. */
 function clearFormFieldTree(ctx: PDFDocument["context"], item: unknown): number {
   const field = resolveDict(ctx, item);
   if (!field) return 0;
   let count = 0;
-  if (field.has(PDFName.of("V"))) { field.delete(PDFName.of("V")); count++; }
+  if (field.has(PDFName.of("V"))) {
+    let beforeStr = "";
+    let nameStrT = "";
+    try {
+      const v = field.get(PDFName.of("V")) as unknown as { decodeText?: () => string; toString?: () => string };
+      beforeStr = typeof v?.decodeText === "function" ? v.decodeText() : (v?.toString?.() ?? "");
+      const t = field.get(PDFName.of("T")) as unknown as { decodeText?: () => string };
+      nameStrT = typeof t?.decodeText === "function" ? t.decodeText() : "";
+    } catch { /* ignore */ }
+    field.delete(PDFName.of("V"));
+    count++;
+    // eslint-disable-next-line no-console
+    console.info(
+      `[sanitize] form-field /V cleared — field="${nameStrT || "(anon)"}" before="${beforeStr.slice(0, 80)}" after="" (has /V: ${field.has(PDFName.of("V"))})`,
+    );
+  }
   if (field.has(PDFName.of("DV"))) field.delete(PDFName.of("DV"));
   if (field.has(PDFName.of("RV"))) field.delete(PDFName.of("RV"));
   const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
