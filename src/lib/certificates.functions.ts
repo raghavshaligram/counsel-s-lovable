@@ -15,7 +15,7 @@ const saveSchema = z.object({
   kind: certKind,
   sourceName: z.string().trim().min(1).max(255),
   caseLabel: z.string().trim().max(120).optional().nullable(),
-  payload: z.record(z.string(), z.unknown()),
+  payload: z.unknown(),
 });
 
 const idSchema = z.object({ id: z.string().uuid() });
