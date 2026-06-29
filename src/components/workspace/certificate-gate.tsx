@@ -61,7 +61,10 @@ export const useCertGate = create<GateState>((set) => ({
   consumed: false,
   request: null,
   show: (request) => set({ open: true, consumed: false, request }),
-  dismiss: () => set({ open: false }),
+  // "Not now" must fully clear the pending request so a later sign-in
+  // (e.g. via the account menu) cannot auto-issue a certificate the
+  // user already declined.
+  dismiss: () => set({ open: false, consumed: true, request: null }),
   markConsumed: () => set({ consumed: true, open: false }),
 }));
 
@@ -100,7 +103,19 @@ export function CertificateGate() {
     if (!request) return;
     setBusy(true);
     try {
-      const bytes = await request.build();
+      // Defense in depth: confirm a live session before doing ANY work.
+      // The server fn also enforces this, but we want zero local
+      // generation/download for signed-out callers.
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !userData.user) {
+        toast.error("Sign in required", {
+          description: "Create a free account to download compliance certificates.",
+        });
+        openLogin();
+        return;
+      }
+      // Persist the metadata first — if the server rejects (RLS, network),
+      // we never produce the local PDF.
       await save({
         data: {
           kind: request.kind,
@@ -109,6 +124,7 @@ export function CertificateGate() {
           payload: request.payload as never,
         },
       });
+      const bytes = await request.build();
       await downloadPdf(bytes, `${request.downloadBaseName}.pdf`);
       toast.success(`${request.actionLabel} Certificate saved to your portfolio`);
       markConsumed();
@@ -118,7 +134,7 @@ export function CertificateGate() {
     } finally {
       setBusy(false);
     }
-  }, [request, save, markConsumed]);
+  }, [request, save, markConsumed, openLogin]);
 
   // Auto-issue once the user signs in while the card is still up.
   useEffect(() => {
