@@ -315,6 +315,13 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           </OptionRow>
         </div>
 
+        {file && (
+          <CourtReadinessSection
+            sourceName={file.name}
+            getBytes={async () => new Uint8Array(await file.arrayBuffer())}
+          />
+        )}
+
         <div className="mt-2 flex items-center justify-between gap-2">
           <button
             type="button"
