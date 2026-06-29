@@ -122,7 +122,17 @@ async function networkFirstNav(req) {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return;
+  if (req.method !== "GET") {
+    if (OFFLINE_ISOLATED) {
+      event.respondWith(
+        new Response("Network blocked by Work Offline", {
+          status: 503,
+          statusText: "Offline isolation",
+        }),
+      );
+    }
+    return;
+  }
 
   const url = new URL(req.url);
 
