@@ -638,15 +638,16 @@ export async function detectPiiInPdf(
             PRIVILEGE_TERMS_RE.lastIndex = 0;
             let pmOcr: RegExpExecArray | null;
             while ((pmOcr = PRIVILEGE_TERMS_RE.exec(lineText)) !== null) {
-              pushOcrSpan(
-                pmOcr.index,
-                pmOcr.index + pmOcr[0].length,
-                "privilegeContext",
-                "low",
-                pmOcr[0],
-              );
+              const termStart = pmOcr.index;
+              const termEnd = pmOcr.index + pmOcr[0].length;
+              pushOcrSpan(termStart, termEnd, "privilegeContext", "low", pmOcr[0]);
+              const values = findValuesNearPrivilege(lineText, termStart, termEnd);
+              for (const v of values) {
+                pushOcrSpan(v.start, v.end, "privilegeValue", "low", v.text);
+              }
               if (pmOcr[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
             }
+
           }
 
           // Log the raw OCR text for this page so users / devs can compare
