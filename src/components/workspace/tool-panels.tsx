@@ -1747,13 +1747,37 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
       <Section title="Export & verify" icon={<ShieldCheck className="h-3 w-3" />}>
+        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Review carefully before export</div>
+          Automatic detection finds structured data (SSNs, accounts, cards) but <strong>misses names
+          in prose, party names, and context-dependent secrets</strong>. Confirm completeness yourself —
+          manual redaction is the primary safeguard.
+        </div>
+        <label className={cn(
+          "mb-2 flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+          reviewedSignOff ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+          totalBoxes === 0 && "cursor-not-allowed opacity-60",
+        )}>
+          <input
+            type="checkbox"
+            checked={reviewedSignOff}
+            disabled={totalBoxes === 0}
+            onChange={(e) => setReviewedSignOff(e.target.checked)}
+            className="mt-0.5 h-3 w-3 accent-vault"
+          />
+          <span className="text-foreground">
+            I have reviewed every page of this document and confirm the redaction set is complete.
+            I understand auto-detection only flags structured patterns and that I am responsible
+            for catching names and context-dependent secrets.
+          </span>
+        </label>
         <button
           type="button"
           onClick={exportRedacted}
-          disabled={busy || totalBoxes === 0}
+          disabled={busy || totalBoxes === 0 || !reviewedSignOff}
           className={cn(
             "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-            (busy || totalBoxes === 0) && "cursor-not-allowed opacity-60",
+            (busy || totalBoxes === 0 || !reviewedSignOff) && "cursor-not-allowed opacity-60",
           )}
         >
           <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
@@ -1764,6 +1788,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           extractable text remains inside each redaction region.
         </p>
       </Section>
+
 
       {verify && (
         <Section
