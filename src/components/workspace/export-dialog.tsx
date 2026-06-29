@@ -65,17 +65,22 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
     setBusy(true);
     const tid = "wsx-export-flow";
     toast.loading("Building PDF…", { id: tid });
+    // Track local byte buffers so we can null them in finally and let GC
+    // reclaim memory even if an error mid-flow short-circuits the function.
+    let liveBytes: Uint8Array | null = null;
+    let bytes: Uint8Array | null = null;
+    let delivered = false;
     try {
       // Prefer live editor bytes: apply-now redaction mutates srcBytes so
       // hidden vectors are gone before flatten/PDF-A/export. If pdf.js has
       // detached that buffer, fall back to the active File.
-      const liveBytes = doc.srcBytes.byteLength > 0
+      liveBytes = doc.srcBytes.byteLength > 0
         ? doc.srcBytes
         : file
           ? new Uint8Array(await file.arrayBuffer())
           : doc.srcBytes;
       const exportDoc = { ...doc, srcBytes: liveBytes };
-      let bytes = await exportEditedPdf(exportDoc);
+      bytes = await exportEditedPdf(exportDoc);
 
       if (pnOn) {
         const { addPageNumbers } = await importChunk(() => import("@/lib/batch/ops/page-numbers"));
@@ -154,10 +159,9 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
 
       const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
       await downloadPdf(bytes, outName);
+      delivered = true;
 
       toast.success("Saved", { id: tid });
-      onOpenChange(false);
-      reset();
     } catch (err) {
       console.error("[export-flow] failed", err);
       if (isChunkLoadError(err)) {
@@ -167,9 +171,18 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         toast.error("Export failed", { id: tid, description: (err as Error).message });
       }
     } finally {
+      // ALWAYS restore UI state — even if downloadPdf throws or a worker
+      // never signals completion. Without this the dialog stays stuck on
+      // "Building…" and the user has to refresh.
+      liveBytes = null;
+      bytes = null;
       setBusy(false);
+      if (delivered) {
+        try { onOpenChange(false); } catch { /* ignore */ }
+      }
     }
   }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, pnFormat, headerText, footerText, onOpenChange]);
+
 
   const anyOn = pnOn || hfOn || flOn || batesOn;
 

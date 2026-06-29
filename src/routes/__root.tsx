@@ -21,6 +21,7 @@ import { UpgradeModal } from "@/components/upgrade-modal";
 import { LoginModal } from "@/components/login-modal";
 import { CertificateGate } from "@/components/workspace/certificate-gate";
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
+import { UnsupportedBrowserGate } from "@/components/unsupported-browser";
 
 function NotFoundComponent() {
   return (
@@ -262,6 +263,7 @@ function RootComponent() {
         offset={24}
         visibleToasts={4}
       />
+      <UnsupportedBrowserGate />
     </QueryClientProvider>
   );
 }
