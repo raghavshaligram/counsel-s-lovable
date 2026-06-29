@@ -85,7 +85,12 @@ export async function runNer(text: string): Promise<NerEntity[]> {
       const clean = text.slice(start, end).trim();
       if (clean.length < 2) continue;
       // Confidence filter — the pipeline returns junk on noisy OCR text.
-      if ((r.score ?? 0) < 0.6) continue;
+      // PER/ORG use a looser threshold (0.5) so plain-prose names with
+      // middle initials or unusual surnames ("Jonathan A. Meriwether",
+      // "Sarah Kline", "Acme Holdings") still surface as suggestions.
+      // LOC/MISC stay stricter — they're noisier.
+      const minScore = group === "PER" || group === "ORG" ? 0.5 : 0.7;
+      if ((r.score ?? 0) < minScore) continue;
       out.push({
         type: group as NerEntityType,
         text: clean,
@@ -94,6 +99,27 @@ export async function runNer(text: string): Promise<NerEntity[]> {
         score: r.score ?? 0,
       });
     }
+    // Merge adjacent PER entities separated only by whitespace, a middle
+    // initial ("A."), or a hyphen — the tokenizer routinely splits
+    // "Jonathan A. Meriwether" into ["Jonathan", "Meriwether"] with the
+    // initial as its own token that aggregation_strategy=simple drops.
+    // Same for ORG ("Acme Holdings" sometimes splits).
+    out.sort((a, b) => a.start - b.start);
+    const merged: NerEntity[] = [];
+    for (const e of out) {
+      const last = merged[merged.length - 1];
+      if (last && last.type === e.type && (e.type === "PER" || e.type === "ORG")) {
+        const between = text.slice(last.end, e.start);
+        if (/^[\s,'\-]*(?:[A-Z]\.?\s*)?$/.test(between) && between.length <= 6) {
+          last.end = e.end;
+          last.text = text.slice(last.start, last.end).trim();
+          last.score = Math.min(last.score, e.score);
+          continue;
+        }
+      }
+      merged.push(e);
+    }
+    return merged;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[ner] run failed", err);
