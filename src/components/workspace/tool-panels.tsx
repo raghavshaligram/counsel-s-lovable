@@ -1058,7 +1058,7 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
  * confirms by triggering export.
  */
 function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
-  const { file, editorDispatch, editorState } = ctx;
+  const { file, replaceFile, editorDispatch, editorState } = ctx;
   type Det = import("@/lib/pdf/detect-pii").Detection;
   type Cat = import("@/lib/pdf/detect-pii").PiiCategory;
   const [scanning, setScanning] = useState(false);
@@ -1249,15 +1249,52 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       const tid = "wsx-redact-apply-side";
       toast.loading("Wiping form fields, comments, metadata…", { id: tid });
       try {
-        const { sanitizePdfBytes } = await importChunk(
+        const formFieldFindings = sideChannelDets.filter((d) => d.vector === "form-field");
+        // eslint-disable-next-line no-console
+        console.info("[redact:form-field] apply-now branch", {
+          executes: true,
+          selectedSideChannels: sideChannelDets.length,
+          selectedFormFields: formFieldFindings.map((d) => ({
+            sourceLabel: d.sourceLabel,
+            snippet: d.snippet,
+            sensitiveText: d.sensitiveText,
+          })),
+          order: "sanitize/clear fields before any flatten, PDF/A conversion, or download",
+        });
+        const { sanitizePdfBytesWithReport } = await importChunk(
           () => import("@/lib/pdf/sanitize"),
         );
-        const cleaned = await sanitizePdfBytes(editorState.doc.srcBytes);
+        const sourceBytes = editorState.doc.srcBytes.byteLength > 0
+          ? editorState.doc.srcBytes
+          : new Uint8Array(await file!.arrayBuffer());
+        const { bytes: cleaned, report } = await sanitizePdfBytesWithReport(sourceBytes);
+        // eslint-disable-next-line no-console
+        console.info("[redact:form-field] apply-now sanitize report", {
+          acroForm: report.acroForm,
+          acroFormFieldsCleared: report.acroFormFields,
+          flattened: false,
+          order: "field values/AP cleared now; flatten/PDF-A can only run later",
+        });
+        const { verifyRedactionRemoval } = await importChunk(
+          () => import("@/lib/editor/verify-redaction"),
+        );
+        const sideTargets = sideChannelDets.map((d) => ({
+          page: 0,
+          text: d.sensitiveText || d.snippet,
+          label: d.sourceLabel,
+        }));
+        const verify = await verifyRedactionRemoval(cleaned, sideTargets);
+        if (!verify.ok) {
+          throw new Error(
+            `Immediate hidden-vector redaction failed — ${verify.leaks.length} value${verify.leaks.length === 1 ? "" : "s"} still recoverable.`,
+          );
+        }
         // Replace srcBytes in-place; preserve annotations + page ops + ocr.
         editorDispatch({
           type: "LOAD",
           doc: { ...editorState.doc, srcBytes: cleaned },
         });
+        replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
         if (editorState.doc.annotations.length > 0 || editorState.doc.ocrLayer) {
           editorDispatch({
             type: "LOAD_SIDECAR",
@@ -1303,7 +1340,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         return next;
       });
     }
-  }, [findings, selected, editorDispatch, editorState, existingRedactKeys]);
+  }, [findings, selected, file, replaceFile, editorDispatch, editorState, existingRedactKeys]);
 
   const pageRedactableFindings = useMemo(
     () => findings?.filter((d) => d.category !== "privilegeContext" && (!d.vector || d.vector === "page")) ?? [],

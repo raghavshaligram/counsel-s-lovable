@@ -20,7 +20,7 @@
  * sharing" pass; it complements (but does not replace) destructive
  * redaction, which burns regions of the page itself.
  */
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, PDFString } from "pdf-lib";
 
 export interface SanitizeReport {
   documentInfo: number;        // count of doc-info fields that had a value
@@ -71,36 +71,43 @@ export async function sanitizePdfBytesWithReport(
 
   const ctx = doc.context;
   const catalog = doc.catalog;
+  const appearanceRefsToRemove: PDFRef[] = [];
 
   // 2) AcroForm field values — clear /V, /DV, /RV on every form field
   //    BEFORE deleting /AcroForm so descendants in the indirect-object
   //    graph also lose their cached values (some viewers still surface
   //    them via field refs from annotations).
   const acroForm = catalog.lookupMaybe(PDFName.of("AcroForm"), PDFDict);
+  // eslint-disable-next-line no-console
+  console.info("[redact:form-field] sanitize form-field branch", {
+    executes: true,
+    hasAcroForm: !!acroForm,
+    order: "clear /V + /DV and delete /AP before any flatten/PDF-A/export",
+  });
   if (acroForm) {
     report.acroForm = 1;
     const fieldsArr = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
     if (fieldsArr) {
       for (const item of fieldsArr.asArray()) {
-        const cleared = clearFormFieldTree(ctx, item);
+        const cleared = clearFormFieldTree(ctx, item, appearanceRefsToRemove);
         report.acroFormFields += cleared;
       }
+      // Remove the fields from the live AcroForm tree before any downstream
+      // flatten call can bake their previous appearance into page content.
+      const emptied = PDFArray.withContext(ctx);
+      acroForm.set(PDFName.of("Fields"), emptied);
     }
     catalog.delete(PDFName.of("AcroForm"));
   }
   // Belt and braces: even if /AcroForm was already missing, individual
   // field dicts can linger as orphans. Walk every indirect object and
   // clear any /FT /Tx-style field value we find.
-  for (const [, obj] of ctx.enumerateIndirectObjects()) {
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
     if (!(obj instanceof PDFDict)) continue;
-    if (!obj.has(PDFName.of("FT"))) continue;
-    if (obj.has(PDFName.of("V"))) { obj.delete(PDFName.of("V")); report.acroFormFields++; }
-    if (obj.has(PDFName.of("DV"))) obj.delete(PDFName.of("DV"));
-    if (obj.has(PDFName.of("RV"))) obj.delete(PDFName.of("RV"));
-    // /AP appearance streams cache the rendered glyphs of /V. Without
-    // stripping them, the value can still be recovered from the widget
-    // XObject and would be baked into the page by any downstream flatten.
-    if (obj.has(PDFName.of("AP"))) obj.delete(PDFName.of("AP"));
+    const isFieldOrWidget = obj.has(PDFName.of("FT")) || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget";
+    if (!isFieldOrWidget) continue;
+    const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan");
+    report.acroFormFields += cleared;
   }
   // Also drop /Widget annotations on every page — the parent form fields
   // were just deleted, so the widgets are now orphans whose only purpose
@@ -113,6 +120,8 @@ export async function sanitizePdfBytesWithReport(
       const annot = resolveDict(ctx, item);
       if (!annot) { keep2.push(item); continue; }
       if (nameStr(annot.get(PDFName.of("Subtype"))) === "/Widget") {
+        collectAppearanceRefs(ctx, annot, appearanceRefsToRemove);
+        if (annot.has(PDFName.of("AP"))) annot.delete(PDFName.of("AP"));
         if (item && typeof item === "object" && "objectNumber" in item) {
           removeRef(ctx, item as PDFRef);
         }
@@ -131,6 +140,7 @@ export async function sanitizePdfBytesWithReport(
   // even though nothing references them — and they still carry the
   // form-field glyph strings, which a raw-stream verifier rightly
   // flags as a leak.
+  for (const r of appearanceRefsToRemove) removeRef(ctx, r);
   await purgeWidgetAppearanceStreams(ctx);
 
   // 3) Annotations — strip text from every annotation and remove
@@ -289,6 +299,44 @@ function removeRef(ctx: PDFDocument["context"], ref: PDFRef): void {
   try { ctx.delete(ref); } catch { /* ignore */ }
 }
 
+function refStr(obj: unknown): string {
+  return obj && typeof obj === "object" && "objectNumber" in obj && "generationNumber" in obj
+    ? `${(obj as PDFRef).objectNumber} ${(obj as PDFRef).generationNumber} R`
+    : "direct";
+}
+
+function extractText(obj: unknown): string {
+  if (!obj) return "";
+  try {
+    const o = obj as { decodeText?: () => string; asString?: () => string; toString?: () => string };
+    if (typeof o.decodeText === "function") return o.decodeText();
+    if (typeof o.asString === "function") return o.asString();
+    return o.toString?.() ?? "";
+  } catch { return ""; }
+}
+
+function rememberRef(refs: PDFRef[], obj: unknown): void {
+  if (!obj || typeof obj !== "object" || !("objectNumber" in obj) || !("generationNumber" in obj)) return;
+  const ref = obj as PDFRef;
+  if (refs.some((r) => r.objectNumber === ref.objectNumber && r.generationNumber === ref.generationNumber)) return;
+  refs.push(ref);
+}
+
+function collectAppearanceRefs(ctx: PDFDocument["context"], dict: PDFDict, refs: PDFRef[]): void {
+  const ap = dict.get(PDFName.of("AP"));
+  if (!ap) return;
+  rememberRef(refs, ap);
+  const apDict = resolveDict(ctx, ap);
+  if (!apDict) return;
+  for (const key of ["N", "D", "R"]) {
+    const value = apDict.get(PDFName.of(key));
+    rememberRef(refs, value);
+    const valueDict = resolveDict(ctx, value);
+    if (!valueDict) continue;
+    for (const [, nested] of valueDict.entries()) rememberRef(refs, nested);
+  }
+}
+
 async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promise<void> {
   const { unzlibSync } = await import("fflate");
   const targets: PDFRef[] = [];
@@ -315,31 +363,59 @@ async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promis
  *  Returns the count of fields whose /V was non-empty before clearing.
  *  Logs before/after for each cleared field so a regression where the
  *  value is "covered but not removed" is immediately visible in DevTools. */
-function clearFormFieldTree(ctx: PDFDocument["context"], item: unknown): number {
+function clearFormFieldTree(ctx: PDFDocument["context"], item: unknown, appearanceRefs: PDFRef[]): number {
   const field = resolveDict(ctx, item);
   if (!field) return 0;
-  let count = 0;
-  if (field.has(PDFName.of("V"))) {
-    let beforeStr = "";
-    let nameStrT = "";
-    try {
-      const v = field.get(PDFName.of("V")) as unknown as { decodeText?: () => string; toString?: () => string };
-      beforeStr = typeof v?.decodeText === "function" ? v.decodeText() : (v?.toString?.() ?? "");
-      const t = field.get(PDFName.of("T")) as unknown as { decodeText?: () => string };
-      nameStrT = typeof t?.decodeText === "function" ? t.decodeText() : "";
-    } catch { /* ignore */ }
-    field.delete(PDFName.of("V"));
-    count++;
-    // eslint-disable-next-line no-console
-    console.info(
-      `[sanitize] form-field /V cleared — field="${nameStrT || "(anon)"}" before="${beforeStr.slice(0, 80)}" after="" (has /V: ${field.has(PDFName.of("V"))})`,
-    );
-  }
-  if (field.has(PDFName.of("DV"))) field.delete(PDFName.of("DV"));
-  if (field.has(PDFName.of("RV"))) field.delete(PDFName.of("RV"));
+  rememberRef(appearanceRefs, item);
+  let count = clearFormFieldDict(ctx, field, item, appearanceRefs, "AcroForm-tree");
   const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
   if (kids) {
-    for (const k of kids.asArray()) count += clearFormFieldTree(ctx, k);
+    for (const k of kids.asArray()) count += clearFormFieldTree(ctx, k, appearanceRefs);
   }
   return count;
+}
+
+function clearFormFieldDict(
+  ctx: PDFDocument["context"],
+  field: PDFDict,
+  ref: unknown,
+  appearanceRefs: PDFRef[],
+  source: "AcroForm-tree" | "orphan-scan",
+): number {
+  const name = extractText(field.get(PDFName.of("T"))) || "(anon)";
+  const beforeV = extractText(field.get(PDFName.of("V")));
+  const beforeDV = extractText(field.get(PDFName.of("DV")));
+  const hadAP = field.has(PDFName.of("AP"));
+  const hadSensitiveValue = !!(beforeV || beforeDV);
+  // eslint-disable-next-line no-console
+  console.info("[redact:form-field] clear before flatten", {
+    source,
+    ref: refStr(ref),
+    field: name,
+    vBefore: beforeV.slice(0, 160),
+    dvBefore: beforeDV.slice(0, 160),
+    hasAPBefore: hadAP,
+    flattenOrder: "CLEAR_FIELD_THEN_FLATTEN",
+  });
+  collectAppearanceRefs(ctx, field, appearanceRefs);
+  rememberRef(appearanceRefs, ref);
+  field.set(PDFName.of("V"), PDFString.of(""));
+  field.set(PDFName.of("DV"), PDFString.of(""));
+  if (field.has(PDFName.of("RV"))) field.delete(PDFName.of("RV"));
+  if (field.has(PDFName.of("AP"))) field.delete(PDFName.of("AP"));
+  const afterV = extractText(field.get(PDFName.of("V")));
+  const afterDV = extractText(field.get(PDFName.of("DV")));
+  // eslint-disable-next-line no-console
+  console.info("[redact:form-field] clear after", {
+    source,
+    ref: refStr(ref),
+    field: name,
+    vAfter: afterV,
+    dvAfter: afterDV,
+    hasAPAfter: field.has(PDFName.of("AP")),
+    finalObjectState: "field/widget ref queued for removal; direct objects have /V and /DV deleted after this log",
+  });
+  field.delete(PDFName.of("V"));
+  field.delete(PDFName.of("DV"));
+  return hadSensitiveValue ? 1 : 0;
 }
