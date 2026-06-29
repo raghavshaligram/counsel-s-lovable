@@ -1719,8 +1719,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const downloadCertificate = useCallback(async () => {
     if (!file || !verify || !lastBytes) return;
     try {
+      // Route ALL certificate downloads through the auth gate. Signed-out
+      // users must create a free account first; "Not now" closes the gate
+      // without producing a certificate. No bypass path exists here.
+      const { requestCertificate } = await import("@/components/workspace/certificate-gate");
       const { buildRedactionCertificate } = await importChunk(() => import("@/lib/pdf/redaction-certificate"));
-      // Hash both source and redacted bytes for the chain of custody panel.
       const hash = async (data: Uint8Array): Promise<string> => {
         const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
         return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -1738,7 +1741,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const p = a.page + 1;
         perPageCounts[p] = (perPageCounts[p] ?? 0) + 1;
       }
-      const cert = await buildRedactionCertificate({
+      const buildArgs = {
         sourceName: file.name,
         sourceBytes: file.size,
         pageCount: editorState?.doc?.pages.length ?? 0,
@@ -1754,10 +1757,15 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         },
         sourceHashSHA256: sourceHash,
         redactedHashSHA256: redactedHash,
+      };
+      requestCertificate({
+        kind: "redaction",
+        actionLabel: "Redaction",
+        sourceName: file.name,
+        downloadBaseName: file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction",
+        payload: buildArgs as unknown as Record<string, unknown>,
+        build: () => buildRedactionCertificate(buildArgs),
       });
-      await downloadPdf(cert, file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction.pdf");
-      toast.success("Certificate of redaction downloaded");
-
     } catch (err) {
       console.error("[redact] certificate failed", err);
       toast.error("Couldn't build certificate", { description: (err as Error).message });
