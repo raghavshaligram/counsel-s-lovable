@@ -1340,6 +1340,13 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
+      {findings && !scanning && underDetectedOcrPages.length > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Possible missed values on scanned page{underDetectedOcrPages.length === 1 ? "" : "s"} {underDetectedOcrPages.slice(0, 8).join(", ")}{underDetectedOcrPages.length > 8 ? "…" : ""}</div>
+          The page looks like it contains structured data (numbers, IDs, emails) but automatic detection found few matches. OCR may have misread digits — review manually and draw a box over anything left.
+        </div>
+      )}
+
       {findings && findings.length === 0 && !scanning && scannedPages.length === 0 && (
         <p className="text-[11px] text-text-2">
           No sensitive data matched the built-in patterns on this document’s readable text.
