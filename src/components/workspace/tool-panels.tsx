@@ -1632,7 +1632,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       if (!result.ok) {
         const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
         for (const leak of result.leaks) {
-          if (!leak.rect) continue;
+          if (leak.vector !== "page") continue;
+          if (!leak.rect || leak.page === undefined) continue;
           const arr = leakedPages.get(leak.page) ?? [];
           const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
           arr.push(...pageRects);
@@ -1646,7 +1647,21 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           );
           result = await verifyRedactionRemoval(bytes, targets);
         }
+        // Side-channel vectors (form field / annotation / hidden layer /
+        // attachment) can't be fixed by rasterizing — fail loudly so the
+        // file is never handed over as "redacted".
+        const sideLeaks = result.leaks.filter((l) => l.vector !== "page");
+        if (sideLeaks.length > 0) {
+          const summary = sideLeaks
+            .slice(0, 3)
+            .map((l) => `${l.vector}: ${l.text}`)
+            .join("; ");
+          throw new Error(
+            `${sideLeaks.length} redacted value${sideLeaks.length === 1 ? "" : "s"} still recoverable from non-page vectors — refusing to download. ${summary}`,
+          );
+        }
       }
+
 
       // Pixel-level re-OCR check for every page we rasterized — pdf.js sees
       // no text layer on those pages, so it can't prove the underlying
