@@ -1359,7 +1359,9 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
 
       {findings && findings.length === 0 && !scanning && scannedPages.length === 0 && (
         <p className="text-[11px] text-text-2">
-          No sensitive data matched the built-in patterns on this document’s readable text.
+          No built-in patterns matched this document's readable text. This is <strong>not</strong> an
+          all-clear — names, party identifiers, and prose-based secrets aren't detected. Review every
+          page and add manual redactions as needed.
         </p>
       )}
 
