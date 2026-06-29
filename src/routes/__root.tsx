@@ -249,6 +249,7 @@ function RootComponent() {
       <Outlet />
       <UpgradeModal />
       <LoginModal />
+      <CertificateGate />
       <ConfirmDialogHost />
       <Toaster theme="dark" position="bottom-right" />
     </QueryClientProvider>
