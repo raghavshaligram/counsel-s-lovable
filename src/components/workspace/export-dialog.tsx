@@ -26,6 +26,7 @@ import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-s
 import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk-import";
 import { downloadPdf } from "@/lib/pdf/download";
 import { ExportFormatRow } from "./export-format-row";
+import { CourtReadinessSection } from "./court-readiness";
 
 type Props = {
   open: boolean;
