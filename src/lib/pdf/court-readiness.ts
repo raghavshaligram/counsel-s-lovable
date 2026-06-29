@@ -155,21 +155,29 @@ function inspectFonts(doc: PDFDocument): { total: number; unembedded: number } {
   for (const page of doc.getPages()) {
     try {
       const resources = page.node.Resources();
-      if (!resources) continue;
-      const fonts = resources.lookup(PDFName.of("Font"), PDFDict);
+      if (!resources || !resources.has(PDFName.of("Font"))) continue;
+      let fonts: PDFDict | undefined;
+      try {
+        fonts = resources.lookup(PDFName.of("Font"), PDFDict);
+      } catch {
+        continue;
+      }
       if (!fonts) continue;
       for (const [, value] of fonts.entries()) {
         const dict = value instanceof PDFRef ? doc.context.lookup(value, PDFDict) : (value as PDFDict);
         if (!dict || !(dict instanceof PDFDict)) continue;
         visitFontDict(dict);
-        // DescendantFonts (Type0 composite) — walk them too.
-        const descendants = dict.lookup(PDFName.of("DescendantFonts"), PDFArray);
-        if (descendants) {
-          for (let i = 0; i < descendants.size(); i++) {
-            const ref = descendants.get(i);
-            const sub = ref instanceof PDFRef ? doc.context.lookup(ref, PDFDict) : (ref as PDFDict);
-            if (sub instanceof PDFDict) visitFontDict(sub);
-          }
+        if (dict.has(PDFName.of("DescendantFonts"))) {
+          try {
+            const descendants = dict.lookup(PDFName.of("DescendantFonts"), PDFArray);
+            if (descendants) {
+              for (let i = 0; i < descendants.size(); i++) {
+                const ref = descendants.get(i);
+                const sub = ref instanceof PDFRef ? doc.context.lookup(ref, PDFDict) : (ref as PDFDict);
+                if (sub instanceof PDFDict) visitFontDict(sub);
+              }
+            }
+          } catch { /* skip */ }
         }
       }
     } catch {
