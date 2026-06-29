@@ -61,7 +61,10 @@ export const useCertGate = create<GateState>((set) => ({
   consumed: false,
   request: null,
   show: (request) => set({ open: true, consumed: false, request }),
-  dismiss: () => set({ open: false }),
+  // "Not now" must fully clear the pending request so a later sign-in
+  // (e.g. via the account menu) cannot auto-issue a certificate the
+  // user already declined.
+  dismiss: () => set({ open: false, consumed: true, request: null }),
   markConsumed: () => set({ consumed: true, open: false }),
 }));
 
