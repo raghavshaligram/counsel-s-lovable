@@ -1240,6 +1240,16 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         {scanning ? progress || "Scanning…" : findings ? "Re-scan document" : "Scan for sensitive info"}
       </button>
 
+      {findings && (
+        <div className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Suggestions only — not a completeness check</div>
+          Automatic detection finds <em>structured</em> data (SSNs, accounts, cards, emails, phones, IBANs)
+          but <strong>misses names in prose, party names, addresses, and context-dependent secrets</strong>.
+          Read every page and add manual redactions for anything the scan didn't catch. There is no
+          "all clear" — confirm completeness yourself.
+        </div>
+      )}
+
       {findings && findings.length > 0 && (
         <div className="mt-1 rounded-md border border-border bg-surface-2/60">
           <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
