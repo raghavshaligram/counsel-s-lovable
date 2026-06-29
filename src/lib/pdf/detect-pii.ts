@@ -1272,7 +1272,7 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
 function resolveDict<T>(
   ctx: import("pdf-lib").PDFContext,
   obj: unknown,
-  Klass: new (...args: never[]) => T,
+  Klass: abstract new (...args: never[]) => T,
 ): T | undefined {
   if (obj instanceof Klass) return obj as T;
   try {
@@ -1280,6 +1280,7 @@ function resolveDict<T>(
     return r instanceof Klass ? (r as T) : undefined;
   } catch { return undefined; }
 }
+
 
 function extractStr(obj: unknown): string {
   if (!obj) return "";
