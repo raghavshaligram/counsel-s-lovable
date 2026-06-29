@@ -16,12 +16,55 @@
  * All processing is in-browser via pdf-lib — no upload.
  */
 import {
-  PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFDict,
+  PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFDict, PDFStream, PDFNumber,
 } from "pdf-lib";
 import { srgbIccBytes } from "./srgb-icc";
 import { embedStandard14Fallbacks } from "./embed-standard14";
 
 const TAG = "[pdfa]";
+
+type FontDiagnostic = {
+  ref: string;
+  baseFont: string;
+  subtype: string;
+  embedded: boolean;
+  descriptor: boolean;
+  fontFile: boolean;
+  fontFile2: boolean;
+  fontFile3: boolean;
+  descendantFonts?: FontDiagnostic[];
+};
+
+type OutputIntentDiagnostic = {
+  ref: string;
+  subtype: string;
+  hasDestOutputProfile: boolean;
+  embeddedIccStream: boolean;
+  iccBytes: number;
+  n: number | null;
+  outputConditionIdentifier: string;
+};
+
+type XmpDiagnostic = {
+  present: boolean;
+  bytes: number;
+  part: string | null;
+  conformance: string | null;
+  producer: string | null;
+  docInfoProducer: string | null;
+  consistentWithDocInfo: boolean;
+};
+
+type ForbiddenConstructsDiagnostic = {
+  encrypted: boolean;
+  javaScriptActions: string[];
+  launchActions: string[];
+  externalRefs: string[];
+};
+
+type TransparencyDiagnostic = {
+  groupsWithoutColorSpace: string[];
+};
 
 function buildPdfAXmp(opts: {
   title?: string;
@@ -63,48 +106,7 @@ function buildPdfAXmp(opts: {
 /** Walk every font dict in the PDF and confirm a font program is embedded.
  *  Returns the list of offenders (BaseFont names) — empty array means OK. */
 export function findUnembeddedFonts(doc: PDFDocument): string[] {
-  const offenders: string[] = [];
-  const context = doc.context;
-  const indirectObjects = context.enumerateIndirectObjects();
-  for (const [, obj] of indirectObjects) {
-    if (!(obj instanceof PDFDict)) continue;
-    const type = obj.get(PDFName.of("Type"));
-    if (!(type instanceof PDFName) || type.asString() !== "/Font") continue;
-    const subtype = obj.get(PDFName.of("Subtype"));
-    const subtypeName = subtype instanceof PDFName ? subtype.asString() : "";
-    // Type3 has its own content streams — exempt per the validation rule.
-    if (subtypeName === "/Type3") continue;
-    // Type0 (composite): the actual font program lives on the descendant
-    // CIDFontType0/2 FontDescriptor — recurse into DescendantFonts.
-    if (subtypeName === "/Type0") {
-      const descArr = obj.lookup(PDFName.of("DescendantFonts"));
-      const items: unknown[] = descArr && typeof (descArr as unknown as { asArray?: unknown }).asArray === "function"
-        ? (descArr as unknown as { asArray: () => unknown[] }).asArray()
-        : [];
-      let anyEmbedded = false;
-      for (const it of items) {
-        const cid = it instanceof PDFDict ? it : context.lookup(it as never);
-        if (!(cid instanceof PDFDict)) continue;
-        const cidDesc = cid.lookup(PDFName.of("FontDescriptor"));
-        if (cidDesc instanceof PDFDict && hasFontFile(cidDesc)) {
-          anyEmbedded = true;
-          break;
-        }
-      }
-      if (!anyEmbedded) {
-        const base = obj.get(PDFName.of("BaseFont"));
-        offenders.push(base instanceof PDFName ? base.asString() : "<unknown Type0>");
-      }
-      continue;
-    }
-    // Simple fonts (TrueType, Type1, MMType1): check FontDescriptor.
-    const desc = obj.lookup(PDFName.of("FontDescriptor"));
-    if (!(desc instanceof PDFDict) || !hasFontFile(desc)) {
-      const base = obj.get(PDFName.of("BaseFont"));
-      offenders.push(base instanceof PDFName ? base.asString() : "<unknown>");
-    }
-  }
-  return offenders;
+  return inspectFonts(doc).filter((font) => !font.embedded).map((font) => font.baseFont);
 }
 
 function hasFontFile(desc: PDFDict): boolean {
@@ -113,6 +115,184 @@ function hasFontFile(desc: PDFDict): boolean {
     desc.has(PDFName.of("FontFile2")) ||
     desc.has(PDFName.of("FontFile3"))
   );
+}
+
+function pdfName(obj: unknown): string {
+  return obj instanceof PDFName ? obj.asString() : "";
+}
+
+function pdfText(obj: unknown): string {
+  if (obj instanceof PDFString || obj instanceof PDFHexString) return obj.decodeText();
+  if (obj instanceof PDFName) return obj.asString().replace(/^\//, "");
+  if (obj instanceof PDFNumber) return String(obj.asNumber());
+  return "";
+}
+
+function objectRef(ref: unknown): string {
+  return ref && typeof ref === "object" && "objectNumber" in ref && "generationNumber" in ref
+    ? `${(ref as { objectNumber: number }).objectNumber} ${(ref as { generationNumber: number }).generationNumber} R`
+    : "direct";
+}
+
+function resolveDict(doc: PDFDocument, obj: unknown): PDFDict | undefined {
+  if (obj instanceof PDFDict) return obj;
+  try {
+    const resolved = doc.context.lookup(obj as never);
+    return resolved instanceof PDFDict ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveStream(doc: PDFDocument, obj: unknown): PDFStream | undefined {
+  if (obj instanceof PDFStream) return obj;
+  try {
+    const resolved = doc.context.lookup(obj as never);
+    return resolved instanceof PDFStream ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function descriptorFontFileFlags(desc: PDFDict | undefined) {
+  return {
+    descriptor: !!desc,
+    fontFile: !!desc?.has(PDFName.of("FontFile")),
+    fontFile2: !!desc?.has(PDFName.of("FontFile2")),
+    fontFile3: !!desc?.has(PDFName.of("FontFile3")),
+  };
+}
+
+function inspectFontDict(doc: PDFDocument, font: PDFDict, ref: unknown): FontDiagnostic {
+  const subtype = pdfName(font.get(PDFName.of("Subtype"))) || "<unknown>";
+  const baseFont = pdfName(font.get(PDFName.of("BaseFont"))) || "<unknown>";
+  if (subtype === "/Type0") {
+    const descArr = font.lookup(PDFName.of("DescendantFonts"));
+    const items: unknown[] = descArr && typeof (descArr as unknown as { asArray?: unknown }).asArray === "function"
+      ? (descArr as unknown as { asArray: () => unknown[] }).asArray()
+      : [];
+    const descendantFonts = items.flatMap((item) => {
+      const cid = resolveDict(doc, item);
+      return cid ? [inspectFontDict(doc, cid, item)] : [];
+    });
+    return {
+      ref: objectRef(ref),
+      baseFont,
+      subtype,
+      embedded: descendantFonts.some((child) => child.embedded),
+      descriptor: descendantFonts.some((child) => child.descriptor),
+      fontFile: descendantFonts.some((child) => child.fontFile),
+      fontFile2: descendantFonts.some((child) => child.fontFile2),
+      fontFile3: descendantFonts.some((child) => child.fontFile3),
+      descendantFonts,
+    };
+  }
+  if (subtype === "/Type3") {
+    return {
+      ref: objectRef(ref),
+      baseFont,
+      subtype,
+      embedded: true,
+      descriptor: true,
+      fontFile: false,
+      fontFile2: false,
+      fontFile3: false,
+    };
+  }
+  const desc = resolveDict(doc, font.get(PDFName.of("FontDescriptor")));
+  const flags = descriptorFontFileFlags(desc);
+  return {
+    ref: objectRef(ref),
+    baseFont,
+    subtype,
+    embedded: flags.fontFile || flags.fontFile2 || flags.fontFile3,
+    ...flags,
+  };
+}
+
+export function inspectFonts(doc: PDFDocument): FontDiagnostic[] {
+  const fonts: FontDiagnostic[] = [];
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict)) continue;
+    const type = obj.get(PDFName.of("Type"));
+    if (!(type instanceof PDFName) || type.asString() !== "/Font") continue;
+    fonts.push(inspectFontDict(doc, obj, ref));
+  }
+  return fonts;
+}
+
+function inspectOutputIntents(doc: PDFDocument): OutputIntentDiagnostic[] {
+  const arr = doc.catalog.lookupMaybe(PDFName.of("OutputIntents"), PDFArray);
+  if (!arr) return [];
+  const out: OutputIntentDiagnostic[] = [];
+  for (const item of arr.asArray()) {
+    const intent = resolveDict(doc, item);
+    if (!intent) continue;
+    const profileObj = intent.get(PDFName.of("DestOutputProfile"));
+    const profile = resolveStream(doc, profileObj);
+    const n = profile?.dict.lookupMaybe(PDFName.of("N"), PDFNumber)?.asNumber() ?? null;
+    out.push({
+      ref: objectRef(item),
+      subtype: pdfName(intent.get(PDFName.of("S"))),
+      hasDestOutputProfile: !!profileObj,
+      embeddedIccStream: !!profile && profile.getContentsSize() > 0,
+      iccBytes: profile?.getContentsSize() ?? 0,
+      n,
+      outputConditionIdentifier: pdfText(intent.get(PDFName.of("OutputConditionIdentifier"))),
+    });
+  }
+  return out;
+}
+
+function inspectXmp(doc: PDFDocument): XmpDiagnostic {
+  const metadata = resolveStream(doc, doc.catalog.get(PDFName.of("Metadata")));
+  const xmp = metadata ? new TextDecoder().decode(metadata.getContents()) : "";
+  const part = /<pdfaid:part>\s*([^<]+)\s*<\/pdfaid:part>/.exec(xmp)?.[1]?.trim() ?? null;
+  const conformance = /<pdfaid:conformance>\s*([^<]+)\s*<\/pdfaid:conformance>/.exec(xmp)?.[1]?.trim() ?? null;
+  const producer = /<pdf:Producer>\s*([^<]+)\s*<\/pdf:Producer>/.exec(xmp)?.[1]?.trim() ?? null;
+  const docInfoProducer = doc.getProducer() ?? null;
+  return {
+    present: !!metadata,
+    bytes: metadata?.getContentsSize() ?? 0,
+    part,
+    conformance,
+    producer,
+    docInfoProducer,
+    consistentWithDocInfo: !!producer && !!docInfoProducer && producer === docInfoProducer,
+  };
+}
+
+function inspectForbiddenConstructs(doc: PDFDocument, text: string): ForbiddenConstructsDiagnostic {
+  const javaScriptActions: string[] = [];
+  const launchActions: string[] = [];
+  const externalRefs: string[] = [];
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict)) continue;
+    const s = pdfName(obj.get(PDFName.of("S")));
+    if (s === "/JavaScript") javaScriptActions.push(objectRef(ref));
+    if (s === "/Launch") launchActions.push(objectRef(ref));
+    if (["/GoToR", "/GoToE", "/SubmitForm", "/ImportData", "/URI"].includes(s)) externalRefs.push(`${objectRef(ref)} ${s}`);
+    const type = pdfName(obj.get(PDFName.of("Type")));
+    if (["/Filespec"].includes(type) || obj.has(PDFName.of("EF"))) externalRefs.push(`${objectRef(ref)} ${type || "/EF"}`);
+  }
+  if (/\/EmbeddedFiles\b/.test(text)) externalRefs.push("/EmbeddedFiles name tree");
+  return {
+    encrypted: /\/Encrypt\b/.test(text),
+    javaScriptActions: Array.from(new Set(javaScriptActions)),
+    launchActions: Array.from(new Set(launchActions)),
+    externalRefs: Array.from(new Set(externalRefs)),
+  };
+}
+
+function inspectTransparency(doc: PDFDocument): TransparencyDiagnostic {
+  const groupsWithoutColorSpace: string[] = [];
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict)) continue;
+    if (pdfName(obj.get(PDFName.of("Type"))) === "/Group" && pdfName(obj.get(PDFName.of("S"))) === "/Transparency" && !obj.has(PDFName.of("CS"))) {
+      groupsWithoutColorSpace.push(objectRef(ref));
+    }
+  }
+  return { groupsWithoutColorSpace };
 }
 
 function randomHexString(byteLen: number): PDFHexString {
@@ -282,42 +462,117 @@ export interface PdfAStructuralReport {
   missing: string[];
   /** Font BaseFont names still unembedded after conformance (should be []). */
   unembeddedFonts: string[];
+  fonts: FontDiagnostic[];
+  outputIntents: OutputIntentDiagnostic[];
+  xmp: XmpDiagnostic;
+  forbiddenConstructs: ForbiddenConstructsDiagnostic;
+  transparency: TransparencyDiagnostic;
 }
 
 export async function verifyPdfAStructuralAsync(bytes: Uint8Array): Promise<PdfAStructuralReport> {
   const text = new TextDecoder("latin1").decode(bytes);
-  const outputIntent = /\/OutputIntents\b/.test(text) && /GTS_PDFA1/.test(text);
-  const xmpPart = /<pdfaid:part>\s*2\s*<\/pdfaid:part>/.test(text);
-  const xmpConformance = /<pdfaid:conformance>\s*B\s*<\/pdfaid:conformance>/.test(text);
   const trailerId = /\/ID\s*\[\s*<[0-9a-fA-F]+>\s*<[0-9a-fA-F]+>\s*\]/.test(text);
-  const noEncryption = !/\/Encrypt\b/.test(text);
-  const noJavaScript = !/\/JavaScript\b/.test(text) && !/\/JS\s*[\(<]/.test(text);
 
+  let fonts: FontDiagnostic[] = [];
+  let outputIntents: OutputIntentDiagnostic[] = [];
+  let xmp: XmpDiagnostic = {
+    present: false, bytes: 0, part: null, conformance: null, producer: null, docInfoProducer: null, consistentWithDocInfo: false,
+  };
+  let forbiddenConstructs: ForbiddenConstructsDiagnostic = {
+    encrypted: /\/Encrypt\b/.test(text), javaScriptActions: [], launchActions: [], externalRefs: [],
+  };
+  let transparency: TransparencyDiagnostic = { groupsWithoutColorSpace: [] };
   let unembeddedFonts: string[] = [];
   try {
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
-    unembeddedFonts = findUnembeddedFonts(doc);
+    fonts = inspectFonts(doc);
+    outputIntents = inspectOutputIntents(doc);
+    xmp = inspectXmp(doc);
+    forbiddenConstructs = inspectForbiddenConstructs(doc, text);
+    transparency = inspectTransparency(doc);
+    unembeddedFonts = fonts.filter((font) => !font.embedded).map((font) => font.baseFont);
   } catch {
     // Parse failure → treat as font check failed.
     unembeddedFonts = ["<parse-failed>"];
   }
   const fontsEmbedded = unembeddedFonts.length === 0;
+  const outputIntent = outputIntents.some((intent) =>
+    intent.subtype === "/GTS_PDFA1" && intent.embeddedIccStream && intent.iccBytes > 0 && intent.n === 3,
+  );
+  const xmpPart = xmp.part === "2";
+  const xmpConformance = xmp.conformance === "B";
+  const noEncryption = !forbiddenConstructs.encrypted;
+  const noJavaScript = forbiddenConstructs.javaScriptActions.length === 0 && !/\/JavaScript\b/.test(text) && !/\/JS\s*[\(<]/.test(text);
+  const noForbiddenActions = forbiddenConstructs.launchActions.length === 0 && forbiddenConstructs.externalRefs.length === 0;
+  const transparencyOk = transparency.groupsWithoutColorSpace.length === 0;
 
   const missing: string[] = [];
-  if (!outputIntent) missing.push("sRGB OutputIntent");
+  if (!outputIntent) missing.push("sRGB OutputIntent with embedded ICC stream (N=3)");
   if (!xmpPart) missing.push("XMP pdfaid:part=2");
   if (!xmpConformance) missing.push("XMP pdfaid:conformance=B");
+  if (!xmp.consistentWithDocInfo) missing.push("XMP/docinfo producer consistency");
   if (!trailerId) missing.push("trailer /ID");
   if (!noEncryption) missing.push("no /Encrypt");
   if (!noJavaScript) missing.push("no JavaScript actions");
+  if (!noForbiddenActions) missing.push("no Launch/external-reference actions");
+  if (!transparencyOk) missing.push(`transparency group color spaces (${transparency.groupsWithoutColorSpace.join(", ")})`);
   if (!fontsEmbedded) missing.push(`embedded fonts (unembedded: ${unembeddedFonts.join(", ")})`);
 
   return {
     outputIntent, xmpPart, xmpConformance, trailerId,
     fontsEmbedded, noEncryption, noJavaScript,
-    unembeddedFonts, missing,
+    unembeddedFonts, missing, fonts, outputIntents, xmp, forbiddenConstructs, transparency,
     ok: missing.length === 0,
   };
+}
+
+export function logPdfAChecklist(report: PdfAStructuralReport, context = "post-conformance"): void {
+  const checklist = {
+    context,
+    ok: report.ok,
+    missing: report.missing,
+    fonts: report.fonts.map((font) => ({
+      ref: font.ref,
+      baseFont: font.baseFont,
+      subtype: font.subtype,
+      embedded: font.embedded,
+      FontFile: font.fontFile,
+      FontFile2: font.fontFile2,
+      FontFile3: font.fontFile3,
+      descendantFonts: font.descendantFonts?.map((child) => ({
+        ref: child.ref,
+        baseFont: child.baseFont,
+        subtype: child.subtype,
+        embedded: child.embedded,
+        FontFile: child.fontFile,
+        FontFile2: child.fontFile2,
+        FontFile3: child.fontFile3,
+      })),
+    })),
+    outputIntent: {
+      pass: report.outputIntent,
+      intents: report.outputIntents,
+    },
+    xmp: {
+      pass: report.xmpPart && report.xmpConformance && report.xmp.consistentWithDocInfo,
+      ...report.xmp,
+    },
+    forbiddenConstructs: {
+      pass: report.noEncryption && report.noJavaScript && report.forbiddenConstructs.launchActions.length === 0 && report.forbiddenConstructs.externalRefs.length === 0,
+      ...report.forbiddenConstructs,
+    },
+    transparency: {
+      pass: report.transparency.groupsWithoutColorSpace.length === 0,
+      ...report.transparency,
+    },
+  };
+  if (report.ok) {
+    // eslint-disable-next-line no-console
+    console.info("[pdfa] requirement checklist PASS", checklist);
+  } else {
+    // eslint-disable-next-line no-console
+    console.error("[pdfa] requirement checklist FAIL", checklist);
+  }
 }
 
 /** @deprecated synchronous shim — kept for callers that can't await. Skips font check. */
