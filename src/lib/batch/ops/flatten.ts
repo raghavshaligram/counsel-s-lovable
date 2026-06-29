@@ -74,9 +74,7 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
       const refsToKill: PDFRef[] = [];
       for (const field of form.getFields()) {
         const acroField = (field as unknown as { acroField?: { ref?: PDFRef; dict?: PDFDict } }).acroField;
-        if (acroField?.dict instanceof PDFDict) {
-          clearFieldBeforeFlatten(ctx, acroField.dict, acroField.ref, refsToKill);
-        }
+        if (acroField?.dict instanceof PDFDict) clearFieldBeforeFlatten(acroField.dict, acroField.ref, refsToKill);
         // Empty the value first so any re-render produces nothing.
         const anyField = field as unknown as { setText?: (s: string) => void };
         try { anyField.setText?.(""); } catch { /* ignore non-text fields */ }
@@ -166,7 +164,7 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
   return doc.save();
 }
 
-function clearFieldBeforeFlatten(ctx: PDFDocument["context"], dict: PDFDict, ref: unknown, refsToKill: PDFRef[]): void {
+function clearFieldBeforeFlatten(dict: PDFDict, ref: unknown, refsToKill: PDFRef[]): void {
   const name = extractStr(dict.get(PDFName.of("T"))) || "(anon)";
   const beforeV = extractStr(dict.get(PDFName.of("V")));
   const beforeDV = extractStr(dict.get(PDFName.of("DV")));
