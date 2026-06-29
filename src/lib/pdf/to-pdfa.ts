@@ -332,6 +332,13 @@ function inspectTransparency(doc: PDFDocument): TransparencyDiagnostic {
       groupsWithoutColorSpace.push(objectRef(ref));
     }
   }
+  // Page-level /Group entries are commonly direct dicts on the page node.
+  for (const page of doc.getPages()) {
+    const group = page.node.lookupMaybe(PDFName.of("Group"), PDFDict);
+    if (!group) continue;
+    if (pdfName(group.get(PDFName.of("S"))) !== "/Transparency") continue;
+    if (!group.has(PDFName.of("CS"))) groupsWithoutColorSpace.push(`page ${objectRef(page.ref)}`);
+  }
   return { groupsWithoutColorSpace };
 }
 
