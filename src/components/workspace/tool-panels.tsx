@@ -5977,6 +5977,21 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
           Apply to active tab
         </button>
         <MultiFileBatesButton />
+        <FirmTemplatesMenu
+          kind="bates"
+          getConfig={() => ({
+            prefix: s.prefix,
+            suffix: s.suffix ?? "",
+            startAt: s.startAt,
+            digits: s.digits,
+            position: s.position,
+            fontSize: s.fontSize,
+            color: s.color,
+            margin: s.margin,
+          })}
+          onApply={(cfg) => update(cfg as Partial<typeof s>)}
+          sourceName={file?.name ?? null}
+        />
       </div>
 
 
