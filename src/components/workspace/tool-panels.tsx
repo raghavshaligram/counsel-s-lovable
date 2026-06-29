@@ -1061,6 +1061,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setUsedOcr(false);
     setScannedPages([]);
     setLowConfOcrPages([]);
+    setUnderDetectedOcrPages([]);
     setTotalPagesScanned(0);
     setSelected(new Set());
     setProgress("Reading text layer…");
