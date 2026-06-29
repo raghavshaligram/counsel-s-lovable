@@ -103,6 +103,7 @@ import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-s
 import { importChunk } from "@/lib/chunk-import";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
+import { FirmTemplatesMenu } from "./firm-templates-menu";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
