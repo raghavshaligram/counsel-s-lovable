@@ -1270,14 +1270,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                 checked={allSelected}
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelected(new Set(findings.map((d) => d.id)));
+                    setSelected(new Set(redactableFindings.map((d) => d.id)));
                   } else {
                     setSelected(new Set());
                   }
                 }}
                 className="h-3 w-3 accent-vault"
               />
-              {selected.size} / {findings.length} selected
+              {selected.size} / {redactableFindings.length} selected
             </label>
             <button
               type="button"
