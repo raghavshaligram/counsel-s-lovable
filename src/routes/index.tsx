@@ -1002,10 +1002,16 @@ function MarkIcon({ v, highlight }: { v: MarkValue; highlight?: boolean }) {
       />
     );
   if (v === false) return <X className="h-5 w-5 text-muted-foreground/40 mx-auto" />;
+  if (v === "partial")
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
+        <Minus className="h-3.5 w-3.5" />
+        partial
+      </span>
+    );
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
-      <Minus className="h-3.5 w-3.5" />
-      partial
+    <span className="inline-block text-[11px] font-mono text-muted-foreground italic">
+      {v.note}
     </span>
   );
 }
