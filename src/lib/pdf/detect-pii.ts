@@ -62,6 +62,16 @@ export type Detection = {
    * opts in. Absent on structured findings — treat as "high".
    */
   confidence?: "high" | "low";
+  /**
+   * Where this finding lives. "page" = visible page text (default).
+   * Other vectors come from non-page surfaces that page-redaction misses:
+   * form-field values, annotation/comment text, and document metadata
+   * (Info dict + XMP). Side-channel findings carry no page rect — they're
+   * cleared by sanitize during export, not by drawing a black box.
+   */
+  vector?: "page" | "form-field" | "annotation" | "metadata";
+  /** Human label of the source, e.g. "Form field: SSN" or "Metadata: Author". */
+  sourceLabel?: string;
 };
 
 /**
@@ -1090,6 +1100,211 @@ export async function findKeywordInPdf(
 
   return matches;
 }
+
+
+// ---------------------------------------------------------------------------
+// Side-channel PII detection: form fields, annotations, document metadata.
+//
+// Page-text detection can't see these surfaces — but they routinely carry
+// the same SSNs / emails / names / IBANs as the page body. Anything found
+// here is cleared by sanitizePdfBytes during the redact export pipeline.
+// ---------------------------------------------------------------------------
+
+export type SideChannelFinding = Detection & {
+  vector: "form-field" | "annotation" | "metadata";
+  sourceLabel: string;
+};
+
+export async function detectPiiInSideChannels(file: File): Promise<SideChannelFinding[]> {
+  const out: SideChannelFinding[] = [];
+  let doc: import("pdf-lib").PDFDocument;
+  try {
+    const pdfLib = await import("pdf-lib");
+    doc = await pdfLib.PDFDocument.load(await file.arrayBuffer(), {
+      ignoreEncryption: true,
+      updateMetadata: false,
+    });
+    const { PDFArray, PDFDict, PDFName, PDFStream } = pdfLib;
+    const ctx = doc.context;
+
+    const scan = (
+      text: string,
+      vector: SideChannelFinding["vector"],
+      sourceLabel: string,
+      idSuffix: string,
+    ): void => {
+      const t = (text || "").trim();
+      if (!t || t.length < 3) return;
+      const hits = matchAllCategories(t);
+      for (const h of hits) {
+        out.push({
+          id: `det-${vector}-${idSuffix}-${out.length}`,
+          page: 0,
+          x: 0, y: 0, w: 0, h: 0,
+          category: h.category,
+          confidence: h.confidence ?? "high",
+          snippet: snippet(h.text),
+          vector,
+          sourceLabel,
+        });
+      }
+    };
+
+    // ---- AcroForm field values ----
+    const acroForm = doc.catalog.lookupMaybe(PDFName.of("AcroForm"), PDFDict);
+    if (acroForm) {
+      const fields = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
+      const walk = (items: unknown[]): void => {
+        for (const item of items) {
+          const field = resolveDict(ctx, item, (v) => v instanceof PDFDict);
+          if (!field) continue;
+          const name = extractStr(field.get(PDFName.of("T"))) || "field";
+          const v = extractStr(field.get(PDFName.of("V")));
+          if (v) scan(v, "form-field", `Form field: ${truncate(name, 40)}`, name);
+          const dv = extractStr(field.get(PDFName.of("DV")));
+          if (dv && dv !== v) scan(dv, "form-field", `Form field default: ${truncate(name, 40)}`, name + "-dv");
+          const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
+          if (kids) walk(kids.asArray());
+        }
+      };
+      if (fields) walk(fields.asArray());
+    }
+    // Orphan field dicts (descendants outside /AcroForm /Fields).
+    for (const [, obj] of ctx.enumerateIndirectObjects()) {
+      if (!(obj instanceof PDFDict)) continue;
+      if (!obj.has(PDFName.of("FT")) || !obj.has(PDFName.of("V"))) continue;
+      const name = extractStr(obj.get(PDFName.of("T"))) || "orphan";
+      const v = extractStr(obj.get(PDFName.of("V")));
+      if (v) scan(v, "form-field", `Form field: ${truncate(name, 40)}`, "orphan-" + name);
+    }
+
+    // ---- Annotations (comments, sticky notes, free text) ----
+    const pageCount = doc.getPageCount();
+    for (let p = 0; p < pageCount; p++) {
+      const page = doc.getPage(p);
+      const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+      if (!annots) continue;
+      let idx = 0;
+      for (const item of annots.asArray()) {
+        const annot = resolveDict(ctx, item, (v) => v instanceof PDFDict);
+        if (!annot) continue;
+        const subtype = extractName(annot.get(PDFName.of("Subtype"))) || "Annot";
+        const author = extractStr(annot.get(PDFName.of("T")));
+        const subj = extractStr(annot.get(PDFName.of("Subj")));
+        const contents = extractStr(annot.get(PDFName.of("Contents")));
+        const rc = extractStr(annot.get(PDFName.of("RC")));
+        const label = `Comment (${subtype}, page ${p + 1}${author ? `, by ${truncate(author, 24)}` : ""})`;
+        for (const [key, txt] of [["Contents", contents], ["RC", rc], ["Subj", subj], ["T", author]] as const) {
+          if (txt) scan(txt, "annotation", `${label} — /${key}`, `${p}-${idx}-${key}`);
+        }
+        idx++;
+      }
+    }
+
+    // ---- Document metadata: Info dictionary ----
+    const infoFields: Array<[string, string]> = [
+      ["Title", doc.getTitle() || ""],
+      ["Author", doc.getAuthor() || ""],
+      ["Subject", doc.getSubject() || ""],
+      ["Keywords", doc.getKeywords() || ""],
+      ["Producer", doc.getProducer() || ""],
+      ["Creator", doc.getCreator() || ""],
+    ];
+    for (const [key, val] of infoFields) {
+      if (!val) continue;
+      // For Title/Author/Subject/Keywords, the field is itself usually
+      // sensitive — surface it even if no structured pattern matches.
+      const matchedBefore = out.length;
+      scan(val, "metadata", `Metadata: ${key}`, key);
+      const sensitiveKey = key === "Title" || key === "Author" || key === "Subject" || key === "Keywords";
+      if (sensitiveKey && out.length === matchedBefore) {
+        out.push({
+          id: `det-metadata-${key}-${out.length}`,
+          page: 0,
+          x: 0, y: 0, w: 0, h: 0,
+          category: "name",
+          confidence: "low",
+          snippet: snippet(val),
+          vector: "metadata",
+          sourceLabel: `Metadata: ${key}`,
+        });
+      }
+    }
+
+    // ---- XMP metadata stream ----
+    const xmpRef = doc.catalog.get(PDFName.of("Metadata"));
+    const xmpObj = xmpRef ? ctx.lookup(xmpRef as never) : undefined;
+    if (xmpObj instanceof PDFStream) {
+      try {
+        // pdf-lib doesn't expose decoded stream contents on every stream
+        // type; fall back to raw bytes when available.
+        const raw =
+          (xmpObj as unknown as { contents?: Uint8Array }).contents ??
+          (xmpObj as unknown as { getContents?: () => Uint8Array }).getContents?.();
+        if (raw && raw.length > 0) {
+          const txt = new TextDecoder("utf-8", { fatal: false }).decode(raw);
+          // Pull values out of common XMP fields (rdf:li / xmp:CreatorTool /
+          // dc:title / dc:creator / pdf:Keywords). Plain regex extraction
+          // is enough — we just want the literals for pattern matching.
+          const literals = Array.from(
+            txt.matchAll(/<(?:rdf:li|dc:[a-zA-Z]+|xmp:[a-zA-Z]+|pdf:[a-zA-Z]+)[^>]*>([^<]+)</g),
+          ).map((m) => m[1].trim()).filter(Boolean);
+          for (const lit of literals) {
+            scan(lit, "metadata", "Metadata: XMP", "xmp-" + lit.slice(0, 12));
+          }
+        }
+      } catch { /* ignore — XMP is best-effort */ }
+    }
+  } catch {
+    return out;
+  }
+
+  // De-duplicate by (vector, sourceLabel, snippet).
+  const seen = new Set<string>();
+  return out.filter((f) => {
+    const k = `${f.vector}|${f.sourceLabel}|${f.snippet}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function resolveDict(
+  ctx: import("pdf-lib").PDFContext,
+  obj: unknown,
+  isInstance: (v: unknown) => boolean,
+): import("pdf-lib").PDFDict | undefined {
+  if (isInstance(obj)) return obj as import("pdf-lib").PDFDict;
+  try {
+    const r = ctx.lookup(obj as never);
+    return isInstance(r) ? (r as import("pdf-lib").PDFDict) : undefined;
+  } catch { return undefined; }
+}
+
+
+
+function extractStr(obj: unknown): string {
+  if (!obj) return "";
+  try {
+    const o = obj as { decodeText?: () => string; asString?: () => string };
+    if (typeof o.decodeText === "function") return o.decodeText();
+    if (typeof o.asString === "function") return o.asString();
+  } catch { /* ignore */ }
+  return "";
+}
+
+function extractName(obj: unknown): string {
+  if (!obj) return "";
+  try {
+    const s = (obj as { asString?: () => string }).asString?.() ?? "";
+    return s.replace(/^\//, "");
+  } catch { return ""; }
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
 
 
 
