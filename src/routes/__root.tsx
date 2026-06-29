@@ -263,6 +263,7 @@ function RootComponent() {
         offset={24}
         visibleToasts={4}
       />
+      <UnsupportedBrowserGate />
     </QueryClientProvider>
   );
 }
