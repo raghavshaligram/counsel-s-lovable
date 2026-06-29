@@ -139,6 +139,10 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
           <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2} />
           Account settings
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void navigate({ to: "/certificates" })}>
+          <FileBadge2 className="h-3.5 w-3.5" strokeWidth={2} />
+          Compliance portfolio
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={(e) => { e.preventDefault(); void showWelcome(); }}>
           <HelpCircle className="h-3.5 w-3.5" strokeWidth={2} />
           How it works
