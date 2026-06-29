@@ -487,19 +487,22 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     );
   }
 
-  // 1) Strip hostile / non-PDF/A constructs ------------------------------
-  await step("strip JavaScript / OpenAction / AA", () => {
-    const namesAny = catalog.lookupMaybe(PDFName.of("Names"), undefined as never) as unknown;
-    if (namesAny && typeof namesAny === "object" && "delete" in (namesAny as object)) {
-      const d = (namesAny as { delete: (k: unknown) => void }).delete.bind(namesAny);
-      try { d(PDFName.of("JavaScript")); } catch { /* not a dict — ignore */ }
-    }
-    catalog.delete(PDFName.of("OpenAction"));
-    catalog.delete(PDFName.of("AA"));
-    for (const page of doc.getPages()) {
-      page.node.delete(PDFName.of("AA"));
-    }
+  // 1) Strip every forbidden construct — JS, Launch, URI, GoToR, SubmitForm,
+  //    ImportData, EmbeddedFiles, AA, OpenAction. Self-correcting: this runs
+  //    every time regardless of upstream state.
+  await step("strip forbidden actions / external refs", () => {
+    const { actions, filespecs } = stripForbiddenConstructs(doc);
+    // eslint-disable-next-line no-console
+    console.info(`${TAG} neutered ${actions} action(s), ${filespecs} filespec/EF(s)`);
   });
+
+  // 1b) Force /CS on every transparency group (PDF/A-2b §6.2.9).
+  await step("ensure transparency-group color space", () => {
+    const n = ensureTransparencyColorSpace(doc);
+    // eslint-disable-next-line no-console
+    console.info(`${TAG} added /CS /DeviceRGB to ${n} transparency group(s)`);
+  });
+
 
   // 2) Embed sRGB ICC profile -------------------------------------------
   const iccRef = await step("embed sRGB ICC profile", () => {
