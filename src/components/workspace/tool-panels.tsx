@@ -1038,6 +1038,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [usedOcr, setUsedOcr] = useState(false);
   const [scannedPages, setScannedPages] = useState<number[]>([]);
   const [lowConfOcrPages, setLowConfOcrPages] = useState<number[]>([]);
+  const [underDetectedOcrPages, setUnderDetectedOcrPages] = useState<number[]>([]);
   const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
@@ -1060,13 +1061,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setUsedOcr(false);
     setScannedPages([]);
     setLowConfOcrPages([]);
+    setUnderDetectedOcrPages([]);
     setTotalPagesScanned(0);
     setSelected(new Set());
     setProgress("Reading text layer…");
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
         setProgress(
           p.stage === "ocr"
             ? `OCR scanning ${p.page}/${p.totalPages}`
@@ -1077,6 +1079,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setUsedOcr(usedOcr);
       setScannedPages(scanned);
       setLowConfOcrPages(lowConfidenceOcrPages);
+      setUnderDetectedOcrPages(ocrUnderDetectedPages ?? []);
       setTotalPagesScanned(totalPages);
       const autoSelect = detections.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
@@ -1334,6 +1337,13 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
           <div className="font-semibold mb-0.5">Scanned document · OCR ran on {scannedPages.length - lowConfOcrPages.length} page{scannedPages.length - lowConfOcrPages.length === 1 ? "" : "s"}</div>
           Detection ran on OCR-recognized text. OCR can miss low-quality or handwritten text — review scanned pages manually to be sure.
+        </div>
+      )}
+
+      {findings && !scanning && underDetectedOcrPages.length > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Possible missed values on scanned page{underDetectedOcrPages.length === 1 ? "" : "s"} {underDetectedOcrPages.slice(0, 8).join(", ")}{underDetectedOcrPages.length > 8 ? "…" : ""}</div>
+          The page looks like it contains structured data (numbers, IDs, emails) but automatic detection found few matches. OCR may have misread digits — review manually and draw a box over anything left.
         </div>
       )}
 
