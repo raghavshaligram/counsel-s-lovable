@@ -26,6 +26,7 @@ import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-s
 import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk-import";
 import { downloadPdf } from "@/lib/pdf/download";
 import { ExportFormatRow } from "./export-format-row";
+import { CourtReadinessSection } from "./court-readiness";
 
 type Props = {
   open: boolean;
@@ -313,6 +314,13 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
             </p>
           </OptionRow>
         </div>
+
+        {file && (
+          <CourtReadinessSection
+            sourceName={file.name}
+            getBytes={async () => new Uint8Array(await file.arrayBuffer())}
+          />
+        )}
 
         <div className="mt-2 flex items-center justify-between gap-2">
           <button

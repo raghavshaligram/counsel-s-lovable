@@ -96,6 +96,7 @@ import { useTray } from "@/lib/tray/store";
 import { downloadBytes } from "@/lib/batch/runner";
 import { downloadPdf } from "@/lib/pdf/download";
 import { ExportFormatRow } from "./export-format-row";
+import { RedactionAuditLedger } from "./redaction-ledger";
 import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
@@ -1810,6 +1811,21 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           )}
         </div>
       </Section>
+
+      <Section title="Audit ledger" icon={<Shield className="h-3 w-3" />}>
+        <RedactionAuditLedger
+          sourceName={file.name}
+          redactions={redactAnnos.map((a) => ({
+            page: a.page,
+            x: a.x,
+            y: a.y,
+            w: a.w,
+            h: a.h,
+            category: (a as { category?: string }).category,
+          }))}
+        />
+      </Section>
+
 
       <Section title="Redaction mode" icon={<Shield className="h-3 w-3" />}>
         <div className="flex flex-col gap-1.5">
