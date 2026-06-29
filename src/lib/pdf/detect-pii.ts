@@ -16,8 +16,10 @@ export type PiiCategory =
   | "creditCard"
   | "date"
   | "name"
+  | "org"
   | "ipAddress"
-  | "iban";
+  | "iban"
+  | "privilegeContext";
 
 export type Detection = {
   id: string;
