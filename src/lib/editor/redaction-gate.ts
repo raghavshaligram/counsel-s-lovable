@@ -23,7 +23,8 @@
  * This is the single chokepoint. Bug-fixes/improvements to redaction
  * verification belong here, not duplicated in each export path.
  */
-import { importChunk } from "@/lib/chunk-importer";
+import { importChunk } from "@/lib/chunk-import";
+import type { VerifyLeak } from "./verify-redaction";
 import type { RedactionTarget, VerifyResult } from "./verify-redaction";
 
 export class RedactionGateError extends Error {
