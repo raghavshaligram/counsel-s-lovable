@@ -1388,11 +1388,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
 
       {findings && (
         <div className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
-          <div className="font-semibold mb-0.5">⚠ Suggestions only — not a completeness check</div>
-          Automatic detection finds <em>structured</em> data (SSNs, accounts, cards, emails, phones, IBANs)
-          but <strong>misses names in prose, party names, addresses, and context-dependent secrets</strong>.
-          Read every page and add manual redactions for anything the scan didn't catch. There is no
-          "all clear" — confirm completeness yourself.
+          <div className="font-semibold mb-0.5">⚠ Suggestions only — never reported as complete</div>
+          Automatic detection can miss names; review the full document and mark
+          anything it didn't catch. Structured data (SSNs, accounts, cards,
+          emails, phones, IBANs) is found reliably; names in prose, party
+          names, addresses, and context-dependent secrets often aren't. There
+          is no "all clear" — confirm completeness yourself.
         </div>
       )}
 
