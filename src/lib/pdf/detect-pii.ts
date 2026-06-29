@@ -64,13 +64,41 @@ const PATTERNS: { category: PiiCategory; re: RegExp }[] = [
   { category: "email", re: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i },
   {
     category: "phone",
-    re: /(?:\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/,
+    re: /(?:\+?\d{1,3}[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}\b/,
   },
-  { category: "creditCard", re: /\b(?:\d[ -]*?){13,19}\b/ },
+  // Cards: 13–19 digits, optionally split into groups by single spaces / dashes.
+  { category: "creditCard", re: /\b(?:\d[ -]?){12,18}\d\b/ },
   { category: "date", re: /\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/ },
   { category: "ipAddress", re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/ },
-  { category: "iban", re: /\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b/ },
+  // IBAN: country + 2 check digits + 11–30 alnum chars, with optional
+  // internal spaces every ~4 chars (the printed convention).
+  { category: "iban", re: /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{1,4}){2,8}\b/ },
 ];
+
+/**
+ * Loose OCR substitutions for digit-heavy strings. Tesseract routinely
+ * confuses O↔0, l/I↔1, S↔5, B↔8, Z↔2, G↔6 inside numeric runs. We build a
+ * parallel "normalized" copy of the line text, run digit patterns against
+ * BOTH, and keep the original span/snippet for the redaction box.
+ */
+function normalizeForDigits(s: string): string {
+  return s
+    .replace(/[OoQ]/g, "0")
+    .replace(/[lI|]/g, "1")
+    .replace(/S/g, "5")
+    .replace(/B/g, "8")
+    .replace(/Z/g, "2")
+    .replace(/G/g, "6")
+    .replace(/[‐–—]/g, "-");
+}
+
+/** Heuristic: line looks like it should contain structured PII. */
+function looksStructured(text: string): boolean {
+  if (/\d[\d\s\-]{6,}\d/.test(text)) return true; // long digit runs
+  if (/@\w/.test(text)) return true;              // email
+  if (/\b[A-Z]{2}\d{2}\b/.test(text)) return true; // IBAN prefix
+  return false;
+}
 
 // 2–4 capitalized tokens, allowing middle initials and name connectors
 // (de / la / van / von / da / del / der / di / le). Used only as a coarse
