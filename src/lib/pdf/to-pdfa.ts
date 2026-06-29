@@ -345,31 +345,13 @@ function inspectInterpolate(doc: PDFDocument): string[] {
     if (!(d instanceof PDFDict)) continue;
     if (pdfName(d.get(PDFName.of("Type"))) !== "/XObject") continue;
     if (pdfName(d.get(PDFName.of("Subtype"))) !== "/Image") continue;
-    const interp = d.get(PDFName.of("Interpolate"));
-    // PDFBool exposes .asBoolean(); guard structurally to keep this lean.
+    const interp = d.get(PDFName.of("Interpolate")) as unknown;
+    // PDFBool exposes .asBoolean(); guard structurally.
     const truthy = !!interp && typeof (interp as { asBoolean?: () => boolean }).asBoolean === "function"
       && (interp as { asBoolean: () => boolean }).asBoolean();
     if (truthy) offenders.push(objectRef(ref));
   }
   return offenders;
-}
-
-/** PDF/A-2b §6.2.4.4 — image XObjects MUST NOT have /Interpolate true.
- *  Strip the key from every image XObject. Returns count. */
-function stripImageInterpolate(doc: PDFDocument): number {
-  let touched = 0;
-  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFStream)) continue;
-    const d = obj.dict;
-    if (!(d instanceof PDFDict)) continue;
-    if (pdfName(d.get(PDFName.of("Type"))) !== "/XObject") continue;
-    if (pdfName(d.get(PDFName.of("Subtype"))) !== "/Image") continue;
-    if (d.has(PDFName.of("Interpolate"))) {
-      d.delete(PDFName.of("Interpolate"));
-      touched++;
-    }
-  }
-  return touched;
 }
 
 /** Force-strip every forbidden action / external reference from the
