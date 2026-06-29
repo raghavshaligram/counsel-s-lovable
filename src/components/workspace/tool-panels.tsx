@@ -1984,7 +1984,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               <ul className="mt-2 space-y-1 text-[11px] text-foreground">
                 {verify.leaks.slice(0, 6).map((l, i) => (
                   <li key={i} className="font-mono">
-                    p.{l.page + 1}: <span className="text-text-2">text remains in region</span>
+                    {l.vector === "page" && l.page !== undefined ? `p.${l.page + 1}` : l.vector}: <span className="text-text-2">{l.text}</span>
                   </li>
                 ))}
                 {verify.leaks.length > 6 && (
