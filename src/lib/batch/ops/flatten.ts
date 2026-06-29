@@ -48,7 +48,6 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
 
   // ---- Safety gate: scan + (optionally) remove sensitive content ----
   const findings = scanFormAndAnnotationPii(doc);
-  console.log("[flatten-debug] findings:", findings.length, "opts.clearSensitiveFirst:", opts.clearSensitiveFirst);
   if (findings.length > 0) {
     if (!opts.clearSensitiveFirst) {
       throw new FlattenSensitiveDataError(findings);
