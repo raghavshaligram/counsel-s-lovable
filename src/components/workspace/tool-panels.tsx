@@ -1302,16 +1302,6 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   }, [sideChannelFindings]);
 
 
-  const grouped = useMemo(() => {
-    if (!redactableFindings.length) return null;
-    const m = new Map<Cat, Det[]>();
-    for (const d of redactableFindings) {
-      const arr = m.get(d.category) ?? [];
-      arr.push(d);
-      m.set(d.category, arr);
-    }
-    return Array.from(m.entries()).sort((a, b) => b[1].length - a[1].length);
-  }, [redactableFindings]);
 
   const allSelected =
     redactableFindings.length > 0 && selected.size === redactableFindings.length;
