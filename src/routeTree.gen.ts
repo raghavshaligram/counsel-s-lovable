@@ -26,6 +26,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RedactRouteImport } from './routes/redact'
 import { Route as ProtectRouteImport } from './routes/protect'
 import { Route as PrivilegeScanRouteImport } from './routes/privilege-scan'
+import { Route as PrivilegeAndAiRouteImport } from './routes/privilege-and-ai'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PageNumbersRouteImport } from './routes/page-numbers'
 import { Route as OutlineRouteImport } from './routes/outline'
@@ -131,6 +132,11 @@ const ProtectRoute = ProtectRouteImport.update({
 const PrivilegeScanRoute = PrivilegeScanRouteImport.update({
   id: '/privilege-scan',
   path: '/privilege-scan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivilegeAndAiRoute = PrivilegeAndAiRouteImport.update({
+  id: '/privilege-and-ai',
+  path: '/privilege-and-ai',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -257,6 +263,7 @@ export interface FileRoutesByFullPath {
   '/outline': typeof OutlineRoute
   '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
+  '/privilege-and-ai': typeof PrivilegeAndAiRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
@@ -296,6 +303,7 @@ export interface FileRoutesByTo {
   '/outline': typeof OutlineRoute
   '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
+  '/privilege-and-ai': typeof PrivilegeAndAiRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
@@ -337,6 +345,7 @@ export interface FileRoutesById {
   '/outline': typeof OutlineRoute
   '/page-numbers': typeof PageNumbersRoute
   '/pricing': typeof PricingRoute
+  '/privilege-and-ai': typeof PrivilegeAndAiRoute
   '/privilege-scan': typeof PrivilegeScanRoute
   '/protect': typeof ProtectRoute
   '/redact': typeof RedactRoute
@@ -378,6 +387,7 @@ export interface FileRouteTypes {
     | '/outline'
     | '/page-numbers'
     | '/pricing'
+    | '/privilege-and-ai'
     | '/privilege-scan'
     | '/protect'
     | '/redact'
@@ -417,6 +427,7 @@ export interface FileRouteTypes {
     | '/outline'
     | '/page-numbers'
     | '/pricing'
+    | '/privilege-and-ai'
     | '/privilege-scan'
     | '/protect'
     | '/redact'
@@ -457,6 +468,7 @@ export interface FileRouteTypes {
     | '/outline'
     | '/page-numbers'
     | '/pricing'
+    | '/privilege-and-ai'
     | '/privilege-scan'
     | '/protect'
     | '/redact'
@@ -498,6 +510,7 @@ export interface RootRouteChildren {
   OutlineRoute: typeof OutlineRoute
   PageNumbersRoute: typeof PageNumbersRoute
   PricingRoute: typeof PricingRoute
+  PrivilegeAndAiRoute: typeof PrivilegeAndAiRoute
   PrivilegeScanRoute: typeof PrivilegeScanRoute
   ProtectRoute: typeof ProtectRoute
   RedactRoute: typeof RedactRoute
@@ -636,6 +649,13 @@ declare module '@tanstack/react-router' {
       path: '/privilege-scan'
       fullPath: '/privilege-scan'
       preLoaderRoute: typeof PrivilegeScanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privilege-and-ai': {
+      id: '/privilege-and-ai'
+      path: '/privilege-and-ai'
+      fullPath: '/privilege-and-ai'
+      preLoaderRoute: typeof PrivilegeAndAiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -821,6 +841,7 @@ const rootRouteChildren: RootRouteChildren = {
   OutlineRoute: OutlineRoute,
   PageNumbersRoute: PageNumbersRoute,
   PricingRoute: PricingRoute,
+  PrivilegeAndAiRoute: PrivilegeAndAiRoute,
   PrivilegeScanRoute: PrivilegeScanRoute,
   ProtectRoute: ProtectRoute,
   RedactRoute: RedactRoute,

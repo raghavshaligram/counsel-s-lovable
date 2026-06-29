@@ -329,6 +329,91 @@ function Landing() {
         </div>
       </section>
 
+      {/* PRIVILEGE & AI — 2026 rulings */}
+      <section className="border-b border-border bg-surface-canvas/60" aria-labelledby="privilege-ai-heading">
+        <div className="mx-auto max-w-5xl px-5 md:px-8 py-20 md:py-28">
+          <div className="max-w-2xl mb-10 reveal">
+            <div className="font-mono text-[11px] text-muted-foreground mb-4 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-vault" />
+              / privilege &amp; AI · 2026 rulings
+            </div>
+            <h2
+              id="privilege-ai-heading"
+              className="font-display leading-[1] tracking-tight"
+              style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
+            >
+              Uploading privileged material to a public AI can waive privilege.
+            </h2>
+            <p className="mt-4 text-sm md:text-base text-muted-foreground leading-relaxed">
+              In 2026 courts on both sides of the Atlantic drew a line between
+              AI that runs in a closed environment under your control and
+              public AI services that receive your data as a third party.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-5 reveal">
+            <div className="rounded-xl border border-border bg-card/40 p-6">
+              <div className="font-mono text-[11px] text-muted-foreground mb-2">United Kingdom</div>
+              <h3 className="font-display text-lg tracking-tight leading-snug">
+                UK v Secretary of State (UK Upper Tribunal, 2026)
+              </h3>
+              <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+                Uploading documents to an open, publicly available AI tool
+                breaches confidentiality and waives legal professional
+                privilege — distinguishing public tools from closed AI
+                operating within a secure network.
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-card/40 p-6">
+              <div className="font-mono text-[11px] text-muted-foreground mb-2">United States · S.D.N.Y.</div>
+              <h3 className="font-display text-lg tracking-tight leading-snug">
+                United States v. Heppner (Feb. 17, 2026)
+              </h3>
+              <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+                Exchanges with a publicly available AI platform are not
+                protected by attorney&ndash;client privilege or work product;
+                no reasonable expectation of confidentiality when
+                communicating with a third-party AI platform.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-xl border border-border bg-surface-canvas p-6 md:p-7 reveal">
+            <p className="text-base md:text-lg leading-relaxed">
+              <span className="font-semibold text-foreground">
+                CounselPDF&rsquo;s AI runs entirely on your device.
+              </span>{" "}
+              <span className="text-muted-foreground">
+                Nothing is uploaded to any AI platform — so your privileged
+                material is never exposed to a third party.
+              </span>
+            </p>
+            <div className="mt-5 flex flex-wrap gap-x-6 gap-y-3 text-sm">
+              <Link
+                to="/privilege-and-ai"
+                className="inline-flex items-center gap-1.5 text-vault hover:underline underline-offset-4 font-medium"
+              >
+                Read the full briefing &amp; sources
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                to="/verify-privacy"
+                className="inline-flex items-center gap-1.5 text-vault hover:underline underline-offset-4"
+              >
+                Verify the network claim
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <p className="mt-5 text-xs text-muted-foreground leading-relaxed">
+              This is not legal advice; consult the rulings and your own
+              professional judgment.
+            </p>
+          </div>
+        </div>
+      </section>
+
+
+
       {/* COMPARISON — legal players */}
       <section className="border-b border-border bg-card/30">
         <div className="mx-auto max-w-6xl px-5 md:px-8 py-20 md:py-28">
