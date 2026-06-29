@@ -172,7 +172,7 @@ function Landing() {
                   to="/workspace"
                   className="group inline-flex items-center gap-2 rounded-md bg-vault text-vault-foreground px-5 py-3 text-sm font-semibold hover:opacity-90 transition"
                 >
-                  Start free
+                  Open the redactor
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
                 <Link
@@ -182,8 +182,17 @@ function Landing() {
                   Sign in
                 </Link>
               </div>
-              <p className="mt-5 text-sm text-muted-foreground">
-                Free tools forever. Pro features unlock with a subscription — Windows, Mac, iPad, no install.
+              <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-[12px] font-mono text-muted-foreground">
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-vault" /> Built for legal work</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-vault" /> Permanent, verifiable redaction</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-vault" /> Used on privileged matters</li>
+                <li className="flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-vault" />
+                  <Link to="/verify-privacy" className="hover:text-foreground underline-offset-4 hover:underline">Verifiable on-device privacy</Link>
+                </li>
+              </ul>
+              <p className="mt-5 text-xs text-muted-foreground">
+                Founder's rate from $17/mo. Core tools available free to try — no upload, ever.
               </p>
             </div>
 
@@ -269,6 +278,52 @@ function Landing() {
           </div>
         </div>
       </section>
+
+      {/* ACCESS ANYWHERE — without uploading */}
+      <section className="border-b border-border bg-surface-canvas/60">
+        <div className="mx-auto max-w-6xl px-5 md:px-8 py-20 md:py-28">
+          <div className="max-w-3xl mb-12 reveal">
+            <div className="font-mono text-[11px] text-muted-foreground mb-4 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-vault" />
+              / access anywhere · without uploading
+            </div>
+            <h2
+              className="font-display leading-[1] tracking-tight"
+              style={{ fontSize: "clamp(2rem, 4.5vw, 3.5rem)" }}
+            >
+              Work from anywhere — laptop, home, courthouse, iPad.
+              <br />
+              <span className="italic text-vault">Without ever uploading a client file.</span>
+            </h2>
+            <p className="mt-5 text-base text-muted-foreground max-w-2xl leading-relaxed">
+              The access of a cloud tool. The privacy of a desktop install. Cloud
+              redaction services give you any-device access — but only by uploading
+              your documents to a server you don't control. Desktop tools like Kofax
+              keep your data local — but chain you to one installed machine.
+              CounselPDF is the only one that gives you both.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-px bg-border rounded-xl overflow-hidden border border-border">
+            <div className="bg-background p-6">
+              <div className="font-mono text-[11px] text-muted-foreground mb-3">Cloud redaction</div>
+              <div className="flex items-center gap-2 text-sm text-foreground"><Check className="h-4 w-4 text-vault" /> Any device</div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2"><X className="h-4 w-4 text-destructive" /> Documents uploaded</div>
+            </div>
+            <div className="bg-background p-6">
+              <div className="font-mono text-[11px] text-muted-foreground mb-3">Desktop (Kofax, Acrobat)</div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><X className="h-4 w-4 text-destructive" /> Tied to one install</div>
+              <div className="flex items-center gap-2 text-sm text-foreground mt-2"><Check className="h-4 w-4 text-vault" /> Files stay local</div>
+            </div>
+            <div className="bg-vault/[0.06] p-6 border-l border-vault/20">
+              <div className="font-mono text-[11px] text-vault mb-3">CounselPDF</div>
+              <div className="flex items-center gap-2 text-sm text-foreground font-semibold"><Check className="h-4 w-4 text-vault" /> Any device, no install</div>
+              <div className="flex items-center gap-2 text-sm text-foreground font-semibold mt-2"><Check className="h-4 w-4 text-vault" /> Files never leave it</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
 
 
 
@@ -929,7 +984,7 @@ const COMP_ROWS: Array<{ label: string; vals: [MarkValue, MarkValue, MarkValue, 
   { label: "One-click legal workflows", vals: [true, false, false, "partial"] },
   { label: "Private AI assist (on-device)", vals: [true, false, false, false] },
   { label: "Works offline", vals: [true, "partial", true, false] },
-  { label: "No installation, any device", vals: [true, false, false, true] },
+  { label: "Access from any device (laptop, iPad, courthouse)", vals: [true, { note: "cloud only" }, false, true], emphasize: true },
   { label: "Affordable for solo / small firm", vals: [true, "partial", "partial", false] },
 ];
 
