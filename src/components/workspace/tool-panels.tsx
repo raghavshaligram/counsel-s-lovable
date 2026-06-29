@@ -6253,6 +6253,19 @@ function HeaderFooterSection({ ctx }: { ctx: ToolPanelCtx }) {
         >
           Apply to active tab
         </button>
+        <FirmTemplatesMenu
+          kind="header-footer"
+          getConfig={() => ({ headerText, footerText, align, rule, fontSize, margin })}
+          onApply={(cfg: { headerText?: string; footerText?: string; align?: typeof align; rule?: typeof rule; fontSize?: number; margin?: number }) => {
+            if (typeof cfg.headerText === "string") setHeaderText(cfg.headerText);
+            if (typeof cfg.footerText === "string") setFooterText(cfg.footerText);
+            if (cfg.align) setAlign(cfg.align);
+            if (cfg.rule) setRule(cfg.rule);
+            if (typeof cfg.fontSize === "number") setFontSize(cfg.fontSize);
+            if (typeof cfg.margin === "number") setMargin(cfg.margin);
+          }}
+          sourceName={file?.name ?? null}
+        />
       </div>
     </div>
   );
