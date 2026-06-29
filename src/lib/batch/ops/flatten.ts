@@ -17,7 +17,7 @@
  *   path. The legacy /flatten route can pass `clearSensitiveFirst: true`
  *   so users aren't surprised by a refusal.
  */
-import { PDFArray, PDFDict, PDFDocument, PDFName } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, type PDFForm } from "pdf-lib";
 import { matchAllCategories } from "@/lib/pdf/detect-pii";
 
 export interface FlattenOpts {
