@@ -426,13 +426,40 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     catalog.set(PDFName.of("OutputIntents"), ctx.obj([outputIntentDict]));
   });
 
-  // 4) XMP /Metadata stream with PDF/A markers --------------------------
+  // 4) Document info FIRST — XMP dates must agree with /Info CreationDate
+  //    and ModDate (PDF/A-1/2 §6.7.3). Build XMP after these are set so
+  //    xmp:CreateDate / xmp:ModifyDate match exactly.
+  const createdAt = doc.getCreationDate() ?? new Date();
+  const modifiedAt = new Date();
+  await step("update document info", () => {
+    doc.setProducer("CounselPDF (PDF/A-2b)");
+    doc.setCreationDate(createdAt);
+    doc.setModificationDate(modifiedAt);
+    // pdf-lib writes /Info dates in the PDF date format, but be explicit
+    // so the trailer's CreationDate / ModDate match the XMP values we
+    // are about to write byte-for-byte (modulo timezone equivalence).
+    const info = doc.context.lookup(doc.context.trailerInfo.Info);
+    if (info instanceof PDFDict) {
+      info.set(PDFName.of("CreationDate"), PDFString.of(pdfInfoDate(createdAt)));
+      info.set(PDFName.of("ModDate"), PDFString.of(pdfInfoDate(modifiedAt)));
+    }
+  });
+
+  // 5) Strip /Interpolate from every image XObject (PDF/A-2b §6.2.4.4) -
+  await step("strip /Interpolate from image XObjects", () => {
+    const n = stripImageInterpolate(doc);
+    // eslint-disable-next-line no-console
+    console.info(`${TAG} stripped /Interpolate on ${n} image XObject(s)`);
+  });
+
+  // 6) XMP /Metadata stream with PDF/A markers --------------------------
   await step("write XMP metadata (pdfaid part=2 conformance=B)", () => {
     const xmp = buildPdfAXmp({
       title: doc.getTitle(),
       author: doc.getAuthor(),
       producer: "CounselPDF (PDF/A-2b)",
-      createdAt: doc.getCreationDate() ?? new Date(),
+      createdAt,
+      modifiedAt,
     });
     const xmpBytes = new TextEncoder().encode(xmp);
     const xmpStream = ctx.stream(xmpBytes, {
@@ -442,13 +469,6 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     });
     const xmpRef = ctx.register(xmpStream);
     catalog.set(PDFName.of("Metadata"), xmpRef);
-  });
-
-  // 5) Document info ----------------------------------------------------
-  await step("update document info", () => {
-    doc.setProducer("CounselPDF (PDF/A-2b)");
-    if (!doc.getCreationDate()) doc.setCreationDate(new Date());
-    doc.setModificationDate(new Date());
   });
 
   // 6) Trailer /ID — clause 6.1.3 requires a non-empty File Identifier.
