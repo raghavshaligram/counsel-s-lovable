@@ -254,7 +254,8 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
   ipAddress: { label: "IP", hint: "IP addresses" },
   iban: { label: "IBAN", hint: "International bank account numbers" },
   privilegeContext: { label: "Context flags — review nearby content for privilege", hint: "Review signal: words like 'confidential', 'privileged', 'settlement', 'work product' nearby — not a value to redact itself" },
-};
+  privilegeValue: { label: "Value near privilege flag", hint: "Numbers/amounts found next to a privilege/confidentiality term — review and redact if sensitive" },
+
 
 
 export type DetectProgress = {
