@@ -5990,7 +5990,7 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
             color: s.color,
             margin: s.margin,
           })}
-          onApply={(cfg) => update(cfg as Partial<typeof s>)}
+          onApply={(cfg: Partial<typeof s>) => update(cfg)}
           sourceName={file?.name ?? null}
         />
       </div>
