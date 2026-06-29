@@ -203,6 +203,8 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
+    // Install the network-isolation shim early and apply the persisted preference.
+    initNetworkIsolation();
     // Ask the browser to make our IndexedDB durable. Logs the outcome.
     void requestPersistentStorage();
   }, []);
