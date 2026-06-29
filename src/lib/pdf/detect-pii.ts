@@ -62,6 +62,16 @@ export type Detection = {
    * opts in. Absent on structured findings — treat as "high".
    */
   confidence?: "high" | "low";
+  /**
+   * Where this finding lives. "page" = visible page text (default).
+   * Other vectors come from non-page surfaces that page-redaction misses:
+   * form-field values, annotation/comment text, and document metadata
+   * (Info dict + XMP). Side-channel findings carry no page rect — they're
+   * cleared by sanitize during export, not by drawing a black box.
+   */
+  vector?: "page" | "form-field" | "annotation" | "metadata";
+  /** Human label of the source, e.g. "Form field: SSN" or "Metadata: Author". */
+  sourceLabel?: string;
 };
 
 /**
