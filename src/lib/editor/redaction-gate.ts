@@ -86,7 +86,7 @@ export async function enforceRedactionGate(
   // If only page-geometry leaks remain, try forced rasterization on the
   // offending pages and re-verify. Side-channel leaks cannot be fixed by
   // rasterizing, so any of those fail immediately below.
-  const pageLeaks = result.leaks.filter((l) => l.vector === "page" && l.rect && l.page !== undefined);
+  const pageLeaks = result.leaks.filter((l: VerifyLeak) => l.vector === "page" && l.rect && l.page !== undefined);
   if (pageLeaks.length > 0) {
     opts.onProgress?.("raster-fallback");
     const { rasterizeRedactedPages } = await importChunk(() => import("./rasterize-redacted-pages"));
