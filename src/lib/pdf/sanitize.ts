@@ -97,7 +97,41 @@ export async function sanitizePdfBytesWithReport(
     if (obj.has(PDFName.of("V"))) { obj.delete(PDFName.of("V")); report.acroFormFields++; }
     if (obj.has(PDFName.of("DV"))) obj.delete(PDFName.of("DV"));
     if (obj.has(PDFName.of("RV"))) obj.delete(PDFName.of("RV"));
+    // /AP appearance streams cache the rendered glyphs of /V. Without
+    // stripping them, the value can still be recovered from the widget
+    // XObject and would be baked into the page by any downstream flatten.
+    if (obj.has(PDFName.of("AP"))) obj.delete(PDFName.of("AP"));
   }
+  // Also drop /Widget annotations on every page — the parent form fields
+  // were just deleted, so the widgets are now orphans whose only purpose
+  // would be to carry leftover /AP streams.
+  for (const page of doc.getPages()) {
+    const annotsArr2 = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+    if (!annotsArr2) continue;
+    const keep2: unknown[] = [];
+    for (const item of annotsArr2.asArray()) {
+      const annot = resolveDict(ctx, item);
+      if (!annot) { keep2.push(item); continue; }
+      if (nameStr(annot.get(PDFName.of("Subtype"))) === "/Widget") {
+        if (item && typeof item === "object" && "objectNumber" in item) {
+          removeRef(ctx, item as PDFRef);
+        }
+        continue;
+      }
+      keep2.push(item);
+    }
+    if (keep2.length !== annotsArr2.size()) {
+      const next = PDFArray.withContext(ctx);
+      for (const k of keep2) next.push(k as never);
+      page.node.set(PDFName.of("Annots"), next);
+    }
+  }
+  // Purge orphaned widget appearance streams (/Form XObjects pdf-lib
+  // tagged with /Tx BMC). Without this they survive in the saved file
+  // even though nothing references them — and they still carry the
+  // form-field glyph strings, which a raw-stream verifier rightly
+  // flags as a leak.
+  await purgeWidgetAppearanceStreams(ctx);
 
   // 3) Annotations — strip text from every annotation and remove
   //    text-bearing subtypes entirely so /Contents, /RC, /T, /Subj
@@ -253,6 +287,28 @@ function resolveDict(ctx: PDFDocument["context"], obj: unknown): PDFDict | undef
 
 function removeRef(ctx: PDFDocument["context"], ref: PDFRef): void {
   try { ctx.delete(ref); } catch { /* ignore */ }
+}
+
+async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promise<void> {
+  const { unzlibSync } = await import("fflate");
+  const targets: PDFRef[] = [];
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFStream)) continue;
+    const d = obj.dict;
+    if (!(d instanceof PDFDict)) continue;
+    if (nameStr(d.get(PDFName.of("Subtype"))) !== "/Form") continue;
+    const raw =
+      (obj as unknown as { contents?: Uint8Array }).contents
+      ?? (obj as unknown as { getContents?: () => Uint8Array }).getContents?.();
+    if (!raw || raw.length === 0) continue;
+    let bytes: Uint8Array = raw;
+    if (nameStr(d.get(PDFName.of("Filter"))) === "/FlateDecode") {
+      try { bytes = unzlibSync(raw); } catch { /* keep raw */ }
+    }
+    const txt = new TextDecoder("latin1").decode(bytes);
+    if (txt.includes("/Tx BMC")) targets.push(ref);
+  }
+  for (const r of targets) removeRef(ctx, r);
 }
 
 /** Recursively clear /V (and /DV, /RV) on a form field tree.

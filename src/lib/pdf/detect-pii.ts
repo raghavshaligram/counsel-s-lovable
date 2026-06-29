@@ -711,7 +711,7 @@ type CatHit = {
   text: string;
 };
 
-function matchAllCategories(str: string): CatHit[] {
+export function matchAllCategories(str: string): CatHit[] {
   const hits: CatHit[] = [];
   // Structured patterns — emit ONLY the value span, not the surrounding label
   // or line ("Client SSN: 123-45-6789" → just "123-45-6789").
