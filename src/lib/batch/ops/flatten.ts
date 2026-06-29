@@ -203,9 +203,13 @@ function collectAppearanceRefs(dict: PDFDict, push: (r: unknown) => void): void 
   for (const key of ["N", "D", "R"]) {
     const v = ap.get(PDFName.of(key));
     push(v);
-    // /N may also be a dict mapping states → refs.
-    const asDict = ap.lookupMaybe(PDFName.of(key), PDFDict);
-    if (asDict) for (const e of asDict.entries()) push(e[1]);
+    // /N may also be a dict mapping appearance states → refs. Use a
+    // typed try: pdf-lib throws if the resolved value isn't a PDFDict
+    // (it's commonly a PDFRawStream pointing straight at the XObject).
+    try {
+      const asDict = ap.lookupMaybe(PDFName.of(key), PDFDict);
+      if (asDict) for (const e of asDict.entries()) push(e[1]);
+    } catch { /* not a dict — already pushed via .get above */ }
   }
 }
 
