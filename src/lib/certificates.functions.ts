@@ -44,7 +44,7 @@ export type ComplianceCertSummary = {
 };
 
 export type ComplianceCertRecord = ComplianceCertSummary & {
-  payload: Record<string, unknown>;
+  payload: Json;
 };
 
 export const saveCertificate = createServerFn({ method: "POST" })
