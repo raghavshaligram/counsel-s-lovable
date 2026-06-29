@@ -15,13 +15,13 @@ import {
 export const Route = createFileRoute("/security-architecture")({
   head: () => ({
     meta: [
-      { title: "Security & Architecture — VaultPDF" },
+      { title: "Security & Architecture — CounselPDF" },
       {
         name: "description",
         content:
-          "Technical overview of VaultPDF's client-side architecture for law firm IT and compliance reviewers. No server receives document content.",
+          "Technical overview of CounselPDF's client-side architecture for law firm IT and compliance reviewers. No server receives document content.",
       },
-      { property: "og:title", content: "Security & Architecture — VaultPDF" },
+      { property: "og:title", content: "Security & Architecture — CounselPDF" },
       {
         property: "og:description",
         content:
@@ -76,7 +76,7 @@ function SecurityArchitecturePage() {
                 Everything happens in the browser runtime.
               </h2>
               <p className="mt-6 text-muted-foreground leading-relaxed">
-                When you open a PDF in VaultPDF, the file is read into browser memory as a
+                When you open a PDF in CounselPDF, the file is read into browser memory as a
                 <code className="text-xs bg-accent-soft px-1.5 py-0.5 rounded text-foreground mx-1">Uint8Array</code>
                 via the standard File API. From that moment until you export, the document never
                 exists outside the browser's execution sandbox.
@@ -93,7 +93,7 @@ function SecurityArchitecturePage() {
               <DetailRow
                 icon={<ServerOff className="h-4 w-4" />}
                 label="No server receives document content"
-                value="VaultPDF is deployed as a static site. There is no /upload, /process, or /convert endpoint. The server serves HTML, JavaScript, and WASM bundles only."
+                value="CounselPDF is deployed as a static site. There is no /upload, /process, or /convert endpoint. The server serves HTML, JavaScript, and WASM bundles only."
               />
               <DetailRow
                 icon={<Eye className="h-4 w-4" />}
@@ -157,11 +157,11 @@ function SecurityArchitecturePage() {
                   What is persisted and where
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                  VaultPDF maintains two IndexedDB databases on the device:
-                  <code className="text-xs bg-accent-soft px-1.5 py-0.5 rounded text-foreground mx-1">vaultpdf-workspace</code>
+                  CounselPDF maintains two IndexedDB databases on the device:
+                  <code className="text-xs bg-accent-soft px-1.5 py-0.5 rounded text-foreground mx-1">counselpdf-workspace</code>
                   stores UI state, recent document bytes (capped at 120 MB total), per-document
                   annotation sidecars, and user bookmarks; and
-                  <code className="text-xs bg-accent-soft px-1.5 py-0.5 rounded text-foreground mx-1">vaultpdf-tray</code>
+                  <code className="text-xs bg-accent-soft px-1.5 py-0.5 rounded text-foreground mx-1">counselpdf-tray</code>
                   stores blob bytes keyed by SHA-256 for batch operations like merge and Bates
                   stamp. A small amount of metadata is mirrored to
                   <code className="text-xs bg-accent-soft px-1.5 py-0.5 rounded text-foreground mx-1">localStorage</code>
@@ -218,7 +218,7 @@ const doc = await pdfjs.getDocument({ data: bytes }).promise;
               title="3. Recent documents and edits persist to IndexedDB"
               lang="typescript"
               code={`// Documents are stored in the browser's origin-scoped IndexedDB.
-const conn = await openDB("vaultpdf-workspace", 3, {
+const conn = await openDB("counselpdf-workspace", 3, {
   upgrade(d) {
     d.createObjectStore("docs");   // recent file bytes
     d.createObjectStore("sidecars"); // annotations, page ops, OCR layer
@@ -261,7 +261,7 @@ const blob = new Blob([output], { type: "application/pdf" });
                 Disconnect and continue working.
               </h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                VaultPDF registers a Service Worker that precaches the application shell and
+                CounselPDF registers a Service Worker that precaches the application shell and
                 stores static assets (JavaScript bundles, WASM modules, fonts, and stylesheets)
                 at install time. Once the app has loaded, every tool functions without an internet
                 connection because the workflow has no server dependency. This is not a fallback
@@ -283,7 +283,7 @@ const blob = new Blob([output], { type: "application/pdf" });
                 Suitable for sensitive environments.
               </h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Because no step requires a network round-trip, VaultPDF can be used on machines
+                Because no step requires a network round-trip, CounselPDF can be used on machines
                 that are physically disconnected from the internet or confined to isolated
                 network segments. Load the application once, then move the machine offline.
                 Document processing, redaction, Bates stamping, and export continue to operate
@@ -390,7 +390,7 @@ const blob = new Blob([output], { type: "application/pdf" });
                   Plain-language summary for legal teams
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                  VaultPDF does not collect, process, or store your documents on our infrastructure.
+                  CounselPDF does not collect, process, or store your documents on our infrastructure.
                   Your files remain on your device, inside your browser, under your control. We
                   have no technical ability to view, retain, or disclose your documents because we
                   never receive them. This architecture eliminates the data-breach and

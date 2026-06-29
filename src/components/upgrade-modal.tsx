@@ -154,7 +154,7 @@ export function UpgradeModal() {
             </span>
             <div className="min-w-0">
               <DialogTitle className="font-display text-[17px] leading-tight antialiased tracking-normal">
-                Unlock VaultPDF Pro
+                Unlock CounselPDF Pro
               </DialogTitle>
               <DialogDescription className="mt-1 text-[13px] text-text-2">
                 {reason?.featureName

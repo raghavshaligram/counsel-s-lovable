@@ -675,8 +675,8 @@ export function RedactPage() {
         out.setAuthor("");
         out.setSubject("");
         out.setKeywords([]);
-        out.setProducer("VaultPDF");
-        out.setCreator("VaultPDF");
+        out.setProducer("CounselPDF");
+        out.setCreator("CounselPDF");
         const epoch = new Date(0);
         out.setCreationDate(epoch);
         out.setModificationDate(epoch);

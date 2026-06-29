@@ -81,7 +81,7 @@ export async function runBatch<O>(args: RunBatchArgs<O>): Promise<BatchProgress>
 }
 
 /** Zip all completed outputs from a batch. */
-export function zipBatchOutputs(p: BatchProgress, zipName = "vaultpdf-batch.zip"): { bytes: Uint8Array; name: string } {
+export function zipBatchOutputs(p: BatchProgress, zipName = "counselpdf-batch.zip"): { bytes: Uint8Array; name: string } {
   const z: Zippable = {};
   for (const f of p.files) {
     if (f.status !== "done") continue;

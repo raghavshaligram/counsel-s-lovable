@@ -2915,7 +2915,7 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBuilding(true);
     try {
       const bytes = await buildPdfFromCells(cells, resolveBytes);
-      await downloadPdf(bytes, `vaultpdf-organized-${Date.now()}.pdf`);
+      await downloadPdf(bytes, `counselpdf-organized-${Date.now()}.pdf`);
       toast.success(`Built PDF with ${cells.length} page${cells.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error("[organize] build failed", err);
@@ -6240,10 +6240,10 @@ function CommentsInspectorPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const annos = editorState?.doc?.annotations ?? [];
   const [author, setAuthor] = useState<string>(() => {
     if (typeof window === "undefined") return "Me";
-    return window.localStorage.getItem("vaultpdf:comment-author") || "Me";
+    return window.localStorage.getItem("counselpdf:comment-author") || "Me";
   });
   useEffect(() => {
-    try { window.localStorage.setItem("vaultpdf:comment-author", author); } catch { /* ignore */ }
+    try { window.localStorage.setItem("counselpdf:comment-author", author); } catch { /* ignore */ }
   }, [author]);
 
   const grouped = useMemo(() => {

@@ -208,8 +208,8 @@ const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
 // Hard cap on the left rail. Manual pins are sticky; the remainder is
 // auto-filled by most-used tools. Never exceed this, period.
 const PIN_CAP_TOTAL = 10;
-const USAGE_KEY = "vaultpdf:tool-usage";
-const PINS_KEY = "vaultpdf:tool-pins";
+const USAGE_KEY = "counselpdf:tool-usage";
+const PINS_KEY = "counselpdf:tool-pins";
 
 // Optional keyboard shortcuts shown in tooltips. Only list tools whose
 // shortcut is actually wired elsewhere — never advertise a binding that
@@ -1286,8 +1286,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         <div className="flex items-center gap-2.5 min-w-0">
           <Link
             to="/"
-            title="Back to VaultPDF home"
-            aria-label="Back to VaultPDF home"
+            title="Back to CounselPDF home"
+            aria-label="Back to CounselPDF home"
             className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-0.5 hover:bg-surface-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span
@@ -1296,7 +1296,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             >
               <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
             </span>
-            <span className="font-display text-[15px] leading-none">VaultPDF</span>
+            <span className="font-display text-[15px] leading-none">CounselPDF</span>
           </Link>
           <button
             type="button"
@@ -1745,7 +1745,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   ref={aiRef}
                   value={aiText}
                   onChange={(e) => setAiText(e.target.value)}
-                  placeholder='Tell VaultPDF what to do — "redact every phone number"'
+                  placeholder='Tell CounselPDF what to do — "redact every phone number"'
                   className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
                 />
                 <KeyChip>⌘K</KeyChip>

@@ -16,7 +16,7 @@ function getWorker(): Worker {
   if (cachedWorker) return cachedWorker;
   cachedWorker = new Worker(new URL("./worker.ts", import.meta.url), {
     type: "module",
-    name: "vaultpdf-automation",
+    name: "counselpdf-automation",
   });
   return cachedWorker;
 }

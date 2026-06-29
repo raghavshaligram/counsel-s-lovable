@@ -11,7 +11,7 @@ export const Route = createFileRoute("/workspace")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "VaultPDF" },
+      { title: "CounselPDF" },
       {
         name: "description",
         content:

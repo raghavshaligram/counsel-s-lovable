@@ -121,11 +121,11 @@ export async function printPdfBytes(
 </html>`;
 
   // 3. Inject hidden iframe, wait for images to decode, then print.
-  const prior = document.getElementById("vaultpdf-print-frame");
+  const prior = document.getElementById("counselpdf-print-frame");
   if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
 
   const iframe = document.createElement("iframe");
-  iframe.id = "vaultpdf-print-frame";
+  iframe.id = "counselpdf-print-frame";
   iframe.title = title;
   iframe.setAttribute(
     "style",

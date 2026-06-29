@@ -13,7 +13,7 @@ import { InstantAnswer } from "@/components/chat/InstantAnswer";
 export const Route = createFileRoute("/chat")({
   head: () => ({
     meta: [
-      { title: "Search inside any PDF — Instant, Private, Offline · VaultPDF" },
+      { title: "Search inside any PDF — Instant, Private, Offline · CounselPDF" },
       {
         name: "description",
         content:
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/chat")({
         type: "application/ld+json",
         children: JSON.stringify(
           softwareAppSchema({
-            name: "VaultPDF PDF Search",
+            name: "CounselPDF PDF Search",
             url: "/chat",
             description:
               "Instant browser-local PDF search with page citations. Files and queries never leave the tab.",

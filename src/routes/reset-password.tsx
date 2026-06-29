@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
     meta: [
-      { title: "Reset password — VaultPDF" },
+      { title: "Reset password — CounselPDF" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -52,7 +52,7 @@ function ResetPasswordPage() {
         <div className="mx-auto max-w-6xl px-5 md:px-8 h-14 flex items-center">
           <Link to="/" className="inline-flex items-center gap-2 font-display tracking-tight">
             <Lock className="h-4 w-4 text-vault" strokeWidth={2.25} />
-            <span className="text-base">VaultPDF</span>
+            <span className="text-base">CounselPDF</span>
           </Link>
         </div>
       </header>

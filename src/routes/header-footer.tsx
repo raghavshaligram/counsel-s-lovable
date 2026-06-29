@@ -13,7 +13,7 @@ import { downloadBytes } from "@/lib/batch/runner";
 export const Route = createFileRoute("/header-footer")({
   head: () => ({
     meta: [
-      { title: "Add Header & Footer to PDF — VaultPDF" },
+      { title: "Add Header & Footer to PDF — CounselPDF" },
       { name: "description", content: "Stamp custom headers and footers on PDFs with tokens like {page}, {date}, {filename}. Even/odd/first-page rules. 100% client-side." },
       { property: "og:title", content: "PDF Header & Footer — in your browser" },
       { property: "og:description", content: "Tokens, alignment, even/odd rules. No upload." },
@@ -163,7 +163,7 @@ function HeaderFooterPage() {
         op={addHeaderFooter}
         opts={opts}
         suffix="headerfooter"
-        zipName="vaultpdf-header-footer.zip"
+        zipName="counselpdf-header-footer.zip"
       />
     </AppShell>
   );

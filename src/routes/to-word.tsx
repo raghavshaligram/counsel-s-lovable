@@ -13,13 +13,13 @@ import { convertPdfToWordBlob } from "@/lib/pdf/to-word";
 export const Route = createFileRoute("/to-word")({
   head: () => ({
     meta: [
-      { title: "PDF to Word (DOCX) — VaultPDF" },
+      { title: "PDF to Word (DOCX) — CounselPDF" },
       {
         name: "description",
         content:
           "Convert PDFs to editable Word documents. Text + layout preserved, runs entirely in your browser — your files never upload.",
       },
-      { property: "og:title", content: "PDF to Word — VaultPDF" },
+      { property: "og:title", content: "PDF to Word — CounselPDF" },
       {
         property: "og:description",
         content: "Editable .docx from your PDF, generated locally. No upload.",

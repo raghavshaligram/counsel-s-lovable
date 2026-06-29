@@ -5,7 +5,7 @@ import { PRESET_COLORS } from "./types";
 
 // IndexedDB autosave keyed by file hash. Uses the `idb` wrapper so transaction
 // completion is awaitable (raw IDB returns before tx commits → silent data loss).
-const DB_NAME = "vaultpdf-annotations";
+const DB_NAME = "counselpdf-annotations";
 const STORE = "docs";
 
 let dbp: Promise<IDBPDatabase> | null = null;

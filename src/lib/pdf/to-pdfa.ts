@@ -33,11 +33,11 @@ function buildPdfAXmp(opts: {
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const title = esc(opts.title || "Document");
   const author = esc(opts.author || "");
-  const producer = esc(opts.producer || "VaultPDF");
+  const producer = esc(opts.producer || "CounselPDF");
   const now = (opts.createdAt ?? new Date()).toISOString();
 
   return `<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?>
-<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="VaultPDF PDF/A">
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="CounselPDF PDF/A">
   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
     <rdf:Description rdf:about=""
       xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"
@@ -211,7 +211,7 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     const xmp = buildPdfAXmp({
       title: doc.getTitle(),
       author: doc.getAuthor(),
-      producer: "VaultPDF (PDF/A-2b)",
+      producer: "CounselPDF (PDF/A-2b)",
       createdAt: doc.getCreationDate() ?? new Date(),
     });
     const xmpBytes = new TextEncoder().encode(xmp);
@@ -226,7 +226,7 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
 
   // 5) Document info ----------------------------------------------------
   await step("update document info", () => {
-    doc.setProducer("VaultPDF (PDF/A-2b)");
+    doc.setProducer("CounselPDF (PDF/A-2b)");
     if (!doc.getCreationDate()) doc.setCreationDate(new Date());
     doc.setModificationDate(new Date());
   });

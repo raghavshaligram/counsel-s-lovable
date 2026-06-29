@@ -23,7 +23,7 @@ export const BATES_DEFAULT: BatesSettings = {
   margin: 24,
 };
 
-const LS_KEY = "vaultpdf:bates-settings";
+const LS_KEY = "counselpdf:bates-settings";
 
 function load(): Record<string, BatesSettings> {
   if (typeof window === "undefined") return {};

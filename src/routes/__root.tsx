@@ -85,7 +85,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "VaultPDF — PDFs that never leave your browser" },
+      { title: "CounselPDF — PDFs that never leave your browser" },
       {
         name: "description",
         content:
@@ -93,7 +93,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { name: "theme-color", content: "#0E1116" },
       { property: "og:type", content: "website" },
-      { property: "og:site_name", content: "VaultPDF" },
+      { property: "og:site_name", content: "CounselPDF" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
@@ -115,12 +115,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         children: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "WebSite",
-          name: "VaultPDF",
+          name: "CounselPDF",
           description:
             "Privacy-architected PDF toolkit that runs entirely in your browser.",
           publisher: {
             "@type": "Organization",
-            name: "VaultPDF",
+            name: "CounselPDF",
           },
         }),
       },
@@ -207,7 +207,7 @@ function RootComponent() {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (import.meta.env.DEV) return; // skip SW in dev to avoid stale chunks
 
-    const READY_KEY = "vaultpdf:offline-ready-notified";
+    const READY_KEY = "counselpdf:offline-ready-notified";
     const wasControlled = Boolean(navigator.serviceWorker.controller);
 
     const notifyReady = () => {
@@ -217,7 +217,7 @@ function RootComponent() {
       } catch {
         /* ignore */
       }
-      toast.success("VaultPDF is ready to work offline", {
+      toast.success("CounselPDF is ready to work offline", {
         description: "You can disconnect anytime — everything stays on this device.",
         duration: 6000,
       });

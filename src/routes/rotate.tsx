@@ -18,13 +18,13 @@ import { useHotkey } from "@/lib/use-hotkey";
 export const Route = createFileRoute("/rotate")({
   head: () => ({
     meta: [
-      { title: "Rotate PDF — VaultPDF" },
+      { title: "Rotate PDF — CounselPDF" },
       {
         name: "description",
         content:
           "Rotate all pages or specific page ranges by 90, 180, or 270 degrees. Fully client-side, no upload.",
       },
-      { property: "og:title", content: "Rotate PDF — VaultPDF" },
+      { property: "og:title", content: "Rotate PDF — CounselPDF" },
       {
         property: "og:description",
         content: "Rotate pages instantly, in your browser. No upload.",

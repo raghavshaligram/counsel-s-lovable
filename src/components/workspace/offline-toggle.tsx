@@ -3,7 +3,7 @@ import { WifiOff, Wifi, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 
-const OFFLINE_KEY = "vaultpdf:work-offline";
+const OFFLINE_KEY = "counselpdf:work-offline";
 
 export function loadOfflinePref(): boolean {
   if (typeof window === "undefined") return false;
@@ -116,7 +116,7 @@ export function OfflineToggle({
                   Work Offline
                 </div>
                 <p className="mt-1.5 text-[12px] leading-relaxed text-text-2">
-                  When enabled, VaultPDF confirms it is operating without any
+                  When enabled, CounselPDF confirms it is operating without any
                   network connection. Your documents remain on this device.
                 </p>
 

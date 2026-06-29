@@ -88,7 +88,7 @@ function HqPage() {
             HQ
           </span>
           <div>
-            <h1 className="font-display text-[15px] leading-none">VaultPDF · Headquarters</h1>
+            <h1 className="font-display text-[15px] leading-none">CounselPDF · Headquarters</h1>
             <p className="mt-1 text-[11px] text-text-2">Owner-only control panel</p>
           </div>
         </div>
