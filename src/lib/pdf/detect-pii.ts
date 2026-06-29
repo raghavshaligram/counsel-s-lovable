@@ -1156,7 +1156,7 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
       const fields = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
       const walk = (items: unknown[]): void => {
         for (const item of items) {
-          const field = resolveDict(ctx, item, PDFDict);
+          const field = resolveDict(ctx, item, (v) => v instanceof PDFDict);
           if (!field) continue;
           const name = extractStr(field.get(PDFName.of("T"))) || "field";
           const v = extractStr(field.get(PDFName.of("V")));
@@ -1186,7 +1186,7 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
       if (!annots) continue;
       let idx = 0;
       for (const item of annots.asArray()) {
-        const annot = resolveDict(ctx, item, PDFDict);
+        const annot = resolveDict(ctx, item, (v) => v instanceof PDFDict);
         if (!annot) continue;
         const subtype = extractName(annot.get(PDFName.of("Subtype"))) || "Annot";
         const author = extractStr(annot.get(PDFName.of("T")));
