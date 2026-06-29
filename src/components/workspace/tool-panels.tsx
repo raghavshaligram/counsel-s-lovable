@@ -1184,19 +1184,22 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     [editorDispatch],
   );
 
-  const redactSelected = useCallback(() => {
+  const redactSelected = useCallback(async () => {
     if (!findings || selected.size === 0) return;
     let added = 0;
     let skipped = 0;
-    let sideChannelSelected = 0;
+    const sideChannelDets: Det[] = [];
     for (const d of findings) {
       if (!selected.has(d.id)) continue;
       // Side-channel findings (form fields, annotations, metadata) have no
-      // page rect — they're cleared by sanitize during the redact export,
-      // not by drawing a black cover. Count them so we can confirm to the
-      // user that they'll be wiped on export.
+      // page rect. They used to be queued for the export pipeline, which
+      // failed silently (form-field/annotation content was leaking around
+      // flatten/PDF-A). Now we APPLY the removal IMMEDIATELY: sanitize the
+      // live bytes and re-LOAD the editor doc so the values are gone right
+      // here in the workspace, not deferred. See the user-facing "apply
+      // now" requirement — every vector must be cleared at confirm time.
       if (d.vector && d.vector !== "page") {
-        sideChannelSelected++;
+        sideChannelDets.push(d);
         continue;
       }
       const rect =
@@ -1236,27 +1239,71 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       });
       added++;
     }
+
+    // -- Apply-NOW for side-channel vectors --------------------------
+    // Run sanitize on the current bytes immediately so form-field /
+    // annotation / metadata values are removed from the working document
+    // before any flatten or PDF/A step can promote them into page text.
+    let sideChannelApplied = 0;
+    if (sideChannelDets.length > 0 && editorState?.doc?.srcBytes) {
+      const tid = "wsx-redact-apply-side";
+      toast.loading("Wiping form fields, comments, metadata…", { id: tid });
+      try {
+        const { sanitizePdfBytes } = await importChunk(
+          () => import("@/lib/pdf/sanitize"),
+        );
+        const cleaned = await sanitizePdfBytes(editorState.doc.srcBytes);
+        // Replace srcBytes in-place; preserve annotations + page ops + ocr.
+        editorDispatch({
+          type: "LOAD",
+          doc: { ...editorState.doc, srcBytes: cleaned },
+        });
+        if (editorState.doc.annotations.length > 0 || editorState.doc.ocrLayer) {
+          editorDispatch({
+            type: "LOAD_SIDECAR",
+            annotations: editorState.doc.annotations,
+            pages: editorState.doc.pages,
+            ocrLayer: editorState.doc.ocrLayer,
+          });
+        }
+        // Drop wiped findings from the visible list so the user SEES them
+        // gone (and a re-scan would confirm clean).
+        const wipedIds = new Set(sideChannelDets.map((d) => d.id));
+        setFindings((prev) => (prev ? prev.filter((d) => !wipedIds.has(d.id)) : prev));
+        sideChannelApplied = sideChannelDets.length;
+        toast.success(
+          `${sideChannelApplied} hidden finding${sideChannelApplied === 1 ? "" : "s"} wiped`,
+          {
+            id: tid,
+            description:
+              "Form fields, annotations and metadata cleared from the document now.",
+          },
+        );
+      } catch (e) {
+        toast.error("Failed to wipe hidden findings", {
+          id: tid,
+          description: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
     if (added > 0) {
       toast.success(`${added} redaction box${added === 1 ? "" : "es"} added`, {
         description:
-          sideChannelSelected > 0
-            ? `+ ${sideChannelSelected} side-channel finding${sideChannelSelected === 1 ? "" : "s"} will be wiped automatically on export. Click "Redact, export & verify" below.`
-            : 'Click "Redact, export & verify" below to burn them into the PDF.',
+          'Click "Redact, export & verify" below to burn page text into the PDF.',
       });
-      // Clear the selection so a second scan doesn't double-add.
       setSelected(new Set());
-    } else if (sideChannelSelected > 0) {
-      toast.info(
-        `${sideChannelSelected} side-channel finding${sideChannelSelected === 1 ? "" : "s"} queued`,
-        {
-          description:
-            'Form-field / annotation / metadata values are wiped by the export. Click "Redact, export & verify" below.',
-        },
-      );
-    } else if (skipped > 0) {
+    } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
-  }, [findings, selected, editorDispatch, existingRedactKeys]);
+    if (sideChannelApplied > 0) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const d of sideChannelDets) next.delete(d.id);
+        return next;
+      });
+    }
+  }, [findings, selected, editorDispatch, editorState, existingRedactKeys]);
 
   const pageRedactableFindings = useMemo(
     () => findings?.filter((d) => d.category !== "privilegeContext" && (!d.vector || d.vector === "page")) ?? [],
