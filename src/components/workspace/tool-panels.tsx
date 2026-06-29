@@ -1102,8 +1102,8 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             duration: 10000,
           });
         } else {
-          toast.info("No sensitive data matched", {
-            description: "Nothing matched the built-in patterns on the readable text layer.",
+          toast.info("No patterns matched — review manually", {
+            description: "Auto-detect only finds structured patterns. Names and context-dependent secrets still need a manual pass.",
           });
         }
       } else {
@@ -1240,6 +1240,16 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         {scanning ? progress || "Scanning…" : findings ? "Re-scan document" : "Scan for sensitive info"}
       </button>
 
+      {findings && (
+        <div className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Suggestions only — not a completeness check</div>
+          Automatic detection finds <em>structured</em> data (SSNs, accounts, cards, emails, phones, IBANs)
+          but <strong>misses names in prose, party names, addresses, and context-dependent secrets</strong>.
+          Read every page and add manual redactions for anything the scan didn't catch. There is no
+          "all clear" — confirm completeness yourself.
+        </div>
+      )}
+
       {findings && findings.length > 0 && (
         <div className="mt-1 rounded-md border border-border bg-surface-2/60">
           <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
@@ -1349,7 +1359,9 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
 
       {findings && findings.length === 0 && !scanning && scannedPages.length === 0 && (
         <p className="text-[11px] text-text-2">
-          No sensitive data matched the built-in patterns on this document’s readable text.
+          No built-in patterns matched this document's readable text. This is <strong>not</strong> an
+          all-clear — names, party identifiers, and prose-based secrets aren't detected. Review every
+          page and add manual redactions as needed.
         </p>
       )}
 
@@ -1431,6 +1443,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
   const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
+  const [reviewedSignOff, setReviewedSignOff] = useState(false);
   // "always" = rasterize every page that carries a redaction (default, safest).
   // "fallback" = attempt content-stream surgery first, rasterize only pages
   // where text still intersects a redaction rect after verification.
@@ -1734,13 +1747,37 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
       <Section title="Export & verify" icon={<ShieldCheck className="h-3 w-3" />}>
+        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <div className="font-semibold mb-0.5">⚠ Review carefully before export</div>
+          Automatic detection finds structured data (SSNs, accounts, cards) but <strong>misses names
+          in prose, party names, and context-dependent secrets</strong>. Confirm completeness yourself —
+          manual redaction is the primary safeguard.
+        </div>
+        <label className={cn(
+          "mb-2 flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+          reviewedSignOff ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+          totalBoxes === 0 && "cursor-not-allowed opacity-60",
+        )}>
+          <input
+            type="checkbox"
+            checked={reviewedSignOff}
+            disabled={totalBoxes === 0}
+            onChange={(e) => setReviewedSignOff(e.target.checked)}
+            className="mt-0.5 h-3 w-3 accent-vault"
+          />
+          <span className="text-foreground">
+            I have reviewed every page of this document and confirm the redaction set is complete.
+            I understand auto-detection only flags structured patterns and that I am responsible
+            for catching names and context-dependent secrets.
+          </span>
+        </label>
         <button
           type="button"
           onClick={exportRedacted}
-          disabled={busy || totalBoxes === 0}
+          disabled={busy || totalBoxes === 0 || !reviewedSignOff}
           className={cn(
             "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-            (busy || totalBoxes === 0) && "cursor-not-allowed opacity-60",
+            (busy || totalBoxes === 0 || !reviewedSignOff) && "cursor-not-allowed opacity-60",
           )}
         >
           <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
@@ -1751,6 +1788,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           extractable text remains inside each redaction region.
         </p>
       </Section>
+
 
       {verify && (
         <Section
