@@ -443,10 +443,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       ]);
       if (cancelled) return;
       if (ui) {
-        // Apply last-session view defaults to the initial tab.
+        // Apply last-session view defaults to the initial tab. When the URL
+        // carries ?tool=, the deep-linked tool wins over the persisted one so
+        // landing-page CTAs (e.g. /workspace?tool=bates) reliably open that
+        // inspector instead of being silently overwritten by hydration.
+        const deepLinked = Boolean(initialTool);
         patchTab(activeIdRef.current, {
-          activeToolId: ui.activeToolId ?? null,
-          inspectorOpen: typeof ui.inspectorOpen === "boolean" ? ui.inspectorOpen : false,
+          activeToolId: deepLinked
+            ? (TOOLS.find((t) => t.id === initialTool) ?? TOOLS.find((t) => t.group === initialTool))?.id ?? ui.activeToolId ?? null
+            : ui.activeToolId ?? null,
+          inspectorOpen: deepLinked
+            ? true
+            : typeof ui.inspectorOpen === "boolean" ? ui.inspectorOpen : false,
           pageLayout: ui.pageLayout ?? "single",
           continuous: typeof ui.continuous === "boolean" ? ui.continuous : true,
           showGaps: typeof ui.showGaps === "boolean" ? ui.showGaps : true,
