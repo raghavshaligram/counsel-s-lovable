@@ -262,11 +262,65 @@ function ensurePdfHeader(bytes: Uint8Array, version: "1.7"): Uint8Array {
 }
 
 /**
- * Lightweight structural verification — confirms the saved bytes carry
- * the PDF/A-2b markers (OutputIntent + XMP pdfaid:part=2 / conformance=B
- * + trailer /ID). Not a substitute for veraPDF, but catches mistakes in
- * the conformer itself.
+ * Structural verification — confirms the saved bytes carry the PDF/A-2b
+ * markers (OutputIntent + XMP pdfaid:part=2 / conformance=B + trailer /ID)
+ * AND that every font in the document is embedded. Not a substitute for
+ * veraPDF, but catches every PDF/A-breaking regression we've seen in
+ * production. Returns per-requirement booleans + `missing` so callers can
+ * log/toast exactly which clause failed.
  */
+export interface PdfAStructuralReport {
+  ok: boolean;
+  outputIntent: boolean;
+  xmpPart: boolean;
+  xmpConformance: boolean;
+  trailerId: boolean;
+  fontsEmbedded: boolean;
+  noEncryption: boolean;
+  noJavaScript: boolean;
+  /** Human-readable list of failed requirements, empty when ok. */
+  missing: string[];
+  /** Font BaseFont names still unembedded after conformance (should be []). */
+  unembeddedFonts: string[];
+}
+
+export async function verifyPdfAStructuralAsync(bytes: Uint8Array): Promise<PdfAStructuralReport> {
+  const text = new TextDecoder("latin1").decode(bytes);
+  const outputIntent = /\/OutputIntents\b/.test(text) && /GTS_PDFA1/.test(text);
+  const xmpPart = /<pdfaid:part>\s*2\s*<\/pdfaid:part>/.test(text);
+  const xmpConformance = /<pdfaid:conformance>\s*B\s*<\/pdfaid:conformance>/.test(text);
+  const trailerId = /\/ID\s*\[\s*<[0-9a-fA-F]+>\s*<[0-9a-fA-F]+>\s*\]/.test(text);
+  const noEncryption = !/\/Encrypt\b/.test(text);
+  const noJavaScript = !/\/JavaScript\b/.test(text) && !/\/JS\s*[\(<]/.test(text);
+
+  let unembeddedFonts: string[] = [];
+  try {
+    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+    unembeddedFonts = findUnembeddedFonts(doc);
+  } catch {
+    // Parse failure → treat as font check failed.
+    unembeddedFonts = ["<parse-failed>"];
+  }
+  const fontsEmbedded = unembeddedFonts.length === 0;
+
+  const missing: string[] = [];
+  if (!outputIntent) missing.push("sRGB OutputIntent");
+  if (!xmpPart) missing.push("XMP pdfaid:part=2");
+  if (!xmpConformance) missing.push("XMP pdfaid:conformance=B");
+  if (!trailerId) missing.push("trailer /ID");
+  if (!noEncryption) missing.push("no /Encrypt");
+  if (!noJavaScript) missing.push("no JavaScript actions");
+  if (!fontsEmbedded) missing.push(`embedded fonts (unembedded: ${unembeddedFonts.join(", ")})`);
+
+  return {
+    outputIntent, xmpPart, xmpConformance, trailerId,
+    fontsEmbedded, noEncryption, noJavaScript,
+    unembeddedFonts, missing,
+    ok: missing.length === 0,
+  };
+}
+
+/** @deprecated synchronous shim — kept for callers that can't await. Skips font check. */
 export function verifyPdfAStructural(bytes: Uint8Array): {
   ok: boolean;
   outputIntent: boolean;
@@ -280,10 +334,7 @@ export function verifyPdfAStructural(bytes: Uint8Array): {
   const xmpConformance = /<pdfaid:conformance>\s*B\s*<\/pdfaid:conformance>/.test(text);
   const trailerId = /\/ID\s*\[\s*<[0-9a-fA-F]+>\s*<[0-9a-fA-F]+>\s*\]/.test(text);
   return {
-    outputIntent,
-    xmpPart,
-    xmpConformance,
-    trailerId,
+    outputIntent, xmpPart, xmpConformance, trailerId,
     ok: outputIntent && xmpPart && xmpConformance && trailerId,
   };
 }
