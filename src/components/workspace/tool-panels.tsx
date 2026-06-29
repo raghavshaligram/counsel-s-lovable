@@ -1795,11 +1795,13 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       // Reuse the editor's exporter — it already runs the destructive
       // content-stream rewrite for every redact annotation that captured
-      // source strings (see src/lib/editor/text-rewrite.ts). Re-read fresh
-      // bytes from the File: the open path may have detached the worker
-      // buffer.
+      // source strings (see src/lib/editor/text-rewrite.ts). Prefer the
+      // live editor bytes because apply-now side-channel redaction mutates
+      // them immediately; fall back to File only if the buffer was detached.
       const { exportEditedPdf } = await importChunk(() => import("@/lib/editor/export"));
-      const freshBytes = new Uint8Array(await file.arrayBuffer());
+      const freshBytes = editorState.doc.srcBytes.byteLength > 0
+        ? editorState.doc.srcBytes
+        : new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
       let bytes = await exportEditedPdf(exportDoc);
 
