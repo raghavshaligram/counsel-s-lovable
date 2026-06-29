@@ -968,8 +968,8 @@ function ComparisonTable() {
         </thead>
         <tbody>
           {COMP_ROWS.map((row, i) => (
-            <tr key={row.label} className="border-t border-border">
-              <td className="p-4 text-foreground">{row.label}</td>
+            <tr key={row.label} className={`border-t border-border ${row.emphasize ? "bg-vault/[0.03]" : ""}`}>
+              <td className={`p-4 ${row.emphasize ? "text-foreground font-semibold" : "text-foreground"}`}>{row.label}</td>
               {row.vals.map((v, j) => (
                 <td
                   key={j}
