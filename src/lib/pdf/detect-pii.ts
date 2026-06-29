@@ -1269,17 +1269,18 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
   });
 }
 
-function resolveDict<T>(
+function resolveDict(
   ctx: import("pdf-lib").PDFContext,
   obj: unknown,
-  Klass: abstract new (...args: never[]) => T,
-): T | undefined {
-  if (obj instanceof Klass) return obj as T;
+  isInstance: (v: unknown) => boolean,
+): import("pdf-lib").PDFDict | undefined {
+  if (isInstance(obj)) return obj as import("pdf-lib").PDFDict;
   try {
     const r = ctx.lookup(obj as never);
-    return r instanceof Klass ? (r as T) : undefined;
+    return isInstance(r) ? (r as import("pdf-lib").PDFDict) : undefined;
   } catch { return undefined; }
 }
+
 
 
 function extractStr(obj: unknown): string {
