@@ -155,47 +155,6 @@ function scanFormAndAnnotationPii(
   return out;
 }
 
-function clearSensitiveFormAndAnnotations(doc: PDFDocument): void {
-  const ctx = doc.context;
-  const acroForm = doc.catalog.lookupMaybe(PDFName.of("AcroForm"), PDFDict);
-  if (acroForm) {
-    const fields = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
-    if (fields) walkFields(ctx, fields.asArray(), (field) => {
-      for (const key of ["V", "DV", "RV"]) {
-        if (field.has(PDFName.of(key))) field.delete(PDFName.of(key));
-      }
-      // Strip widget appearance streams (/AP) on every Kid widget — they
-      // hold the rendered glyphs and would otherwise be baked by flatten.
-      const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
-      if (kids) {
-        for (const k of kids.asArray()) {
-          const w = resolveDict(ctx, k);
-          if (w && w.has(PDFName.of("AP"))) w.delete(PDFName.of("AP"));
-        }
-      }
-      if (field.has(PDFName.of("AP"))) field.delete(PDFName.of("AP"));
-    });
-  }
-  for (const [, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    if (obj.has(PDFName.of("FT"))) {
-      for (const key of ["V", "DV", "RV", "AP"]) {
-        if (obj.has(PDFName.of(key))) obj.delete(PDFName.of(key));
-      }
-    }
-  }
-  for (const page of doc.getPages()) {
-    const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
-    if (!annots) continue;
-    for (const item of annots.asArray()) {
-      const a = resolveDict(ctx, item);
-      if (!a) continue;
-      for (const key of ["Contents", "RC", "Subj", "T", "CA", "AP"]) {
-        if (a.has(PDFName.of(key))) a.delete(PDFName.of(key));
-      }
-    }
-  }
-}
 
 function walkFields(
   ctx: PDFDocument["context"],
