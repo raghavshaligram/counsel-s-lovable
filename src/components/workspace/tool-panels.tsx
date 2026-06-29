@@ -1122,7 +1122,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setLowConfOcrPages(lowConfidenceOcrPages);
       setUnderDetectedOcrPages(ocrUnderDetectedPages ?? []);
       setTotalPagesScanned(totalPages);
-      const autoSelect = detections.filter((d) => d.confidence !== "low");
+      const autoSelect = merged.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
       const hasScanned = scanned.length > 0;
       const lowConf = lowConfidenceOcrPages.length;
