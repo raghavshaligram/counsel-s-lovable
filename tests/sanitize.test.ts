@@ -73,6 +73,9 @@ describe("sanitizePdfBytes — metadata true-deletion", () => {
     const after = await PDFDocument.load(out);
     expect(after.getPageCount()).toBe(1);
   });
+});
+
+
 
 // --------------------------------------------------------------------------
 // All-vector coverage: form field + annotation + hidden layer + attachment.
