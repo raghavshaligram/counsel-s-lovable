@@ -270,12 +270,12 @@ async function newDoc(title: string): Promise<DocCtx> {
 
   return {
     doc,
-    get page() { return page; },
+    page,
     font, bold, mono,
     ensure,
     drawText,
     drawWrapped,
-  } as DocCtx;
+  };
 }
 
 function drawHeader(page: PDFPage, badge: string, subtitle: string) {
