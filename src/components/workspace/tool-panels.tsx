@@ -1197,19 +1197,28 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [findings, selected, editorDispatch, existingRedactKeys]);
 
+  const redactableFindings = useMemo(
+    () => findings?.filter((d) => d.category !== "privilegeContext") ?? [],
+    [findings],
+  );
+  const privilegeFindings = useMemo(
+    () => findings?.filter((d) => d.category === "privilegeContext") ?? [],
+    [findings],
+  );
+
   const grouped = useMemo(() => {
-    if (!findings) return null;
+    if (!redactableFindings.length) return null;
     const m = new Map<Cat, Det[]>();
-    for (const d of findings) {
+    for (const d of redactableFindings) {
       const arr = m.get(d.category) ?? [];
       arr.push(d);
       m.set(d.category, arr);
     }
     return Array.from(m.entries()).sort((a, b) => b[1].length - a[1].length);
-  }, [findings]);
+  }, [redactableFindings]);
 
   const allSelected =
-    !!findings && findings.length > 0 && selected.size === findings.length;
+    redactableFindings.length > 0 && selected.size === redactableFindings.length;
 
   return (
     <div className="flex flex-col gap-2">
