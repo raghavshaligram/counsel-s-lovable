@@ -261,7 +261,7 @@ export async function detectPiiInPdf(
   scale = 1.5,
   onProgress?: (p: DetectProgress) => void,
   preloadedDoc?: { numPages: number; getPage: (n: number) => Promise<unknown> },
-): Promise<{ detections: Detection[]; usedOcr: boolean; scannedPages: number[]; totalPages: number; lowConfidenceOcrPages: number[]; ocrPageConfidence: Record<number, number> }> {
+): Promise<{ detections: Detection[]; usedOcr: boolean; scannedPages: number[]; totalPages: number; lowConfidenceOcrPages: number[]; ocrPageConfidence: Record<number, number>; ocrUnderDetectedPages: number[] }> {
   const pdfjs = await getPdfjs();
   // Reuse the doc loaded by the caller (e.g. redact route already parsed the
   // file to render pages). Avoids a second arrayBuffer() + getDocument() on
