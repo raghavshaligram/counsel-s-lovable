@@ -114,7 +114,17 @@ export async function sanitizePdfBytesWithReport(
         annot.has(PDFName.of("Contents")) || annot.has(PDFName.of("RC"));
       if (isTextual) {
         report.annotations++;
-        continue; // drop from /Annots
+        // Drop from /Annots AND delete the indirect object so its
+        // /Contents bytes don't survive in the saved file.
+        if (item && typeof item === "object" && "objectNumber" in item) {
+          removeRef(ctx, item as PDFRef);
+        } else {
+          // Direct dict — wipe its text fields in place.
+          for (const k of ["Contents", "RC", "T", "Subj", "CA", "NM"]) {
+            if (annot.has(PDFName.of(k))) annot.delete(PDFName.of(k));
+          }
+        }
+        continue;
       }
       // Non-text annotations (e.g. /Link, /Widget without /FT) — still
       // scrub any descriptive metadata fields they may carry.
