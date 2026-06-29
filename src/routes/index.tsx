@@ -872,17 +872,80 @@ function NetworkMonitor() {
 
 /* ——— Comparison table ——— */
 
-type MarkValue = true | false | "partial";
+type MarkValue = true | false | "partial" | { note: string };
 
-const COMP_ROWS: Array<{ label: string; vals: [MarkValue, MarkValue, MarkValue, MarkValue] }> = [
+const PRO_GROUPS: Array<{ title: string; items: Array<{ name: string; body: string }> }> = [
+  {
+    title: "Redaction & privilege",
+    items: [
+      { name: "AI sensitive-data detection", body: "Auto-find SSNs, accounts, cards, names, and privilege markers across hundreds of pages — on your device." },
+      { name: "Pattern & bulk redaction", body: "Redact every instance of a name or term in one pass." },
+      { name: "Privilege review", body: "Surface attorney names, privilege markers, and confidential phrases for review before disclosure." },
+    ],
+  },
+  {
+    title: "Discovery & production",
+    items: [
+      { name: "Multi-file Bates", body: "One continuous Bates sequence across an entire discovery set." },
+      { name: "Exhibit Binder", body: "Court-ready bundle with hyperlinked ToC, labeled tabs, and continuous numbering." },
+      { name: "Citation Hyperlinker", body: "Turn legal citations into clickable links to the public case text." },
+      { name: "Court e-filing optimization", body: "Compress massive filings under court upload caps without losing readability." },
+    ],
+  },
+  {
+    title: "Automation & AI",
+    items: [
+      { name: "Workflows & automation", body: "Chain OCR → detect → redact → Bates → sanitize into one-click discovery prep." },
+      { name: "Batch processing", body: "Run any workflow across a whole folder at once." },
+      { name: "AI fact chronology", body: "Extract dates and key actors into a timeline — privately." },
+      { name: "Private AI assist", body: "Summarize a deposition or find every mention of a term — on docs you could never upload to cloud AI." },
+    ],
+  },
+  {
+    title: "Integrity",
+    items: [
+      { name: "Document hashing", body: "SHA-256 fingerprints to prove evidence hasn't changed since a given date." },
+    ],
+  },
+];
+
+const COMP_ROWS: Array<{ label: string; vals: [MarkValue, MarkValue, MarkValue, MarkValue]; emphasize?: boolean }> = [
   { label: "Built for legal workflows", vals: [true, false, false, false] },
-  { label: "Documents stay on your device", vals: [true, false, true, false] },
-  { label: "AI redaction runs locally (not cloud)", vals: [true, false, false, false] },
+  { label: "Documents stay on device", vals: [true, false, true, false], emphasize: true },
+  { label: "AI runs locally, not cloud", vals: [true, false, false, false], emphasize: true },
+  { label: "AI sensitive-data detection", vals: [true, { note: "cloud add-on" }, false, { note: "cloud" }] },
+  { label: "Permanent verifiable redaction (incl. metadata)", vals: [true, true, true, "partial"] },
+  { label: "Scanned-doc pixel redaction", vals: [true, true, "partial", "partial"] },
+  { label: "Multi-file Bates", vals: [true, true, true, "partial"] },
+  { label: "Exhibit binder w/ hyperlinked ToC", vals: [true, "partial", "partial", false] },
+  { label: "One-click legal workflows", vals: [true, false, false, "partial"] },
+  { label: "Private AI assist (on-device)", vals: [true, false, false, false] },
   { label: "Works offline", vals: [true, "partial", true, false] },
-  { label: "No installation — any device", vals: [true, false, false, true] },
-  { label: "Bates stamp across files", vals: [true, true, true, false] },
+  { label: "No installation, any device", vals: [true, false, false, true] },
   { label: "Affordable for solo / small firm", vals: [true, "partial", "partial", false] },
 ];
+
+function ProFeatureCard({ name, body }: { name: string; body: string }) {
+  return (
+    <div className="group relative rounded-xl border border-border bg-background p-5 hover:border-vault/40 hover:bg-card transition-colors h-full flex flex-col">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h3 className="text-[15px] font-semibold tracking-tight text-foreground leading-snug">
+          {name}
+        </h3>
+        <span
+          className="inline-flex items-center gap-1 rounded-sm border border-vault/30 bg-vault/10 px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-[0.14em] text-vault shrink-0"
+          aria-label="Pro feature"
+        >
+          <Sparkles className="h-2.5 w-2.5" />
+          Pro
+        </span>
+      </div>
+      <p className="text-[13px] text-muted-foreground leading-relaxed">{body}</p>
+    </div>
+  );
+}
+
+
 
 function ComparisonTable() {
   const [ref, inView] = useInView<HTMLDivElement>();
