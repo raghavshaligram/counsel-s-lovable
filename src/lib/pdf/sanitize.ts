@@ -97,6 +97,34 @@ export async function sanitizePdfBytesWithReport(
     if (obj.has(PDFName.of("V"))) { obj.delete(PDFName.of("V")); report.acroFormFields++; }
     if (obj.has(PDFName.of("DV"))) obj.delete(PDFName.of("DV"));
     if (obj.has(PDFName.of("RV"))) obj.delete(PDFName.of("RV"));
+    // /AP appearance streams cache the rendered glyphs of /V. Without
+    // stripping them, the value can still be recovered from the widget
+    // XObject and would be baked into the page by any downstream flatten.
+    if (obj.has(PDFName.of("AP"))) obj.delete(PDFName.of("AP"));
+  }
+  // Also drop /Widget annotations on every page — the parent form fields
+  // were just deleted, so the widgets are now orphans whose only purpose
+  // would be to carry leftover /AP streams.
+  for (const page of doc.getPages()) {
+    const annotsArr2 = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+    if (!annotsArr2) continue;
+    const keep2: unknown[] = [];
+    for (const item of annotsArr2.asArray()) {
+      const annot = resolveDict(ctx, item);
+      if (!annot) { keep2.push(item); continue; }
+      if (nameStr(annot.get(PDFName.of("Subtype"))) === "/Widget") {
+        if (item && typeof item === "object" && "objectNumber" in item) {
+          removeRef(ctx, item as PDFRef);
+        }
+        continue;
+      }
+      keep2.push(item);
+    }
+    if (keep2.length !== annotsArr2.size()) {
+      const next = PDFArray.withContext(ctx);
+      for (const k of keep2) next.push(k as never);
+      page.node.set(PDFName.of("Annots"), next);
+    }
   }
 
   // 3) Annotations — strip text from every annotation and remove

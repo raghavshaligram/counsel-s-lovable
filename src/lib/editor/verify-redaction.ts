@@ -12,6 +12,7 @@
  *  the export pipeline can block the download.
  */
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream } from "pdf-lib";
+import { unzlibSync } from "fflate";
 import { loadPdfjs } from "@/lib/pdf/worker";
 
 export interface RedactionTarget {
@@ -25,7 +26,7 @@ export interface RedactionTarget {
   label?: string;
 }
 
-export type LeakVector = "page" | "form-field" | "annotation" | "hidden-layer" | "attachment";
+export type LeakVector = "page" | "form-field" | "annotation" | "hidden-layer" | "attachment" | "raw-stream";
 
 export interface VerifyLeak {
   vector: LeakVector;
@@ -49,6 +50,7 @@ export interface VerifyResult {
     annotation: number;
     hiddenLayer: number;
     attachment: number;
+    rawStream: number;
   };
   scannedAt: string;
 }
@@ -75,12 +77,23 @@ export async function verifyRedactionRemoval(
   const vectorLeaks = await verifySideChannelVectors(bytes, sensitiveStrings);
   leaks.push(...vectorLeaks);
 
+  // ---- Vector 6: raw content streams (don't trust text-layer alone) ---
+  // Decodes every PDFStream in the file (page content streams, form
+  // XObjects, anything else) and searches the bytes directly for the
+  // sensitive literals. Catches values that survive in baked-down glyph
+  // strings even when pdf.js can't extract them as text items.
+  if (sensitiveStrings.length > 0) {
+    const rawLeaks = await verifyRawStreams(bytes, sensitiveStrings);
+    leaks.push(...rawLeaks);
+  }
+
   const vectors = {
     page: leaks.filter((l) => l.vector === "page").length,
     formField: leaks.filter((l) => l.vector === "form-field").length,
     annotation: leaks.filter((l) => l.vector === "annotation").length,
     hiddenLayer: leaks.filter((l) => l.vector === "hidden-layer").length,
     attachment: leaks.filter((l) => l.vector === "attachment").length,
+    rawStream: leaks.filter((l) => l.vector === "raw-stream").length,
   };
 
   const removed = regionTargets.length - vectors.page;
@@ -363,4 +376,108 @@ function walkFormTree(
     const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
     if (kids) walkFormTree(ctx, kids.asArray(), visit);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Raw stream scan — decodes every PDFStream (page content, form XObjects,
+// anything with /Filter FlateDecode or none) and searches the decoded bytes
+// for sensitive literals. This is the "don't rely on pdftotext" check: it
+// will catch a value that survived as baked glyphs inside a content stream
+// even when the text layer extraction misses it.
+// ---------------------------------------------------------------------------
+
+async function verifyRawStreams(
+  bytes: Uint8Array,
+  sensitiveStrings: string[],
+): Promise<VerifyLeak[]> {
+  const leaks: VerifyLeak[] = [];
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  } catch {
+    return leaks;
+  }
+  const ctx = doc.context;
+  const needles = sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3);
+  if (needles.length === 0) return leaks;
+
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFStream)) continue;
+    const decoded = decodeStreamBytes(obj);
+    if (!decoded || decoded.length === 0) continue;
+    // Latin-1 round-trip preserves byte values so we can search for
+    // ASCII / UTF-8 literals embedded in the stream regardless of the
+    // glyph encoding. We also check a UTF-16BE view because some PDF
+    // text strings are stored that way after a BOM.
+    const text = new TextDecoder("latin1").decode(decoded);
+    const utf16 = tryUtf16Be(decoded);
+    for (const needle of needles) {
+      // Search for the needle in three forms:
+      //   1. plain Latin-1 bytes (Tj literal strings: `(987-65-4321)`)
+      //   2. UTF-16BE (PDFString that was encoded as UTF-16)
+      //   3. ASCII-hex (Tj hex strings: `<3938372D36352D34333231>` —
+      //      pdf-lib's default for drawText output)
+      const hexAscii = asciiToHex(needle);
+      const hexUtf16 = asciiToUtf16BeHex(needle);
+      if (
+        text.includes(needle)
+        || (utf16 && utf16.includes(needle))
+        || text.toLowerCase().includes(hexAscii)
+        || text.toLowerCase().includes(hexUtf16)
+      ) {
+        leaks.push({
+          vector: "raw-stream",
+          text: `Sensitive literal "${truncate(needle)}" found in stream bytes`,
+          ref: refStr(ref),
+        });
+        break;
+      }
+    }
+  }
+  return leaks;
+}
+
+function decodeStreamBytes(stream: PDFStream): Uint8Array | null {
+  // pdf-lib exposes raw stream contents on PDFRawStream; for content
+  // streams it's PDFContentStream which has getContents(). Try every shape.
+  const raw =
+    (stream as unknown as { contents?: Uint8Array }).contents
+    ?? (stream as unknown as { getContents?: () => Uint8Array }).getContents?.();
+  if (!raw || raw.length === 0) return null;
+  const filter = stream.dict.get(PDFName.of("Filter"));
+  const filterName = filter
+    ? (typeof (filter as unknown as { asString?: () => string }).asString === "function"
+        ? (filter as unknown as { asString: () => string }).asString()
+        : "")
+    : "";
+  if (filterName === "/FlateDecode" || filterName === "/Fl") {
+    try { return unzlibSync(raw); } catch { return raw; }
+  }
+  // /DCTDecode (JPEG), /CCITTFaxDecode etc. carry image data — searching
+  // for ASCII inside them is harmless and almost always returns nothing.
+  return raw;
+}
+
+function tryUtf16Be(buf: Uint8Array): string | null {
+  try {
+    return new TextDecoder("utf-16be", { fatal: false }).decode(buf);
+  } catch {
+    return null;
+  }
+}
+
+function asciiToHex(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) out += (s.charCodeAt(i) & 0xff).toString(16).padStart(2, "0");
+  return out;
+}
+
+function asciiToUtf16BeHex(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    out += ((c >> 8) & 0xff).toString(16).padStart(2, "0");
+    out += (c & 0xff).toString(16).padStart(2, "0");
+  }
+  return out;
 }
