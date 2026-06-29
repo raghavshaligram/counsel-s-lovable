@@ -414,8 +414,44 @@ function Landing() {
 
 
 
+      {/* PRO — stop doing it by hand */}
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-6xl px-5 md:px-8 py-20 md:py-28">
+          <div className="max-w-2xl mb-12 reveal">
+            <div className="font-mono text-[11px] text-muted-foreground mb-4">/ pro</div>
+            <h2
+              className="font-display leading-[1] tracking-tight"
+              style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
+            >
+              Pro: stop doing it by hand.
+            </h2>
+            <p className="mt-4 text-sm md:text-base text-muted-foreground leading-relaxed">
+              Free covers manual, single-file work. Pro is automatic, bulk, and AI —
+              the parts that take hours when you do them one document at a time.
+            </p>
+          </div>
+
+          <div className="space-y-10">
+            {PRO_GROUPS.map((group) => (
+              <div key={group.title} className="reveal">
+                <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-vault mb-4">
+                  {group.title}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.items.map((it) => (
+                    <ProFeatureCard key={it.name} name={it.name} body={it.body} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+
       {/* COMPARISON — legal players */}
       <section className="border-b border-border bg-card/30">
+
         <div className="mx-auto max-w-6xl px-5 md:px-8 py-20 md:py-28">
           <div className="max-w-2xl mb-12 reveal">
             <div className="font-mono text-[11px] text-muted-foreground mb-4">/ vs. the legal stack</div>
