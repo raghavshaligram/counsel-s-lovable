@@ -73,4 +73,175 @@ describe("sanitizePdfBytes — metadata true-deletion", () => {
     const after = await PDFDocument.load(out);
     expect(after.getPageCount()).toBe(1);
   });
+
+// --------------------------------------------------------------------------
+// All-vector coverage: form field + annotation + hidden layer + attachment.
+// --------------------------------------------------------------------------
+
+const VECTOR_SECRETS = {
+  formField: "Patient: Jane Roe, DOB 1971-03-14",
+  annotation: "Privileged note re settlement $4.2M",
+  hiddenLayer: "Sealed exhibit B — witness identity",
+  attachment: "social_security_numbers.csv",
+};
+
+async function buildPdfWithAllVectors(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  page.drawText("Public-facing body content.", { x: 72, y: 720, size: 12 });
+  const ctx = doc.context;
+
+  // (a) AcroForm field with a sensitive value -----------------------------
+  const fieldDict = ctx.obj({
+    FT: "Tx",
+    T: "patient_name",
+    Ff: 0,
+  });
+  fieldDict.set(PDFName.of("V"), PDFString.of(VECTOR_SECRETS.formField));
+  fieldDict.set(PDFName.of("DV"), PDFString.of(VECTOR_SECRETS.formField));
+  const fieldRef = ctx.register(fieldDict);
+  const acroForm = ctx.obj({ NeedAppearances: true });
+  acroForm.set(PDFName.of("Fields"), ctx.obj([fieldRef]));
+  doc.catalog.set(PDFName.of("AcroForm"), acroForm);
+
+  // (b) Text annotation (sticky note) -----------------------------------
+  const annot = ctx.obj({
+    Type: "Annot",
+    Subtype: "Text",
+    Rect: [100, 100, 120, 120],
+  });
+  annot.set(PDFName.of("Contents"), PDFHexString.fromText(VECTOR_SECRETS.annotation));
+  annot.set(PDFName.of("T"), PDFString.of("Counsel"));
+  const annotRef = ctx.register(annot);
+  page.node.set(PDFName.of("Annots"), ctx.obj([annotRef]));
+
+  // (c) Hidden layer (OCG) with a gated annotation ----------------------
+  const ocg = ctx.obj({ Type: "OCG", Name: "Sealed exhibits" });
+  const ocgRef = ctx.register(ocg);
+  const ocProps = ctx.obj({});
+  ocProps.set(PDFName.of("OCGs"), ctx.obj([ocgRef]));
+  // Default config marks the OCG as OFF (hidden).
+  const dConfig = ctx.obj({ Name: "Default", BaseState: "ON" });
+  dConfig.set(PDFName.of("OFF"), ctx.obj([ocgRef]));
+  ocProps.set(PDFName.of("D"), dConfig);
+  doc.catalog.set(PDFName.of("OCProperties"), ocProps);
+
+  const hiddenAnnot = ctx.obj({
+    Type: "Annot",
+    Subtype: "FreeText",
+    Rect: [200, 200, 400, 220],
+  });
+  hiddenAnnot.set(PDFName.of("Contents"), PDFHexString.fromText(VECTOR_SECRETS.hiddenLayer));
+  hiddenAnnot.set(PDFName.of("OC"), ocgRef);
+  const hiddenAnnotRef = ctx.register(hiddenAnnot);
+  const annotsArr = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray)!;
+  annotsArr.push(hiddenAnnotRef);
+
+  // (d) Embedded file attachment ----------------------------------------
+  const fileBytes = new TextEncoder().encode(
+    "name,ssn\nJane Roe,123-45-6789\nJohn Doe,987-65-4321\n",
+  );
+  const efStreamDict = ctx.obj({
+    Type: "EmbeddedFile",
+    Subtype: "text/csv",
+    Length: fileBytes.length,
+  });
+  const efStream = PDFRawStream.of(efStreamDict, fileBytes);
+  const efStreamRef = ctx.register(efStream);
+  const efDict = ctx.obj({});
+  efDict.set(PDFName.of("F"), efStreamRef);
+  const filespec = ctx.obj({
+    Type: "Filespec",
+    F: PDFString.of(VECTOR_SECRETS.attachment),
+    UF: PDFString.of(VECTOR_SECRETS.attachment),
+  });
+  filespec.set(PDFName.of("EF"), efDict);
+  const filespecRef = ctx.register(filespec);
+  const efTreeNames = ctx.obj([PDFString.of(VECTOR_SECRETS.attachment), filespecRef]);
+  const efTree = ctx.obj({});
+  efTree.set(PDFName.of("Names"), efTreeNames);
+  const namesDict = ctx.obj({});
+  namesDict.set(PDFName.of("EmbeddedFiles"), efTree);
+  doc.catalog.set(PDFName.of("Names"), namesDict);
+  void PDFBool.True; void PDFDict; // silence unused-import linter
+
+  return doc.save();
+}
+
+describe("sanitize covers EVERY text-bearing vector", () => {
+  it("clears form fields, annotation text, hidden layers, and attachments", async () => {
+    const input = await buildPdfWithAllVectors();
+    const clean = await sanitizePdfBytes(input);
+
+    // Re-load and assert nothing recognizable survives.
+    const after = await PDFDocument.load(clean, { ignoreEncryption: true, updateMetadata: false });
+    const ctx = after.context;
+
+    // No form field /V values.
+    let formValues = 0;
+    for (const [, obj] of ctx.enumerateIndirectObjects()) {
+      if (obj instanceof PDFDict && obj.has(PDFName.of("FT")) && obj.has(PDFName.of("V"))) {
+        formValues++;
+      }
+    }
+    expect(after.catalog.has(PDFName.of("AcroForm"))).toBe(false);
+    expect(formValues).toBe(0);
+
+    // No text annotations carrying /Contents.
+    let annotTextHits = 0;
+    for (const [, obj] of ctx.enumerateIndirectObjects()) {
+      if (!(obj instanceof PDFDict)) continue;
+      if (obj.has(PDFName.of("Contents"))) {
+        const v = obj.get(PDFName.of("Contents")) as unknown as { decodeText?: () => string };
+        const t = typeof v.decodeText === "function" ? v.decodeText() : "";
+        for (const s of Object.values(VECTOR_SECRETS)) {
+          if (t.includes(s)) annotTextHits++;
+        }
+      }
+    }
+    expect(annotTextHits).toBe(0);
+
+    // /OCProperties removed.
+    expect(after.catalog.has(PDFName.of("OCProperties"))).toBe(false);
+
+    // No /Filespec / /EF / /EmbeddedFiles.
+    let attachmentHits = 0;
+    for (const [, obj] of ctx.enumerateIndirectObjects()) {
+      if (!(obj instanceof PDFDict)) continue;
+      const type = obj.get(PDFName.of("Type")) as unknown as { asString?: () => string };
+      if ((type?.asString?.() ?? "") === "/Filespec") attachmentHits++;
+      if (obj.has(PDFName.of("EF"))) attachmentHits++;
+    }
+    const names = after.catalog.lookupMaybe(PDFName.of("Names"), PDFDict);
+    expect(names?.has(PDFName.of("EmbeddedFiles")) ?? false).toBe(false);
+    expect(attachmentHits).toBe(0);
+
+    // Raw byte scan: none of the secrets remain in the file.
+    const raw = new TextDecoder("latin1").decode(clean);
+    for (const secret of Object.values(VECTOR_SECRETS)) {
+      expect(raw.includes(secret), `secret leaked: ${secret}`).toBe(false);
+    }
+  });
+
+  it("verifyRedactionRemoval flags leaks across form/annotation/layer/attachment vectors", async () => {
+    const input = await buildPdfWithAllVectors();
+    const targets = Object.values(VECTOR_SECRETS).map((text) => ({ page: 0, text }));
+    const before = await verifyRedactionRemoval(input, targets);
+    expect(before.ok).toBe(false);
+    expect(before.vectors.formField).toBeGreaterThan(0);
+    expect(before.vectors.annotation).toBeGreaterThan(0);
+    expect(before.vectors.attachment).toBeGreaterThan(0);
+    // hidden layer presence reports as either annotation (gated annot)
+    // or hidden-layer (OCG-bearing object) — at least one of those.
+    expect(before.vectors.annotation + before.vectors.hiddenLayer).toBeGreaterThan(0);
+
+    const clean = await sanitizePdfBytes(input);
+    const after = await verifyRedactionRemoval(clean, targets);
+    expect(
+      after.leaks,
+      `unexpected leaks after sanitize: ${after.leaks.map((l) => `${l.vector}:${l.text}`).join(" | ")}`,
+    ).toEqual([]);
+    expect(after.ok).toBe(true);
+  });
 });
+
