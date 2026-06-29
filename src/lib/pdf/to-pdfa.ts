@@ -66,18 +66,38 @@ type TransparencyDiagnostic = {
   groupsWithoutColorSpace: string[];
 };
 
+/** XMP Date type per ISO 16684-1 / XMP spec: ISO 8601 without fractional
+ *  seconds, with explicit timezone designator. JS `Date.toISOString()`
+ *  produces `2026-06-29T14:30:00.000Z` — the `.000` fractional component
+ *  trips veraPDF's "XMP property xmp:CreateDate has invalid type" check.
+ *  Strip the fractional seconds and keep the `Z` UTC designator. */
+function xmpDate(d: Date): string {
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/** PDF Info dictionary date string (PDF 1.7 §7.9.4):
+ *  `D:YYYYMMDDHHmmSSOHH'mm'`. Using `Z00'00'` for UTC. Must agree with
+ *  the XMP xmp:CreateDate / xmp:ModifyDate timestamp. */
+function pdfInfoDate(d: Date): string {
+  const p = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `D:${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}` +
+    `${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z00'00'`;
+}
+
 function buildPdfAXmp(opts: {
   title?: string;
   author?: string;
   producer?: string;
-  createdAt?: Date;
+  createdAt: Date;
+  modifiedAt: Date;
 }): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const title = esc(opts.title || "Document");
   const author = esc(opts.author || "");
   const producer = esc(opts.producer || "CounselPDF");
-  const now = (opts.createdAt ?? new Date()).toISOString();
+  const created = xmpDate(opts.createdAt);
+  const modified = xmpDate(opts.modifiedAt);
 
   return `<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="CounselPDF PDF/A">
@@ -91,9 +111,9 @@ function buildPdfAXmp(opts: {
       <pdfaid:conformance>B</pdfaid:conformance>
       <pdf:Producer>${producer}</pdf:Producer>
       <xmp:CreatorTool>${producer}</xmp:CreatorTool>
-      <xmp:CreateDate>${now}</xmp:CreateDate>
-      <xmp:ModifyDate>${now}</xmp:ModifyDate>
-      <xmp:MetadataDate>${now}</xmp:MetadataDate>
+      <xmp:CreateDate>${created}</xmp:CreateDate>
+      <xmp:ModifyDate>${modified}</xmp:ModifyDate>
+      <xmp:MetadataDate>${modified}</xmp:MetadataDate>
       <dc:format>application/pdf</dc:format>
       <dc:title><rdf:Alt><rdf:li xml:lang="x-default">${title}</rdf:li></rdf:Alt></dc:title>
       ${author ? `<dc:creator><rdf:Seq><rdf:li>${author}</rdf:li></rdf:Seq></dc:creator>` : ""}
@@ -101,6 +121,26 @@ function buildPdfAXmp(opts: {
   </rdf:RDF>
 </x:xmpmeta>
 <?xpacket end="w"?>`;
+}
+
+/** PDF/A-2b §6.2.4.4 — image XObjects MUST NOT have /Interpolate true.
+ *  Easiest durable fix: strip the /Interpolate key from every image
+ *  XObject (and any inline image we can reach via XObject dicts).
+ *  Returns the count of images touched, for diagnostics. */
+function stripImageInterpolate(doc: PDFDocument): number {
+  let touched = 0;
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFStream)) continue;
+    const d = obj.dict;
+    if (!(d instanceof PDFDict)) continue;
+    if (pdfName(d.get(PDFName.of("Type"))) !== "/XObject") continue;
+    if (pdfName(d.get(PDFName.of("Subtype"))) !== "/Image") continue;
+    if (d.has(PDFName.of("Interpolate"))) {
+      d.delete(PDFName.of("Interpolate"));
+      touched++;
+    }
+  }
+  return touched;
 }
 
 /** Walk every font dict in the PDF and confirm a font program is embedded.
@@ -386,13 +426,40 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     catalog.set(PDFName.of("OutputIntents"), ctx.obj([outputIntentDict]));
   });
 
-  // 4) XMP /Metadata stream with PDF/A markers --------------------------
+  // 4) Document info FIRST — XMP dates must agree with /Info CreationDate
+  //    and ModDate (PDF/A-1/2 §6.7.3). Build XMP after these are set so
+  //    xmp:CreateDate / xmp:ModifyDate match exactly.
+  const createdAt = doc.getCreationDate() ?? new Date();
+  const modifiedAt = new Date();
+  await step("update document info", () => {
+    doc.setProducer("CounselPDF (PDF/A-2b)");
+    doc.setCreationDate(createdAt);
+    doc.setModificationDate(modifiedAt);
+    // pdf-lib writes /Info dates in the PDF date format, but be explicit
+    // so the trailer's CreationDate / ModDate match the XMP values we
+    // are about to write byte-for-byte (modulo timezone equivalence).
+    const info = doc.context.lookup(doc.context.trailerInfo.Info);
+    if (info instanceof PDFDict) {
+      info.set(PDFName.of("CreationDate"), PDFString.of(pdfInfoDate(createdAt)));
+      info.set(PDFName.of("ModDate"), PDFString.of(pdfInfoDate(modifiedAt)));
+    }
+  });
+
+  // 5) Strip /Interpolate from every image XObject (PDF/A-2b §6.2.4.4) -
+  await step("strip /Interpolate from image XObjects", () => {
+    const n = stripImageInterpolate(doc);
+    // eslint-disable-next-line no-console
+    console.info(`${TAG} stripped /Interpolate on ${n} image XObject(s)`);
+  });
+
+  // 6) XMP /Metadata stream with PDF/A markers --------------------------
   await step("write XMP metadata (pdfaid part=2 conformance=B)", () => {
     const xmp = buildPdfAXmp({
       title: doc.getTitle(),
       author: doc.getAuthor(),
       producer: "CounselPDF (PDF/A-2b)",
-      createdAt: doc.getCreationDate() ?? new Date(),
+      createdAt,
+      modifiedAt,
     });
     const xmpBytes = new TextEncoder().encode(xmp);
     const xmpStream = ctx.stream(xmpBytes, {
@@ -402,13 +469,6 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     });
     const xmpRef = ctx.register(xmpStream);
     catalog.set(PDFName.of("Metadata"), xmpRef);
-  });
-
-  // 5) Document info ----------------------------------------------------
-  await step("update document info", () => {
-    doc.setProducer("CounselPDF (PDF/A-2b)");
-    if (!doc.getCreationDate()) doc.setCreationDate(new Date());
-    doc.setModificationDate(new Date());
   });
 
   // 6) Trailer /ID — clause 6.1.3 requires a non-empty File Identifier.
