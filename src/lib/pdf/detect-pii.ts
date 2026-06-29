@@ -341,11 +341,15 @@ export async function detectPiiInPdf(
     }
   }
 
-  // Pass 2 — OCR for image-only pages, parallelised across a worker pool.
-  // One worker per scan is wasteful (15 MB language data per init) and
-  // serial OCR pins a 400-page scan for tens of minutes. Mirror the pool
-  // pattern from ocr-pdf.ts.
+  // Pass 2 — OCR for image-only pages. We render at a higher DPI than the
+  // canvas scale (digit recognition is brittle below ~3x), then assemble
+  // per-line text from word boxes and run pattern matching on the WHOLE
+  // line — single-word matching can't see "4539 1488 0343 6467" as one card
+  // number. Detection rectangles are emitted back at the legacy `scale`.
+  const ocrUnderDetectedPages: number[] = [];
   if (ocrPages.length > 0) {
+    const ocrScale = Math.max(scale, 3);
+    const toCanvas = scale / ocrScale; // OCR-px → detection-canvas-px
     const { createWorker } = await importChunk(() => import("tesseract.js"));
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
     const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2), ocrPages.length));
@@ -372,7 +376,7 @@ export async function detectPiiInPdf(
       await Promise.all(
         ocrPages.map(async (i) => {
           const page = await doc.getPage(i);
-          const viewport = page.getViewport({ scale });
+          const viewport = page.getViewport({ scale: ocrScale });
           const canvas = document.createElement("canvas");
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
@@ -395,8 +399,6 @@ export async function detectPiiInPdf(
           done++;
           onProgress?.({ stage: "ocr", page: done, totalPages: ocrPages.length });
 
-          // Mean per-word confidence on this page (0–100). Tesseract reports
-          // -1 for words it gave up on; treat those as 0 for the average.
           const confs = words
             .filter((w) => w.text && w.text.trim())
             .map((w) => Math.max(0, w.confidence ?? 0));
@@ -404,29 +406,100 @@ export async function detectPiiInPdf(
             ? confs.reduce((a, b) => a + b, 0) / confs.length
             : 0;
 
-          for (const w of words) {
-            if (!w.text || !w.text.trim()) continue;
-            const hits = matchAllCategories(w.text);
-            if (hits.length === 0) continue;
-            const { x0, y0, x1, y1 } = w.bbox;
-            const wWidth = x1 - x0;
-            const pad = Math.max(2, (y1 - y0) * 0.15);
-            const charW = w.text.length > 0 ? wWidth / w.text.length : wWidth;
-            for (const hit of hits) {
-              const subX = x0 + charW * hit.start;
-              const subW = Math.max(charW, charW * hit.length);
-              detections.push({
-                id: `det-ocr-${i}-${detections.length}`,
-                page: i,
-                x: subX - pad,
-                y: y0 - pad,
-                w: subW + pad * 2,
-                h: y1 - y0 + pad * 2,
-                category: hit.category,
-                confidence: hit.confidence,
-                snippet: snippet(hit.text),
-              });
+          // Group words into lines by vertical-center overlap.
+          const sortedWords = words
+            .filter((w) => w.text && w.text.trim())
+            .sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
+          const lines: OcrWord[][] = [];
+          for (const w of sortedWords) {
+            const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+            const h = w.bbox.y1 - w.bbox.y0;
+            const line = lines.find((ln) => {
+              const ref = ln[0].bbox;
+              const refCy = (ref.y0 + ref.y1) / 2;
+              return Math.abs(refCy - cy) < Math.max(8, h * 0.6);
+            });
+            if (line) line.push(w);
+            else lines.push([w]);
+          }
+          for (const ln of lines) ln.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+
+          // Build line text + per-character → word index map.
+          const matchedSpans = new Set<string>();
+          const pageDetectionCountBefore = detections.length;
+          let pageRawText = "";
+          for (const ln of lines) {
+            let lineText = "";
+            const charToWord: number[] = [];
+            ln.forEach((w, wi) => {
+              if (lineText.length > 0) {
+                lineText += " ";
+                charToWord.push(-1);
+              }
+              for (let k = 0; k < w.text.length; k++) charToWord.push(wi);
+              lineText += w.text;
+            });
+            pageRawText += lineText + "\n";
+
+            const variants: { text: string; normalized: boolean }[] = [
+              { text: lineText, normalized: false },
+              { text: normalizeForDigits(lineText), normalized: true },
+            ];
+            for (const { text, normalized } of variants) {
+              const hits = matchAllCategories(text);
+              for (const hit of hits) {
+                // Names are unreliable on normalized text — skip duplicates.
+                if (normalized && hit.category === "name") continue;
+                // Use the matched span's CHAR RANGE to find covered words.
+                const spanStart = hit.start;
+                const spanEnd = hit.start + hit.length;
+                const coveredWords = new Set<number>();
+                for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
+                  const wi = charToWord[c];
+                  if (wi >= 0) coveredWords.add(wi);
+                }
+                if (coveredWords.size === 0) continue;
+                const wordIdx = [...coveredWords];
+                const key = `${hit.category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
+                if (matchedSpans.has(key)) continue;
+                matchedSpans.add(key);
+
+                const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
+                const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
+                const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
+                const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
+                const pad = Math.max(2, (y1 - y0) * 0.15);
+                const snippetText = normalized
+                  ? lineText.slice(spanStart, spanEnd)
+                  : hit.text;
+                detections.push({
+                  id: `det-ocr-${i}-${detections.length}`,
+                  page: i,
+                  x: (x0 - pad) * toCanvas,
+                  y: (y0 - pad) * toCanvas,
+                  w: (x1 - x0 + pad * 2) * toCanvas,
+                  h: (y1 - y0 + pad * 2) * toCanvas,
+                  category: hit.category,
+                  confidence: hit.confidence,
+                  snippet: snippet(snippetText),
+                });
+              }
             }
+          }
+
+          // Log the raw OCR text for this page so users / devs can compare
+          // it against what's visually on the page (essential when detection
+          // misses values — tells us if OCR misread or regex didn't match).
+          // eslint-disable-next-line no-console
+          console.info(
+            `[detect-pii] OCR page ${i} (avg conf ${ocrPageConfidence[i].toFixed(0)}):\n${pageRawText.trim()}`,
+          );
+
+          // Under-detection guard: the page LOOKS structured but produced
+          // very few hits — surface a caution so the user does a manual pass.
+          const pageHits = detections.length - pageDetectionCountBefore;
+          if (looksStructured(pageRawText) && pageHits < 2) {
+            ocrUnderDetectedPages.push(i);
           }
         }),
       );
@@ -434,8 +507,6 @@ export async function detectPiiInPdf(
       await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
     }
 
-    // Pages where mean OCR confidence is below 60 are flagged unreliable —
-    // the UI must warn that auto-detect cannot be trusted on those pages.
     const lowConfidenceOcrPages = ocrPages.filter((p) => (ocrPageConfidence[p] ?? 0) < 60);
     return {
       detections,
@@ -444,11 +515,12 @@ export async function detectPiiInPdf(
       totalPages: doc.numPages,
       lowConfidenceOcrPages,
       ocrPageConfidence,
+      ocrUnderDetectedPages,
     };
   }
 
 
-  return { detections, usedOcr: false, scannedPages: [], totalPages: doc.numPages, lowConfidenceOcrPages: [], ocrPageConfidence: {} };
+  return { detections, usedOcr: false, scannedPages: [], totalPages: doc.numPages, lowConfidenceOcrPages: [], ocrPageConfidence: {}, ocrUnderDetectedPages: [] };
 }
 
 type CatHit = {
