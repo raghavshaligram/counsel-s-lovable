@@ -66,13 +66,15 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
     const tid = "wsx-export-flow";
     toast.loading("Building PDF…", { id: tid });
     try {
-      // Re-read fresh bytes from the active File. The open path hands its
-      // bytes to pdf.js which transfers/detaches the ArrayBuffer, so
-      // `doc.srcBytes` may be empty by now. Reading the File again is the
-      // only place this cost is paid — and only at export confirm.
-      const exportDoc = file
-        ? { ...doc, srcBytes: new Uint8Array(await file.arrayBuffer()) }
-        : doc;
+      // Prefer live editor bytes: apply-now redaction mutates srcBytes so
+      // hidden vectors are gone before flatten/PDF-A/export. If pdf.js has
+      // detached that buffer, fall back to the active File.
+      const liveBytes = doc.srcBytes.byteLength > 0
+        ? doc.srcBytes
+        : file
+          ? new Uint8Array(await file.arrayBuffer())
+          : doc.srcBytes;
+      const exportDoc = { ...doc, srcBytes: liveBytes };
       let bytes = await exportEditedPdf(exportDoc);
 
       if (pnOn) {
