@@ -172,7 +172,7 @@ function Landing() {
                   to="/workspace"
                   className="group inline-flex items-center gap-2 rounded-md bg-vault text-vault-foreground px-5 py-3 text-sm font-semibold hover:opacity-90 transition"
                 >
-                  Start free
+                  Open the redactor
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
                 <Link
@@ -182,8 +182,17 @@ function Landing() {
                   Sign in
                 </Link>
               </div>
-              <p className="mt-5 text-sm text-muted-foreground">
-                Free tools forever. Pro features unlock with a subscription — Windows, Mac, iPad, no install.
+              <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-[12px] font-mono text-muted-foreground">
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-vault" /> Built for legal work</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-vault" /> Permanent, verifiable redaction</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-vault" /> Used on privileged matters</li>
+                <li className="flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-vault" />
+                  <Link to="/verify-privacy" className="hover:text-foreground underline-offset-4 hover:underline">Verifiable on-device privacy</Link>
+                </li>
+              </ul>
+              <p className="mt-5 text-xs text-muted-foreground">
+                Founder's rate from $17/mo. Core tools available free to try — no upload, ever.
               </p>
             </div>
 
