@@ -1,6 +1,6 @@
 {
-  "name": "VaultPDF",
-  "short_name": "VaultPDF",
+  "name": "CounselPDF",
+  "short_name": "CounselPDF",
   "description": "Privacy-architected PDF toolkit that runs entirely in your browser.",
   "start_url": "/",
   "display": "standalone",

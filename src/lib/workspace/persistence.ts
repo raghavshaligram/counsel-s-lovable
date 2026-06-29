@@ -9,7 +9,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { Anno, OcrPageLayer, PageOp } from "@/lib/editor/types";
 
-const DB_NAME = "vaultpdf-workspace";
+const DB_NAME = "counselpdf-workspace";
 const UI_STORE = "ui";
 const DOC_STORE = "docs";
 const SIDECAR_STORE = "sidecars";

@@ -11,7 +11,7 @@ import { getMyBilling, openMyBillingPortal, createMyCheckout } from "@/lib/billi
 export const Route = createFileRoute("/_authenticated/billing")({
   head: () => ({
     meta: [
-      { title: "Subscription & billing — VaultPDF" },
+      { title: "Subscription & billing — CounselPDF" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -38,7 +38,7 @@ function BillingPage() {
       <div className="mx-auto max-w-3xl px-5 py-10 md:py-14">
         <h1 className="font-display text-2xl tracking-tight">Subscription &amp; billing</h1>
         <p className="mt-1 text-[13px] text-text-2">
-          Cards and invoices are handled by Stripe. VaultPDF never stores card data — we only read your plan status.
+          Cards and invoices are handled by Stripe. CounselPDF never stores card data — we only read your plan status.
         </p>
 
         {isPending || !b ? (
@@ -158,7 +158,7 @@ function SeatsCard({ used, total }: { used: number; total: number }) {
       </div>
       <SeatInviteForm />
       <p className="text-[10.5px] leading-snug text-text-muted">
-        Seat management activates when the firm pass is purchased. Invite emails go out through VaultPDF; signups create independent accounts under the same firm subscription.
+        Seat management activates when the firm pass is purchased. Invite emails go out through CounselPDF; signups create independent accounts under the same firm subscription.
       </p>
     </Card>
   );

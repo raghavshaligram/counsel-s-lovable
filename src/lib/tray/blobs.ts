@@ -5,7 +5,7 @@
  */
 import { openDB, type IDBPDatabase } from "idb";
 
-const DB_NAME = "vaultpdf-tray";
+const DB_NAME = "counselpdf-tray";
 const STORE = "blobs";
 const META = "blob-meta";
 

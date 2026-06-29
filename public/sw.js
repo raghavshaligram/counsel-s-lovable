@@ -1,4 +1,4 @@
-// VaultPDF Service Worker — true offline operation.
+// CounselPDF Service Worker — true offline operation.
 //
 // Strategy:
 //  - Precache the minimal app shell on install.
@@ -15,7 +15,7 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "vaultpdf-v4-offline";
+const VERSION = "counselpdf-v4-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;

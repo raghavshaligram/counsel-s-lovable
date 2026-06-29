@@ -10,7 +10,7 @@ import { extractTables, downloadXlsx, type ExtractedTable, type ExtractProgress 
 export const Route = createFileRoute("/to-excel")({
   head: () => ({
     meta: [
-      { title: "PDF to Excel — Extract Tables Locally · VaultPDF" },
+      { title: "PDF to Excel — Extract Tables Locally · CounselPDF" },
       { name: "description", content: "Pull tables from any PDF into an editable .xlsx — heuristic layout detection with OCR fallback. 100% on-device." },
       { property: "og:title", content: "PDF → Excel — in your browser" },
       { property: "og:description", content: "Tables to .xlsx, no upload, no account." },

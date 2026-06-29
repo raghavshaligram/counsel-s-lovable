@@ -13,13 +13,13 @@ import { useHotkey } from "@/lib/use-hotkey";
 export const Route = createFileRoute("/watermark")({
   head: () => ({
     meta: [
-      { title: "Watermark PDF — VaultPDF" },
+      { title: "Watermark PDF — CounselPDF" },
       {
         name: "description",
         content:
           "Stamp DRAFT, CONFIDENTIAL, or any custom text across every page of a PDF. 100% in your browser.",
       },
-      { property: "og:title", content: "Watermark PDF — VaultPDF" },
+      { property: "og:title", content: "Watermark PDF — CounselPDF" },
       {
         property: "og:description",
         content: "Diagonal text watermarks added client-side. No upload.",

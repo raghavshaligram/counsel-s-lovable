@@ -64,8 +64,8 @@ async function compressStructural(bytes: Uint8Array): Promise<Uint8Array | null>
     try { doc.setAuthor(""); } catch { /* noop */ }
     try { doc.setSubject(""); } catch { /* noop */ }
     try { doc.setKeywords([]); } catch { /* noop */ }
-    try { doc.setProducer("VaultPDF"); } catch { /* noop */ }
-    try { doc.setCreator("VaultPDF"); } catch { /* noop */ }
+    try { doc.setProducer("CounselPDF"); } catch { /* noop */ }
+    try { doc.setCreator("CounselPDF"); } catch { /* noop */ }
     return await doc.save({
       useObjectStreams: true,
       addDefaultPage: false,
@@ -124,8 +124,8 @@ async function compressRasterise(
     out.setAuthor("");
     out.setSubject("");
     out.setKeywords([]);
-    out.setProducer("VaultPDF");
-    out.setCreator("VaultPDF");
+    out.setProducer("CounselPDF");
+    out.setCreator("CounselPDF");
     return await out.save({ useObjectStreams: true });
   } catch (e) {
     console.warn("[compress] rasterise failed", e);

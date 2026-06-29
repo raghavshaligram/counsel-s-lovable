@@ -13,13 +13,13 @@ import { useHotkey } from "@/lib/use-hotkey";
 export const Route = createFileRoute("/bates")({
   head: () => ({
     meta: [
-      { title: "Bates Numbering — VaultPDF" },
+      { title: "Bates Numbering — CounselPDF" },
       {
         name: "description",
         content:
           "Stamp sequential Bates numbers (e.g. SMITH_000001) on every page of a PDF. Court-ready, 100% in your browser.",
       },
-      { property: "og:title", content: "Bates Numbering — VaultPDF" },
+      { property: "og:title", content: "Bates Numbering — CounselPDF" },
       {
         property: "og:description",
         content: "Add Bates stamps to discovery PDFs — prefix, padding, position. Your file never leaves the tab.",

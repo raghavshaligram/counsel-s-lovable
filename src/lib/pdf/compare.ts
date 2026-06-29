@@ -232,7 +232,7 @@ export async function exportDiffPdf(opts: ExportDiffOptions): Promise<{ blob: Bl
 
   const bytes = await out.save();
   const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-  const filename = `vaultpdf-diff-${Date.now()}.pdf`;
+  const filename = `counselpdf-diff-${Date.now()}.pdf`;
   return { blob, filename, pages: total, changedPages };
 }
 

@@ -17,7 +17,7 @@ import {
 const FAQS = [
   {
     q: "Where do my files actually go?",
-    a: "Nowhere. VaultPDF runs entirely in your browser tab using WebAssembly. There is no upload endpoint. Open your browser's Network tab while you work — you'll see zero file uploads. The processing happens on your CPU, the result is written back as a download.",
+    a: "Nowhere. CounselPDF runs entirely in your browser tab using WebAssembly. There is no upload endpoint. Open your browser's Network tab while you work — you'll see zero file uploads. The processing happens on your CPU, the result is written back as a download.",
   },
   {
     q: "Is there a file size limit?",
@@ -29,7 +29,7 @@ const FAQS = [
   },
   {
     q: "Is this safe for HIPAA, GDPR, or attorney-client privileged documents?",
-    a: "Yes — because your file never leaves your device, none of those regulations are triggered by VaultPDF. There's no data processor agreement to sign, no breach to report, no cloud subprocessor to vet. We literally cannot see your file.",
+    a: "Yes — because your file never leaves your device, none of those regulations are triggered by CounselPDF. There's no data processor agreement to sign, no breach to report, no cloud subprocessor to vet. We literally cannot see your file.",
   },
   {
     q: "What does the lifetime deal include?",
@@ -52,13 +52,13 @@ const FAQS = [
 export const Route = createFileRoute("/pricing")({
   head: () => ({
     meta: [
-      { title: "Pricing — VaultPDF Lifetime Deal" },
+      { title: "Pricing — CounselPDF Lifetime Deal" },
       {
         name: "description",
         content:
-          "One payment, every tool, forever. The VaultPDF AppSumo lifetime deal — join the waitlist for launch pricing.",
+          "One payment, every tool, forever. The CounselPDF AppSumo lifetime deal — join the waitlist for launch pricing.",
       },
-      { property: "og:title", content: "VaultPDF — Lifetime Deal" },
+      { property: "og:title", content: "CounselPDF — Lifetime Deal" },
       {
         property: "og:description",
         content:
@@ -86,10 +86,10 @@ export const Route = createFileRoute("/pricing")({
         children: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "Product",
-          name: "VaultPDF Lifetime License",
+          name: "CounselPDF Lifetime License",
           description:
-            "One-time payment for lifetime access to every VaultPDF tool, current and future.",
-          brand: { "@type": "Brand", name: "VaultPDF" },
+            "One-time payment for lifetime access to every CounselPDF tool, current and future.",
+          brand: { "@type": "Brand", name: "CounselPDF" },
           offers: {
             "@type": "Offer",
             availability: "https://schema.org/PreOrder",
@@ -124,7 +124,7 @@ function PricingPage() {
             <span className="text-vault italic">Every tool. Forever.</span>
           </h1>
           <p className="mt-7 max-w-2xl mx-auto text-lg text-muted-foreground leading-relaxed">
-            VaultPDF runs entirely in your browser, so we don't pay for servers — which means we
+            CounselPDF runs entirely in your browser, so we don't pay for servers — which means we
             can offer something nobody else can: a real lifetime license, not a subscription
             disguised as one.
           </p>
@@ -146,7 +146,7 @@ function PricingPage() {
                 Founding member tier
               </div>
               <div className="font-display text-3xl md:text-4xl leading-tight">
-                VaultPDF Lifetime
+                CounselPDF Lifetime
               </div>
               <div className="mt-6 flex items-baseline gap-3">
                 <span className="font-display text-6xl md:text-7xl text-vault">$59</span>
@@ -204,11 +204,11 @@ function PricingPage() {
               <CostRow name="Adobe Acrobat Pro" price="$240" total="$1,200" bad />
               <CostRow name="Smallpdf Pro" price="$108" total="$540" bad />
               <CostRow name="iLovePDF Premium" price="$72" total="$360" bad />
-              <CostRow name="VaultPDF Lifetime" price="$59 once" total="$59" good />
+              <CostRow name="CounselPDF Lifetime" price="$59 once" total="$59" good />
             </div>
             <div className="rounded-xl border border-border bg-card/40 p-5 text-sm text-muted-foreground leading-relaxed">
               The other PDF apps need your monthly payment to keep their servers running.
-              VaultPDF runs on your CPU — no servers, no recurring cost on our side, so no
+              CounselPDF runs on your CPU — no servers, no recurring cost on our side, so no
               recurring cost on yours.
             </div>
           </div>

@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/crop")({
   head: () => ({
     meta: [
-      { title: "Crop PDF Pages — Artboard with Rulers · VaultPDF" },
+      { title: "Crop PDF Pages — Artboard with Rulers · CounselPDF" },
       {
         name: "description",
         content:

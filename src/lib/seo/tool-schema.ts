@@ -20,6 +20,6 @@ export function softwareAppSchema({ name, url, description }: ToolSchemaInput) {
       price: "0",
       priceCurrency: "USD",
     },
-    publisher: { "@type": "Organization", name: "VaultPDF" },
+    publisher: { "@type": "Organization", name: "CounselPDF" },
   };
 }

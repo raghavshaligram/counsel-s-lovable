@@ -68,7 +68,7 @@ async function seedFromStoredLicense() {
 function subscribeRealtime(userId: string) {
   // One channel per session; tear down + recreate if user changes.
   if (realtimeChannel) {
-    if ((realtimeChannel as unknown as { _vaultpdfUserId?: string })._vaultpdfUserId === userId) {
+    if ((realtimeChannel as unknown as { _counselpdfUserId?: string })._counselpdfUserId === userId) {
       return;
     }
     void supabase.removeChannel(realtimeChannel);
@@ -87,7 +87,7 @@ function subscribeRealtime(userId: string) {
       () => void activate("realtime"),
     )
     .subscribe();
-  (ch as unknown as { _vaultpdfUserId?: string })._vaultpdfUserId = userId;
+  (ch as unknown as { _counselpdfUserId?: string })._counselpdfUserId = userId;
   realtimeChannel = ch;
 }
 

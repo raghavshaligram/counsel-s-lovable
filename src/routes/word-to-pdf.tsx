@@ -12,13 +12,13 @@ import { convertWordToPdfBlob, type WordToPdfPageSize } from "@/lib/pdf/word-to-
 export const Route = createFileRoute("/word-to-pdf")({
   head: () => ({
     meta: [
-      { title: "Word to PDF — Convert DOCX to PDF — VaultPDF" },
+      { title: "Word to PDF — Convert DOCX to PDF — CounselPDF" },
       {
         name: "description",
         content:
           "Convert Word (.docx) documents to PDF entirely in your browser. Preserves headings, lists, tables and images — nothing uploaded.",
       },
-      { property: "og:title", content: "Word to PDF — VaultPDF" },
+      { property: "og:title", content: "Word to PDF — CounselPDF" },
       {
         property: "og:description",
         content: "Local DOCX → PDF conversion. No upload, ever.",

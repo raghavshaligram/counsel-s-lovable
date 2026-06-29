@@ -13,13 +13,13 @@ import { findKeywordInPdf, type KeywordMatch } from "@/lib/pdf/detect-pii";
 export const Route = createFileRoute("/privilege-scan")({
   head: () => ({
     meta: [
-      { title: "Privilege Scan — VaultPDF" },
+      { title: "Privilege Scan — CounselPDF" },
       {
         name: "description",
         content:
           "Scan a PDF for attorney–client, work product, and other privileged language before production. 100% in your browser.",
       },
-      { property: "og:title", content: "Privilege Scan — VaultPDF" },
+      { property: "og:title", content: "Privilege Scan — CounselPDF" },
       {
         property: "og:description",
         content: "Catch privileged language before it leaves your office. Local text scan, optional highlight export.",

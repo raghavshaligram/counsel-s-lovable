@@ -4,30 +4,30 @@ import { AppShell } from "@/components/app-shell";
 import { Check, X, ArrowRight, Minus, WifiOff, Plane } from "lucide-react";
 
 const SEO_TITLE =
-  "VaultPDF — Private PDF Redaction & Bates Stamping for Lawyers";
+  "CounselPDF — Private PDF Redaction & Bates Stamping for Lawyers";
 const SEO_DESCRIPTION =
   "Redact, Bates-stamp, and review PDFs for privilege entirely on your device. Built for solo and small-firm lawyers. Nothing uploaded. Works offline.";
 
 const FAQ: Array<{ q: string; a: string }> = [
   {
     q: "How do I redact a PDF for court?",
-    a: "Open the PDF in VaultPDF's Redact tool, let the on-device detector find names, Social Security numbers, account numbers and addresses, confirm each box, then export. VaultPDF burns the text out of the underlying content stream — it does not just paint a black rectangle over it — so the redacted version is safe to file under FRCP 5.2 and equivalent state rules.",
+    a: "Open the PDF in CounselPDF's Redact tool, let the on-device detector find names, Social Security numbers, account numbers and addresses, confirm each box, then export. CounselPDF burns the text out of the underlying content stream — it does not just paint a black rectangle over it — so the redacted version is safe to file under FRCP 5.2 and equivalent state rules.",
   },
   {
     q: "Is browser-based PDF redaction secure?",
-    a: "Yes, when the tool is genuinely on-device. VaultPDF runs entirely in your browser using WebAssembly. Your documents are never uploaded to a server. You can verify this yourself: open DevTools, watch the Network panel, and run any tool on a real file — you will see the JavaScript bundle load and nothing else.",
+    a: "Yes, when the tool is genuinely on-device. CounselPDF runs entirely in your browser using WebAssembly. Your documents are never uploaded to a server. You can verify this yourself: open DevTools, watch the Network panel, and run any tool on a real file — you will see the JavaScript bundle load and nothing else.",
   },
   {
-    q: "Does VaultPDF work offline?",
+    q: "Does CounselPDF work offline?",
     a: "Yes. After the first load the entire app is cached as a progressive web app. Disconnect from Wi-Fi and you can still redact, Bates-stamp, OCR, sanitize, sign and merge PDFs in an airplane, a courthouse, or any room without internet.",
   },
   {
-    q: "How is VaultPDF different from Adobe Acrobat?",
-    a: "Acrobat is a desktop install that processes documents locally but is priced and licensed for enterprises. Cloud redaction services upload your files to a server you do not control. VaultPDF runs in any browser on Windows, Mac or iPad, keeps every document on your device, and is priced for solo and small-firm lawyers — without giving up the legal-grade redaction, Bates and privilege-review workflows you need.",
+    q: "How is CounselPDF different from Adobe Acrobat?",
+    a: "Acrobat is a desktop install that processes documents locally but is priced and licensed for enterprises. Cloud redaction services upload your files to a server you do not control. CounselPDF runs in any browser on Windows, Mac or iPad, keeps every document on your device, and is priced for solo and small-firm lawyers — without giving up the legal-grade redaction, Bates and privilege-review workflows you need.",
   },
   {
     q: "Can I Bates stamp a whole discovery production at once?",
-    a: "Yes. Drop a folder of PDFs into the Bates tool, set a prefix and starting number, and VaultPDF stamps every page across every file with consistent placement and padding in a single pass — without uploading anything.",
+    a: "Yes. Drop a folder of PDFs into the Bates tool, set a prefix and starting number, and CounselPDF stamps every page across every file with consistent placement and padding in a single pass — without uploading anything.",
   },
 ];
 
@@ -52,7 +52,7 @@ export const Route = createFileRoute("/")({
         children: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "SoftwareApplication",
-          name: "VaultPDF",
+          name: "CounselPDF",
           description: SEO_DESCRIPTION,
           applicationCategory: "BusinessApplication",
           applicationSubCategory: "Legal PDF Editor",
@@ -89,7 +89,7 @@ export const Route = createFileRoute("/")({
             "OCR (make searchable)",
             "Works offline as a PWA",
           ],
-          publisher: { "@type": "Organization", name: "VaultPDF" },
+          publisher: { "@type": "Organization", name: "CounselPDF" },
         }),
       },
       {
@@ -165,7 +165,7 @@ function Landing() {
               <p className="mt-8 max-w-md text-base md:text-lg text-muted-foreground leading-relaxed">
                 Redact PDFs for court, Bates-stamp a discovery set, review for privilege and
                 strip metadata before filing — entirely on your device. No Adobe required.
-                Your files never upload, and VaultPDF keeps working offline.
+                Your files never upload, and CounselPDF keeps working offline.
               </p>
               <div className="mt-10 flex flex-wrap items-center gap-4">
                 <Link
@@ -256,7 +256,7 @@ function Landing() {
               </h2>
               <div className="mt-10 space-y-5 max-w-lg text-muted-foreground leading-relaxed">
                 <p>
-                  Once loaded, VaultPDF runs entirely in your browser with no connection. Redact,
+                  Once loaded, CounselPDF runs entirely in your browser with no connection. Redact,
                   Bates-stamp, OCR and sanitize on a plane, in a courthouse, or anywhere with no Wi-Fi —
                   your work never depends on a server being up.
                 </p>
@@ -338,7 +338,7 @@ function Landing() {
               className="font-display leading-[1] tracking-tight"
               style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)" }}
             >
-              VaultPDF vs Adobe, Kofax, and cloud redaction tools.
+              CounselPDF vs Adobe, Kofax, and cloud redaction tools.
             </h2>
             <p className="mt-4 text-sm text-muted-foreground">
               We compare against the tools lawyers actually evaluate — not consumer PDF sites.
@@ -607,7 +607,7 @@ function OfflinePanel() {
         <span className="h-2 w-2 rounded-full bg-evidence" />
         <span className="h-2 w-2 rounded-full bg-vault/60" />
         <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-        <span className="ml-2 truncate">vaultpdf.app/workspace</span>
+        <span className="ml-2 truncate">counselpdf.app/workspace</span>
         <span
           className={`ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border transition-colors duration-500 ${
             inView
@@ -775,7 +775,7 @@ function ComparisonTable() {
           <tr>
             <th className="text-left p-4 font-medium w-[34%]">Capability</th>
             <th className="p-4 text-center font-semibold text-vault bg-vault/[0.06] border-x border-vault/20">
-              VaultPDF
+              CounselPDF
             </th>
             <th className="p-4 text-center font-medium">Adobe Acrobat</th>
             <th className="p-4 text-center font-medium">Kofax Power PDF</th>
