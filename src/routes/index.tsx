@@ -1020,13 +1020,14 @@ function MarkIcon({ v, highlight }: { v: MarkValue; highlight?: boolean }) {
 /* ——— Use case card ——— */
 
 function UseCase({
-  kicker, title, body, to, cta,
+  kicker, title, body, tool, cta,
 }: {
-  kicker: string; title: string; body: string; to: string; cta: string;
+  kicker: string; title: string; body: string; tool: string; cta: string;
 }) {
   return (
     <Link
-      to={to}
+      to="/workspace"
+      search={{ tool }}
       className="group relative bg-background p-8 flex flex-col hover:bg-card transition-colors"
     >
       <div className="font-mono text-[11px] text-vault mb-6">{kicker}</div>
@@ -1041,6 +1042,7 @@ function UseCase({
     </Link>
   );
 }
+
 
 /* ——— Pricing card ——— */
 
