@@ -1443,6 +1443,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
   const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
+  const [reviewedSignOff, setReviewedSignOff] = useState(false);
   // "always" = rasterize every page that carries a redaction (default, safest).
   // "fallback" = attempt content-stream surgery first, rasterize only pages
   // where text still intersects a redaction rect after verification.
