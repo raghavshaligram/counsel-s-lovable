@@ -7,8 +7,11 @@
  * regresses.
  */
 import { describe, it, expect } from "vitest";
-import { PDFDocument } from "pdf-lib";
+import {
+  PDFArray, PDFBool, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, PDFString,
+} from "pdf-lib";
 import { sanitizePdfBytes } from "@/lib/pdf/sanitize";
+import { verifyRedactionRemoval } from "@/lib/editor/verify-redaction";
 
 const SECRETS = [
   "Jonathan A. Meriwether",
