@@ -229,11 +229,7 @@ function EmptyState() {
 }
 
 function SovereigntyIssuer() {
-  const save = useServerFn(
-    // Lazy import to avoid pulling pdf-lib into the route's initial bundle.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (require("@/lib/certificates.functions") as any).saveCertificate,
-  );
+  const save = useServerFn(saveCertificate);
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
 
