@@ -5805,6 +5805,38 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
         toast.success("Bates applied to active tab", { id: tid });
       }
+
+      // Offer a Discovery Production Audit Log — only reflect this run's actual numbers.
+      try {
+        const { requestCertificate } = await import("@/components/workspace/certificate-gate");
+        const { buildBatesCertificate } = await import("@/lib/pdf/certificates");
+        const { loadPdfjs } = await import("@/lib/pdf/worker");
+        const pdfjs = await loadPdfjs();
+        const probe = await pdfjs.getDocument({ data: new Uint8Array(out as unknown as Uint8Array).slice() }).promise;
+        const pageCount = probe.numPages;
+        try { (probe as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        const fmtNum = (n: number) =>
+          `${s.prefix}${String(n).padStart(s.digits, "0")}${s.suffix ?? ""}`;
+        const endAt = s.startAt + pageCount - 1;
+        const payload = {
+          documents: [
+            { name: file.name, pageCount, firstNumber: fmtNum(s.startAt), lastNumber: fmtNum(endAt) },
+          ],
+          prefix: s.prefix, suffix: s.suffix, digits: s.digits,
+          startAt: s.startAt, endAt, totalPages: pageCount,
+          overlaps: 0, skipped: 0,
+        };
+        requestCertificate({
+          kind: "bates",
+          actionLabel: "Discovery Production",
+          sourceName: file.name,
+          downloadBaseName: file.name.replace(/\.pdf$/i, "") + "-bates-audit-log",
+          payload,
+          build: () => buildBatesCertificate(payload),
+        });
+      } catch (gateErr) {
+        console.warn("[bates] cert gate failed", gateErr);
+      }
     } catch (err) {
       console.error("[bates] failed", err);
       toast.error("Failed to stamp Bates", { id: tid, description: (err as Error).message });
