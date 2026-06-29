@@ -289,6 +289,28 @@ function removeRef(ctx: PDFDocument["context"], ref: PDFRef): void {
   try { ctx.delete(ref); } catch { /* ignore */ }
 }
 
+async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promise<void> {
+  const { unzlibSync } = await import("fflate");
+  const targets: PDFRef[] = [];
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFStream)) continue;
+    const d = obj.dict;
+    if (!(d instanceof PDFDict)) continue;
+    if (nameStr(d.get(PDFName.of("Subtype"))) !== "/Form") continue;
+    const raw =
+      (obj as unknown as { contents?: Uint8Array }).contents
+      ?? (obj as unknown as { getContents?: () => Uint8Array }).getContents?.();
+    if (!raw || raw.length === 0) continue;
+    let bytes: Uint8Array = raw;
+    if (nameStr(d.get(PDFName.of("Filter"))) === "/FlateDecode") {
+      try { bytes = unzlibSync(raw); } catch { /* keep raw */ }
+    }
+    const txt = new TextDecoder("latin1").decode(bytes);
+    if (txt.includes("/Tx BMC")) targets.push(ref);
+  }
+  for (const r of targets) removeRef(ctx, r);
+}
+
 /** Recursively clear /V (and /DV, /RV) on a form field tree.
  *  Returns the count of fields whose /V was non-empty before clearing. */
 function clearFormFieldTree(ctx: PDFDocument["context"], item: unknown): number {
