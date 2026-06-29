@@ -278,7 +278,7 @@ async function newDoc(title: string): Promise<DocCtx> {
   };
 }
 
-function drawHeader(page: PDFPage, badge: string, subtitle: string) {
+function drawHeader(page: PDFPage, _badge: string, _subtitle: string) {
   page.drawRectangle({ x: 0, y: PAGE_H - 8, width: PAGE_W, height: 8, color: VAULT });
 }
 
