@@ -1223,9 +1223,10 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       </div>
       <p className="text-[10.5px] leading-snug text-text-muted">
         Scans for SSNs, emails, phones, dates, cards/accounts, person names and
-        organizations (on-device NER), plus privilege/confidentiality context —
-        all proposed as draft boxes. Nothing leaves your device. You confirm
-        each before redacting.
+        organizations (on-device NER). Privilege/confidentiality context words
+        are flagged as <em>review signals</em> — they are not values to redact
+        themselves, but they indicate nearby content may be privileged. Nothing
+        leaves your device. You confirm each finding before redacting.
       </p>
 
       <button
