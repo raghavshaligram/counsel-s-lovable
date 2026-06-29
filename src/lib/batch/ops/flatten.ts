@@ -124,7 +124,7 @@ export async function flatten(bytes: Uint8Array, opts: FlattenOpts): Promise<Uin
         for (const k of keep) next.push(k as never);
         page.node.set(PDFName.of("Annots"), next);
       }
-    } catch { /* no form */ }
+    } catch (e) { console.error("[flatten-debug] no form:", e); }
     // Also strip text from any sensitive annotation /Contents so a
     // subsequent annotation flatten (if a future caller adds one) can't
     // bake it either.
