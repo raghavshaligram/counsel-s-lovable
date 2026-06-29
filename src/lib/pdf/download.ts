@@ -38,9 +38,10 @@ export async function downloadPdf(
   const tid = `pdfa-${filename}`;
   toast.loading("Converting to PDF/A…", { id: tid });
   try {
-    const { toPdfA, verifyPdfAStructuralAsync } = await import("@/lib/pdf/to-pdfa");
+    const { toPdfA, verifyPdfAStructuralAsync, logPdfAChecklist } = await import("@/lib/pdf/to-pdfa");
     const out = await toPdfA(bytes);
     const report = await verifyPdfAStructuralAsync(out);
+    logPdfAChecklist(report, `downloadPdf:${filename}`);
     if (opts.verify !== false && !report.ok) {
       // Log the exact PDF/A clause(s) missing so regressions are debuggable.
       // eslint-disable-next-line no-console
