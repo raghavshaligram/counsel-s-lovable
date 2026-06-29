@@ -126,6 +126,12 @@ export async function sanitizePdfBytesWithReport(
       page.node.set(PDFName.of("Annots"), next);
     }
   }
+  // Purge orphaned widget appearance streams (/Form XObjects pdf-lib
+  // tagged with /Tx BMC). Without this they survive in the saved file
+  // even though nothing references them — and they still carry the
+  // form-field glyph strings, which a raw-stream verifier rightly
+  // flags as a leak.
+  await purgeWidgetAppearanceStreams(ctx);
 
   // 3) Annotations — strip text from every annotation and remove
   //    text-bearing subtypes entirely so /Contents, /RC, /T, /Subj
