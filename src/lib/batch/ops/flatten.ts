@@ -114,6 +114,49 @@ function scrubAnnotationText(doc: PDFDocument): void {
   }
 }
 
+/** Gather every indirect ref reachable from a form field's wrapper: the
+ *  field's own ref, its widget annotations, and every appearance stream
+ *  (/AP/N/D/R) so they can be ctx.delete()'d after removeField. pdf-lib
+ *  does not garbage-collect orphan objects on save. */
+function collectFieldRefs(ctx: PDFDocument["context"], field: ReturnType<PDFForm["getFields"]>[number]): PDFRef[] {
+  const refs: PDFRef[] = [];
+  const seen = new Set<string>();
+  const push = (r: unknown): void => {
+    if (!r || typeof r !== "object" || !("objectNumber" in r)) return;
+    const key = `${(r as PDFRef).objectNumber} ${(r as PDFRef).generationNumber}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    refs.push(r as PDFRef);
+  };
+  const acroField = (field as unknown as { acroField?: { ref?: PDFRef; dict?: PDFDict } }).acroField;
+  push(acroField?.ref);
+  const dict = acroField?.dict;
+  if (dict instanceof PDFDict) {
+    const kids = dict.lookupMaybe(PDFName.of("Kids"), PDFArray);
+    if (kids) {
+      for (const k of kids.asArray()) {
+        push(k);
+        const w = resolveDict(ctx, k);
+        if (w) collectAppearanceRefs(w, push);
+      }
+    }
+    collectAppearanceRefs(dict, push);
+  }
+  return refs;
+}
+
+function collectAppearanceRefs(dict: PDFDict, push: (r: unknown) => void): void {
+  const ap = dict.lookupMaybe(PDFName.of("AP"), PDFDict);
+  if (!ap) return;
+  for (const key of ["N", "D", "R"]) {
+    const v = ap.get(PDFName.of(key));
+    push(v);
+    // /N may also be a dict mapping states → refs.
+    const asDict = ap.lookupMaybe(PDFName.of(key), PDFDict);
+    if (asDict) for (const e of asDict.entries()) push(e[1]);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // internals
 // ---------------------------------------------------------------------------
