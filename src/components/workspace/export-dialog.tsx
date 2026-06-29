@@ -129,12 +129,24 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         }
         const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
         bytes = (await rasterizeRedactedPages(bytes, pageRedactions, { mode: "always", scale: 2.5 })).bytes;
-        toast.loading("Verifying redaction regions…", { id: tid });
-        const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
-        const check = await verifyRedactionRemoval(bytes, redactionTargets);
-        if (!check.ok) {
-          throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
-        }
+
+        // Unbypassable verification gate — sanitizes side-channels and
+        // re-verifies removal across every vector (page geometry, raw
+        // streams, form fields, annotations, OCGs, attachments, metadata).
+        // Throws if any redacted value survives anywhere — the file is
+        // never delivered in that case.
+        toast.loading("Verifying redaction…", { id: tid });
+        const { enforceRedactionGate } = await importChunk(() => import("@/lib/editor/redaction-gate"));
+        const gated = await enforceRedactionGate(bytes, redactionTargets, {
+          onProgress: (step) => {
+            const msg =
+              step === "sanitize" ? "Scrubbing side-channels…"
+              : step === "raster-fallback" ? "Re-burning leaking page…"
+              : "Verifying redaction…";
+            toast.loading(msg, { id: tid });
+          },
+        });
+        bytes = gated.bytes;
       }
 
 
