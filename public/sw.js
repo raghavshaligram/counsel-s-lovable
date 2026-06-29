@@ -81,6 +81,12 @@ async function cacheFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(req);
   if (cached) return cached;
+  if (OFFLINE_ISOLATED) {
+    return new Response("Network blocked by Work Offline", {
+      status: 503,
+      statusText: "Offline isolation",
+    });
+  }
   try {
     const res = await fetch(req);
     // Only cache successful basic/cors responses.
