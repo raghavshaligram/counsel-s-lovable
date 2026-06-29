@@ -98,13 +98,25 @@ export function zipBatchOutputs(p: BatchProgress, zipName = "counselpdf-batch.zi
 }
 
 export function downloadBytes(bytes: Uint8Array, filename: string, mime = "application/octet-stream") {
+  // Copy into a fresh Uint8Array so the Blob owns its memory and the caller
+  // can free the source buffer immediately after this returns.
   const blob = new Blob([new Uint8Array(bytes)], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.rel = "noopener";
   document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  try {
+    a.click();
+  } finally {
+    a.remove();
+    // Revoke the object URL after the browser has had time to start the
+    // download. Without this, blob URLs accumulate and memory is never freed
+    // — repeated exports eventually wedge the tab.
+    setTimeout(() => {
+      try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+    }, 4000);
+  }
 }
+
