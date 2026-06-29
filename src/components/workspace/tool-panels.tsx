@@ -1343,6 +1343,41 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
               </li>
             ))}
           </ul>
+          {privilegeFindings.length > 0 && (
+            <div className="border-t border-border/60 px-2.5 py-2">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300/90">
+                <Info className="h-3 w-3" />
+                Context flags — review nearby content for privilege
+              </div>
+              <ul>
+                {privilegeFindings.map((d) => (
+                  <li key={d.id}>
+                    <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
+                      <Info className="mt-[3px] h-3 w-3 shrink-0 text-amber-300/70" />
+                      <button
+                        type="button"
+                        onClick={() => jumpToFinding(d)}
+                        className="min-w-0 flex-1 text-left"
+                        title="Jump to this context flag"
+                      >
+                        <div className="text-[11px] text-foreground">
+                          {d.snippet}
+                        </div>
+                        <div className="text-[10px] text-text-2">
+                          Page {d.page}
+                          {!d.source && (
+                            <span className="ml-1 text-amber-400/80">
+                              · visual-only (scanned)
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
