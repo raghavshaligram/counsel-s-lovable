@@ -8,6 +8,7 @@
 
 import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
+import { runNer, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
 
 export type PiiCategory =
   | "ssn"
@@ -16,8 +17,10 @@ export type PiiCategory =
   | "creditCard"
   | "date"
   | "name"
+  | "org"
   | "ipAddress"
-  | "iban";
+  | "iban"
+  | "privilegeContext";
 
 export type Detection = {
   id: string;
@@ -244,9 +247,11 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
   phone: { label: "Phone", hint: "Phone numbers" },
   creditCard: { label: "Card / account #", hint: "Long digit sequences (cards, accounts)" },
   date: { label: "Date", hint: "Dates (DOB / issued / expiry)" },
-  name: { label: "Name", hint: "Likely person names (heuristic)" },
+  name: { label: "Person name", hint: "People (NER + heuristic) — review before redacting" },
+  org: { label: "Organization", hint: "Organizations / companies (NER) — review before redacting" },
   ipAddress: { label: "IP", hint: "IP addresses" },
   iban: { label: "IBAN", hint: "International bank account numbers" },
+  privilegeContext: { label: "Privilege / confidentiality", hint: "Sensitive context (privileged, settlement, NDA) — review nearby values" },
 };
 
 
@@ -294,8 +299,6 @@ export async function detectPiiInPdf(
     for (const raw of items) {
       const str = raw.str;
       if (!str || !str.trim()) continue;
-      const hits = matchAllCategories(str);
-      if (hits.length === 0) continue;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
@@ -309,9 +312,15 @@ export async function detectPiiInPdf(
       // produces a tight box around the matched substring rather than the
       // whole sentence/line.
       const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
-      for (const hit of hits) {
-        const subX = x0 + charW * hit.start;
-        const subW = Math.max(charW, charW * hit.length);
+      const pushBox = (
+        spanStart: number,
+        spanLen: number,
+        category: PiiCategory,
+        confidence: "high" | "low" | undefined,
+        text: string,
+      ) => {
+        const subX = x0 + charW * spanStart;
+        const subW = Math.max(charW, charW * spanLen);
         const cx = subX - pad;
         const cy = y - pad;
         const cw = subW + pad * 2;
@@ -323,20 +332,55 @@ export async function detectPiiInPdf(
           y: cy,
           w: cw,
           h: ch,
-          category: hit.category,
-          confidence: hit.confidence,
-          snippet: snippet(hit.text),
+          category,
+          confidence,
+          snippet: snippet(text),
           source: {
             originalString: str,
-            redactText: hit.text,
-            matchStart: hit.start,
-            matchLength: hit.length,
+            redactText: text,
+            matchStart: spanStart,
+            matchLength: spanLen,
             transform: raw.transform,
             fontName,
             bounds: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
           },
           pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
         });
+      };
+
+      // 1) Structured regex patterns + heuristic name match.
+      const hits = matchAllCategories(str);
+      for (const hit of hits) pushBox(hit.start, hit.length, hit.category, hit.confidence, hit.text);
+
+      // 2) Privilege / confidentiality context — surfaced as low-confidence
+      //    suggestions for human review (not auto-selected).
+      PRIVILEGE_TERMS_RE.lastIndex = 0;
+      let pm: RegExpExecArray | null;
+      while ((pm = PRIVILEGE_TERMS_RE.exec(str)) !== null) {
+        pushBox(pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
+        if (pm[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
+      }
+
+      // 3) On-device NER for PERSON / ORG entities — catches plain-prose
+      //    names without requiring Mr./Dr./Esq. titles. Skip very short or
+      //    pure-numeric items to avoid wasted model calls.
+      if (str.trim().length >= 8 && /[A-Za-z]/.test(str)) {
+        const ents = await runNer(str);
+        for (const e of ents) {
+          if (e.type !== "PER" && e.type !== "ORG") continue;
+          // Avoid double-flagging spans the regex name pass already caught.
+          const overlap = hits.some(
+            (h) => h.category === "name" && !(e.end <= h.start || e.start >= h.start + h.length),
+          );
+          if (overlap) continue;
+          pushBox(
+            e.start,
+            e.end - e.start,
+            e.type === "PER" ? "name" : "org",
+            "high",
+            e.text,
+          );
+        }
       }
     }
   }
@@ -484,6 +528,70 @@ export async function detectPiiInPdf(
                   snippet: snippet(snippetText),
                 });
               }
+            }
+
+            // NER + privilege-context pass on the OCR line text. Maps
+            // entity char ranges back to the line's word boxes for the
+            // detection rectangle.
+            const pushOcrSpan = (
+              spanStart: number,
+              spanEnd: number,
+              category: PiiCategory,
+              confidence: "high" | "low" | undefined,
+              text: string,
+            ) => {
+              const covered = new Set<number>();
+              for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
+                const wi = charToWord[c];
+                if (wi >= 0) covered.add(wi);
+              }
+              if (covered.size === 0) return;
+              const wordIdx = [...covered];
+              const key = `${category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
+              if (matchedSpans.has(key)) return;
+              matchedSpans.add(key);
+              const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
+              const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
+              const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
+              const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
+              const pad = Math.max(2, (y1 - y0) * 0.15);
+              detections.push({
+                id: `det-ocr-${i}-${detections.length}`,
+                page: i,
+                x: (x0 - pad) * toCanvas,
+                y: (y0 - pad) * toCanvas,
+                w: (x1 - x0 + pad * 2) * toCanvas,
+                h: (y1 - y0 + pad * 2) * toCanvas,
+                category,
+                confidence,
+                snippet: snippet(text),
+              });
+            };
+
+            if (lineText.trim().length >= 8 && /[A-Za-z]/.test(lineText)) {
+              const ents = await runNer(lineText);
+              for (const e of ents) {
+                if (e.type !== "PER" && e.type !== "ORG") continue;
+                pushOcrSpan(
+                  e.start,
+                  e.end,
+                  e.type === "PER" ? "name" : "org",
+                  "high",
+                  e.text,
+                );
+              }
+            }
+            PRIVILEGE_TERMS_RE.lastIndex = 0;
+            let pmOcr: RegExpExecArray | null;
+            while ((pmOcr = PRIVILEGE_TERMS_RE.exec(lineText)) !== null) {
+              pushOcrSpan(
+                pmOcr.index,
+                pmOcr.index + pmOcr[0].length,
+                "privilegeContext",
+                "low",
+                pmOcr[0],
+              );
+              if (pmOcr[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
             }
           }
 
