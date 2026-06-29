@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      case_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          manifest: Json
+          name: string
+          source_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          manifest?: Json
+          name: string
+          source_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          manifest?: Json
+          name?: string
+          source_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       compliance_certificates: {
         Row: {
           case_label: string | null
@@ -40,6 +70,39 @@ export type Database = {
           kind?: string
           payload?: Json
           source_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      firm_templates: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          kind: string
+          name: string
+          source_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          kind: string
+          name: string
+          source_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          kind?: string
+          name?: string
+          source_name?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

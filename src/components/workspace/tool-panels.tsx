@@ -103,6 +103,7 @@ import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-s
 import { importChunk } from "@/lib/chunk-import";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
+import { FirmTemplatesMenu } from "./firm-templates-menu";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -3767,6 +3768,19 @@ function WatermarkPanel({ ctx }: { ctx: ToolPanelCtx }) {
         )}
       </button>
 
+      <FirmTemplatesMenu
+        kind="stamp"
+        getConfig={() => ({ text, pos, size, opacity })}
+        onApply={(cfg: { text?: string; pos?: typeof pos; size?: number; opacity?: number }) => {
+          if (typeof cfg.text === "string") setText(cfg.text);
+          if (cfg.pos) setPos(cfg.pos);
+          if (typeof cfg.size === "number") setSize(cfg.size);
+          if (typeof cfg.opacity === "number") setOpacity(cfg.opacity);
+        }}
+        sourceName={file?.name ?? null}
+      />
+
+
       <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
@@ -5977,6 +5991,21 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
           Apply to active tab
         </button>
         <MultiFileBatesButton />
+        <FirmTemplatesMenu
+          kind="bates"
+          getConfig={() => ({
+            prefix: s.prefix,
+            suffix: s.suffix ?? "",
+            startAt: s.startAt,
+            digits: s.digits,
+            position: s.position,
+            fontSize: s.fontSize,
+            color: s.color,
+            margin: s.margin,
+          })}
+          onApply={(cfg: Partial<typeof s>) => update(cfg)}
+          sourceName={file?.name ?? null}
+        />
       </div>
 
 
@@ -6237,6 +6266,19 @@ function HeaderFooterSection({ ctx }: { ctx: ToolPanelCtx }) {
         >
           Apply to active tab
         </button>
+        <FirmTemplatesMenu
+          kind="header-footer"
+          getConfig={() => ({ headerText, footerText, align, rule, fontSize, margin })}
+          onApply={(cfg: { headerText?: string; footerText?: string; align?: typeof align; rule?: typeof rule; fontSize?: number; margin?: number }) => {
+            if (typeof cfg.headerText === "string") setHeaderText(cfg.headerText);
+            if (typeof cfg.footerText === "string") setFooterText(cfg.footerText);
+            if (cfg.align) setAlign(cfg.align);
+            if (cfg.rule) setRule(cfg.rule);
+            if (typeof cfg.fontSize === "number") setFontSize(cfg.fontSize);
+            if (typeof cfg.margin === "number") setMargin(cfg.margin);
+          }}
+          sourceName={file?.name ?? null}
+        />
       </div>
     </div>
   );
