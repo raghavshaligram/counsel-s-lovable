@@ -1812,6 +1812,21 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       </Section>
 
+      <Section title="Audit ledger" icon={<Shield className="h-3 w-3" />}>
+        <RedactionAuditLedger
+          sourceName={file.name}
+          redactions={redactAnnos.map((a) => ({
+            page: a.page,
+            x: a.x,
+            y: a.y,
+            w: a.w,
+            h: a.h,
+            category: (a as { category?: string }).category,
+          }))}
+        />
+      </Section>
+
+
       <Section title="Redaction mode" icon={<Shield className="h-3 w-3" />}>
         <div className="flex flex-col gap-1.5">
           <label className={cn(
