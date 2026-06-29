@@ -36,11 +36,9 @@ function useOfflineState() {
 }
 
 export function OfflineToggle({
-  hasDocument,
   enabled,
   onChange,
 }: {
-  hasDocument: boolean;
   enabled: boolean;
   onChange: (next: boolean) => void;
 }) {
