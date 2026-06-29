@@ -58,8 +58,13 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+let OFFLINE_ISOLATED = false;
+
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
+  if (event.data && event.data.type === "OFFLINE_MODE") {
+    OFFLINE_ISOLATED = Boolean(event.data.enabled);
+  }
 });
 
 function isHashedAssetPath(pathname) {
