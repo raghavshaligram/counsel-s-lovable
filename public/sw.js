@@ -148,5 +148,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Anything else: let the browser do its thing (no caching).
+  // Anything else: in isolation mode, block it. Otherwise let the browser do its thing.
+  if (OFFLINE_ISOLATED) {
+    event.respondWith(
+      new Response("Network blocked by Work Offline", {
+        status: 503,
+        statusText: "Offline isolation",
+      }),
+    );
+  }
 });
