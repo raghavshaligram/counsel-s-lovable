@@ -18,6 +18,7 @@
  *   so users aren't surprised by a refusal.
  */
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, type PDFForm } from "pdf-lib";
+import { unzlibSync } from "fflate";
 import { matchAllCategories } from "@/lib/pdf/detect-pii";
 
 export interface FlattenOpts {
