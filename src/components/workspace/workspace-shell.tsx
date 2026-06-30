@@ -3237,20 +3237,80 @@ function Inspector({
   focusSection: string | null;
   clearFocusSection: () => void;
 }) {
+  const MIN_W = 280;
+  const MAX_W = 640;
+  const DEFAULT_W = 380;
+  const STORAGE_KEY = "vaultpdf:inspector-width";
+  const [width, setWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return DEFAULT_W;
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) ? Math.min(MAX_W, Math.max(MIN_W, n)) : DEFAULT_W;
+  });
+  const [dragging, setDragging] = useState(false);
+  const startRef = useRef<{ x: number; w: number } | null>(null);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      if (!startRef.current) return;
+      // Dragging left edge: moving left increases width.
+      const dx = startRef.current.x - e.clientX;
+      const next = Math.min(MAX_W, Math.max(MIN_W, startRef.current.w + dx));
+      setWidth(next);
+    };
+    const onUp = () => {
+      setDragging(false);
+      startRef.current = null;
+      try { window.localStorage.setItem(STORAGE_KEY, String(width)); } catch {}
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [dragging, width]);
+
+  const openWidth = open && activeTool ? width : 0;
+
   return (
     <aside
       aria-label="Inspector"
       className={cn(
-        "shrink-0 border-l border-border bg-surface-1 overflow-hidden",
-        "transition-[width] duration-200",
+        "relative shrink-0 border-l border-border bg-surface-1 overflow-hidden",
+        !dragging && "transition-[width] duration-200",
       )}
       style={{
-        width: open && activeTool ? 280 : 0,
+        width: openWidth,
         transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
       }}
     >
+      {open && activeTool && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize inspector"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+            startRef.current = { x: e.clientX, w: width };
+            setDragging(true);
+          }}
+          onDoubleClick={() => {
+            setWidth(DEFAULT_W);
+            try { window.localStorage.setItem(STORAGE_KEY, String(DEFAULT_W)); } catch {}
+          }}
+          className={cn(
+            "absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize",
+            "hover:bg-vault/40",
+            dragging && "bg-vault/60",
+          )}
+          title="Drag to resize · double-click to reset"
+        />
+      )}
       {activeTool ? (
-        <div className="flex h-full w-[280px] flex-col">
+        <div className="flex h-full flex-col" style={{ width }}>
           <header className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2.5">
             <div className="flex items-center gap-2 min-w-0">
               <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault">
@@ -3279,7 +3339,7 @@ function Inspector({
         </div>
       ) : (
         open && (
-          <div className="grid h-full w-[280px] place-items-center px-4 text-center text-[11.5px] text-text-muted">
+          <div className="grid h-full place-items-center px-4 text-center text-[11.5px] text-text-muted" style={{ width }}>
             Mount slot — feature panel loads here
           </div>
         )
