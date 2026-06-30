@@ -5600,7 +5600,7 @@ function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           margin: imagesMargin,
           onProgress: (pct) => setProgress(`Building PDF… ${pct}%`),
         });
-        downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
+        await downloadPdf(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
         toast.success(`Built PDF from ${res.pages} image${res.pages === 1 ? "" : "s"}`, { id: tid });
       }
     } catch (err) {
