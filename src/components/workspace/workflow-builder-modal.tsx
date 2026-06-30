@@ -23,7 +23,7 @@ import { toast } from "sonner";
 import {
   X, Play, Save, GripVertical, Trash2, Plus,
   Loader2, CircleCheck, CircleAlert, Circle,
-  FileText, ImageIcon, Stamp, Hash, ScanText,
+  FileText, ImageIcon, Stamp, Hash,
   Layers, PackageOpen, RotateCw, Scissors, ShieldCheck,
 } from "lucide-react";
 import { runPipeline, downloadBytes } from "@/lib/automation/runner";
