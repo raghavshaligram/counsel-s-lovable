@@ -109,8 +109,6 @@ function PrivilegeReviewPanelInner({ ctx }: { ctx: ToolPanelCtx }) {
 
   const setStatus = useCallback((id: string, status: Status) => {
     setReview((r) => ({
-      status,
-      note: r[id]?.note ?? "",
       ...r,
       [id]: { status, note: r[id]?.note ?? "" },
     }));
@@ -372,7 +370,7 @@ function PrivilegeReviewPanelInner({ ctx }: { ctx: ToolPanelCtx }) {
                 )}
                 {filtered.map((f) => {
                   const state = review[f.id] ?? { status: "unreviewed" as Status, note: "" };
-                  const onCurrent = (editorState?.currentPage ?? -1) === f.page - 1;
+                  const onCurrent = (editorState?.current ?? -1) === f.page - 1;
                   return (
                     <li
                       key={f.id}
