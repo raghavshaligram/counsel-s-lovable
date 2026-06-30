@@ -117,6 +117,7 @@ export function BatchDialog<O>({
           </div>
         ) : (
           <>
+            <ExportFormatRow />
             <div className="rounded-md border border-whisper bg-canvas/40">
               <div className="flex items-center justify-between px-3 py-2 border-b border-whisper text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 <span>Batch ledger</span>
