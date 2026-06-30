@@ -396,6 +396,7 @@ function OutlinePage() {
             <Download className="h-3.5 w-3.5 mr-1.5" />
             Export PDF
           </Button>
+          <ExportFormatRow className="ml-auto" />
         </div>
 
 
