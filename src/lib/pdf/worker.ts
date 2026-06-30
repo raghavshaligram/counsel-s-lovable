@@ -22,3 +22,38 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
 // Back-compat shim: previous code called getPdfjs() synchronously.
 // Keeping the name but it now returns a promise.
 export const getPdfjs = loadPdfjs;
+
+/**
+ * Drop the cached pdf.js module so the next loadPdfjs() spawns a fresh
+ * underlying Web Worker. Use this when the pdfjs worker appears wedged
+ * (e.g. getDocument() hangs past a watchdog) — recovers without forcing
+ * the user to refresh the whole browser tab.
+ */
+export function resetPdfjs(): void {
+  cached = null;
+}
+
+/**
+ * Awaits a pdf.js task with a watchdog. If it doesn't settle in `ms`,
+ * resets the pdfjs cache (next call re-spawns the worker) and rejects.
+ * Use around getDocument(...).promise to make heavy-doc hangs recoverable.
+ */
+export async function withPdfjsWatchdog<T>(
+  task: Promise<T>,
+  ms = 30_000,
+  onTimeout?: () => void,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      resetPdfjs();
+      onTimeout?.();
+      reject(new Error("pdfjs-watchdog-timeout"));
+    }, ms);
+  });
+  try {
+    return await Promise.race([task, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
