@@ -1102,17 +1102,44 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
-        setProgress(
-          p.stage === "ocr"
-            ? `OCR scanning ${p.page}/${p.totalPages}`
-            : `Reading page ${p.page}/${p.totalPages}`,
-        );
+      // Stream findings as they're discovered. Regex hits (SSN/card/email/
+      // phone) land within seconds; NER name hits stream in progressively
+      // from a Web Worker so the UI stays responsive even on 300+ page docs.
+      const streamed: Det[] = [];
+      let flushTimer: ReturnType<typeof setTimeout> | null = null;
+      const flush = () => {
+        flushTimer = null;
+        setFindings([...streamed]);
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const d of streamed) {
+            if (d.confidence !== "low" && !next.has(d.id)) next.add(d.id);
+          }
+          return next;
+        });
+      };
+      const scheduleFlush = () => {
+        if (flushTimer) return;
+        flushTimer = setTimeout(flush, 120);
+      };
+      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await mod.detectPiiInPdf(file, 1.5, {
+        onProgress: (p) => {
+          const k = p.findingsSoFar ?? streamed.length;
+          if (p.stage === "ocr") {
+            setProgress(`OCR scanning ${p.page}/${p.totalPages} · ${k} finding${k === 1 ? "" : "s"}`);
+          } else if (p.stage === "ner") {
+            setProgress(`Detecting names ${p.page}/${p.totalPages} · ${k} finding${k === 1 ? "" : "s"}`);
+          } else {
+            setProgress(`Scanning ${p.page}/${p.totalPages} · ${k} finding${k === 1 ? "" : "s"}`);
+          }
+        },
+        onFinding: (d) => {
+          streamed.push(d);
+          scheduleFlush();
+        },
       });
+      if (flushTimer) clearTimeout(flushTimer);
       // Side-channel scan: form fields, annotations, document metadata.
-      // These vectors are invisible on the page but ship with the file
-      // unless explicitly stripped. Sanitize handles removal during the
-      // redact export; we surface them here so the user can SEE them.
       setProgress("Scanning form fields, comments, metadata…");
       let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
       try {
