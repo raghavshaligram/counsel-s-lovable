@@ -191,6 +191,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <SanitizePanel ctx={ctx} />;
     case "exhibit-binder":
       return <ExhibitBinderPanel />;
+    case "workflows":
+      return <WorkflowsPanel ctx={ctx} />;
     case "court-readiness":
       return <CourtReadinessPanel ctx={ctx} />;
     case "privilege-scan":
