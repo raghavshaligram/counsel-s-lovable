@@ -471,7 +471,7 @@ async function verifyRawStreams(
     return leaks;
   }
   const ctx = doc.context;
-  const pageContentRefs = scope === "non-page" ? collectPageContentRefs(doc) : undefined;
+  const pageContentRefs = scope === "non-page" ? collectPageRenderedStreamRefs(doc) : undefined;
   const needles = sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3);
   if (needles.length === 0) return leaks;
 
@@ -512,19 +512,50 @@ async function verifyRawStreams(
   return leaks;
 }
 
-function collectPageContentRefs(doc: PDFDocument): Set<string> {
+function collectPageRenderedStreamRefs(doc: PDFDocument): Set<string> {
   const out = new Set<string>();
-  const add = (obj: unknown): void => {
+  const visitedXObjects = new Set<string>();
+  const addContent = (obj: unknown, resources?: PDFDict): void => {
     if (!obj) return;
     if (obj instanceof PDFRef) {
       out.add(refKey(obj));
+      scanInvokedXObjects(doc.context.lookup(obj), resources);
       return;
     }
     if (obj instanceof PDFArray) {
-      for (const item of obj.asArray()) add(item);
+      for (const item of obj.asArray()) addContent(item, resources);
+      return;
+    }
+    scanInvokedXObjects(obj, resources);
+  };
+  const scanInvokedXObjects = (contentObj: unknown, resources?: PDFDict): void => {
+    if (!resources || !(contentObj instanceof PDFStream)) return;
+    const decoded = decodeStreamBytes(contentObj);
+    if (!decoded || decoded.length === 0) return;
+    const content = new TextDecoder("latin1", { fatal: false }).decode(decoded);
+    const xobjects = resources.lookupMaybe(PDFName.of("XObject"), PDFDict);
+    if (!xobjects) return;
+    for (const match of content.matchAll(/\/([A-Za-z0-9_.-]+)\s+Do\b/g)) {
+      const xobjName = match[1];
+      const xobj = xobjects.get(PDFName.of(xobjName));
+      if (!xobj) continue;
+      let xobjKey = "direct";
+      if (xobj instanceof PDFRef) {
+        xobjKey = refKey(xobj);
+        out.add(xobjKey);
+      }
+      if (visitedXObjects.has(xobjKey)) continue;
+      visitedXObjects.add(xobjKey);
+      const resolved = doc.context.lookup(xobj as never);
+      if (!(resolved instanceof PDFStream)) continue;
+      const nestedResources = resolved.dict.lookupMaybe(PDFName.of("Resources"), PDFDict) ?? resources;
+      scanInvokedXObjects(resolved, nestedResources);
     }
   };
-  for (const page of doc.getPages()) add(page.node.get(PDFName.of("Contents")));
+  for (const page of doc.getPages()) {
+    const resources = page.node.lookupMaybe(PDFName.of("Resources"), PDFDict);
+    addContent(page.node.get(PDFName.of("Contents")), resources);
+  }
   return out;
 }
 
