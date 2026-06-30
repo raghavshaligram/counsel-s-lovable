@@ -57,8 +57,8 @@ import {
   FileCheck2,
   Settings as SettingsIcon,
   Wrench,
-  Printer,
   ShieldOff,
+
   BookOpen,
   Gavel,
 } from "lucide-react";
