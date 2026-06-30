@@ -547,6 +547,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
                 placeholder="exhibit-binder.pdf"
               />
             </Field>
+            <ExportFormatRow className="mt-2" />
           </section>
         </div>
 
