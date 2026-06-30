@@ -2931,8 +2931,16 @@ function EmptyStart({
       <div className="w-full max-w-[760px] text-center">
         <h1 className="font-display text-[24px] leading-tight">Begin a matter</h1>
         <p className="mt-2 text-[12.5px] text-text-2">
-          Purpose-built for legal work. Nothing leaves this device.
+          Purpose-built for legal work. Documents stay on this device.
         </p>
+        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-vault/25 bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault">
+          <Lock className="h-3 w-3" strokeWidth={2.5} />
+          On your device · Nothing uploaded
+          <span className="mx-1 opacity-40">·</span>
+          <Link to="/verify-privacy" className="underline underline-offset-2 hover:opacity-80">
+            Verify it yourself
+          </Link>
+        </div>
 
         {/* Primary: open a document */}
         <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
