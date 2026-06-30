@@ -61,28 +61,22 @@ export function OfflineToggle({
     <div className="relative">
       <button
         type="button"
-        onClick={() => {
-          const next = !enabled;
-          onChange(next);
-          saveOfflinePref(next);
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setOpen((v) => !v);
-        }}
+        onClick={() => setOpen((v) => !v)}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
           enabled
             ? "bg-vault/15 text-vault hover:bg-vault/25"
             : "bg-surface-2 text-text-muted hover:bg-surface-3 hover:text-foreground",
+          open && enabled && "bg-vault/25",
+          open && !enabled && "bg-surface-3",
         )}
         title={
           enabled
-            ? `Network isolation ON — ${blocked} request${blocked === 1 ? "" : "s"} blocked. Click to disable.`
-            : "Work Offline — click to block all network activity from this app"
+            ? `Isolated — ${blocked} request${blocked === 1 ? "" : "s"} blocked`
+            : "Work Offline — click to enable"
         }
-        aria-label={enabled ? "Disable Work Offline" : "Enable Work Offline"}
-        aria-pressed={enabled}
+        aria-label={enabled ? "Network isolation enabled" : "Work Offline toggle"}
+        aria-expanded={open}
       >
         {enabled ? (
           <WifiOff className="h-3 w-3" strokeWidth={2.5} />
@@ -94,17 +88,6 @@ export function OfflineToggle({
         </span>
         <span className="md:hidden">{enabled ? "Isolated" : "Offline"}</span>
       </button>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full text-text-muted hover:bg-surface-3 hover:text-foreground"
-        title="About Work Offline"
-        aria-label="About Work Offline"
-        aria-expanded={open}
-      >
-        <span className="text-[10px] font-semibold">i</span>
-      </button>
-
 
       {open && (
         <>
