@@ -79,10 +79,9 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     try {
       const bytes = new Uint8Array(await target.arrayBuffer());
       const out = await op(bytes);
-      downloadBytes(
+      await downloadPdf(
         out,
         `${baseName(target.name)}-${suffix}.pdf`,
-        "application/pdf",
       );
       toast.success(`${label} — saved`, { id: toastId });
     } catch (err) {
