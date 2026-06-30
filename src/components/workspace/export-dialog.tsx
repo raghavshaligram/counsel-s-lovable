@@ -108,8 +108,13 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       }
 
       if (flOn) {
+        // ORDER (non-negotiable): clear form-field /V + /DV and DELETE /AP
+        // appearance streams BEFORE pdf-lib's form.flatten() runs. Without
+        // this, a field's /AP — which is what actually renders the visible
+        // value — gets baked into the page content stream as drawn glyphs
+        // and survives every downstream sanitize/PDF-A pass.
         const { flatten } = await importChunk(() => import("@/lib/batch/ops/flatten"));
-        bytes = await flatten(bytes, { forms: true, annotations: true });
+        bytes = await flatten(bytes, { forms: true, annotations: true, clearSensitiveFirst: true });
       }
 
       if (batesOn) {
