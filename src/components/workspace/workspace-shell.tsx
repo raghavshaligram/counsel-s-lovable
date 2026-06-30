@@ -662,10 +662,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingCloseId(id);
         return;
       }
-      // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
+      // Release pdfDoc + any rendered canvases for this tab.
       const doc = pdfDocsRef.current.get(id);
       if (doc) {
-        try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        cleanupWorkspaceState({ pdfDoc: doc as { destroy?: () => Promise<unknown> } });
         pdfDocsRef.current.delete(id);
       }
       setTabs((ts) => {
