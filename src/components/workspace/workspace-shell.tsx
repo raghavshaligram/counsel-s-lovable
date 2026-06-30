@@ -1387,6 +1387,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
           />
 
+          <ExportFormatChip />
           <ExportMenu
             file={file}
             canExport={!!editorState.doc}
