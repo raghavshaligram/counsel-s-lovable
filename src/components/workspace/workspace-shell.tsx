@@ -61,6 +61,7 @@ import {
 
   BookOpen,
   Gavel,
+  Workflow,
 } from "lucide-react";
 
 import { Link, useNavigate } from "@tanstack/react-router";
