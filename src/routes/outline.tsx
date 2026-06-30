@@ -21,7 +21,8 @@ import {
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import { parsePdf } from "@/lib/outline/parse";
 import { exportPdf } from "@/lib/outline/write";
 import { linkifyPage } from "@/lib/outline/linkify";
