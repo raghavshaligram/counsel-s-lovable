@@ -374,3 +374,25 @@ export function initNetworkIsolation() {
   notifySW(enabled);
   emit();
 }
+
+export function getRequestLog(): RequestLogEntry[] {
+  return log.slice();
+}
+
+export function subscribeRequestLog(fn: LogListener): () => void {
+  logListeners.add(fn);
+  return () => {
+    logListeners.delete(fn);
+  };
+}
+
+export function clearRequestLog() {
+  log.length = 0;
+  emitLog();
+}
+
+export function getDocBytesUploaded(): number {
+  let n = 0;
+  for (const e of log) if (!e.blocked) n += e.docBytes;
+  return n;
+}
