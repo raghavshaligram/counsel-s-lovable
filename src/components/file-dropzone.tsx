@@ -120,7 +120,7 @@ export function FileDropzone({
         {sublabel ?? (
           <>
             or <span className="text-vault underline underline-offset-2">click to browse</span> ·
-            no size limit · processed locally
+            no size limit
           </>
         )}
       </div>
@@ -132,6 +132,14 @@ export function FileDropzone({
         <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
           <Clipboard className="h-3 w-3" /> or paste
         </span>
+      </div>
+
+      {/* Persistent privacy primer — visible BEFORE the user commits a file,
+          on every dropzone in the app. Reflects a true property of the app
+          (zero network egress) and is consistent across screens. */}
+      <div className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-vault/25 bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault">
+        <Lock className="h-3 w-3" strokeWidth={2.5} />
+        On your device · Nothing uploaded
       </div>
 
       <div className="mt-4 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70">
