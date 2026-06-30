@@ -230,7 +230,12 @@ async function verifySideChannelVectors(
     }
   }
 
-  // -- Annotation text on every page ----------------------------------
+  // -- Annotation text + widget /AP appearance stream content ---------
+  //    /AP is what actually renders a form field's visible value. A bare
+  //    /V scan misses it; sanitize must delete /AP, and this check proves
+  //    no Form XObject reachable from a widget still carries a sensitive
+  //    literal in its content stream.
+  const flate = await import("fflate");
   for (let pageIdx = 0; pageIdx < doc.getPageCount(); pageIdx++) {
     const page = doc.getPage(pageIdx);
     const annotsArr = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
@@ -246,6 +251,20 @@ async function verifySideChannelVectors(
             vector: "annotation",
             page: pageIdx,
             text: `Annotation /${key}: "${truncate(txt)}" (matched "${truncate(hit)}")`,
+            ref: refStr(item),
+          });
+        }
+      }
+      // Widget /AP appearance-stream content scan.
+      const subtype = nameStr(annot.get(PDFName.of("Subtype")));
+      if (subtype === "/Widget" || annot.has(PDFName.of("FT"))) {
+        const fieldName = extractText(annot.get(PDFName.of("T"))) || "(widget)";
+        const apHit = scanAppearanceForLiterals(ctx, annot, sensitiveStrings, flate.unzlibSync);
+        if (apHit) {
+          leaks.push({
+            vector: "form-field",
+            page: pageIdx,
+            text: `Form field "${fieldName}" /AP appearance stream still renders "${truncate(apHit)}" — /AP must be deleted before flatten/export`,
             ref: refStr(item),
           });
         }
@@ -376,6 +395,48 @@ function walkFormTree(
     const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
     if (kids) walkFormTree(ctx, kids.asArray(), visit);
   }
+}
+
+/** Decode every Form XObject reachable from a widget's /AP (N/D/R, plus
+ *  any nested state dicts) and search the contents for sensitive literals.
+ *  Returns the first matching needle, or null. */
+function scanAppearanceForLiterals(
+  ctx: PDFDocument["context"],
+  annot: PDFDict,
+  needles: string[],
+  unzlibSync: (b: Uint8Array) => Uint8Array,
+): string | null {
+  if (needles.length === 0) return null;
+  const ap = annot.lookupMaybe(PDFName.of("AP"), PDFDict);
+  if (!ap) return null;
+  const streams: PDFStream[] = [];
+  const collect = (val: unknown): void => {
+    if (!val) return;
+    try {
+      const resolved = ctx.lookup(val as never);
+      if (resolved instanceof PDFStream) streams.push(resolved);
+      else if (resolved instanceof PDFDict) {
+        for (const [, nested] of resolved.entries()) collect(nested);
+      }
+    } catch { /* ignore */ }
+  };
+  for (const k of ["N", "D", "R"]) collect(ap.get(PDFName.of(k)));
+  for (const stream of streams) {
+    const raw =
+      (stream as unknown as { contents?: Uint8Array }).contents
+      ?? (stream as unknown as { getContents?: () => Uint8Array }).getContents?.();
+    if (!raw || raw.length === 0) continue;
+    let bytes: Uint8Array = raw;
+    if (nameStr(stream.dict.get(PDFName.of("Filter"))) === "/FlateDecode") {
+      try { bytes = unzlibSync(raw); } catch { /* keep raw */ }
+    }
+    const txt = new TextDecoder("latin1").decode(bytes);
+    for (const needle of needles) {
+      const hex = Array.from(needle).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+      if (txt.includes(needle) || txt.toLowerCase().includes(hex)) return needle;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
