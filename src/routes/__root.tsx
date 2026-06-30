@@ -23,6 +23,7 @@ import { CertificateGate } from "@/components/workspace/certificate-gate";
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
 import { UnsupportedBrowserGate } from "@/components/unsupported-browser";
 import { initNetworkIsolation } from "@/lib/network-isolation";
+import { installRuntimePressureListener } from "@/lib/runtime-pressure";
 
 function NotFoundComponent() {
   return (
