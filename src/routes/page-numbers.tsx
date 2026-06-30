@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { addPageNumbers, type PageNumberAnchor, type PageNumberFormat, type PageNumbersOpts } from "@/lib/batch/ops/page-numbers";
 import { BatchDialog } from "@/components/tray/batch-dialog";
 import { useTray } from "@/lib/tray/store";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 
 export const Route = createFileRoute("/page-numbers")({
   head: () => ({
