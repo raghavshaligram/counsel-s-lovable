@@ -337,7 +337,7 @@ function OutlinePage() {
     try {
       const out = await exportPdf(sourceBytes, outline, links);
       const baseName = sourceName.replace(/\.pdf$/i, "");
-      downloadBytes(out, `${baseName}-outline.pdf`, "application/pdf");
+      await downloadPdf(out, `${baseName}-outline.pdf`);
       toast.success("PDF exported");
     } catch (err) {
       console.error(err);
