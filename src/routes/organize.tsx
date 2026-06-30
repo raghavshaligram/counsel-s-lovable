@@ -8,7 +8,8 @@ import { Download, Trash2, RotateCw, GripVertical, FilePlus2 } from "lucide-reac
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import { cn } from "@/lib/utils";
 import { ToolHeader } from "@/routes/split";
 
