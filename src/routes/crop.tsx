@@ -454,6 +454,7 @@ function CropPage() {
               </label>
 
               <div className="flex flex-col gap-2 pt-2 border-t border-whisper">
+                <ExportFormatRow />
                 <Button onClick={runExport} disabled={busy || !sourceBytes} className="bg-vault text-vault-foreground hover:opacity-90">
                   <Download className="h-3.5 w-3.5 mr-1.5" />
                   Export cropped PDF
