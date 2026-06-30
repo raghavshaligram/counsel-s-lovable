@@ -61,6 +61,18 @@ function SecurityArchitecturePage() {
         </div>
       </section>
 
+      {/* LIVE PROVE-IT */}
+      <section className="border-b border-border bg-surface-canvas/60">
+        <div className="mx-auto max-w-5xl px-5 md:px-8 py-12 md:py-16">
+          <div className="font-mono text-[11px] text-muted-foreground mb-4 uppercase tracking-[0.16em]">
+            Prove it — live readout
+          </div>
+          <div className="rounded-xl border border-border bg-surface-2 max-w-md overflow-hidden flex flex-col" style={{ maxHeight: "32rem" }}>
+            <ProveItPanelBody />
+          </div>
+        </div>
+      </section>
+
       {/* PROCESSING MODEL */}
       <section className="border-b border-border">
         <div className="mx-auto max-w-5xl px-5 md:px-8 py-16 md:py-24">
