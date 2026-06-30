@@ -945,13 +945,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         const numPages = doc.numPages;
-        // Replace any prior pdfDoc for this tab.
+        // Replace any prior pdfDoc for this tab. cleanupWorkspaceState
+        // releases the previous doc, its rendered canvases, and pending
+        // worker tasks WITHOUT awaiting destroy() — critical, because
+        // pdf.js destroy waits for in-flight lazy getPage tasks to settle
+        // and would otherwise block the new doc from being installed
+        // (the "second PDF freeze" bug).
         const prior = pdfDocsRef.current.get(tabId);
         if (prior && prior !== doc) {
-          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          cleanupWorkspaceState({ pdfDoc: prior as { destroy?: () => Promise<unknown> } });
         }
         pdfDocsRef.current.set(tabId, doc);
         setPdfDocVersion((v) => v + 1);
+        clearMemoryPressure();
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
         }));
