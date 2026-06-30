@@ -382,10 +382,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
     if (prior && prior !== parsed) {
-      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+      // Fire-and-forget — pdf.js destroy() awaits pending getPage tasks,
+      // which can hang behind lazy IntersectionObserver jobs and block the
+      // new doc from being installed. cleanupWorkspaceState wraps it safely.
+      cleanupWorkspaceState({ pdfDoc: prior as { destroy?: () => Promise<unknown> } });
     }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
+    clearMemoryPressure();
   }, []);
 
   // Convenience aliases — every render reads from `active`.
