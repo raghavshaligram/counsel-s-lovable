@@ -264,7 +264,7 @@ async function verifySideChannelVectors(
           leaks.push({
             vector: "form-field",
             page: pageIdx,
-            text: `Form field "${fieldName}" /AP appearance stream still renders "${truncate(apHit)}" — /AP must be deleted before flatten/export`,
+            text: `Form field "${fieldName}" /AP appearance stream still renders (matched "${truncate(apHit)}") — /AP must be deleted before flatten/export`,
             ref: refStr(item),
           });
         }
@@ -488,7 +488,7 @@ async function verifyRawStreams(
       ) {
         leaks.push({
           vector: "raw-stream",
-          text: `Sensitive literal "${truncate(needle)}" found in stream bytes`,
+          text: `Sensitive literal found in stream bytes (matched "${truncate(needle)}")`,
           ref: refStr(ref),
         });
         break;
