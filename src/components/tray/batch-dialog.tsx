@@ -79,17 +79,20 @@ export function BatchDialog<O>({
     abortRef.current?.abort();
   };
 
-  const downloadAll = () => {
+  const downloadAll = async () => {
     if (!finalResult) return;
     const completed = finalResult.files.filter((f) => f.status === "done").length;
     if (completed === 0) return;
     if (completed === 1) {
       const f = finalResult.files.find((x) => x.status === "done");
-      if (f && f.status === "done") downloadBytes(f.bytes, f.outName, "application/pdf");
+      if (f && f.status === "done") await downloadPdf(f.bytes, f.outName);
       return;
     }
-    const zip = zipBatchOutputs(finalResult, zipName);
-    downloadBytes(zip.bytes, zip.name, "application/zip");
+    // Multiple files → run each through downloadPdf so the user's format
+    // preference (PDF / PDF/A) is applied per file, then zip is skipped.
+    for (const f of finalResult.files) {
+      if (f.status === "done") await downloadPdf(f.bytes, f.outName);
+    }
   };
 
   const view = progress ?? { total: entries.length, done: 0, failed: 0, files: entries.map((e) => ({ id: e.id, name: e.name, status: "queued" as const })) };
