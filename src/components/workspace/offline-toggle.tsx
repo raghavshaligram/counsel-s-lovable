@@ -241,7 +241,7 @@ export function OfflineToggle({
                     </p>
 
                     {readyState && !readyState.ready && (
-                      <div className="mt-3 flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-[11px] leading-relaxed text-warning">
+                      <div className="mt-3 flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11px] leading-relaxed text-destructive">
                         <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2.5} />
                         <span>
                           {!readyState.hasSW
