@@ -207,10 +207,38 @@ export async function runNerWorkerBatch(texts: string[]): Promise<NerEntity[][]>
     nerPending.set(id, resolve);
     w.postMessage({ id, texts });
   });
+  scheduleNerIdleShutdown();
   if (reply.error || !reply.results) {
     return texts.map(() => []);
   }
   return reply.results.map((raw, i) => processRawEntities(texts[i] ?? "", raw ?? []));
+}
+
+/**
+ * Terminate the NER worker and drop the 110 MB model from memory. Safe to
+ * call repeatedly — the next runNerWorkerBatch() will respawn the worker
+ * and reload the model. Called on long idle and when the workspace closes
+ * its last document so NER doesn't keep competing with pdf.js for memory.
+ */
+export function terminateNerWorker(): void {
+  if (nerIdleTimer) {
+    clearTimeout(nerIdleTimer);
+    nerIdleTimer = null;
+  }
+  if (!nerWorker) return;
+  try { nerWorker.terminate(); } catch { /* ignore */ }
+  nerWorker = null;
+  // Reject any in-flight callers so they don't hang forever.
+  for (const cb of nerPending.values()) {
+    try { cb({ error: "ner-worker-terminated" }); } catch { /* ignore */ }
+  }
+  nerPending.clear();
+}
+
+let nerIdleTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleNerIdleShutdown() {
+  if (nerIdleTimer) clearTimeout(nerIdleTimer);
+  nerIdleTimer = setTimeout(() => { terminateNerWorker(); }, 60_000);
 }
 
 /**
