@@ -208,7 +208,7 @@ function OrganizePage() {
         out.addPage(copied);
       }
       const bytes = await out.save();
-      downloadBytes(bytes, `counselpdf-organized-${Date.now()}.pdf`, "application/pdf");
+      await downloadPdf(bytes, `counselpdf-organized-${Date.now()}.pdf`);
       toast.success(`Built PDF with ${cells.length} page${cells.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error(err);
