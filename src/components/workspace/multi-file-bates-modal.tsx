@@ -15,7 +15,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { X, GripVertical, Upload, Trash2, Loader2 } from "lucide-react";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import {
   planMultiFileBates,
   stampMultiFileBates,
