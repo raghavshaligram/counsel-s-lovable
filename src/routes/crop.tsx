@@ -11,7 +11,8 @@ import { Download, Wand2, Crop as CropIcon, ChevronLeft, ChevronRight, Upload } 
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import { applyCrop, rectFromMargins } from "@/lib/crop/apply";
 import { detectContentBounds } from "@/lib/crop/detect";
 import { CROP_PRESETS, ptFrom, ptTo, type CropRect, type CropScope, type CropUnit } from "@/lib/crop/types";
