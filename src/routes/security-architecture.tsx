@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
+import { ProveItPanelBody } from "@/components/workspace/prove-it-panel";
 import {
   Lock,
   ServerOff,
