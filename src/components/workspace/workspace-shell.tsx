@@ -105,7 +105,9 @@ import { AnnouncementBanner } from "./announcement-banner";
 import { ExportFormatChip } from "./export-format-row";
 import { WelcomeModal } from "./welcome-modal";
 import { PrivacyShield } from "./privacy-shield";
-import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
+import { OfflineToggle, loadOfflinePref } from "./offline-toggle";
+import { ExportMenu } from "./export-menu";
+
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
