@@ -1417,6 +1417,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       </header>
 
       <AnnouncementBanner />
+      <MemoryPressureBanner />
 
       {/* TAB STRIP */}
       <TabStrip
