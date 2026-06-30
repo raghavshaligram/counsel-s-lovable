@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { runBatch, zipBatchOutputs, downloadBytes, type BatchOp, type BatchProgress } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import { useTray } from "@/lib/tray/store";
 import { CheckCircle2, Loader2, AlertTriangle, Download, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
