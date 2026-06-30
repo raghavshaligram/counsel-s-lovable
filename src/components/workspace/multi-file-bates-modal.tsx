@@ -154,12 +154,12 @@ export function MultiFileBatesModal({ onClose }: { onClose: () => void }) {
         },
       );
       if (merge && result.merged) {
-        downloadBytes(result.merged.bytes, result.merged.name, "application/pdf");
+        await downloadPdf(result.merged.bytes, result.merged.name);
         toast.success(`Merged Bates set saved (${totalPages} pages)`, { id: tid });
       } else {
         for (const f of result.files) {
           const out = f.name.replace(/\.pdf$/i, "") + "-bates.pdf";
-          downloadBytes(f.bytes, out, "application/pdf");
+          await downloadPdf(f.bytes, out);
         }
         toast.success(
           `${result.files.length} file${result.files.length === 1 ? "" : "s"} stamped (${totalPages} pages)`,
