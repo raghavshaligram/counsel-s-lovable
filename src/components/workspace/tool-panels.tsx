@@ -1824,10 +1824,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     // we permanently remove the underlying content.
     const n = totalBoxes;
     const ok = await confirmDialog({
-      title: "Apply redactions?",
+      title: "Apply redactions? Review carefully.",
       description: (
         <>
-          This will permanently remove the content under{" "}
+          This will <span className="font-medium text-foreground">permanently remove</span> the content under{" "}
           <span className="font-medium text-foreground">
             {n} redaction{n === 1 ? "" : "s"}
           </span>
@@ -1837,6 +1837,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       ),
       body: (
         <div className="space-y-2">
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200/90">
+            Take a moment to scan every page before continuing. Once applied,
+            the underlying content is gone — there is no undo, even by reopening
+            the original file.
+          </div>
           <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <span
               aria-hidden
@@ -1969,7 +1974,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const flatNote = rasterResult.rasterizedPages.length
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
-        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+        toast.success(`Content permanently removed · verified ${result.removed}/${result.total} region${result.total === 1 ? "" : "s"}${flatNote}`, { id: tid });
 
         // Offer the formal Redaction Certificate as a free-signup value gate.
         // Only fires when verification PASSED — never claim unverified compliance.
