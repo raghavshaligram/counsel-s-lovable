@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { Lock, Shield, WifiOff, Eye, ArrowRight, Terminal } from "lucide-react";
+import { ProveItPanelBody } from "@/components/workspace/prove-it-panel";
 
 export const Route = createFileRoute("/verify-privacy")({
   head: () => ({
