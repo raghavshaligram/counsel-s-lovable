@@ -56,7 +56,7 @@ function PageNumbersPage() {
     setBusy(true);
     try {
       const out = await addPageNumbers(new Uint8Array(await file.arrayBuffer()), opts);
-      downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf", "application/pdf");
+      await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf");
       toast.success("Page numbers added");
     } catch (err) {
       console.error(err);
