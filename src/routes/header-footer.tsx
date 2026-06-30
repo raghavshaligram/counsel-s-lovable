@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { addHeaderFooter, type HeaderFooterOpts, type HFAlign } from "@/lib/batch/ops/header-footer";
 import { BatchDialog } from "@/components/tray/batch-dialog";
 import { useTray } from "@/lib/tray/store";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 
 export const Route = createFileRoute("/header-footer")({
   head: () => ({
@@ -45,7 +46,7 @@ function HeaderFooterPage() {
     setBusy(true);
     try {
       const out = await addHeaderFooter(new Uint8Array(await file.arrayBuffer()), { ...opts, filename: file.name });
-      downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf", "application/pdf");
+      await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf");
       toast.success("Header/footer added");
     } catch (err) {
       console.error(err);
@@ -133,6 +134,8 @@ function HeaderFooterPage() {
             <NumField label="Margin (pt)" value={opts.margin} onChange={(v) => setOpts({ ...opts, margin: v })} min={0} max={144} />
           </div>
         </section>
+
+        <ExportFormatRow />
 
         <div className="flex flex-col sm:flex-row gap-3">
           <Button

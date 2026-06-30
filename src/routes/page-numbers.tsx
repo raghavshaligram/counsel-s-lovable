@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { addPageNumbers, type PageNumberAnchor, type PageNumberFormat, type PageNumbersOpts } from "@/lib/batch/ops/page-numbers";
 import { BatchDialog } from "@/components/tray/batch-dialog";
 import { useTray } from "@/lib/tray/store";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 
 export const Route = createFileRoute("/page-numbers")({
   head: () => ({
@@ -55,7 +56,7 @@ function PageNumbersPage() {
     setBusy(true);
     try {
       const out = await addPageNumbers(new Uint8Array(await file.arrayBuffer()), opts);
-      downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf", "application/pdf");
+      await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-numbered.pdf");
       toast.success("Page numbers added");
     } catch (err) {
       console.error(err);
@@ -135,6 +136,8 @@ function PageNumbersPage() {
             />
           </Field>
         </section>
+
+        <ExportFormatRow />
 
         <div className="flex flex-col sm:flex-row gap-3">
           <Button

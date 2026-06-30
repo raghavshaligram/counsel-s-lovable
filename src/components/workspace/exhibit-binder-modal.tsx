@@ -14,7 +14,8 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { X, GripVertical, Upload, Trash2, FilePlus2, BookOpen } from "lucide-react";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import {
   buildExhibitBinder,
   cleanExhibitTitle,
@@ -175,10 +176,9 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
         },
         setProgress,
       );
-      downloadBytes(
+      await downloadPdf(
         bytes,
         outputName.endsWith(".pdf") ? outputName : outputName + ".pdf",
-        "application/pdf",
       );
       toast.success(
         `Binder ready · ${entries.length} exhibit${entries.length === 1 ? "" : "s"}`,
@@ -547,6 +547,7 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
                 placeholder="exhibit-binder.pdf"
               />
             </Field>
+            <ExportFormatRow className="mt-2" />
           </section>
         </div>
 

@@ -11,7 +11,8 @@ import { Download, Wand2, Crop as CropIcon, ChevronLeft, ChevronRight, Upload } 
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import { applyCrop, rectFromMargins } from "@/lib/crop/apply";
 import { detectContentBounds } from "@/lib/crop/detect";
 import { CROP_PRESETS, ptFrom, ptTo, type CropRect, type CropScope, type CropUnit } from "@/lib/crop/types";
@@ -213,7 +214,7 @@ function CropPage() {
         page,
       );
       const name = sourceName.replace(/\.pdf$/i, "") + "-cropped.pdf";
-      downloadBytes(out, name, "application/pdf");
+      await downloadPdf(out, name);
       toast.success(`Cropped ${idxs.length} page${idxs.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error(err);
@@ -453,6 +454,7 @@ function CropPage() {
               </label>
 
               <div className="flex flex-col gap-2 pt-2 border-t border-whisper">
+                <ExportFormatRow />
                 <Button onClick={runExport} disabled={busy || !sourceBytes} className="bg-vault text-vault-foreground hover:opacity-90">
                   <Download className="h-3.5 w-3.5 mr-1.5" />
                   Export cropped PDF

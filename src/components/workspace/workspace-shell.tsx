@@ -106,6 +106,7 @@ import { WelcomeModal } from "./welcome-modal";
 import { PrivacyShield } from "./privacy-shield";
 import { OfflineToggle, loadOfflinePref } from "./offline-toggle";
 import { ExportMenu } from "./export-menu";
+import { ExportFormatChip } from "./export-format-row";
 
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
@@ -1386,6 +1387,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
           />
 
+          <ExportFormatChip />
           <ExportMenu
             file={file}
             canExport={!!editorState.doc}
