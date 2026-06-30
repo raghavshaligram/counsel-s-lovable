@@ -88,11 +88,17 @@ export function BatchDialog<O>({
       if (f && f.status === "done") await downloadPdf(f.bytes, f.outName);
       return;
     }
-    // Multiple files → run each through downloadPdf so the user's format
-    // preference (PDF / PDF/A) is applied per file, then zip is skipped.
-    for (const f of finalResult.files) {
-      if (f.status === "done") await downloadPdf(f.bytes, f.outName);
+    const { getExportFormat } = await import("@/lib/workspace/export-format-store");
+    if (getExportFormat() === "pdf-a") {
+      // PDF/A can't be packaged inside a zip without losing conformance
+      // tracking — deliver each file individually through the PDF/A pipeline.
+      for (const f of finalResult.files) {
+        if (f.status === "done") await downloadPdf(f.bytes, f.outName);
+      }
+      return;
     }
+    const zip = zipBatchOutputs(finalResult, zipName);
+    downloadBytes(zip.bytes, zip.name, "application/zip");
   };
 
   const view = progress ?? { total: entries.length, done: 0, failed: 0, files: entries.map((e) => ({ id: e.id, name: e.name, status: "queued" as const })) };
