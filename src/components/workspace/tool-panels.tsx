@@ -1264,23 +1264,6 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           })),
           order: "sanitize/clear fields before any flatten, PDF/A conversion, or download",
         });
-        const { sanitizePdfBytesWithReport } = await importChunk(
-          () => import("@/lib/pdf/sanitize"),
-        );
-        const sourceBytes = editorState.doc.srcBytes.byteLength > 0
-          ? editorState.doc.srcBytes
-          : new Uint8Array(await file!.arrayBuffer());
-        const { bytes: cleaned, report } = await sanitizePdfBytesWithReport(sourceBytes);
-        // eslint-disable-next-line no-console
-        console.info("[redact:form-field] apply-now sanitize report", {
-          acroForm: report.acroForm,
-          acroFormFieldsCleared: report.acroFormFields,
-          flattened: false,
-          order: "field values/AP cleared now; flatten/PDF-A can only run later",
-        });
-        const { verifyRedactionRemoval } = await importChunk(
-          () => import("@/lib/editor/verify-redaction"),
-        );
         const sideTargets = sideChannelDets.flatMap((d) => {
           const full = (d.sensitiveText || "").trim();
           const snip = (d.snippet || "").replace(/…$/, "").trim();
@@ -1290,6 +1273,26 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             label: d.sourceLabel,
           }));
         });
+        const { sanitizePdfBytesWithReport } = await importChunk(
+          () => import("@/lib/pdf/sanitize"),
+        );
+        const sourceBytes = editorState.doc.srcBytes.byteLength > 0
+          ? editorState.doc.srcBytes
+          : new Uint8Array(await file!.arrayBuffer());
+        const { bytes: cleaned, report } = await sanitizePdfBytesWithReport(sourceBytes, {
+          sensitiveStrings: sideTargets.map((t) => t.text),
+        });
+        // eslint-disable-next-line no-console
+        console.info("[redact:form-field] apply-now sanitize report", {
+          acroForm: report.acroForm,
+          acroFormFieldsCleared: report.acroFormFields,
+          flattened: false,
+          targetedValues: sideTargets.map((t) => t.text),
+          order: "field values/AP cleared now; flatten/PDF-A can only run later",
+        });
+        const { verifyRedactionRemoval } = await importChunk(
+          () => import("@/lib/editor/verify-redaction"),
+        );
         const verify = await verifyRedactionRemoval(cleaned, sideTargets);
         if (!verify.ok) {
           // Per-value × per-vector breakdown so the user (and DevTools)
