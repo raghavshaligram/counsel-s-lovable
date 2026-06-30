@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { addHeaderFooter, type HeaderFooterOpts, type HFAlign } from "@/lib/batch/ops/header-footer";
 import { BatchDialog } from "@/components/tray/batch-dialog";
 import { useTray } from "@/lib/tray/store";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 
 export const Route = createFileRoute("/header-footer")({
   head: () => ({
