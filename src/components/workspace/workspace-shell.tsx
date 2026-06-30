@@ -57,8 +57,8 @@ import {
   FileCheck2,
   Settings as SettingsIcon,
   Wrench,
-  Printer,
   ShieldOff,
+
   BookOpen,
   Gavel,
 } from "lucide-react";
@@ -100,12 +100,13 @@ import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
-import { CaseSessionSaveButton } from "./case-session-save";
 import { AnnouncementBanner } from "./announcement-banner";
-import { ExportFormatChip } from "./export-format-row";
+
 import { WelcomeModal } from "./welcome-modal";
 import { PrivacyShield } from "./privacy-shield";
-import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
+import { OfflineToggle, loadOfflinePref } from "./offline-toggle";
+import { ExportMenu } from "./export-menu";
+
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
@@ -1331,8 +1332,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               </span>
             )}
           </span>
-          <OfflineBadge enabled={workOffline} />
         </div>
+
         <div className="flex items-center gap-2">
           <PrivacyShield hasDocument={!!file} />
           <OfflineToggle enabled={workOffline} onChange={setWorkOffline} />
@@ -1372,33 +1373,15 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
           />
 
-          <button
-            type="button"
-            onClick={() => void onPrint()}
-            disabled={!editorState.doc || printing}
-            title="Print (⌘P)"
-            aria-label="Print"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-surface-2",
-              (!editorState.doc || printing) &&
-                "opacity-40 cursor-not-allowed hover:bg-surface-1",
-            )}
-          >
-            <Printer className="h-3.5 w-3.5" strokeWidth={2.5} />
-            Print
-          </button>
+          <ExportMenu
+            file={file}
+            canExport={!!editorState.doc}
+            canPrint={!!editorState.doc}
+            printing={printing}
+            onExport={onExport}
+            onPrint={() => void onPrint()}
+          />
 
-          <ExportFormatChip />
-          <button
-            type="button"
-            onClick={onExport}
-            className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 transition-opacity"
-          >
-            <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-            Export
-          </button>
-          <span className="mx-0.5 h-4 w-px bg-border" />
-          <CaseSessionSaveButton file={file} />
           <AccountMenu onShowWelcome={() => setWelcomeNonce((n) => n + 1)} />
         </div>
       </header>

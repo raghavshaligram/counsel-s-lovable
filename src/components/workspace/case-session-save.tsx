@@ -36,7 +36,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string | null> {
   }
 }
 
-export function CaseSessionSaveButton({ file, className }: Props) {
+export function useCaseSessionSave(file: File | null) {
   const openLogin = useLoginModal((s) => s.openLogin);
   const [busy, setBusy] = useState(false);
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -103,6 +103,13 @@ export function CaseSessionSaveButton({ file, className }: Props) {
       setBusy(false);
     }
   }, [file, openLogin]);
+
+  return { save, busy, authed };
+}
+
+export function CaseSessionSaveButton({ file, className }: Props) {
+  const { save, busy, authed } = useCaseSessionSave(file);
+
 
   return (
     <button
