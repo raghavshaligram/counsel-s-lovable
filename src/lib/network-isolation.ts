@@ -66,6 +66,95 @@ function emit() {
   });
 }
 
+function emitLog() {
+  const snap = log.slice();
+  logListeners.forEach((l) => {
+    try {
+      l(snap);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+function pushEntry(entry: Omit<RequestLogEntry, "id" | "ts">) {
+  const full: RequestLogEntry = { id: nextId++, ts: Date.now(), ...entry };
+  log.push(full);
+  if (log.length > MAX_LOG) log.splice(0, log.length - MAX_LOG);
+  emitLog();
+  return full;
+}
+
+function categorizeUrl(rawUrl: string): { host: string; category: RequestCategory } {
+  let host = "";
+  try {
+    const u = new URL(rawUrl, window.location.href);
+    host = u.host;
+    if (u.origin === window.location.origin) {
+      if (u.pathname.startsWith("/_serverFn") || u.pathname.includes("license")) {
+        return { host, category: "license" };
+      }
+      return { host, category: "app-assets" };
+    }
+    if (/supabase\.(co|in)$/i.test(u.host) || /\/auth\/v1\//.test(u.pathname) || /\/rest\/v1\//.test(u.pathname)) {
+      return { host, category: "license" };
+    }
+    if (/ai\.gateway|openai|anthropic|huggingface|hf\.co/i.test(u.host)) {
+      return { host, category: "ai" };
+    }
+    return { host, category: "other" };
+  } catch {
+    return { host, category: "other" };
+  }
+}
+
+function measureBody(body: BodyInit | Document | null | undefined): {
+  uploadBytes: number;
+  docBytes: number;
+  bodyKind: RequestLogEntry["bodyKind"];
+} {
+  if (body == null) return { uploadBytes: 0, docBytes: 0, bodyKind: "none" };
+  try {
+    if (typeof body === "string") {
+      const bytes = new Blob([body]).size;
+      // Heuristic: short JSON/text is app/license traffic, not document data.
+      const kind: RequestLogEntry["bodyKind"] =
+        body.startsWith("{") || body.startsWith("[") ? "json" : "text";
+      return { uploadBytes: bytes, docBytes: 0, bodyKind: kind };
+    }
+    if (body instanceof Blob) {
+      // Binary blob: count as potential document bytes.
+      return { uploadBytes: body.size, docBytes: body.size, bodyKind: "binary" };
+    }
+    if (body instanceof ArrayBuffer) {
+      return { uploadBytes: body.byteLength, docBytes: body.byteLength, bodyKind: "binary" };
+    }
+    if (ArrayBuffer.isView(body)) {
+      const v = body as ArrayBufferView;
+      return { uploadBytes: v.byteLength, docBytes: v.byteLength, bodyKind: "binary" };
+    }
+    if (typeof FormData !== "undefined" && body instanceof FormData) {
+      let total = 0;
+      let docTotal = 0;
+      body.forEach((v) => {
+        if (typeof v === "string") total += new Blob([v]).size;
+        else {
+          total += v.size;
+          docTotal += v.size; // a File in FormData counts as document data
+        }
+      });
+      return { uploadBytes: total, docBytes: docTotal, bodyKind: "form" };
+    }
+    if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+      const s = body.toString();
+      return { uploadBytes: new Blob([s]).size, docBytes: 0, bodyKind: "text" };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { uploadBytes: 0, docBytes: 0, bodyKind: "unknown" };
+}
+
 function bump(reason: string, url: unknown) {
   blocked += 1;
   // eslint-disable-next-line no-console
@@ -91,24 +180,62 @@ function install() {
 
   origFetch = window.fetch.bind(window);
   window.fetch = function patchedFetch(input: RequestInfo | URL, init?: RequestInit) {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (input as Request).url;
+    const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const { host, category } = categorizeUrl(url);
+    const measured = measureBody(init?.body as BodyInit | null | undefined);
+
     if (enabled) {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : (input as Request).url;
       bump("fetch", url);
+      pushEntry({
+        kind: "fetch",
+        method,
+        url,
+        host,
+        category,
+        uploadBytes: measured.uploadBytes,
+        docBytes: measured.docBytes,
+        bodyKind: measured.bodyKind,
+        blocked: true,
+      });
       return Promise.reject(
         new TypeError("Network blocked: CounselPDF is in Work Offline mode"),
       );
     }
-    return origFetch!(input as RequestInfo, init);
+    const entry = pushEntry({
+      kind: "fetch",
+      method,
+      url,
+      host,
+      category,
+      uploadBytes: measured.uploadBytes,
+      docBytes: measured.docBytes,
+      bodyKind: measured.bodyKind,
+      blocked: false,
+    });
+    return origFetch!(input as RequestInfo, init).then(
+      (res) => {
+        entry.status = res.status;
+        emitLog();
+        return res;
+      },
+      (err) => {
+        entry.error = err instanceof Error ? err.message : String(err);
+        emitLog();
+        throw err;
+      },
+    );
   } as typeof fetch;
 
   origXhrOpen = XMLHttpRequest.prototype.open;
   origXhrSend = XMLHttpRequest.prototype.send;
-  const blockedFlag = Symbol("offlineBlocked");
+  const urlFlag = Symbol("offlineUrl");
+  const methodFlag = Symbol("offlineMethod");
   type Marked = XMLHttpRequest & { [k: symbol]: unknown };
   XMLHttpRequest.prototype.open = function (
     this: Marked,
@@ -116,20 +243,48 @@ function install() {
     url: string | URL,
     ...rest: unknown[]
   ) {
-    (this as Marked)[blockedFlag] = enabled ? url : null;
+    (this as Marked)[urlFlag] = url;
+    (this as Marked)[methodFlag] = method;
     // @ts-expect-error rest passthrough
     return origXhrOpen!.call(this, method, url, ...rest);
   } as typeof XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.send = function (this: Marked, body?: Document | BodyInit | null) {
+    const rawUrl = String((this as Marked)[urlFlag] ?? "(unknown)");
+    const method = String((this as Marked)[methodFlag] ?? "GET").toUpperCase();
+    const { host, category } = categorizeUrl(rawUrl);
+    const measured = measureBody(body);
     if (enabled) {
-      bump("XMLHttpRequest", (this as Marked)[blockedFlag] ?? "(unknown)");
+      bump("XMLHttpRequest", rawUrl);
+      pushEntry({
+        kind: "xhr",
+        method,
+        url: rawUrl,
+        host,
+        category,
+        uploadBytes: measured.uploadBytes,
+        docBytes: measured.docBytes,
+        bodyKind: measured.bodyKind,
+        blocked: true,
+      });
       throw new DOMException(
         "Network blocked: CounselPDF is in Work Offline mode",
         "NetworkError",
       );
     }
+    pushEntry({
+      kind: "xhr",
+      method,
+      url: rawUrl,
+      host,
+      category,
+      uploadBytes: measured.uploadBytes,
+      docBytes: measured.docBytes,
+      bodyKind: measured.bodyKind,
+      blocked: false,
+    });
     return origXhrSend!.call(this, body as XMLHttpRequestBodyInit | null);
   } as typeof XMLHttpRequest.prototype.send;
+
 
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
     origSendBeacon = navigator.sendBeacon.bind(navigator);
