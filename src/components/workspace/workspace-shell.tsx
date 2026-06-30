@@ -1331,8 +1331,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               </span>
             )}
           </span>
-          <OfflineBadge enabled={workOffline} />
         </div>
+
         <div className="flex items-center gap-2">
           <PrivacyShield hasDocument={!!file} />
           <OfflineToggle enabled={workOffline} onChange={setWorkOffline} />
