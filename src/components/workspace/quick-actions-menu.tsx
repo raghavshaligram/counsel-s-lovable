@@ -169,10 +169,9 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
         return;
       }
       const pct = Math.round((1 - res.outputSize / res.originalSize) * 100);
-      downloadBytes(
+      await downloadPdf(
         res.bytes,
         `${baseName(target.name)}-compressed.pdf`,
-        "application/pdf",
       );
       toast.success(
         `Compressed — ${fmt(res.originalSize)} → ${fmt(res.outputSize)} (${pct}% smaller)`,
