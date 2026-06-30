@@ -135,6 +135,8 @@ function HeaderFooterPage() {
           </div>
         </section>
 
+        <ExportFormatRow />
+
         <div className="flex flex-col sm:flex-row gap-3">
           <Button
             onClick={runSingle}
