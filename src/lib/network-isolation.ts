@@ -3,15 +3,49 @@
 // EventSource. Same-origin requests for already-cached app assets still
 // resolve through the Service Worker cache; only true network egress is
 // blocked. This is the trust feature behind "Work Offline".
+//
+// In addition to blocking, this module observes every outgoing request the
+// app makes (when online) so the "Prove It" panel can show users — in plain
+// language — exactly where bytes went and confirm that NO document data
+// ever left their device.
+
+export type RequestCategory =
+  | "app-assets"
+  | "license"
+  | "ai"
+  | "other";
+
+export type RequestKind = "fetch" | "xhr" | "beacon" | "websocket" | "eventsource";
+
+export type RequestLogEntry = {
+  id: number;
+  ts: number;
+  kind: RequestKind;
+  method: string;
+  url: string;
+  host: string;
+  category: RequestCategory;
+  uploadBytes: number;
+  docBytes: number;
+  bodyKind: "none" | "json" | "text" | "form" | "binary" | "unknown";
+  blocked: boolean;
+  status?: number;
+  error?: string;
+};
 
 type Listener = (state: { enabled: boolean; blocked: number }) => void;
+type LogListener = (entries: RequestLogEntry[]) => void;
 
 const STORAGE_KEY = "counselpdf:work-offline";
+const MAX_LOG = 500;
 
 let installed = false;
 let enabled = false;
 let blocked = 0;
+let nextId = 1;
+const log: RequestLogEntry[] = [];
 const listeners = new Set<Listener>();
+const logListeners = new Set<LogListener>();
 
 // Saved originals
 let origFetch: typeof fetch | null = null;
