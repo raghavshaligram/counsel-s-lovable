@@ -939,7 +939,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // reads fresh bytes from the active File on demand.
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) {
-          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          cleanupWorkspaceState({ pdfDoc: doc as { destroy?: () => Promise<unknown> } });
           return;
         }
         const p1 = await doc.getPage(1);
