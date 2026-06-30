@@ -1,32 +1,49 @@
-## Plan: position-based true redaction for custom-font PDFs
+## Why opening a doc gets stuck after a few open/close cycles
 
-1. **Replace string-dependent deletion with geometry-only deletion**
-   - Refactor `src/lib/editor/text-rewrite.ts` so redaction does not depend on decoded `Tj`/`TJ` text.
-   - Walk each page content stream in operator order and track graphics/text state: `q/Q`, `cm`, `BT/ET`, `Tm`, `Td`, `TD`, `T*`, text leading, font selection `Tf`, font size, character spacing, word spacing, horizontal scale.
-   - For every text-show operator (`Tj`, `TJ`, `'`, `"`), compute the rendered text bounding box from current text position, font size, and approximate advance width.
-   - If that bounding box intersects any redaction rectangle, remove that text-show operation based only on position.
+The 10-tab cap is not the problem — closing frees the slot. The real cause is in the **open path** and the **shared pdf.js worker**:
 
-2. **Add font-width lookup for custom fonts/CMaps**
-   - Resolve the active page font resource selected by `Tf` from the copied PDF page resources.
-   - Estimate text-show advance using `/Widths`, `/FirstChar`, `/MissingWidth`, `/DW`, and `/W` where available, with a safe default width fallback.
-   - Decode string bytes only as glyph/code units for width lookup, not for matching visible text.
-   - Preserve surrounding text operators whose bounding boxes do not intersect the redaction rectangles.
+1. **Single shared pdf.js worker, process-wide.** `src/lib/pdf/worker.ts` caches one `pdfjs` module and one underlying Web Worker for the whole tab. Every open calls `pdfjs.getDocument({ data: bytes })` against that same worker. After several heavy documents (especially the recent 329-page NER run, which also spawns parallel `getDocument` calls inside `ner.worker.ts`), the pdfjs worker can be left with pending tasks / transferred buffers it never finishes. The next `getDocument` then hangs forever — a full page refresh recreates the worker, which is exactly the symptom you describe.
 
-3. **Decode and re-encode common PDF stream filter chains**
-   - Extend stream handling beyond single `/FlateDecode` to support common chains needed by generated/legal PDFs, especially `ASCII85Decode + FlateDecode` and aliases.
-   - Re-encode streams after mutation with a safe supported filter chain so the exported PDF remains readable.
-   - Continue skipping unsupported binary/image-only filters rather than corrupting them.
+2. **Tab-close `destroy()` is fire-and-forget.** `closeTab` does `void doc.destroy?.()` (`workspace-shell.tsx` ~660). If destroy is in flight when you open a new file, pdfjs may queue the new parse behind the unfinished teardown.
 
-4. **Verify by redaction regions, not strings**
-   - Update `src/lib/editor/verify-redaction.ts` to accept redaction rectangles in page coordinates.
-   - Re-open the exported PDF with pdf.js, extract text items with transforms/positions, and fail if any text item bounding box intersects a redaction rectangle.
-   - Keep string verification as diagnostic metadata only where available, but success must be based on “no text remains inside the redacted regions.”
+3. **"Already loaded" check keys on filename only.** The open effect (`workspace-shell.tsx` ~912) skips parsing when `editor.doc.fileName === f.name`. If you close a tab and immediately re-open the same-named file in a fresh tab, parsing is skipped but `pdfDocsRef` has no entry for the new tab id → canvas stays blank and the tab looks "stuck".
 
-5. **Wire region verification through export flows**
-   - In `src/components/workspace/tool-panels.tsx` and `src/components/workspace/export-dialog.tsx`, pass actual redaction boxes to verification after `exportEditedPdf`.
-   - Update success/error wording to report region removal, e.g. all redaction regions cleared.
-   - Ensure the Certificate of Redaction only states verified removal when the region-based check passes.
+4. **File input value isn't always reset.** Only `openNewStartTab` clears `fileInputRef.current.value`. From the dropzone label or `openFile()`, picking the same file twice fires no `change` event → silent no-op that feels like "stuck".
 
-6. **Validation target**
-   - Use the existing custom-font test case behavior described by the user: redact all detected items, export, re-extract text with positions, and confirm no text items intersect any redaction rectangle while surrounding text outside rectangles remains extractable.
-   - Do not report success unless post-export verification passes with zero text in redaction regions.
+5. **No timeout / no error surface.** The open effect awaits `getDocument(...).promise` with no timeout and no user-visible state, so a hang is invisible.
+
+## Fix plan (frontend only, no logic rewrites)
+
+### 1. Self-healing pdf.js worker
+- In `src/lib/pdf/worker.ts`, add `resetPdfjs()` that nulls the cache and re-imports next call.
+- Wrap each `getDocument(...).promise` call site (`workspace-shell.tsx` lines 379, 933, 2801, plus `ner.worker.ts`) with a 30 s watchdog. On timeout: call `resetPdfjs()`, toast "Re-initialising PDF engine…", retry once. Eliminates the need to refresh the browser.
+
+### 2. Await destroy before reusing the slot
+- In `closeTab` and the open-effect's "replace prior" branch, `await` the `destroy()` promise (with a short timeout fallback). Prevents the next parse being queued behind half-destroyed state.
+
+### 3. Tighten the "already loaded" guard
+- Change the skip condition to `fileName === f.name && srcBytes.byteLength === f.size && pdfDocsRef.current.has(tabId)`. Forces a re-parse when the tab has no live pdfDoc, fixing the blank-canvas case after close/reopen of a same-named file.
+
+### 4. Always reset the file input
+- Set `fileInputRef.current.value = ""` inside `openFile()` and in the `<input onChange>` handler after reading `files`, not only in `openNewStartTab`. Picking the same file twice will always re-trigger.
+
+### 5. User-visible open state + cancel
+- Add a per-tab `isOpening` flag set true while `getDocument` is pending, false on success/error/timeout. Show a small "Opening…" indicator on the tab; on timeout show a toast with a "Retry" action that calls `resetPdfjs()` and reloads the file.
+
+### 6. NER worker hygiene (precaution)
+- In `src/lib/pdf/ner.ts`, add `terminateNerWorker()` and call it when no detection job has run for 60 s, or on tab close if it's the last document. Keeps the 110 MB model out of memory between sessions and prevents the NER worker from competing with pdfjs after a giant scan.
+
+### Verification
+- Open and close the 329-page PDF (or any heavy doc) 5–6 times in a row, including running AI Detect Sensitive on one of them. The 7th open should succeed without a browser refresh.
+- Open `foo.pdf`, close the tab, immediately open `foo.pdf` again — canvas renders, no blank.
+- Pick the same file twice in the dropzone — second pick re-loads instead of being ignored.
+- Force a hang (throttle worker) — toast appears, retry recovers.
+
+### Files touched
+- `src/lib/pdf/worker.ts` — add `resetPdfjs`.
+- `src/components/workspace/workspace-shell.tsx` — watchdog wrapper, awaited destroy, tightened guard, input-value reset, `isOpening` UI.
+- `src/lib/pdf/ner.ts` — `terminateNerWorker` + idle timer.
+- `src/lib/pdf/ner.worker.ts` — wrap its own `getDocument` calls with the same watchdog helper.
+- `src/lib/workspace/tabs.ts` — add optional `isOpening?: boolean` to `TabState`.
+
+No backend, no design-token, no business-logic changes.
