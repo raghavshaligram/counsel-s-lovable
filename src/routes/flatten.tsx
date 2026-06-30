@@ -36,7 +36,7 @@ function FlattenPage() {
     setBusy(true);
     try {
       const out = await flatten(new Uint8Array(await file.arrayBuffer()), opts);
-      downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf", "application/pdf");
+      await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf");
       toast.success("PDF flattened");
     } catch (err) {
       console.error(err);
