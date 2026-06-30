@@ -374,12 +374,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const replaceActivePdfBytes = useCallback(async (bytes: Uint8Array) => {
     const tabId = activeIdRef.current;
-    const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
+    const { loadPdfjs, withPdfjsWatchdog } = await importChunk(() => import("@/lib/pdf/worker"));
     const pdfjs = await loadPdfjs();
-    const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const parsed = await withPdfjsWatchdog(
+      pdfjs.getDocument({ data: bytes.slice() }).promise,
+      30_000,
+      () => toast.message("Re-initialising PDF engine — please try again."),
+    );
     const prior = pdfDocsRef.current.get(tabId);
     if (prior && prior !== parsed) {
-      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+      try {
+        const p = (prior as { destroy?: () => Promise<void> }).destroy?.();
+        if (p) await Promise.race([p, new Promise((r) => setTimeout(r, 2000))]);
+      } catch { /* ignore */ }
     }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
@@ -1330,7 +1337,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         type="file"
         accept="application/pdf"
         className="hidden"
-        onChange={(e) => onFiles(e.target.files)}
+        onChange={(e) => {
+          const files = e.target.files;
+          // Reset so picking the SAME file later still fires `change`.
+          e.target.value = "";
+          onFiles(files);
+        }}
       />
 
       {/* TOP BAR */}
