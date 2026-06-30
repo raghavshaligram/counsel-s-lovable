@@ -6434,6 +6434,61 @@ function ExhibitBinderPanel() {
 }
 
 
+/* ============================ Workflows (Pro) ============================ */
+/**
+ * Inspector panel for the Pro Workflow Builder. The actual builder is a
+ * full-canvas modal (palette / sequence / inspector) launched from here.
+ * Reuses the existing automation engine — see `@/lib/automation`.
+ */
+function WorkflowsPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const requirePro = useRequirePro();
+  const [open, setOpen] = useState(false);
+  const [Modal, setModal] = useState<
+    null | React.ComponentType<{ onClose: () => void; sourceFile: File | null }>
+  >(null);
+
+  const launch = useCallback(async () => {
+    if (!requirePro("Workflows & automation")) return;
+    if (!Modal) {
+      const mod = await importChunk(() => import("./workflow-builder-modal"));
+      setModal(() => mod.WorkflowBuilderModal);
+    }
+    setOpen(true);
+  }, [requirePro, Modal]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-md border border-border bg-surface-2 p-3 text-[12px] text-text-2">
+        <div className="mb-1 text-foreground">Visual workflow builder</div>
+        Compose ordered pipelines from the existing op library — OCR, redact,
+        Bates, watermark, header/footer, page numbers, compress, sanitize,
+        flatten, rotate, extract. Reorder, save, and re-run on any document.
+      </div>
+
+      <ul className="flex flex-col gap-1 text-[11.5px] text-text-2">
+        <li>· Drag operations into a top-to-bottom sequence</li>
+        <li>· Per-step parameters · per-step progress on Run</li>
+        <li>· Save reusable workflows locally · on-device</li>
+        <li>· Runs off the main thread in a Web Worker</li>
+      </ul>
+
+      <button
+        type="button"
+        onClick={() => void launch()}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90"
+      >
+        Open Workflow Builder…
+      </button>
+      {open && Modal && (
+        <Modal onClose={() => setOpen(false)} sourceFile={ctx.file} />
+      )}
+    </div>
+  );
+}
+
+
+
+
 /* Compact on/off row used by Document Settings to gate detailed config. */
 function DisclosureToggle({
   label, on, onChange,
