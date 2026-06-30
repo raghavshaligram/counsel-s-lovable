@@ -656,10 +656,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         return;
       }
       // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
+      // We await with a short timeout — fire-and-forget destroys can queue the
+      // next getDocument() behind half-torn-down state and wedge the pdf.js worker.
       const doc = pdfDocsRef.current.get(id);
       if (doc) {
-        try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         pdfDocsRef.current.delete(id);
+        void (async () => {
+          try {
+            const p = (doc as { destroy?: () => Promise<void> }).destroy?.();
+            if (p) {
+              await Promise.race([
+                p,
+                new Promise((r) => setTimeout(r, 2000)),
+              ]);
+            }
+          } catch { /* ignore */ }
+        })();
       }
       setTabs((ts) => {
         const next = ts.filter((t) => t.id !== id);
@@ -676,13 +688,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         }
         return next;
       });
+      // If no document tabs remain, free the NER worker so the 110 MB model
+      // isn't sitting in memory next to a fresh pdf.js worker.
+      const docsLeft = tabs.filter((t) => t.id !== id && t.file !== null).length;
+      if (docsLeft === 0) {
+        void import("@/lib/pdf/ner").then((m) => m.terminateNerWorker()).catch(() => {});
+      }
       setPendingCloseId(null);
     },
     [tabs],
   );
 
   // ----------------- File open (into the ACTIVE tab) ------------------
-  const openFile = useCallback(() => fileInputRef.current?.click(), []);
+  const openFile = useCallback(() => {
+    // Always reset the input value so picking the SAME file twice still
+    // fires `change`. Without this, a re-pick is silently ignored and
+    // feels like the app is "stuck".
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fileInputRef.current?.click();
+  }, []);
   const onFiles = useCallback(
     (files: FileList | null) => {
       const f = files?.[0];
