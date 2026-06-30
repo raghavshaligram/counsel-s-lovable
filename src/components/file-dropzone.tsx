@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Upload, FilePlus2, Clipboard } from "lucide-react";
+import { Upload, FilePlus2, Clipboard, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { modKey } from "@/lib/use-hotkey";
 
