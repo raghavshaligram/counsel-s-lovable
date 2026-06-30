@@ -202,7 +202,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
         const bytes = new Uint8Array(await target.arrayBuffer());
         const { sanitizePdfBytesWithReport } = await importChunk(() => import("@/lib/pdf/sanitize"));
         const { bytes: out, report, pageCount } = await sanitizePdfBytesWithReport(bytes);
-        downloadBytes(out, `${baseName(target.name)}-sanitized.pdf`, "application/pdf");
+        await downloadPdf(out, `${baseName(target.name)}-sanitized.pdf`);
         toast.success("Sanitize — saved", { id: toastId });
 
         try {
