@@ -108,6 +108,9 @@ import { PrivacyShield } from "./privacy-shield";
 import { OfflineToggle, loadOfflinePref } from "./offline-toggle";
 import { ExportMenu } from "./export-menu";
 import { ExportFormatChip } from "./export-format-row";
+import { MemoryPressureBanner } from "./memory-pressure-banner";
+import { cleanupWorkspaceState } from "@/lib/workspace/cleanup";
+import { clearMemoryPressure } from "@/lib/runtime-pressure";
 
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
