@@ -397,6 +397,48 @@ function walkFormTree(
   }
 }
 
+/** Decode every Form XObject reachable from a widget's /AP (N/D/R, plus
+ *  any nested state dicts) and search the contents for sensitive literals.
+ *  Returns the first matching needle, or null. */
+function scanAppearanceForLiterals(
+  ctx: PDFDocument["context"],
+  annot: PDFDict,
+  needles: string[],
+  unzlibSync: (b: Uint8Array) => Uint8Array,
+): string | null {
+  if (needles.length === 0) return null;
+  const ap = annot.lookupMaybe(PDFName.of("AP"), PDFDict);
+  if (!ap) return null;
+  const streams: PDFStream[] = [];
+  const collect = (val: unknown): void => {
+    if (!val) return;
+    try {
+      const resolved = ctx.lookup(val as never);
+      if (resolved instanceof PDFStream) streams.push(resolved);
+      else if (resolved instanceof PDFDict) {
+        for (const [, nested] of resolved.entries()) collect(nested);
+      }
+    } catch { /* ignore */ }
+  };
+  for (const k of ["N", "D", "R"]) collect(ap.get(PDFName.of(k)));
+  for (const stream of streams) {
+    const raw =
+      (stream as unknown as { contents?: Uint8Array }).contents
+      ?? (stream as unknown as { getContents?: () => Uint8Array }).getContents?.();
+    if (!raw || raw.length === 0) continue;
+    let bytes: Uint8Array = raw;
+    if (nameStr(stream.dict.get(PDFName.of("Filter"))) === "/FlateDecode") {
+      try { bytes = unzlibSync(raw); } catch { /* keep raw */ }
+    }
+    const txt = new TextDecoder("latin1").decode(bytes);
+    for (const needle of needles) {
+      const hex = Array.from(needle).map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+      if (txt.includes(needle) || txt.toLowerCase().includes(hex)) return needle;
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Raw stream scan — decodes every PDFStream (page content, form XObjects,
 // anything with /Filter FlateDecode or none) and searches the decoded bytes
