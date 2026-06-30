@@ -14,6 +14,7 @@ export const PAID_TOOL_IDS = new Set<string>([
   "privilege-scan",  // Privilege review (AI)
   "chat",            // Private AI assist / search inside PDF
   "exhibit-binder",  // Multi-file court-ready binder
+  "workflows",       // Visual workflow builder
 ]);
 
 /**
