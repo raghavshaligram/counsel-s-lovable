@@ -259,6 +259,7 @@ function OrganizePage() {
             {building ? "Building…" : `Build PDF (${cells.length})`}
           </Button>
         </div>
+        <ExportFormatRow className="max-w-xs" />
 
         {entries.length === 0 ? (
           <EmptyState />
