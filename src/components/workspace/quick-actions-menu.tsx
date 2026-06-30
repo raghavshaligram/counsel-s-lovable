@@ -261,7 +261,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
       const { rotatePdf } = await importChunk(() => import("@/lib/pdf/rotate"));
       const res = await rotatePdf(file, { angle, scope: "all" });
       const buf = new Uint8Array(await res.blob.arrayBuffer());
-      downloadBytes(buf, res.filename, "application/pdf");
+      await downloadPdf(buf, res.filename);
       toast.success(`Rotated ${angle}° — ${res.rotatedCount} pages`, { id: toastId });
     } catch (err) {
       toast.error("Rotate failed", {
