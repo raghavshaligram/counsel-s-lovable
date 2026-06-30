@@ -1974,7 +1974,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const flatNote = rasterResult.rasterizedPages.length
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
-        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+        toast.success(`Content permanently removed · verified ${result.removed}/${result.total} region${result.total === 1 ? "" : "s"}${flatNote}`, { id: tid });
 
         // Offer the formal Redaction Certificate as a free-signup value gate.
         // Only fires when verification PASSED — never claim unverified compliance.
