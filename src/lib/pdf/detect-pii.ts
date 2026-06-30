@@ -8,7 +8,7 @@
 
 import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
-import { runNer, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
+import { runNer, runNerWorkerBatch, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
 
 export type PiiCategory =
   | "ssn"
