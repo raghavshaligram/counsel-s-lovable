@@ -46,7 +46,7 @@ function HeaderFooterPage() {
     setBusy(true);
     try {
       const out = await addHeaderFooter(new Uint8Array(await file.arrayBuffer()), { ...opts, filename: file.name });
-      downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf", "application/pdf");
+      await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-headerfooter.pdf");
       toast.success("Header/footer added");
     } catch (err) {
       console.error(err);
