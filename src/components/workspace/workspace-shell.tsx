@@ -108,6 +108,9 @@ import { PrivacyShield } from "./privacy-shield";
 import { OfflineToggle, loadOfflinePref } from "./offline-toggle";
 import { ExportMenu } from "./export-menu";
 import { ExportFormatChip } from "./export-format-row";
+import { MemoryPressureBanner } from "./memory-pressure-banner";
+import { cleanupWorkspaceState } from "@/lib/workspace/cleanup";
+import { clearMemoryPressure } from "@/lib/runtime-pressure";
 
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
@@ -379,10 +382,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
     if (prior && prior !== parsed) {
-      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+      // Fire-and-forget — pdf.js destroy() awaits pending getPage tasks,
+      // which can hang behind lazy IntersectionObserver jobs and block the
+      // new doc from being installed. cleanupWorkspaceState wraps it safely.
+      cleanupWorkspaceState({ pdfDoc: prior as { destroy?: () => Promise<unknown> } });
     }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
+    clearMemoryPressure();
   }, []);
 
   // Convenience aliases — every render reads from `active`.
@@ -655,10 +662,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingCloseId(id);
         return;
       }
-      // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
+      // Release pdfDoc + any rendered canvases for this tab.
       const doc = pdfDocsRef.current.get(id);
       if (doc) {
-        try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        cleanupWorkspaceState({ pdfDoc: doc as { destroy?: () => Promise<unknown> } });
         pdfDocsRef.current.delete(id);
       }
       setTabs((ts) => {
@@ -932,19 +939,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // reads fresh bytes from the active File on demand.
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) {
-          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          cleanupWorkspaceState({ pdfDoc: doc as { destroy?: () => Promise<unknown> } });
           return;
         }
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         const numPages = doc.numPages;
-        // Replace any prior pdfDoc for this tab.
+        // Replace any prior pdfDoc for this tab. cleanupWorkspaceState
+        // releases the previous doc, its rendered canvases, and pending
+        // worker tasks WITHOUT awaiting destroy() — critical, because
+        // pdf.js destroy waits for in-flight lazy getPage tasks to settle
+        // and would otherwise block the new doc from being installed
+        // (the "second PDF freeze" bug).
         const prior = pdfDocsRef.current.get(tabId);
         if (prior && prior !== doc) {
-          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          cleanupWorkspaceState({ pdfDoc: prior as { destroy?: () => Promise<unknown> } });
         }
         pdfDocsRef.current.set(tabId, doc);
         setPdfDocVersion((v) => v + 1);
+        clearMemoryPressure();
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
         }));
@@ -1404,6 +1417,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       </header>
 
       <AnnouncementBanner />
+      <MemoryPressureBanner />
 
       {/* TAB STRIP */}
       <TabStrip
