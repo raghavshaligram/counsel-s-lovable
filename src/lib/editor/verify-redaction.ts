@@ -488,7 +488,7 @@ async function verifyRawStreams(
       ) {
         leaks.push({
           vector: "raw-stream",
-          text: `Sensitive literal "${truncate(needle)}" found in stream bytes`,
+          text: `Sensitive literal found in stream bytes (matched "${truncate(needle)}")`,
           ref: refStr(ref),
         });
         break;
