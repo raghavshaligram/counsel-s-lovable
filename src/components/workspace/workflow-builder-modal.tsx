@@ -707,5 +707,3 @@ function summariseParams(op: string, p: Record<string, unknown>): string {
 // Used by tool-panels.tsx default-export pattern if needed.
 export default WorkflowBuilderModal;
 
-// Re-exported to satisfy unused-import lint when ScanText is referenced via dynamic imports.
-export const _ScanText = ScanText;
