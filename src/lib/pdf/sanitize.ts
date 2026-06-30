@@ -322,20 +322,68 @@ function refKey(ref: PDFRef): string {
   return `${ref.objectNumber} ${ref.generationNumber}`;
 }
 
-function collectPageContentRefs(doc: PDFDocument): Set<string> {
+function collectPageRenderedStreamRefs(
+  doc: PDFDocument,
+  unzlibSync?: (b: Uint8Array) => Uint8Array,
+): Set<string> {
   const out = new Set<string>();
-  const add = (obj: unknown): void => {
+  const visitedXObjects = new Set<string>();
+  const addContent = (obj: unknown, resources?: PDFDict): void => {
     if (!obj) return;
     if (typeof obj === "object" && "objectNumber" in obj && "generationNumber" in obj) {
-      out.add(refKey(obj as PDFRef));
+      const ref = obj as PDFRef;
+      out.add(refKey(ref));
+      scanInvokedXObjects(doc.context.lookup(ref), resources);
       return;
     }
     if (obj instanceof PDFArray) {
-      for (const item of obj.asArray()) add(item);
+      for (const item of obj.asArray()) addContent(item, resources);
+      return;
+    }
+    scanInvokedXObjects(obj, resources);
+  };
+  const scanInvokedXObjects = (contentObj: unknown, resources?: PDFDict): void => {
+    if (!resources || !(contentObj instanceof PDFStream) || !unzlibSync) return;
+    const decoded = decodeStreamBytes(contentObj, unzlibSync);
+    if (!decoded || decoded.length === 0) return;
+    const content = new TextDecoder("latin1", { fatal: false }).decode(decoded);
+    const xobjects = resources.lookupMaybe(PDFName.of("XObject"), PDFDict);
+    if (!xobjects) return;
+    for (const match of content.matchAll(/\/([A-Za-z0-9_.-]+)\s+Do\b/g)) {
+      const xobjName = match[1];
+      const xobj = xobjects.get(PDFName.of(xobjName));
+      if (!xobj) continue;
+      let xobjKey = "direct";
+      if (typeof xobj === "object" && "objectNumber" in xobj && "generationNumber" in xobj) {
+        const ref = xobj as PDFRef;
+        xobjKey = refKey(ref);
+        out.add(xobjKey);
+      }
+      if (visitedXObjects.has(xobjKey)) continue;
+      visitedXObjects.add(xobjKey);
+      const resolved = doc.context.lookup(xobj as never);
+      if (!(resolved instanceof PDFStream)) continue;
+      const nestedResources = resolved.dict.lookupMaybe(PDFName.of("Resources"), PDFDict) ?? resources;
+      scanInvokedXObjects(resolved, nestedResources);
     }
   };
-  for (const page of doc.getPages()) add(page.node.get(PDFName.of("Contents")));
+  for (const page of doc.getPages()) {
+    const resources = page.node.lookupMaybe(PDFName.of("Resources"), PDFDict);
+    addContent(page.node.get(PDFName.of("Contents")), resources);
+  }
   return out;
+}
+
+function decodeStreamBytes(stream: PDFStream, unzlibSync: (b: Uint8Array) => Uint8Array): Uint8Array | null {
+  const raw =
+    (stream as unknown as { contents?: Uint8Array }).contents
+    ?? (stream as unknown as { getContents?: () => Uint8Array }).getContents?.();
+  if (!raw || raw.length === 0) return null;
+  const filter = nameStr(stream.dict.get(PDFName.of("Filter")));
+  if (filter === "/FlateDecode" || filter === "/Fl") {
+    try { return unzlibSync(raw); } catch { return raw; }
+  }
+  return raw;
 }
 
 function containsSensitiveText(text: string, needles: string[]): string | null {
@@ -444,7 +492,7 @@ async function purgeTargetedSensitiveObjects(
   const needles = Array.from(new Set(sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3)));
   if (needles.length === 0) return;
   const { unzlibSync } = await import("fflate");
-  const pageContentRefs = collectPageContentRefs(doc);
+  const pageContentRefs = collectPageRenderedStreamRefs(doc, unzlibSync);
 
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
     const key = refKey(ref);
@@ -461,10 +509,9 @@ async function purgeTargetedSensitiveObjects(
       const hit = containsSensitiveBytes(decoded, needles);
       if (!hit) continue;
       if (pageContentRefs.has(key)) {
-        // A flatten-before-clear problem has already promoted this value into
-        // visible page content. Do not erase the whole page stream here; the
-        // export gate will report it as content-stream leakage and require a
-        // page redaction/raster burn.
+        // The value lives in visible page-rendered content (page /Contents or
+        // a Form XObject invoked by /Do). Do not erase that stream during the
+        // hidden-vector wipe; normal page redaction/export owns visible text.
         // eslint-disable-next-line no-console
         console.warn("[redact:form-field] targeted sanitize left page content stream for redaction gate", {
           ref: refStr(ref),
