@@ -11,7 +11,7 @@
  *  caller-supplied "redacted strings". Any hit is reported as a leak so
  *  the export pipeline can block the download.
  */
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from "pdf-lib";
 import { unzlibSync } from "fflate";
 import { loadPdfjs } from "@/lib/pdf/worker";
 
@@ -55,9 +55,20 @@ export interface VerifyResult {
   scannedAt: string;
 }
 
+export interface VerifyRedactionOptions {
+  /**
+   * "all" checks every decoded stream, including visible page content.
+   * "non-page" skips page /Contents streams and is used by the immediate
+   * hidden-vector wipe: if the same value also appears visibly on the page,
+   * that belongs to page redaction/export, not form-field/AP sanitization.
+   */
+  rawStreamScope?: "all" | "non-page";
+}
+
 export async function verifyRedactionRemoval(
   bytes: Uint8Array,
   targets: RedactionTarget[],
+  opts: VerifyRedactionOptions = {},
 ): Promise<VerifyResult> {
   const scannedAt = new Date().toISOString();
   const regionTargets = targets.filter((t) => t.rect && t.rect.w > 0 && t.rect.h > 0);
@@ -83,7 +94,7 @@ export async function verifyRedactionRemoval(
   // sensitive literals. Catches values that survive in baked-down glyph
   // strings even when pdf.js can't extract them as text items.
   if (sensitiveStrings.length > 0) {
-    const rawLeaks = await verifyRawStreams(bytes, sensitiveStrings);
+    const rawLeaks = await verifyRawStreams(bytes, sensitiveStrings, opts.rawStreamScope ?? "all");
     leaks.push(...rawLeaks);
   }
 
@@ -450,6 +461,7 @@ function scanAppearanceForLiterals(
 async function verifyRawStreams(
   bytes: Uint8Array,
   sensitiveStrings: string[],
+  scope: "all" | "non-page" = "all",
 ): Promise<VerifyLeak[]> {
   const leaks: VerifyLeak[] = [];
   let doc: PDFDocument;
@@ -459,11 +471,13 @@ async function verifyRawStreams(
     return leaks;
   }
   const ctx = doc.context;
+  const pageContentRefs = scope === "non-page" ? collectPageContentRefs(doc) : undefined;
   const needles = sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3);
   if (needles.length === 0) return leaks;
 
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
     if (!(obj instanceof PDFStream)) continue;
+    if (pageContentRefs?.has(refKey(ref))) continue;
     const decoded = decodeStreamBytes(obj);
     if (!decoded || decoded.length === 0) continue;
     // Latin-1 round-trip preserves byte values so we can search for
@@ -496,6 +510,26 @@ async function verifyRawStreams(
     }
   }
   return leaks;
+}
+
+function collectPageContentRefs(doc: PDFDocument): Set<string> {
+  const out = new Set<string>();
+  const add = (obj: unknown): void => {
+    if (!obj) return;
+    if (obj instanceof PDFRef) {
+      out.add(refKey(obj));
+      return;
+    }
+    if (obj instanceof PDFArray) {
+      for (const item of obj.asArray()) add(item);
+    }
+  };
+  for (const page of doc.getPages()) add(page.node.get(PDFName.of("Contents")));
+  return out;
+}
+
+function refKey(ref: PDFRef): string {
+  return `${ref.objectNumber} ${ref.generationNumber}`;
 }
 
 function decodeStreamBytes(stream: PDFStream): Uint8Array | null {
