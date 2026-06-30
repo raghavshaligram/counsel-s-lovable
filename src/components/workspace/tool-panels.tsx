@@ -1295,7 +1295,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         const { verifyRedactionRemoval } = await importChunk(
           () => import("@/lib/editor/verify-redaction"),
         );
-        const verify = await verifyRedactionRemoval(cleaned, sideTargets);
+        const verify = await verifyRedactionRemoval(cleaned, sideTargets, { rawStreamScope: "non-page" });
         if (!verify.ok) {
           // Per-value × per-vector breakdown so the user (and DevTools)
           // can see EXACTLY which redacted strings survived in which
