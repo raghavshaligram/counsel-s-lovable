@@ -176,10 +176,9 @@ export function ExhibitBinderModal({ onClose }: { onClose: () => void }) {
         },
         setProgress,
       );
-      downloadBytes(
+      await downloadPdf(
         bytes,
         outputName.endsWith(".pdf") ? outputName : outputName + ".pdf",
-        "application/pdf",
       );
       toast.success(
         `Binder ready · ${entries.length} exhibit${entries.length === 1 ? "" : "s"}`,
