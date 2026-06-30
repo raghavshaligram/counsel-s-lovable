@@ -102,7 +102,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     try {
       const { repairPdfFile } = await importChunk(() => import("@/lib/pdf/repair"));
       const res = await repairPdfFile(target);
-      downloadBytes(res.bytes, res.filename, "application/pdf");
+      await downloadPdf(res.bytes, res.filename);
       if (res.outcome === "full") {
         toast.success(
           `Fully repaired — ${res.pagesRecovered}/${res.pagesExpected} pages`,
