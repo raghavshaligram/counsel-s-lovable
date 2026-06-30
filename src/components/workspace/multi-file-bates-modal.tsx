@@ -429,6 +429,7 @@ export function MultiFileBatesModal({ onClose }: { onClose: () => void }) {
                 />
               )}
             </div>
+            <ExportFormatRow className="mt-2" />
           </section>
         </div>
 
