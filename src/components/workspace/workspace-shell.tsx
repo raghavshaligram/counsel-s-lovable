@@ -369,6 +369,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [dispatchEditorFor],
   );
 
+  const replaceActivePdfBytes = useCallback(async (bytes: Uint8Array) => {
+    const tabId = activeIdRef.current;
+    const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
+    const pdfjs = await loadPdfjs();
+    const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const prior = pdfDocsRef.current.get(tabId);
+    if (prior && prior !== parsed) {
+      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+    }
+    pdfDocsRef.current.set(tabId, parsed);
+    setPdfDocVersion((v) => v + 1);
+  }, []);
+
   // Convenience aliases — every render reads from `active`.
   const file = active.file;
   const isDirty = active.isDirty;
@@ -1755,6 +1768,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             onClose={() => patchActive({ inspectorOpen: false })}
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
+            replacePdfBytes={replaceActivePdfBytes}
             editorDispatch={editorDispatch}
             editorState={editorState}
             closeInspector={() => patchActive({ inspectorOpen: false })}
@@ -3216,6 +3230,7 @@ function Inspector({
   onClose,
   file,
   replaceFile,
+  replacePdfBytes,
   editorDispatch,
   editorState,
   closeInspector,
@@ -3229,6 +3244,7 @@ function Inspector({
   onClose: () => void;
   file: File | null;
   replaceFile: (f: File) => void;
+  replacePdfBytes: (bytes: Uint8Array) => void | Promise<void>;
   editorDispatch: React.Dispatch<EditorAction>;
   editorState: ReturnType<typeof reducer>;
   closeInspector: () => void;
@@ -3333,7 +3349,7 @@ function Inspector({
           <div className="flex-1 overflow-auto px-3 py-3">
             <ToolPanel
               toolId={activeTool.id}
-              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
+              ctx={{ file, replaceFile, replacePdfBytes, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
             />
           </div>
         </div>
