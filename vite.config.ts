@@ -12,4 +12,10 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    // Web Workers we ship (NER model worker, automation worker) dynamically
+    // import chunks at runtime — code-splitting requires ES module output;
+    // the default IIFE worker format breaks the build.
+    worker: { format: "es" },
+  },
 });
