@@ -38,6 +38,7 @@ export type State = {
 
 export type Action =
   | { type: "LOAD"; doc: EditorDoc }
+  | { type: "SET_SRC_BYTES"; bytes: Uint8Array }
   | { type: "SET_PAGE"; n: number }
   | { type: "SET_TOOL"; t: Tool }
   | { type: "SET_COLOR"; c: RGB }
@@ -98,6 +99,15 @@ export function reducer(s: State, a: Action): State {
   switch (a.type) {
     case "LOAD":
       return { ...initialState, doc: a.doc, color: s.color };
+    case "SET_SRC_BYTES": {
+      // Swap the underlying PDF bytes without touching annotations,
+      // page ops, OCR layer, undo history, or current page. Used after
+      // an in-place sanitize pass so freshly-added redact boxes (added
+      // in the same callback via ADD_ANNO) are NOT clobbered by a LOAD
+      // that re-spreads a stale `editorState.doc` from a closure.
+      if (!s.doc) return s;
+      return { ...s, doc: { ...s.doc, srcBytes: a.bytes } };
+    }
     case "SET_PAGE":
       return { ...s, current: a.n, selectedAnnoId: null };
     case "SET_TOOL":

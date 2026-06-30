@@ -1336,19 +1336,13 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         }
         replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
         await replacePdfBytes?.(cleaned);
-        // Replace srcBytes in-place; preserve annotations + page ops + ocr.
-        editorDispatch({
-          type: "LOAD",
-          doc: { ...editorState.doc, srcBytes: cleaned },
-        });
-        if (editorState.doc.annotations.length > 0 || editorState.doc.ocrLayer) {
-          editorDispatch({
-            type: "LOAD_SIDECAR",
-            annotations: editorState.doc.annotations,
-            pages: editorState.doc.pages,
-            ocrLayer: editorState.doc.ocrLayer,
-          });
-        }
+        // Swap srcBytes in-place WITHOUT a LOAD — LOAD would re-spread
+        // `editorState.doc` from this callback's closure, which does
+        // NOT contain the redact annotations we just dispatched via
+        // ADD_ANNO above. That caused freshly-added boxes to vanish on
+        // the first click (user had to click 2-3 times before the SSN/
+        // name boxes "stuck"). SET_SRC_BYTES keeps annotations intact.
+        editorDispatch({ type: "SET_SRC_BYTES", bytes: cleaned });
         // Drop wiped findings from the visible list so the user SEES them
         // gone (and a re-scan would confirm clean).
         const wipedIds = new Set(sideChannelDets.map((d) => d.id));
