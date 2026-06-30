@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { Lock, Shield, WifiOff, Eye, ArrowRight, Terminal } from "lucide-react";
+import { ProveItPanelBody } from "@/components/workspace/prove-it-panel";
 
 export const Route = createFileRoute("/verify-privacy")({
   head: () => ({
@@ -48,6 +49,24 @@ function VerifyPrivacyPage() {
             The strongest privacy claim is one you can test. We invite you to inspect
             CounselPDF the same way you would inspect any evidence: with your own eyes,
             under your own control.
+          </p>
+        </div>
+      </section>
+
+      {/* IN-APP PROVE-IT PANEL */}
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-5xl px-5 md:px-8 py-12 md:py-16">
+          <div className="font-mono text-[11px] text-muted-foreground mb-4 uppercase tracking-[0.16em]">
+            Live readout from this session
+          </div>
+          <div className="rounded-xl border border-border bg-surface-2 max-w-md overflow-hidden flex flex-col" style={{ maxHeight: "32rem" }}>
+            <ProveItPanelBody />
+          </div>
+          <p className="mt-4 max-w-xl text-sm text-muted-foreground">
+            This is the same panel available from the workspace top bar (the
+            <span className="font-medium text-foreground"> Prove it </span> button).
+            It watches every fetch / XHR the app makes and reports document bytes
+            uploaded — measured live, not hardcoded.
           </p>
         </div>
       </section>

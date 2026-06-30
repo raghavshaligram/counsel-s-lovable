@@ -105,6 +105,7 @@ import { AnnouncementBanner } from "./announcement-banner";
 import { WelcomeModal } from "./welcome-modal";
 import { PrivacyShield } from "./privacy-shield";
 import { OfflineToggle, loadOfflinePref } from "./offline-toggle";
+import { ProveItButton } from "./prove-it-panel";
 import { ExportMenu } from "./export-menu";
 import { ExportFormatChip } from "./export-format-row";
 
@@ -1351,6 +1352,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         <div className="flex items-center gap-2">
           <PrivacyShield hasDocument={!!file} />
           <OfflineToggle enabled={workOffline} onChange={setWorkOffline} />
+          <ProveItButton />
           <button
             type="button"
             onClick={() => {
