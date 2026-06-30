@@ -14,7 +14,8 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { X, GripVertical, Upload, Trash2, FilePlus2, BookOpen } from "lucide-react";
-import { downloadBytes } from "@/lib/batch/runner";
+import { downloadPdf } from "@/lib/pdf/download";
+import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import {
   buildExhibitBinder,
   cleanExhibitTitle,
