@@ -214,7 +214,7 @@ function CropPage() {
         page,
       );
       const name = sourceName.replace(/\.pdf$/i, "") + "-cropped.pdf";
-      downloadBytes(out, name, "application/pdf");
+      await downloadPdf(out, name);
       toast.success(`Cropped ${idxs.length} page${idxs.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error(err);
