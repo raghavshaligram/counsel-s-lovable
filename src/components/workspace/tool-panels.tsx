@@ -1292,8 +1292,41 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         });
         const verify = await verifyRedactionRemoval(cleaned, sideTargets);
         if (!verify.ok) {
+          // Per-value × per-vector breakdown so the user (and DevTools)
+          // can see EXACTLY which redacted strings survived in which
+          // vector(s). Most "N still recoverable" cases are one value
+          // that lives in both /V and /AP, or in both an annotation
+          // /Contents and a baked content stream.
+          const valueToVectors = new Map<string, Set<string>>();
+          const rows: { value: string; vector: string; page?: number; ref?: string; detail: string }[] = [];
+          for (const l of verify.leaks) {
+            const m = /matched "([^"]+)"/.exec(l.text);
+            const value = m?.[1] ?? l.text;
+            if (!valueToVectors.has(value)) valueToVectors.set(value, new Set());
+            valueToVectors.get(value)!.add(l.vector);
+            rows.push({ value, vector: l.vector, page: l.page, ref: l.ref, detail: l.text });
+          }
+          // eslint-disable-next-line no-console
+          console.group("[redact:apply-now] hidden-vector wipe BLOCKED — values still recoverable");
+          // eslint-disable-next-line no-console
+          console.table(rows);
+          for (const [value, vectors] of valueToVectors) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[redact:apply-now] "${value}" survives in: ${Array.from(vectors).join(", ")} — ` +
+              `sanitize cleared one place but the same value still lives in the listed vector(s)`,
+            );
+          }
+          // eslint-disable-next-line no-console
+          console.warn("[redact:apply-now] sanitize report was:", report);
+          // eslint-disable-next-line no-console
+          console.groupEnd();
+
+          const detail = Array.from(valueToVectors.entries())
+            .map(([v, vec]) => `"${v.length > 40 ? v.slice(0, 40) + "…" : v}" in [${Array.from(vec).join(", ")}]`)
+            .join("; ");
           throw new Error(
-            `Immediate hidden-vector redaction failed — ${verify.leaks.length} value${verify.leaks.length === 1 ? "" : "s"} still recoverable.`,
+            `Immediate hidden-vector redaction failed — ${verify.leaks.length} value${verify.leaks.length === 1 ? "" : "s"} still recoverable. Surviving: ${detail}`,
           );
         }
         // Replace srcBytes in-place; preserve annotations + page ops + ocr.
