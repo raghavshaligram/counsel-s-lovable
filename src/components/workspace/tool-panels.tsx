@@ -105,6 +105,7 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import { FirmTemplatesMenu } from "./firm-templates-menu";
 import { CourtReadinessSection } from "./court-readiness";
+import { PrivilegeReviewPanel } from "./privilege-review-panel";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
