@@ -47,6 +47,8 @@ import {
   Trash2,
   Pencil,
   Check,
+  FileUp,
+  FileIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
