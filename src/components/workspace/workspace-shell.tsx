@@ -902,6 +902,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     const tabId = active.id;
     const f = active.file;
+    console.log("[open-effect:entered]", {
+      tabId,
+      hasFile: !!f,
+      fileName: f?.name ?? null,
+      fileSize: f?.size ?? null,
+    });
     if (!f || f.size === 0) return;
     const already =
       active.editor.doc &&
