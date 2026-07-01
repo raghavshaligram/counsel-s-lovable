@@ -25,6 +25,8 @@ import { applyTextWatermark, type WatermarkOptions } from "@/lib/pdf/watermark";
 import { rotatePdf, type RotateOptions } from "@/lib/pdf/rotate";
 import { extractPages } from "@/lib/pdf/extract-pages";
 import { toPdfA } from "@/lib/pdf/to-pdfa";
+import { unlockPdf } from "@/lib/pdf/unlock";
+import { protectPdf, DEFAULT_PROTECT_PERMS, type ProtectOptions } from "@/lib/pdf/protect";
 
 function bytesToFile(bytes: Uint8Array, name = "in.pdf"): File {
   return new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
@@ -70,6 +72,23 @@ const extract: RegisteredOp<{ ranges: string }> = async (bytes, params) => {
 
 const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
 
+const unlock: RegisteredOp<{ password?: string }> = async (bytes, params) => {
+  const res = await unlockPdf(bytesToFile(bytes), params?.password);
+  return blobToBytes(res.blob);
+};
+
+const protect: RegisteredOp<Partial<ProtectOptions> & { userPassword: string }> = async (
+  bytes,
+  params,
+) => {
+  const res = await protectPdf(bytesToFile(bytes), {
+    userPassword: params.userPassword,
+    ownerPassword: params.ownerPassword,
+    permissions: { ...DEFAULT_PROTECT_PERMS, ...(params.permissions ?? {}) },
+  });
+  return blobToBytes(res.blob);
+};
+
 /* ---------- Registry ---------- */
 
 export const OPS: Record<string, RegisteredOp<never>> = {
@@ -83,6 +102,8 @@ export const OPS: Record<string, RegisteredOp<never>> = {
   sanitize: sanitize as RegisteredOp<never>,
   "extract-pages": extract as RegisteredOp<never>,
   "to-pdfa": pdfA as RegisteredOp<never>,
+  unlock: unlock as RegisteredOp<never>,
+  protect: protect as RegisteredOp<never>,
 };
 
 export function getOp(name: string): RegisteredOp<unknown> | null {

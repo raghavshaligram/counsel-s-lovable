@@ -205,10 +205,42 @@ function makeRedactPattern(
 }
 
 /* ------------------------------------------------------------------ */
+/* Repair (qpdf WASM + pdf.js — main thread)                          */
+/* ------------------------------------------------------------------ */
+
+function makeRepair(
+  emit?: (ev: Extract<ProgressEvent, { type: "step-progress" }>) => void,
+  index = 0,
+  total = 1,
+): RegisteredOp<void> {
+  return async (bytes) => {
+    emit?.({
+      type: "step-progress",
+      index,
+      total,
+      op: "repair",
+      pct: 0,
+      message: "Repairing…",
+    });
+    const { repairPdfBytes } = await importChunk(() => import("@/lib/pdf/repair"));
+    const res = await repairPdfBytes(bytes);
+    emit?.({
+      type: "step-progress",
+      index,
+      total,
+      op: "repair",
+      pct: 1,
+      message: `${res.outcome} (${res.pagesRecovered}/${res.pagesExpected} pages, via ${res.method})`,
+    });
+    return res.bytes;
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Public API                                                         */
 /* ------------------------------------------------------------------ */
 
-export const MAIN_OP_NAMES = new Set<string>(["ocr", "redact-pattern"]);
+export const MAIN_OP_NAMES = new Set<string>(["ocr", "redact-pattern", "repair"]);
 
 export function isMainThreadOp(name: string): boolean {
   return MAIN_OP_NAMES.has(name);
@@ -224,5 +256,7 @@ export function getMainOp(
   if (name === "ocr") return makeOcr(emit, index, total) as RegisteredOp<unknown>;
   if (name === "redact-pattern")
     return makeRedactPattern(emit, index, total) as RegisteredOp<unknown>;
+  if (name === "repair") return makeRepair(emit, index, total) as RegisteredOp<unknown>;
   return null;
 }
+
