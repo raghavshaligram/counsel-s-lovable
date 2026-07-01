@@ -929,7 +929,7 @@ function WorkflowBuilderModal({
               size="sm"
               className="h-8 gap-1.5 bg-vault px-3 text-white hover:bg-vault/90"
               onClick={runWorkflow}
-              disabled={running || !file || steps.length === 0}
+              disabled={running || !activeFile || steps.length === 0}
             >
               {running ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
