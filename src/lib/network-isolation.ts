@@ -8,6 +8,12 @@ type Listener = (state: { enabled: boolean; blocked: number }) => void;
 
 const STORAGE_KEY = "counselpdf:work-offline";
 
+// DIAGNOSTIC FLAG (temporary): gate the fetch/XHR/WS/EventSource monkey-patch
+// and the service-worker OFFLINE_MODE handshake behind a single switch so we
+// can test whether isolation contributes to the open-freeze. Flip to `true`
+// to restore full isolation behavior.
+const ISOLATION_ENABLED = false;
+
 let installed = false;
 let enabled = false;
 let blocked = 0;
