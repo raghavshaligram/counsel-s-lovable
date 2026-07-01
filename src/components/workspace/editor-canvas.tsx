@@ -379,9 +379,11 @@ export function EditorCanvas({
         type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
         const items: TextItem[] = [];
         let sampledPixels = 0;
+        let processedTextItems = 0;
         for (const it of content.items as Raw[]) {
           if (cancelled) return;
-          if (items.length > 0 && items.length % TEXT_PROCESS_CHUNK === 0) {
+          processedTextItems += 1;
+          if (processedTextItems % TEXT_PROCESS_CHUNK === 0) {
             await yieldToMainThread();
             if (cancelled) return;
           }
