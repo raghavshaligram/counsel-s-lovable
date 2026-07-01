@@ -11,9 +11,10 @@ import { cn } from "@/lib/utils";
  * `useRequirePro()` directly and render a `<LockBadge />` on the trigger.
  */
 export const PAID_TOOL_IDS = new Set<string>([
-  "privilege-scan",  // Privilege review (AI)
-  "chat",            // Private AI assist / search inside PDF
-  "exhibit-binder",  // Multi-file court-ready binder
+  "privilege-scan",   // Privilege review (AI)
+  "chat",             // Private AI assist / search inside PDF
+  "exhibit-binder",   // Multi-file court-ready binder
+  "workflow-builder", // Visual Workflow Builder
 ]);
 
 /**
