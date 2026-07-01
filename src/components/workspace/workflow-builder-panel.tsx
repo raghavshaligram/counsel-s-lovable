@@ -1606,11 +1606,108 @@ function StepParamsEditor({
   }
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/* -------------------------------------------------------------------- */
+/* File source picker — lets the builder run on the current doc, a       */
+/* picked file, or a drag-dropped file, without requiring anything to be */
+/* open in the viewer first.                                             */
+/* -------------------------------------------------------------------- */
+function FileSourcePicker({
+  activeFile,
+  currentFile,
+  pickedFile,
+  onPick,
+  onClearOverride,
+  onUseCurrent,
+  fileInputRef,
+  dragOver,
+  setDragOver,
+}: {
+  activeFile: File | null;
+  currentFile: File | null;
+  pickedFile: File | null;
+  onPick: (f: File | null | undefined) => void;
+  onClearOverride: () => void;
+  onUseCurrent: () => void;
+  fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
+  dragOver: boolean;
+  setDragOver: (v: boolean) => void;
+}) {
+  const hasCurrent = !!currentFile;
+  const usingPicked = !!pickedFile;
+
+  const label = activeFile
+    ? activeFile.name
+    : hasCurrent
+      ? currentFile!.name
+      : "No file — pick or drop a PDF";
+
   return (
-    <div className="flex flex-col gap-1">
-      <Label className="text-[10.5px] uppercase tracking-wide text-text-muted">{label}</Label>
-      {children}
+    <div
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("Files")) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f) onPick(f);
+      }}
+      className={cn(
+        "flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px]",
+        dragOver
+          ? "border-vault/60 bg-vault/10 text-text"
+          : activeFile
+            ? "border-border bg-surface-1 text-text"
+            : "border-dashed border-border/70 bg-surface-1/50 text-text-muted",
+      )}
+      title={activeFile ? `Workflow will run on ${activeFile.name}` : "Drop a PDF or click Pick"}
+    >
+      <FileIcon className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+      <span className="max-w-[220px] truncate">{label}</span>
+      {usingPicked && hasCurrent && (
+        <button
+          type="button"
+          onClick={onUseCurrent}
+          className="ml-1 rounded px-1 py-0.5 text-[10.5px] text-text-muted underline-offset-2 hover:text-text hover:underline"
+          title={`Switch back to current document (${currentFile!.name})`}
+        >
+          Use current
+        </button>
+      )}
+      {usingPicked && !hasCurrent && (
+        <button
+          type="button"
+          onClick={onClearOverride}
+          className="ml-1 rounded px-1 py-0.5 text-[10.5px] text-text-muted hover:text-text"
+          title="Clear picked file"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="ml-1 inline-flex items-center gap-1 rounded border border-border/70 bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-text-muted hover:text-text"
+      >
+        <FileUp className="h-3 w-3" />
+        {activeFile ? "Change" : "Pick file"}
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null;
+          onPick(f);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }
@@ -1618,3 +1715,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* Silence unused import warning — LockBadge is exported for parity but not
  * used inside this panel body (the Pro gate uses its own lock). */
 void LockBadge;
+
