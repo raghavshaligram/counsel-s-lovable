@@ -467,15 +467,19 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   const handoffToRedact = useCallback(() => {
     if (!findings || findings.length === 0) return;
+    const selected = findings.filter(
+      (f) => marks[f.id]?.status === "privileged" && f.type !== "confidentiality-legend",
+    );
+    if (selected.length === 0) {
+      toast.info("Select the findings you want to redact first.", {
+        description: "Mark at least one item as privileged to hand off to Redact.",
+      });
+      return;
+    }
     // Stash the flagged terms for the Redact panel to seed its keyword input.
     try {
       const terms = Array.from(
-        new Set(
-          findings
-            .filter((f) => f.type !== "confidentiality-legend")
-            .map((f) => f.snippet)
-            .filter(Boolean),
-        ),
+        new Set(selected.map((f) => f.snippet).filter(Boolean)),
       ).slice(0, 20);
       window.sessionStorage.setItem(
         "vault.privilege.handoff",
@@ -484,7 +488,7 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } catch { /* ignore */ }
     void navigate({ to: "/workspace", search: { tool: "redact" } as never });
     toast.message("Switched to Redact — apply marks where you've decided to redact rather than withhold.");
-  }, [findings, fileKey, navigate]);
+  }, [findings, marks, fileKey, navigate]);
 
   /* --------------------------- Render -------------------------------- */
 
@@ -715,7 +719,8 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
           <button
             type="button"
             onClick={handoffToRedact}
-            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3"
+            disabled={privilegedCount === 0}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Shield className="h-3.5 w-3.5 text-vault" aria-hidden />
             Hand off to Redact instead
