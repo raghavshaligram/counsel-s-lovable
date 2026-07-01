@@ -676,6 +676,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         pdfDocsRef.current.delete(id);
       }
+      pdfDocByteLenRef.current.delete(id);
       setTabs((ts) => {
         const next = ts.filter((t) => t.id !== id);
         if (next.length === 0) {
