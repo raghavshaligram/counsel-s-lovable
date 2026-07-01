@@ -1151,7 +1151,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       }
       if (loadingTask && !loadingResolved) {
         console.debug("[open] loadingTask.destroy", { tabId, runId });
-        try { void loadingTask.destroy?.().catch(() => {}); } catch { /* ignore */ }
+        try {
+          const result = loadingTask.destroy?.();
+          if (result && typeof result.catch === "function") void result.catch(() => {});
+        } catch { /* ignore */ }
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
