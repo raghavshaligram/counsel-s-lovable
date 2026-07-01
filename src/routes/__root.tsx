@@ -21,8 +21,6 @@ import { UpgradeModal } from "@/components/upgrade-modal";
 import { LoginModal } from "@/components/login-modal";
 import { CertificateGate } from "@/components/workspace/certificate-gate";
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
-import { UnsupportedBrowserGate } from "@/components/unsupported-browser";
-import { initNetworkIsolation } from "@/lib/network-isolation";
 
 function NotFoundComponent() {
   return (
@@ -203,8 +201,6 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
-    // Install the network-isolation shim early and apply the persisted preference.
-    initNetworkIsolation();
     // Ask the browser to make our IndexedDB durable. Logs the outcome.
     void requestPersistentStorage();
   }, []);
@@ -266,7 +262,6 @@ function RootComponent() {
         offset={24}
         visibleToasts={4}
       />
-      <UnsupportedBrowserGate />
     </QueryClientProvider>
   );
 }

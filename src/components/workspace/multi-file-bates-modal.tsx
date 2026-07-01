@@ -15,8 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { X, GripVertical, Upload, Trash2, Loader2 } from "lucide-react";
-import { downloadPdf } from "@/lib/pdf/download";
-import { ExportFormatRow } from "@/components/workspace/export-format-row";
+import { downloadBytes } from "@/lib/batch/runner";
 import {
   planMultiFileBates,
   stampMultiFileBates,
@@ -154,12 +153,12 @@ export function MultiFileBatesModal({ onClose }: { onClose: () => void }) {
         },
       );
       if (merge && result.merged) {
-        await downloadPdf(result.merged.bytes, result.merged.name);
+        downloadBytes(result.merged.bytes, result.merged.name, "application/pdf");
         toast.success(`Merged Bates set saved (${totalPages} pages)`, { id: tid });
       } else {
         for (const f of result.files) {
           const out = f.name.replace(/\.pdf$/i, "") + "-bates.pdf";
-          await downloadPdf(f.bytes, out);
+          downloadBytes(f.bytes, out, "application/pdf");
         }
         toast.success(
           `${result.files.length} file${result.files.length === 1 ? "" : "s"} stamped (${totalPages} pages)`,
@@ -429,7 +428,6 @@ export function MultiFileBatesModal({ onClose }: { onClose: () => void }) {
                 />
               )}
             </div>
-            <ExportFormatRow className="mt-2" />
           </section>
         </div>
 

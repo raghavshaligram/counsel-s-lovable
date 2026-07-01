@@ -114,43 +114,11 @@ export async function enforceRedactionGate(
     const byVector: Record<string, number> = {};
     for (const l of result.leaks) byVector[l.vector] = (byVector[l.vector] ?? 0) + 1;
     const summary = Object.entries(byVector).map(([v, n]) => `${n} ${v}`).join(", ");
-
-    // Build a per-value × per-vector breakdown so the user (and we, in
-    // DevTools) can see EXACTLY which redacted string survived in which
-    // vector. Most “2 still recoverable” cases are one value that lives
-    // in both /V and /AP, or in both an annotation /Contents and a
-    // baked content stream — the table makes that visible.
-    const valueToVectors = new Map<string, Set<string>>();
-    const rows: { value: string; vector: string; page?: number; ref?: string; detail: string }[] = [];
-    for (const l of result.leaks) {
-      // Pull the actual matched substring out of the leak text when the
-      // verifier appended it as (matched "…"). Fall back to the leak text.
-      const m = /matched "([^"]+)"/.exec(l.text);
-      const value = m?.[1] ?? l.text;
-      if (!valueToVectors.has(value)) valueToVectors.set(value, new Set());
-      valueToVectors.get(value)!.add(l.vector);
-      rows.push({ value, vector: l.vector, page: l.page, ref: l.ref, detail: l.text });
-    }
-    // eslint-disable-next-line no-console
-    console.group("[redact:gate] export BLOCKED — recoverable values remain");
-    console.table(rows);
-    for (const [value, vectors] of valueToVectors) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[redact:gate] "${value}" survives in: ${Array.from(vectors).join(", ")} — ` +
-        `removal must clear every vector, not just the first`,
-      );
-    }
-    // eslint-disable-next-line no-console
-    console.groupEnd();
-
     throw new RedactionGateError(
-      `Redaction verification failed — ${result.leaks.length} item${result.leaks.length === 1 ? "" : "s"} still present (${summary}), export blocked. ` +
-      `Surviving: ${Array.from(valueToVectors.entries()).map(([v, vec]) => `"${v}" in [${Array.from(vec).join(", ")}]`).join("; ")}`,
+      `Redaction verification failed — ${result.leaks.length} item${result.leaks.length === 1 ? "" : "s"} still present (${summary}), export blocked`,
       result,
     );
   }
-
 
   return { bytes, verify: result };
 }

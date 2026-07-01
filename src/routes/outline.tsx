@@ -21,8 +21,7 @@ import {
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { downloadPdf } from "@/lib/pdf/download";
-import { ExportFormatRow } from "@/components/workspace/export-format-row";
+import { downloadBytes } from "@/lib/batch/runner";
 import { parsePdf } from "@/lib/outline/parse";
 import { exportPdf } from "@/lib/outline/write";
 import { linkifyPage } from "@/lib/outline/linkify";
@@ -337,7 +336,7 @@ function OutlinePage() {
     try {
       const out = await exportPdf(sourceBytes, outline, links);
       const baseName = sourceName.replace(/\.pdf$/i, "");
-      await downloadPdf(out, `${baseName}-outline.pdf`);
+      downloadBytes(out, `${baseName}-outline.pdf`, "application/pdf");
       toast.success("PDF exported");
     } catch (err) {
       console.error(err);
@@ -396,7 +395,6 @@ function OutlinePage() {
             <Download className="h-3.5 w-3.5 mr-1.5" />
             Export PDF
           </Button>
-          <ExportFormatRow className="ml-auto" />
         </div>
 
 

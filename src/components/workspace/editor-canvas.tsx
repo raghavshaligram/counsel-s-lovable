@@ -300,7 +300,6 @@ export function EditorCanvas({
   // re-parse the file per page. DPR capped at 2 to limit memory.
   useEffect(() => {
     let cancelled = false;
-    console.count("canvas-render-effect");
     setTextLoaded(false);
     setBannerDismissed(false);
     (async () => {
@@ -311,8 +310,7 @@ export function EditorCanvas({
         try {
           console.debug("[pdf-render] cancel", { canvasId: cid, page: op.srcPage });
           renderTaskRef.current.cancel();
-          // Fire-and-forget: don't block on the cancelled render promise.
-          void renderTaskRef.current.promise.catch(() => {});
+          await renderTaskRef.current.promise.catch(() => {});
         } catch { /* noop */ }
         renderTaskRef.current = null;
       }
@@ -328,20 +326,7 @@ export function EditorCanvas({
       }
       try {
         const pdfjs = await loadPdfjs();
-        // Parse-once rule: NEVER call getDocument here. Only the shared
-        // pdfDoc (parsed once at open in workspace-shell) may render pages.
-        // If it's not ready yet, paint a placeholder and bail — the effect
-        // re-runs when pdfDoc becomes available (it's in the deps).
-        if (!pdfDoc) {
-          const w = Math.max(1, Math.ceil(op.width * scale));
-          const h = Math.max(1, Math.ceil(op.height * scale));
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); }
-          setTextItems([]);
-          return;
-        }
-        const doc = pdfDoc;
+        const doc = pdfDoc ?? (await pdfjs.getDocument({ data: srcBytes.slice() }).promise);
         if (cancelled) return;
         const page = await doc.getPage(op.srcPage + 1);
         if (cancelled) return;

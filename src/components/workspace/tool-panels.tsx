@@ -105,7 +105,6 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import { FirmTemplatesMenu } from "./firm-templates-menu";
 import { CourtReadinessSection } from "./court-readiness";
-import { PrivilegeReviewPanel } from "./privilege-review-panel";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -124,8 +123,6 @@ export type ToolPanelCtx = {
   file: File | null;
   /** Replace the active tab's file in place (used by Fill → apply). */
   replaceFile: (f: File) => void;
-  /** Replace the active tab's parsed PDF bytes so the canvas re-renders from the sanitized file. */
-  replacePdfBytes?: (bytes: Uint8Array) => void | Promise<void>;
   /** Dispatch into the active tab's editor state. */
   editorDispatch: (a: EditorAction) => void;
   /** Active editor state (annotations, current page, selection). Optional —
@@ -193,8 +190,6 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ExhibitBinderPanel />;
     case "court-readiness":
       return <CourtReadinessPanel ctx={ctx} />;
-    case "privilege-scan":
-      return <PrivilegeReviewPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
@@ -1063,7 +1058,7 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
  * confirms by triggering export.
  */
 function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
-  const { file, replaceFile, replacePdfBytes, editorDispatch, editorState } = ctx;
+  const { file, replaceFile, editorDispatch, editorState } = ctx;
   type Det = import("@/lib/pdf/detect-pii").Detection;
   type Cat = import("@/lib/pdf/detect-pii").PiiCategory;
   const [scanning, setScanning] = useState(false);
@@ -1102,44 +1097,17 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      // Stream findings as they're discovered. Regex hits (SSN/card/email/
-      // phone) land within seconds; NER name hits stream in progressively
-      // from a Web Worker so the UI stays responsive even on 300+ page docs.
-      const streamed: Det[] = [];
-      let flushTimer: ReturnType<typeof setTimeout> | null = null;
-      const flush = () => {
-        flushTimer = null;
-        setFindings([...streamed]);
-        setSelected((prev) => {
-          const next = new Set(prev);
-          for (const d of streamed) {
-            if (d.confidence !== "low" && !next.has(d.id)) next.add(d.id);
-          }
-          return next;
-        });
-      };
-      const scheduleFlush = () => {
-        if (flushTimer) return;
-        flushTimer = setTimeout(flush, 120);
-      };
-      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await mod.detectPiiInPdf(file, 1.5, {
-        onProgress: (p) => {
-          const k = p.findingsSoFar ?? streamed.length;
-          if (p.stage === "ocr") {
-            setProgress(`OCR scanning ${p.page}/${p.totalPages} · ${k} finding${k === 1 ? "" : "s"}`);
-          } else if (p.stage === "ner") {
-            setProgress(`Detecting names ${p.page}/${p.totalPages} · ${k} finding${k === 1 ? "" : "s"}`);
-          } else {
-            setProgress(`Scanning ${p.page}/${p.totalPages} · ${k} finding${k === 1 ? "" : "s"}`);
-          }
-        },
-        onFinding: (d) => {
-          streamed.push(d);
-          scheduleFlush();
-        },
+      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
+        setProgress(
+          p.stage === "ocr"
+            ? `OCR scanning ${p.page}/${p.totalPages}`
+            : `Reading page ${p.page}/${p.totalPages}`,
+        );
       });
-      if (flushTimer) clearTimeout(flushTimer);
       // Side-channel scan: form fields, annotations, document metadata.
+      // These vectors are invisible on the page but ship with the file
+      // unless explicitly stripped. Sanitize handles removal during the
+      // redact export; we surface them here so the user can SEE them.
       setProgress("Scanning form fields, comments, metadata…");
       let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
       try {
@@ -1293,6 +1261,23 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           })),
           order: "sanitize/clear fields before any flatten, PDF/A conversion, or download",
         });
+        const { sanitizePdfBytesWithReport } = await importChunk(
+          () => import("@/lib/pdf/sanitize"),
+        );
+        const sourceBytes = editorState.doc.srcBytes.byteLength > 0
+          ? editorState.doc.srcBytes
+          : new Uint8Array(await file!.arrayBuffer());
+        const { bytes: cleaned, report } = await sanitizePdfBytesWithReport(sourceBytes);
+        // eslint-disable-next-line no-console
+        console.info("[redact:form-field] apply-now sanitize report", {
+          acroForm: report.acroForm,
+          acroFormFieldsCleared: report.acroFormFields,
+          flattened: false,
+          order: "field values/AP cleared now; flatten/PDF-A can only run later",
+        });
+        const { verifyRedactionRemoval } = await importChunk(
+          () => import("@/lib/editor/verify-redaction"),
+        );
         const sideTargets = sideChannelDets.flatMap((d) => {
           const full = (d.sensitiveText || "").trim();
           const snip = (d.snippet || "").replace(/…$/, "").trim();
@@ -1302,74 +1287,26 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             label: d.sourceLabel,
           }));
         });
-        const { sanitizePdfBytesWithReport } = await importChunk(
-          () => import("@/lib/pdf/sanitize"),
-        );
-        const sourceBytes = editorState.doc.srcBytes.byteLength > 0
-          ? editorState.doc.srcBytes
-          : new Uint8Array(await file!.arrayBuffer());
-        const { bytes: cleaned, report } = await sanitizePdfBytesWithReport(sourceBytes, {
-          sensitiveStrings: sideTargets.map((t) => t.text),
-        });
-        // eslint-disable-next-line no-console
-        console.info("[redact:form-field] apply-now sanitize report", {
-          acroForm: report.acroForm,
-          acroFormFieldsCleared: report.acroFormFields,
-          flattened: false,
-          targetedValues: sideTargets.map((t) => t.text),
-          order: "field values/AP cleared now; flatten/PDF-A can only run later",
-        });
-        const { verifyRedactionRemoval } = await importChunk(
-          () => import("@/lib/editor/verify-redaction"),
-        );
-        const verify = await verifyRedactionRemoval(cleaned, sideTargets, { rawStreamScope: "non-page" });
+        const verify = await verifyRedactionRemoval(cleaned, sideTargets);
         if (!verify.ok) {
-          // Per-value × per-vector breakdown so the user (and DevTools)
-          // can see EXACTLY which redacted strings survived in which
-          // vector(s). Most "N still recoverable" cases are one value
-          // that lives in both /V and /AP, or in both an annotation
-          // /Contents and a baked content stream.
-          const valueToVectors = new Map<string, Set<string>>();
-          const rows: { value: string; vector: string; page?: number; ref?: string; detail: string }[] = [];
-          for (const l of verify.leaks) {
-            const m = /matched "([^"]+)"/.exec(l.text);
-            const value = m?.[1] ?? l.text;
-            if (!valueToVectors.has(value)) valueToVectors.set(value, new Set());
-            valueToVectors.get(value)!.add(l.vector);
-            rows.push({ value, vector: l.vector, page: l.page, ref: l.ref, detail: l.text });
-          }
-          // eslint-disable-next-line no-console
-          console.group("[redact:apply-now] hidden-vector wipe BLOCKED — values still recoverable");
-          // eslint-disable-next-line no-console
-          console.table(rows);
-          for (const [value, vectors] of valueToVectors) {
-            // eslint-disable-next-line no-console
-            console.warn(
-              `[redact:apply-now] "${value}" survives in: ${Array.from(vectors).join(", ")} — ` +
-              `sanitize cleared one place but the same value still lives in the listed vector(s)`,
-            );
-          }
-          // eslint-disable-next-line no-console
-          console.warn("[redact:apply-now] sanitize report was:", report);
-          // eslint-disable-next-line no-console
-          console.groupEnd();
-
-          const detail = Array.from(valueToVectors.entries())
-            .map(([v, vec]) => `"${v.length > 40 ? v.slice(0, 40) + "…" : v}" in [${Array.from(vec).join(", ")}]`)
-            .join("; ");
           throw new Error(
-            `Immediate hidden-vector redaction failed — ${verify.leaks.length} value${verify.leaks.length === 1 ? "" : "s"} still recoverable. Surviving: ${detail}`,
+            `Immediate hidden-vector redaction failed — ${verify.leaks.length} value${verify.leaks.length === 1 ? "" : "s"} still recoverable.`,
           );
         }
+        // Replace srcBytes in-place; preserve annotations + page ops + ocr.
+        editorDispatch({
+          type: "LOAD",
+          doc: { ...editorState.doc, srcBytes: cleaned },
+        });
         replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
-        await replacePdfBytes?.(cleaned);
-        // Swap srcBytes in-place WITHOUT a LOAD — LOAD would re-spread
-        // `editorState.doc` from this callback's closure, which does
-        // NOT contain the redact annotations we just dispatched via
-        // ADD_ANNO above. That caused freshly-added boxes to vanish on
-        // the first click (user had to click 2-3 times before the SSN/
-        // name boxes "stuck"). SET_SRC_BYTES keeps annotations intact.
-        editorDispatch({ type: "SET_SRC_BYTES", bytes: cleaned });
+        if (editorState.doc.annotations.length > 0 || editorState.doc.ocrLayer) {
+          editorDispatch({
+            type: "LOAD_SIDECAR",
+            annotations: editorState.doc.annotations,
+            pages: editorState.doc.pages,
+            ocrLayer: editorState.doc.ocrLayer,
+          });
+        }
         // Drop wiped findings from the visible list so the user SEES them
         // gone (and a re-scan would confirm clean).
         const wipedIds = new Set(sideChannelDets.map((d) => d.id));
@@ -1407,7 +1344,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         return next;
       });
     }
-  }, [findings, selected, file, replaceFile, replacePdfBytes, editorDispatch, editorState, existingRedactKeys]);
+  }, [findings, selected, file, replaceFile, editorDispatch, editorState, existingRedactKeys]);
 
   const pageRedactableFindings = useMemo(
     () => findings?.filter((d) => d.category !== "privilegeContext" && (!d.vector || d.vector === "page")) ?? [],
@@ -1824,10 +1761,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     // we permanently remove the underlying content.
     const n = totalBoxes;
     const ok = await confirmDialog({
-      title: "Apply redactions? Review carefully.",
+      title: "Apply redactions?",
       description: (
         <>
-          This will <span className="font-medium text-foreground">permanently remove</span> the content under{" "}
+          This will permanently remove the content under{" "}
           <span className="font-medium text-foreground">
             {n} redaction{n === 1 ? "" : "s"}
           </span>
@@ -1837,11 +1774,6 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       ),
       body: (
         <div className="space-y-2">
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200/90">
-            Take a moment to scan every page before continuing. Once applied,
-            the underlying content is gone — there is no undo, even by reopening
-            the original file.
-          </div>
           <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <span
               aria-hidden
@@ -1974,7 +1906,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         const flatNote = rasterResult.rasterizedPages.length
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
-        toast.success(`Content permanently removed · verified ${result.removed}/${result.total} region${result.total === 1 ? "" : "s"}${flatNote}`, { id: tid });
+        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
 
         // Offer the formal Redaction Certificate as a free-signup value gate.
         // Only fires when verification PASSED — never claim unverified compliance.
@@ -5158,7 +5090,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           margin: imagesMargin,
           onProgress: (pct) => setProgress(`Building PDF… ${pct}%`),
         });
-        await downloadPdf(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
+        downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
         toast.success(`Built PDF from ${res.pages} image${res.pages === 1 ? "" : "s"}`, { id: tid });
       } else {
         toast.error("Unsupported conversion", { id: tid });
@@ -5632,7 +5564,7 @@ function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           margin: imagesMargin,
           onProgress: (pct) => setProgress(`Building PDF… ${pct}%`),
         });
-        await downloadPdf(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
+        downloadBytes(new Uint8Array(await res.blob.arrayBuffer()), res.filename);
         toast.success(`Built PDF from ${res.pages} image${res.pages === 1 ? "" : "s"}`, { id: tid });
       }
     } catch (err) {

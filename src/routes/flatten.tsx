@@ -8,8 +8,7 @@ import { toast } from "sonner";
 import { flatten, type FlattenOpts } from "@/lib/batch/ops/flatten";
 import { BatchDialog } from "@/components/tray/batch-dialog";
 import { useTray } from "@/lib/tray/store";
-import { downloadPdf } from "@/lib/pdf/download";
-import { ExportFormatRow } from "@/components/workspace/export-format-row";
+import { downloadBytes } from "@/lib/batch/runner";
 
 export const Route = createFileRoute("/flatten")({
   head: () => ({
@@ -36,7 +35,7 @@ function FlattenPage() {
     setBusy(true);
     try {
       const out = await flatten(new Uint8Array(await file.arrayBuffer()), opts);
-      await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf");
+      downloadBytes(out, file.name.replace(/\.pdf$/i, "") + "-flattened.pdf", "application/pdf");
       toast.success("PDF flattened");
     } catch (err) {
       console.error(err);
@@ -84,8 +83,6 @@ function FlattenPage() {
             onChange={(v) => setOpts({ ...opts, annotations: v })}
           />
         </section>
-
-        <ExportFormatRow />
 
         <div className="flex flex-col sm:flex-row gap-3">
           <Button

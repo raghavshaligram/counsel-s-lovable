@@ -58,16 +58,8 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// DIAGNOSTIC FLAG (temporary): keep OFFLINE_MODE handling disabled so the SW
-// never rejects requests, matching the main-thread ISOLATION_ENABLED flag.
-const SW_ISOLATION_ENABLED = false;
-let OFFLINE_ISOLATED = false;
-
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
-  if (SW_ISOLATION_ENABLED && event.data && event.data.type === "OFFLINE_MODE") {
-    OFFLINE_ISOLATED = Boolean(event.data.enabled);
-  }
 });
 
 function isHashedAssetPath(pathname) {
@@ -84,12 +76,6 @@ async function cacheFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(req);
   if (cached) return cached;
-  if (OFFLINE_ISOLATED) {
-    return new Response("Network blocked by Work Offline", {
-      status: 503,
-      statusText: "Offline isolation",
-    });
-  }
   try {
     const res = await fetch(req);
     // Only cache successful basic/cors responses.
@@ -125,17 +111,7 @@ async function networkFirstNav(req) {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") {
-    if (OFFLINE_ISOLATED) {
-      event.respondWith(
-        new Response("Network blocked by Work Offline", {
-          status: 503,
-          statusText: "Offline isolation",
-        }),
-      );
-    }
-    return;
-  }
+  if (req.method !== "GET") return;
 
   const url = new URL(req.url);
 
@@ -161,13 +137,5 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Anything else: in isolation mode, block it. Otherwise let the browser do its thing.
-  if (OFFLINE_ISOLATED) {
-    event.respondWith(
-      new Response("Network blocked by Work Offline", {
-        status: 503,
-        statusText: "Offline isolation",
-      }),
-    );
-  }
+  // Anything else: let the browser do its thing (no caching).
 });

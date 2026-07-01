@@ -14,8 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { runBatch, zipBatchOutputs, downloadBytes, type BatchOp, type BatchProgress } from "@/lib/batch/runner";
-import { downloadPdf } from "@/lib/pdf/download";
-import { ExportFormatRow } from "@/components/workspace/export-format-row";
 import { useTray } from "@/lib/tray/store";
 import { CheckCircle2, Loader2, AlertTriangle, Download, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -79,22 +77,13 @@ export function BatchDialog<O>({
     abortRef.current?.abort();
   };
 
-  const downloadAll = async () => {
+  const downloadAll = () => {
     if (!finalResult) return;
     const completed = finalResult.files.filter((f) => f.status === "done").length;
     if (completed === 0) return;
     if (completed === 1) {
       const f = finalResult.files.find((x) => x.status === "done");
-      if (f && f.status === "done") await downloadPdf(f.bytes, f.outName);
-      return;
-    }
-    const { getExportFormat } = await import("@/lib/workspace/export-format-store");
-    if (getExportFormat() === "pdf-a") {
-      // PDF/A can't be packaged inside a zip without losing conformance
-      // tracking — deliver each file individually through the PDF/A pipeline.
-      for (const f of finalResult.files) {
-        if (f.status === "done") await downloadPdf(f.bytes, f.outName);
-      }
+      if (f && f.status === "done") downloadBytes(f.bytes, f.outName, "application/pdf");
       return;
     }
     const zip = zipBatchOutputs(finalResult, zipName);
@@ -117,7 +106,6 @@ export function BatchDialog<O>({
           </div>
         ) : (
           <>
-            <ExportFormatRow />
             <div className="rounded-md border border-whisper bg-canvas/40">
               <div className="flex items-center justify-between px-3 py-2 border-b border-whisper text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 <span>Batch ledger</span>

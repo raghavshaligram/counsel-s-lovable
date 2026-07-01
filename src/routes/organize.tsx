@@ -8,8 +8,7 @@ import { Download, Trash2, RotateCw, GripVertical, FilePlus2 } from "lucide-reac
 import { useTray, type TrayEntry } from "@/lib/tray/store";
 import { getBytes } from "@/lib/tray/blobs";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { downloadPdf } from "@/lib/pdf/download";
-import { ExportFormatRow } from "@/components/workspace/export-format-row";
+import { downloadBytes } from "@/lib/batch/runner";
 import { cn } from "@/lib/utils";
 import { ToolHeader } from "@/routes/split";
 
@@ -208,7 +207,7 @@ function OrganizePage() {
         out.addPage(copied);
       }
       const bytes = await out.save();
-      await downloadPdf(bytes, `counselpdf-organized-${Date.now()}.pdf`);
+      downloadBytes(bytes, `counselpdf-organized-${Date.now()}.pdf`, "application/pdf");
       toast.success(`Built PDF with ${cells.length} page${cells.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error(err);
@@ -259,7 +258,6 @@ function OrganizePage() {
             {building ? "Building…" : `Build PDF (${cells.length})`}
           </Button>
         </div>
-        <ExportFormatRow className="max-w-xs" />
 
         {entries.length === 0 ? (
           <EmptyState />

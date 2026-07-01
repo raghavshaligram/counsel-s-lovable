@@ -8,7 +8,7 @@
 
 import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
-import { runNer, runNerWorkerBatch, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
+import { runNer, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
 
 export type PiiCategory =
   | "ssn"
@@ -173,7 +173,7 @@ const NAME_CANDIDATE_RE =
 
 // Strong "person follows" signals — when present, confidence is "high".
 const NAME_PREFIX_RE =
-  /(?:^|[\s(])(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Hon|Atty|Rev|Sir|Madam|Sen|Rep|Gov|Justice|Judge|Officer|Captain|Lt|Sgt|by|signed\s+by|prepared\s+by|authored\s+by|executed\s+by|reviewed\s+by|attorney\s+for|counsel\s+for|counsel|client|witness|deponent|declarant|plaintiff|defendant|petitioner|respondent|affiant|notary|on\s+behalf\s+of|\/s\/)\.?\s*$/i;
+  /(?:^|[\s(])(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Hon|Atty|Rev|Sir|Madam|Sen|Rep|Gov|Justice|Judge|Officer|Captain|Lt|Sgt|by|signed\s+by|prepared\s+by|authored\s+by|executed\s+by|attorney\s+for|counsel\s+for|witness|deponent|declarant|plaintiff|defendant|petitioner|respondent|affiant|notary|on\s+behalf\s+of|\/s\/)\.?\s*$/i;
 const NAME_SUFFIX_RE =
   /^\s*,?\s*(?:Jr|Sr|Esq|Esquire|PhD|Ph\.D\.?|MD|M\.D\.?|JD|J\.D\.?|II|III|IV|CPA|RN|DDS|DO)\.?\b/i;
 
@@ -321,83 +321,29 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
 
 
 export type DetectProgress = {
-  /**
-   * "text" = text extraction + regex pass (fast).
-   * "ner"  = on-device NER pass (slower, runs in a worker).
-   * "ocr"  = OCR pass for scanned pages.
-   */
-  stage: "text" | "ner" | "ocr";
+  stage: "text" | "ocr";
   page: number;
   totalPages: number;
-  /** Total findings so far (across all stages). Lets the UI show "K findings". */
-  findingsSoFar?: number;
-};
-
-export type DetectOptions = {
-  onProgress?: (p: DetectProgress) => void;
-  /**
-   * Streams every detection the moment it's discovered, so the UI can show
-   * results progressively rather than waiting for the entire scan to finish.
-   * The same detections also appear in the final returned array.
-   */
-  onFinding?: (d: Detection) => void;
-  preloadedDoc?: { numPages: number; getPage: (n: number) => Promise<unknown> };
 };
 
 export async function detectPiiInPdf(
   file: File,
   scale = 1.5,
-  onProgressOrOpts?: ((p: DetectProgress) => void) | DetectOptions,
-  preloadedDocLegacy?: { numPages: number; getPage: (n: number) => Promise<unknown> },
+  onProgress?: (p: DetectProgress) => void,
+  preloadedDoc?: { numPages: number; getPage: (n: number) => Promise<unknown> },
 ): Promise<{ detections: Detection[]; usedOcr: boolean; scannedPages: number[]; totalPages: number; lowConfidenceOcrPages: number[]; ocrPageConfidence: Record<number, number>; ocrUnderDetectedPages: number[] }> {
-  // Backwards-compatible argument shape: callers can pass either an options
-  // bag OR the legacy (onProgress, preloadedDoc) tuple.
-  const opts: DetectOptions =
-    typeof onProgressOrOpts === "function"
-      ? { onProgress: onProgressOrOpts, preloadedDoc: preloadedDocLegacy }
-      : (onProgressOrOpts ?? {});
-  const onProgress = opts.onProgress;
-  const onFinding = opts.onFinding;
-  const preloadedDoc = opts.preloadedDoc;
-
   const pdfjs = await getPdfjs();
+  // Reuse the doc loaded by the caller (e.g. redact route already parsed the
+  // file to render pages). Avoids a second arrayBuffer() + getDocument() on
+  // large PDFs.
   const doc = (preloadedDoc as unknown as Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>) ??
     (await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise);
   const detections: Detection[] = [];
   const ocrPages: number[] = [];
 
-  // Per-page state captured during the regex pass so the NER pass can reuse
-  // the already-extracted text + per-item bbox info without re-parsing.
-  type NerPageCtx = {
-    page: number;
-    /** Concatenated text of all items on this page, with single-space joins. */
-    pageText: string;
-    /** For each char index in pageText, the index of the source item (-1 for joiner spaces). */
-    charToItem: number[];
-    /** Items with their pre-computed canvas-space geometry. */
-    items: Array<{
-      str: string;
-      transform: number[];
-      fontName?: string;
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-      pad: number;
-    }>;
-    /** Regex name hits per item — to dedupe against NER finds. */
-    nameSpans: Array<{ item: number; start: number; end: number }>;
-  };
-  const nerCtxs: NerPageCtx[] = [];
-
-  const pushDetection = (d: Detection) => {
-    detections.push(d);
-    onFinding?.(d);
-  };
-
-  // ---------- Pass 1: text extraction + regex (fast, streaming) ----------
+  // Pass 1 — native text layer
   for (let i = 1; i <= doc.numPages; i++) {
-    onProgress?.({ stage: "text", page: i, totalPages: doc.numPages, findingsSoFar: detections.length });
+    onProgress?.({ stage: "text", page: i, totalPages: doc.numPages });
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale });
     const content = await page.getTextContent();
@@ -408,24 +354,16 @@ export async function detectPiiInPdf(
       height: number;
     }>;
 
+    // Heuristic: a scanned page has ~no text items.
     const totalChars = items.reduce((n, it) => n + (it.str?.length ?? 0), 0);
     if (totalChars < 20) {
       ocrPages.push(i);
       continue;
     }
 
-    const ctx: NerPageCtx = {
-      page: i,
-      pageText: "",
-      charToItem: [],
-      items: [],
-      nameSpans: [],
-    };
-
-    for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
-      const raw = items[itemIdx];
+    for (const raw of items) {
       const str = raw.str;
-      if (!str) continue;
+      if (!str || !str.trim()) continue;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
@@ -433,34 +371,12 @@ export async function detectPiiInPdf(
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
       const fontName = (raw as { fontName?: string }).fontName;
+      // Approximate per-character width across the text item. PDF.js doesn't
+      // give us per-glyph positions for native text, but glyphs in a single
+      // text-run are typeset in a continuous strip, so a uniform divide
+      // produces a tight box around the matched substring rather than the
+      // whole sentence/line.
       const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
-
-      // Record geometry for the NER pass.
-      ctx.items.push({
-        str,
-        transform: raw.transform,
-        fontName,
-        x: x0,
-        y,
-        w: itemWidth,
-        h: fontHeight,
-        pad,
-      });
-
-      // Append this item to the page-level concatenated text. The joiner
-      // space between items is mapped to -1 so cross-item NER spans can be
-      // detected without leaking joiner offsets back into the source.
-      const itemArrIdx = ctx.items.length - 1;
-      if (ctx.pageText.length > 0) {
-        ctx.pageText += " ";
-        ctx.charToItem.push(-1);
-      }
-      const baseOffset = ctx.pageText.length;
-      ctx.pageText += str;
-      for (let c = 0; c < str.length; c++) ctx.charToItem.push(itemArrIdx);
-
-      if (!str.trim()) continue;
-
       const pushBox = (
         spanStart: number,
         spanLen: number,
@@ -474,7 +390,7 @@ export async function detectPiiInPdf(
         const cy = y - pad;
         const cw = subW + pad * 2;
         const ch = fontHeight + pad * 2;
-        pushDetection({
+        detections.push({
           id: `det-${i}-${detections.length}`,
           page: i,
           x: cx,
@@ -497,158 +413,48 @@ export async function detectPiiInPdf(
         });
       };
 
-      // 1) Structured regex patterns + heuristic name match (fast — sync).
+      // 1) Structured regex patterns + heuristic name match.
       const hits = matchAllCategories(str);
-      for (const hit of hits) {
-        pushBox(hit.start, hit.length, hit.category, hit.confidence, hit.text);
-        if (hit.category === "name") {
-          ctx.nameSpans.push({
-            item: itemArrIdx,
-            start: baseOffset + hit.start,
-            end: baseOffset + hit.start + hit.length,
-          });
-        }
-      }
+      for (const hit of hits) pushBox(hit.start, hit.length, hit.category, hit.confidence, hit.text);
 
-      // 2) Privilege / confidentiality context.
+      // 2) Privilege / confidentiality context — surfaced as low-confidence
+      //    suggestions for human review (not auto-selected).
       PRIVILEGE_TERMS_RE.lastIndex = 0;
       let pm: RegExpExecArray | null;
       while ((pm = PRIVILEGE_TERMS_RE.exec(str)) !== null) {
         pushBox(pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
+        // Surface any nearby value as a redactable suggestion.
         const values = findValuesNearPrivilege(str, pm.index, pm.index + pm[0].length);
         for (const v of values) {
           pushBox(v.start, v.end - v.start, "privilegeValue", "low", v.text);
         }
         if (pm[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
       }
-    }
 
-    if (ctx.pageText.trim().length >= 8 && /[A-Za-z]/.test(ctx.pageText)) {
-      nerCtxs.push(ctx);
-    }
 
-    // Yield to the event loop every page so the UI thread can paint
-    // progress and stay responsive on large documents.
-    if (i % 4 === 0) await new Promise((r) => setTimeout(r, 0));
-  }
-
-  // ---------- Pass 2: NER (worker-backed, batched per page) ----------
-  // The NER model is the bottleneck — runs in a dedicated worker so the
-  // main thread stays free for UI. We send pages in small batches; the
-  // worker loads the model ONCE and reuses it.
-  if (nerCtxs.length > 0) {
-    const BATCH = 4;
-    for (let b = 0; b < nerCtxs.length; b += BATCH) {
-      const batch = nerCtxs.slice(b, b + BATCH);
-      // BERT-base-NER tokenizer caps at 512 tokens. Long page text is
-      // truncated by the pipeline silently — for pages that overflow we
-      // split into ~1500-char chunks at whitespace and reassemble offsets.
-      type Chunk = { ctxIdx: number; text: string; offset: number };
-      const chunks: Chunk[] = [];
-      batch.forEach((c, idx) => {
-        const t = c.pageText;
-        if (t.length <= 1500) {
-          chunks.push({ ctxIdx: idx, text: t, offset: 0 });
-          return;
-        }
-        let pos = 0;
-        while (pos < t.length) {
-          let end = Math.min(t.length, pos + 1500);
-          if (end < t.length) {
-            const ws = t.lastIndexOf(" ", end);
-            if (ws > pos + 800) end = ws;
-          }
-          chunks.push({ ctxIdx: idx, text: t.slice(pos, end), offset: pos });
-          pos = end + 1;
-        }
-      });
-
-      const results = await runNerWorkerBatch(chunks.map((c) => c.text));
-
-      for (let k = 0; k < chunks.length; k++) {
-        const { ctxIdx, offset } = chunks[k];
-        const ents = results[k] ?? [];
-        const ctx = batch[ctxIdx];
+      // 3) On-device NER for PERSON / ORG entities — catches plain-prose
+      //    names without requiring Mr./Dr./Esq. titles. Skip very short or
+      //    pure-numeric items to avoid wasted model calls.
+      if (str.trim().length >= 8 && /[A-Za-z]/.test(str)) {
+        const ents = await runNer(str);
         for (const e of ents) {
           if (e.type !== "PER" && e.type !== "ORG") continue;
-          const absStart = offset + e.start;
-          const absEnd = offset + e.end;
-          // Skip spans the regex name pass already produced.
-          const dup = ctx.nameSpans.some(
-            (s) => !(absEnd <= s.start || absStart >= s.end),
+          // Avoid double-flagging spans the regex name pass already caught.
+          const overlap = hits.some(
+            (h) => h.category === "name" && !(e.end <= h.start || e.start >= h.start + h.length),
           );
-          if (dup) continue;
-          // Find the items this entity covers.
-          const covered = new Set<number>();
-          for (let cc = absStart; cc < absEnd && cc < ctx.charToItem.length; cc++) {
-            const wi = ctx.charToItem[cc];
-            if (wi >= 0) covered.add(wi);
-          }
-          if (covered.size === 0) continue;
-          const itemIdxs = [...covered];
-          const rects = itemIdxs.map((wi) => ctx.items[wi]);
-          // Single-item entity: position the box on the exact char range
-          // inside that item for a tight cover. Multi-item entity: union.
-          let cx: number, cy: number, cw: number, ch: number;
-          let primary = rects[0];
-          if (itemIdxs.length === 1) {
-            const itemFirstChar = ctx.charToItem.indexOf(itemIdxs[0]);
-            const localStart = Math.max(0, absStart - itemFirstChar);
-            const localLen = Math.max(1, absEnd - absStart);
-            const charW = primary.str.length > 0 ? primary.w / primary.str.length : primary.w;
-            const subX = primary.x + charW * localStart;
-            const subW = Math.max(charW, charW * localLen);
-            cx = subX - primary.pad;
-            cy = primary.y - primary.pad;
-            cw = subW + primary.pad * 2;
-            ch = primary.h + primary.pad * 2;
-          } else {
-            const x0 = Math.min(...rects.map((r) => r.x));
-            const y0 = Math.min(...rects.map((r) => r.y));
-            const x1 = Math.max(...rects.map((r) => r.x + r.w));
-            const y1 = Math.max(...rects.map((r) => r.y + r.h));
-            const pad = Math.max(2, (y1 - y0) * 0.15);
-            cx = x0 - pad;
-            cy = y0 - pad;
-            cw = x1 - x0 + pad * 2;
-            ch = y1 - y0 + pad * 2;
-            primary = rects[0];
-          }
-          pushDetection({
-            id: `det-${ctx.page}-${detections.length}`,
-            page: ctx.page,
-            x: cx,
-            y: cy,
-            w: cw,
-            h: ch,
-            category: e.type === "PER" ? "name" : "org",
-            confidence: "high",
-            snippet: snippet(e.text),
-            source: {
-              originalString: primary.str,
-              redactText: e.text,
-              transform: primary.transform,
-              fontName: primary.fontName,
-              bounds: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
-            },
-            pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
-          });
+          if (overlap) continue;
+          pushBox(
+            e.start,
+            e.end - e.start,
+            e.type === "PER" ? "name" : "org",
+            "high",
+            e.text,
+          );
         }
       }
-
-      const lastInBatch = batch[batch.length - 1];
-      onProgress?.({
-        stage: "ner",
-        page: Math.min(b + BATCH, nerCtxs.length),
-        totalPages: nerCtxs.length,
-        findingsSoFar: detections.length,
-      });
-      // Suppress unused-var lint when batch yields no results — keep refs alive.
-      void lastInBatch;
     }
   }
-
-
 
   // Pass 2 — OCR for image-only pages. We render at a higher DPI than the
   // canvas scale (digit recognition is brittle below ~3x), then assemble

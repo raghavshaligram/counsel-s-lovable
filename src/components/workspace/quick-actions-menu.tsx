@@ -34,7 +34,7 @@ import {
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { downloadPdf } from "@/lib/pdf/download";
+import { downloadBytes } from "@/lib/batch/runner";
 import { importChunk } from "@/lib/chunk-import";
 
 type Props = {
@@ -79,9 +79,10 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     try {
       const bytes = new Uint8Array(await target.arrayBuffer());
       const out = await op(bytes);
-      await downloadPdf(
+      downloadBytes(
         out,
         `${baseName(target.name)}-${suffix}.pdf`,
+        "application/pdf",
       );
       toast.success(`${label} — saved`, { id: toastId });
     } catch (err) {
@@ -102,7 +103,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
     try {
       const { repairPdfFile } = await importChunk(() => import("@/lib/pdf/repair"));
       const res = await repairPdfFile(target);
-      await downloadPdf(res.bytes, res.filename);
+      downloadBytes(res.bytes, res.filename, "application/pdf");
       if (res.outcome === "full") {
         toast.success(
           `Fully repaired — ${res.pagesRecovered}/${res.pagesExpected} pages`,
@@ -169,9 +170,10 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
         return;
       }
       const pct = Math.round((1 - res.outputSize / res.originalSize) * 100);
-      await downloadPdf(
+      downloadBytes(
         res.bytes,
         `${baseName(target.name)}-compressed.pdf`,
+        "application/pdf",
       );
       toast.success(
         `Compressed — ${fmt(res.originalSize)} → ${fmt(res.outputSize)} (${pct}% smaller)`,
@@ -202,7 +204,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
         const bytes = new Uint8Array(await target.arrayBuffer());
         const { sanitizePdfBytesWithReport } = await importChunk(() => import("@/lib/pdf/sanitize"));
         const { bytes: out, report, pageCount } = await sanitizePdfBytesWithReport(bytes);
-        await downloadPdf(out, `${baseName(target.name)}-sanitized.pdf`);
+        downloadBytes(out, `${baseName(target.name)}-sanitized.pdf`, "application/pdf");
         toast.success("Sanitize — saved", { id: toastId });
 
         try {
@@ -261,7 +263,7 @@ export function QuickActionsMenu({ file, onMakeSearchable, ocrRunning, onOpenFil
       const { rotatePdf } = await importChunk(() => import("@/lib/pdf/rotate"));
       const res = await rotatePdf(file, { angle, scope: "all" });
       const buf = new Uint8Array(await res.blob.arrayBuffer());
-      await downloadPdf(buf, res.filename);
+      downloadBytes(buf, res.filename, "application/pdf");
       toast.success(`Rotated ${angle}° — ${res.rotatedCount} pages`, { id: toastId });
     } catch (err) {
       toast.error("Rotate failed", {

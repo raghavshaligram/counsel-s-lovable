@@ -57,8 +57,8 @@ import {
   FileCheck2,
   Settings as SettingsIcon,
   Wrench,
+  Printer,
   ShieldOff,
-
   BookOpen,
   Gavel,
 } from "lucide-react";
@@ -100,14 +100,12 @@ import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
+import { CaseSessionSaveButton } from "./case-session-save";
 import { AnnouncementBanner } from "./announcement-banner";
-
+import { ExportFormatChip } from "./export-format-row";
 import { WelcomeModal } from "./welcome-modal";
 import { PrivacyShield } from "./privacy-shield";
-import { OfflineToggle, loadOfflinePref } from "./offline-toggle";
-import { ExportMenu } from "./export-menu";
-import { ExportFormatChip } from "./export-format-row";
-
+import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
@@ -370,20 +368,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [dispatchEditorFor],
   );
 
-  const replaceActivePdfBytes = useCallback(async (bytes: Uint8Array) => {
-    const tabId = activeIdRef.current;
-    const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
-    const pdfjs = await loadPdfjs();
-    const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-    const prior = pdfDocsRef.current.get(tabId);
-    if (prior && prior !== parsed) {
-      // Fire-and-forget: never block the open path on prior.destroy().
-      void Promise.resolve((prior as { destroy?: () => Promise<void> }).destroy?.()).catch(() => {});
-    }
-    pdfDocsRef.current.set(tabId, parsed);
-    setPdfDocVersion((v) => v + 1);
-  }, []);
-
   // Convenience aliases — every render reads from `active`.
   const file = active.file;
   const isDirty = active.isDirty;
@@ -442,10 +426,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // counter so EditorPages re-renders when the active tab's pdfDoc changes.
   const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
   const [, setPdfDocVersion] = useState(0);
-  // Monotonic open-token: each open effect run increments and captures its own
-  // token. A superseded run (new file opened before this one finished) exits
-  // without dispatching LOAD or installing pdfDoc, avoiding races.
-  const openTokenRef = useRef(0);
 
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
@@ -918,8 +898,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       active.editor.doc.pages.length > 0;
     if (already) return;
     let cancelled = false;
-    const myToken = ++openTokenRef.current;
-    console.debug("[open] open:start", { tabId, file: f.name, size: f.size, token: myToken });
     (async () => {
       try {
         // Open path — pdf.js only, no pdf-lib, no double parse.
@@ -929,7 +907,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // (so it can render without re-parsing), and let EditorPages refine
         // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
-        if (cancelled || myToken !== openTokenRef.current) return;
         const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         // Hand bytes straight to pdf.js — the worker transfers the buffer.
@@ -937,32 +914,28 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // and freezes the open path. Keep this transfer fast; export re-
         // reads fresh bytes from the active File on demand.
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
-        console.debug("[open] getDocument:done", { tabId, token: myToken, numPages: doc.numPages });
-        if (cancelled || myToken !== openTokenRef.current) {
-          // Superseded — drop this doc without blocking the open path.
-          void Promise.resolve((doc as { destroy?: () => Promise<void> }).destroy?.()).catch(() => {});
+        if (cancelled) {
+          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
         }
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         const numPages = doc.numPages;
-        // Replace any prior pdfDoc for this tab. Fire-and-forget destroy —
-        // the open path must NEVER await the previous doc's teardown.
+        // Replace any prior pdfDoc for this tab.
         const prior = pdfDocsRef.current.get(tabId);
         if (prior && prior !== doc) {
-          void Promise.resolve((prior as { destroy?: () => Promise<void> }).destroy?.()).catch(() => {});
+          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         }
         pdfDocsRef.current.set(tabId, doc);
         setPdfDocVersion((v) => v + 1);
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
         }));
-        if (cancelled || myToken !== openTokenRef.current) return;
+        if (cancelled) return;
         dispatchEditorFor(tabId, {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
-        console.debug("[open] LOAD dispatched", { tabId, token: myToken, numPages });
         // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
         // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
@@ -1358,11 +1331,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               </span>
             )}
           </span>
+          <OfflineBadge enabled={workOffline} />
         </div>
-
         <div className="flex items-center gap-2">
           <PrivacyShield hasDocument={!!file} />
-          <OfflineToggle enabled={workOffline} onChange={setWorkOffline} />
+          <OfflineToggle hasDocument={!!file} enabled={workOffline} onChange={setWorkOffline} />
           <button
             type="button"
             onClick={() => {
@@ -1399,16 +1372,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
           />
 
-          <ExportFormatChip />
-          <ExportMenu
-            file={file}
-            canExport={!!editorState.doc}
-            canPrint={!!editorState.doc}
-            printing={printing}
-            onExport={onExport}
-            onPrint={() => void onPrint()}
-          />
+          <button
+            type="button"
+            onClick={() => void onPrint()}
+            disabled={!editorState.doc || printing}
+            title="Print (⌘P)"
+            aria-label="Print"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12.5px] font-medium text-foreground transition-colors hover:bg-surface-2",
+              (!editorState.doc || printing) &&
+                "opacity-40 cursor-not-allowed hover:bg-surface-1",
+            )}
+          >
+            <Printer className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Print
+          </button>
 
+          <ExportFormatChip />
+          <button
+            type="button"
+            onClick={onExport}
+            className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 transition-opacity"
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Export
+          </button>
+          <span className="mx-0.5 h-4 w-px bg-border" />
+          <CaseSessionSaveButton file={file} />
           <AccountMenu onShowWelcome={() => setWelcomeNonce((n) => n + 1)} />
         </div>
       </header>
@@ -1782,7 +1772,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             onClose={() => patchActive({ inspectorOpen: false })}
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
-            replacePdfBytes={replaceActivePdfBytes}
             editorDispatch={editorDispatch}
             editorState={editorState}
             closeInspector={() => patchActive({ inspectorOpen: false })}
@@ -2943,16 +2932,8 @@ function EmptyStart({
       <div className="w-full max-w-[760px] text-center">
         <h1 className="font-display text-[24px] leading-tight">Begin a matter</h1>
         <p className="mt-2 text-[12.5px] text-text-2">
-          Purpose-built for legal work. Documents stay on this device.
+          Purpose-built for legal work. Nothing leaves this device.
         </p>
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-vault/25 bg-accent-soft px-3 py-1 text-[11px] font-medium text-vault">
-          <Lock className="h-3 w-3" strokeWidth={2.5} />
-          On your device · Nothing uploaded
-          <span className="mx-1 opacity-40">·</span>
-          <Link to="/verify-privacy" className="underline underline-offset-2 hover:opacity-80">
-            Verify it yourself
-          </Link>
-        </div>
 
         {/* Primary: open a document */}
         <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -3252,7 +3233,6 @@ function Inspector({
   onClose,
   file,
   replaceFile,
-  replacePdfBytes,
   editorDispatch,
   editorState,
   closeInspector,
@@ -3266,7 +3246,6 @@ function Inspector({
   onClose: () => void;
   file: File | null;
   replaceFile: (f: File) => void;
-  replacePdfBytes: (bytes: Uint8Array) => void | Promise<void>;
   editorDispatch: React.Dispatch<EditorAction>;
   editorState: ReturnType<typeof reducer>;
   closeInspector: () => void;
@@ -3275,80 +3254,20 @@ function Inspector({
   focusSection: string | null;
   clearFocusSection: () => void;
 }) {
-  const MIN_W = 280;
-  const MAX_W = 640;
-  const DEFAULT_W = 380;
-  const STORAGE_KEY = "vaultpdf:inspector-width";
-  const [width, setWidth] = useState<number>(() => {
-    if (typeof window === "undefined") return DEFAULT_W;
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) ? Math.min(MAX_W, Math.max(MIN_W, n)) : DEFAULT_W;
-  });
-  const [dragging, setDragging] = useState(false);
-  const startRef = useRef<{ x: number; w: number } | null>(null);
-
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: PointerEvent) => {
-      if (!startRef.current) return;
-      // Dragging left edge: moving left increases width.
-      const dx = startRef.current.x - e.clientX;
-      const next = Math.min(MAX_W, Math.max(MIN_W, startRef.current.w + dx));
-      setWidth(next);
-    };
-    const onUp = () => {
-      setDragging(false);
-      startRef.current = null;
-      try { window.localStorage.setItem(STORAGE_KEY, String(width)); } catch {}
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [dragging, width]);
-
-  const openWidth = open && activeTool ? width : 0;
-
   return (
     <aside
       aria-label="Inspector"
       className={cn(
-        "relative shrink-0 border-l border-border bg-surface-1 overflow-hidden",
-        !dragging && "transition-[width] duration-200",
+        "shrink-0 border-l border-border bg-surface-1 overflow-hidden",
+        "transition-[width] duration-200",
       )}
       style={{
-        width: openWidth,
+        width: open && activeTool ? 280 : 0,
         transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
       }}
     >
-      {open && activeTool && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize inspector"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            (e.target as Element).setPointerCapture?.(e.pointerId);
-            startRef.current = { x: e.clientX, w: width };
-            setDragging(true);
-          }}
-          onDoubleClick={() => {
-            setWidth(DEFAULT_W);
-            try { window.localStorage.setItem(STORAGE_KEY, String(DEFAULT_W)); } catch {}
-          }}
-          className={cn(
-            "absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize",
-            "hover:bg-vault/40",
-            dragging && "bg-vault/60",
-          )}
-          title="Drag to resize · double-click to reset"
-        />
-      )}
       {activeTool ? (
-        <div className="flex h-full flex-col" style={{ width }}>
+        <div className="flex h-full w-[280px] flex-col">
           <header className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2.5">
             <div className="flex items-center gap-2 min-w-0">
               <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault">
@@ -3371,13 +3290,13 @@ function Inspector({
           <div className="flex-1 overflow-auto px-3 py-3">
             <ToolPanel
               toolId={activeTool.id}
-              ctx={{ file, replaceFile, replacePdfBytes, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
+              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
             />
           </div>
         </div>
       ) : (
         open && (
-          <div className="grid h-full place-items-center px-4 text-center text-[11.5px] text-text-muted" style={{ width }}>
+          <div className="grid h-full w-[280px] place-items-center px-4 text-center text-[11.5px] text-text-muted">
             Mount slot — feature panel loads here
           </div>
         )

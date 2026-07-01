@@ -35,31 +35,19 @@ export interface SanitizeReport {
   additionalActions: number;   // catalog /AA + per-page /AA triggers
 }
 
-export interface SanitizeOptions {
-  /**
-   * Exact redacted values to scrub from orphan streams/objects after the
-   * structural sanitize pass. This is intentionally targeted: page content
-   * streams are left for the redaction burn/raster gate, while non-page
-   * streams (field appearances, XObject resources, stale objects) are blanked
-   * if they still contain one of these values.
-   */
-  sensitiveStrings?: string[];
-}
-
 const TEXT_ANNOT_SUBTYPES = new Set([
   "/Text", "/FreeText", "/Popup", "/Highlight", "/Underline", "/Squiggly",
   "/StrikeOut", "/Caret", "/Stamp", "/Ink", "/FileAttachment", "/Sound",
   "/RichMedia", "/Movie",
 ]);
 
-export async function sanitizePdfBytes(bytes: Uint8Array, opts: SanitizeOptions = {}): Promise<Uint8Array> {
-  const { bytes: out } = await sanitizePdfBytesWithReport(bytes, opts);
+export async function sanitizePdfBytes(bytes: Uint8Array): Promise<Uint8Array> {
+  const { bytes: out } = await sanitizePdfBytesWithReport(bytes);
   return out;
 }
 
 export async function sanitizePdfBytesWithReport(
   bytes: Uint8Array,
-  opts: SanitizeOptions = {},
 ): Promise<{ bytes: Uint8Array; report: SanitizeReport; pageCount: number }> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
 
@@ -154,7 +142,6 @@ export async function sanitizePdfBytesWithReport(
   // flags as a leak.
   for (const r of appearanceRefsToRemove) removeRef(ctx, r);
   await purgeWidgetAppearanceStreams(ctx);
-  await purgeTargetedSensitiveObjects(ctx, doc, opts.sensitiveStrings ?? []);
 
   // 3) Annotations — strip text from every annotation and remove
   //    text-bearing subtypes entirely so /Contents, /RC, /T, /Subj
@@ -318,118 +305,6 @@ function refStr(obj: unknown): string {
     : "direct";
 }
 
-function refKey(ref: PDFRef): string {
-  return `${ref.objectNumber} ${ref.generationNumber}`;
-}
-
-function collectPageRenderedStreamRefs(
-  doc: PDFDocument,
-  unzlibSync?: (b: Uint8Array) => Uint8Array,
-): Set<string> {
-  const out = new Set<string>();
-  const visitedXObjects = new Set<string>();
-  const addContent = (obj: unknown, resources?: PDFDict): void => {
-    if (!obj) return;
-    if (typeof obj === "object" && "objectNumber" in obj && "generationNumber" in obj) {
-      const ref = obj as PDFRef;
-      out.add(refKey(ref));
-      scanInvokedXObjects(doc.context.lookup(ref), resources);
-      return;
-    }
-    if (obj instanceof PDFArray) {
-      for (const item of obj.asArray()) addContent(item, resources);
-      return;
-    }
-    scanInvokedXObjects(obj, resources);
-  };
-  const scanInvokedXObjects = (contentObj: unknown, resources?: PDFDict): void => {
-    if (!resources || !(contentObj instanceof PDFStream) || !unzlibSync) return;
-    const decoded = decodeStreamBytes(contentObj, unzlibSync);
-    if (!decoded || decoded.length === 0) return;
-    const content = new TextDecoder("latin1", { fatal: false }).decode(decoded);
-    const xobjects = resources.lookupMaybe(PDFName.of("XObject"), PDFDict);
-    if (!xobjects) return;
-    for (const match of content.matchAll(/\/([A-Za-z0-9_.-]+)\s+Do\b/g)) {
-      const xobjName = match[1];
-      const xobj = xobjects.get(PDFName.of(xobjName));
-      if (!xobj) continue;
-      let xobjKey = "direct";
-      if (typeof xobj === "object" && "objectNumber" in xobj && "generationNumber" in xobj) {
-        const ref = xobj as PDFRef;
-        xobjKey = refKey(ref);
-        out.add(xobjKey);
-      }
-      if (visitedXObjects.has(xobjKey)) continue;
-      visitedXObjects.add(xobjKey);
-      const resolved = doc.context.lookup(xobj as never);
-      if (!(resolved instanceof PDFStream)) continue;
-      const nestedResources = resolved.dict.lookupMaybe(PDFName.of("Resources"), PDFDict) ?? resources;
-      scanInvokedXObjects(resolved, nestedResources);
-    }
-  };
-  for (const page of doc.getPages()) {
-    const resources = page.node.lookupMaybe(PDFName.of("Resources"), PDFDict);
-    addContent(page.node.get(PDFName.of("Contents")), resources);
-  }
-  return out;
-}
-
-function decodeStreamBytes(stream: PDFStream, unzlibSync: (b: Uint8Array) => Uint8Array): Uint8Array | null {
-  const raw =
-    (stream as unknown as { contents?: Uint8Array }).contents
-    ?? (stream as unknown as { getContents?: () => Uint8Array }).getContents?.();
-  if (!raw || raw.length === 0) return null;
-  const filter = nameStr(stream.dict.get(PDFName.of("Filter")));
-  if (filter === "/FlateDecode" || filter === "/Fl") {
-    try { return unzlibSync(raw); } catch { return raw; }
-  }
-  return raw;
-}
-
-function containsSensitiveText(text: string, needles: string[]): string | null {
-  const lower = text.toLowerCase();
-  for (const needle of needles) {
-    const n = needle.trim();
-    if (n.length < 3) continue;
-    const hexAscii = asciiToHex(n);
-    const hexUtf16 = asciiToUtf16BeHex(n);
-    if (
-      lower.includes(n.toLowerCase())
-      || lower.includes(hexAscii)
-      || lower.includes(hexUtf16)
-    ) return n;
-  }
-  return null;
-}
-
-function containsSensitiveBytes(bytes: Uint8Array, needles: string[]): string | null {
-  const latin1 = new TextDecoder("latin1", { fatal: false }).decode(bytes);
-  const hit = containsSensitiveText(latin1, needles);
-  if (hit) return hit;
-  try {
-    const utf16 = new TextDecoder("utf-16be", { fatal: false }).decode(bytes);
-    return containsSensitiveText(utf16, needles);
-  } catch {
-    return null;
-  }
-}
-
-function asciiToHex(s: string): string {
-  let out = "";
-  for (let i = 0; i < s.length; i++) out += (s.charCodeAt(i) & 0xff).toString(16).padStart(2, "0");
-  return out;
-}
-
-function asciiToUtf16BeHex(s: string): string {
-  let out = "";
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    out += ((c >> 8) & 0xff).toString(16).padStart(2, "0");
-    out += (c & 0xff).toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
 function extractText(obj: unknown): string {
   if (!obj) return "";
   try {
@@ -482,81 +357,6 @@ async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promis
     if (txt.includes("/Tx BMC")) targets.push(ref);
   }
   for (const r of targets) removeRef(ctx, r);
-}
-
-async function purgeTargetedSensitiveObjects(
-  ctx: PDFDocument["context"],
-  doc: PDFDocument,
-  sensitiveStrings: string[],
-): Promise<void> {
-  const needles = Array.from(new Set(sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3)));
-  if (needles.length === 0) return;
-  const { unzlibSync } = await import("fflate");
-  const pageContentRefs = collectPageRenderedStreamRefs(doc, unzlibSync);
-
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    const key = refKey(ref);
-    if (obj instanceof PDFStream) {
-      const raw =
-        (obj as unknown as { contents?: Uint8Array }).contents
-        ?? (obj as unknown as { getContents?: () => Uint8Array }).getContents?.();
-      if (!raw || raw.length === 0) continue;
-      let decoded: Uint8Array = raw;
-      const filter = nameStr(obj.dict.get(PDFName.of("Filter")));
-      if (filter === "/FlateDecode" || filter === "/Fl") {
-        try { decoded = unzlibSync(raw); } catch { /* keep raw */ }
-      }
-      const hit = containsSensitiveBytes(decoded, needles);
-      if (!hit) continue;
-      if (pageContentRefs.has(key)) {
-        // The value lives in visible page-rendered content (page /Contents or
-        // a Form XObject invoked by /Do). Do not erase that stream during the
-        // hidden-vector wipe; normal page redaction/export owns visible text.
-        // eslint-disable-next-line no-console
-        console.warn("[redact:form-field] targeted sanitize left page content stream for redaction gate", {
-          ref: refStr(ref),
-          matched: hit,
-        });
-        continue;
-      }
-      // Blank non-page streams that still carry the selected hidden value:
-      // appearance Form XObjects, nested XObject resources, stale orphan
-      // streams, embedded metadata fragments, etc. Assigning an empty stream
-      // avoids dangling references while removing the recoverable bytes.
-      try {
-        ctx.assign(ref, ctx.stream(new Uint8Array(0)));
-        // eslint-disable-next-line no-console
-        console.info("[redact:form-field] targeted sanitize blanked non-page stream", {
-          ref: refStr(ref),
-          matched: hit,
-        });
-      } catch {
-        removeRef(ctx, ref);
-      }
-      continue;
-    }
-
-    if (!(obj instanceof PDFDict)) continue;
-    const isSensitiveContainer =
-      obj.has(PDFName.of("FT"))
-      || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget"
-      || nameStr(obj.get(PDFName.of("Type"))) === "/Annot"
-      || obj.has(PDFName.of("Contents"))
-      || obj.has(PDFName.of("RC"))
-      || obj.has(PDFName.of("V"))
-      || obj.has(PDFName.of("DV"));
-    if (!isSensitiveContainer) continue;
-    const values = ["T", "TU", "TM", "V", "DV", "RV", "Contents", "RC", "Subj", "NM"]
-      .map((k) => extractText(obj.get(PDFName.of(k))))
-      .filter(Boolean)
-      .join("\n");
-    if (!containsSensitiveText(values, needles)) continue;
-    for (const k of ["T", "TU", "TM", "V", "DV", "RV", "Contents", "RC", "Subj", "NM", "AP"]) {
-      if (obj.has(PDFName.of(k))) obj.delete(PDFName.of(k));
-    }
-    // eslint-disable-next-line no-console
-    console.info("[redact:form-field] targeted sanitize scrubbed sensitive object", { ref: refStr(ref) });
-  }
 }
 
 /** Recursively clear /V (and /DV, /RV) on a form field tree.
