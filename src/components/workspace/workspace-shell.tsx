@@ -1094,6 +1094,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         }
         pdfDocsRef.current.set(tabId, doc);
+        pdfDocByteLenRef.current.set(tabId, bytes.byteLength);
         setPdfDocVersion((v) => v + 1);
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
