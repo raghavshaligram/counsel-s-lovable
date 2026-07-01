@@ -422,14 +422,47 @@ function WorkflowBuilderModal({
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [resultBytes, setResultBytes] = useState<Uint8Array | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SavedWorkflow[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [savingNow, setSavingNow] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
   const dragKind = useRef<"palette" | "reorder" | null>(null);
   const dragOp = useRef<string | null>(null);
   const dragIndex = useRef<number | null>(null);
+
+  const listWorkflowsFn = useServerFn(listWorkflows);
+  const saveFn = useServerFn(saveWorkflowFn);
+  const renameFn = useServerFn(renameWorkflowFn);
+  const deleteFn = useServerFn(deleteWorkflowFn);
 
   const selected = useMemo(
     () => (selectedUid ? steps.find((s) => s.uid === selectedUid) ?? null : null),
     [selectedUid, steps],
   );
+
+  const refreshSaved = useCallback(async () => {
+    setLoadingSaved(true);
+    try {
+      const rows = await listWorkflowsFn();
+      setSaved(rows);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Could not load saved workflows: ${msg}`);
+    } finally {
+      setLoadingSaved(false);
+    }
+  }, [listWorkflowsFn]);
+
+  // Fetch on modal open.
+  useEffect(() => {
+    if (!open) return;
+    void refreshSaved();
+  }, [open, refreshSaved]);
 
   /* -------- Palette drag start -------- */
   const onPaletteDragStart = (op: string) => (e: React.DragEvent) => {
@@ -493,25 +526,102 @@ function WorkflowBuilderModal({
     );
   };
 
-  /* -------- Save -------- */
-  const saveWorkflow = () => {
-    if (steps.length === 0) {
-      toast.error("Add at least one step before saving.");
+  /* -------- Load (from saved or template) -------- */
+  const loadSteps = useCallback((wfName: string, pipelineSteps: PipelineStep[], id: string | null) => {
+    setName(wfName);
+    setSavedId(id);
+    setResultBytes(null);
+    const ui: UiStep[] = pipelineSteps.map((s) => ({
+      uid: nextUid(),
+      op: s.op,
+      label: s.label,
+      params: (s.params ?? {}) as Record<string, unknown>,
+      status: "idle",
+    }));
+    setSteps(ui);
+    setSelectedUid(ui[0]?.uid ?? null);
+  }, []);
+
+  const loadSaved = (wf: SavedWorkflow) => {
+    loadSteps(wf.name, wf.steps as PipelineStep[], wf.id);
+    setLibraryOpen(false);
+    toast.success(`Loaded “${wf.name}”`);
+  };
+
+  const loadTemplate = (tpl: WorkflowTemplate) => {
+    // Start from template as a new (unsaved) workflow so "Save" creates a personal copy.
+    loadSteps(tpl.name, tpl.steps, null);
+    setTemplatesOpen(false);
+    toast.success(`Template “${tpl.name}” loaded — customize and save.`);
+  };
+
+  /* -------- Save (cloud, per-user via RLS) -------- */
+  const doSave = useCallback(
+    async (opts: { asNew?: boolean } = {}) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        toast.error("Give the workflow a name before saving.");
+        return;
+      }
+      if (steps.length === 0) {
+        toast.error("Add at least one step before saving.");
+        return;
+      }
+      setSavingNow(true);
+      try {
+        const cleanSteps = steps.map(({ op, params, label }) => ({
+          op,
+          params: (params ?? {}) as Record<string, unknown>,
+          label,
+        }));
+        const res = await saveFn({
+          data: { id: opts.asNew ? null : savedId, name: trimmed, steps: cleanSteps },
+        });
+        setSavedId(res.id);
+        await refreshSaved();
+        toast.success(`Saved “${trimmed}”`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`Could not save: ${msg}`);
+      } finally {
+        setSavingNow(false);
+      }
+    },
+    [name, steps, savedId, saveFn, refreshSaved],
+  );
+
+  const doRename = async (id: string, next: string) => {
+    const trimmed = next.trim();
+    if (!trimmed) {
+      toast.error("Name cannot be empty.");
       return;
     }
-    const key = "counselpdf.workflows";
     try {
-      const raw = localStorage.getItem(key);
-      const list = raw ? (JSON.parse(raw) as Array<{ name: string; steps: PipelineStep[] }>) : [];
-      const cleanSteps: PipelineStep[] = steps.map(({ op, params, label }) => ({ op, params, label }));
-      const dedup = list.filter((w) => w.name !== name);
-      dedup.push({ name, steps: cleanSteps });
-      localStorage.setItem(key, JSON.stringify(dedup));
-      toast.success(`Saved “${name}”`);
-    } catch {
-      toast.error("Could not save workflow.");
+      await renameFn({ data: { id, name: trimmed } });
+      if (savedId === id) setName(trimmed);
+      await refreshSaved();
+      setRenameId(null);
+      toast.success("Renamed.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Rename failed: ${msg}`);
     }
   };
+
+  const doDelete = async (id: string, wfName: string) => {
+    if (!confirm(`Delete workflow “${wfName}”? This cannot be undone.`)) return;
+    try {
+      await deleteFn({ data: { id } });
+      if (savedId === id) setSavedId(null);
+      await refreshSaved();
+      toast.success("Deleted.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Delete failed: ${msg}`);
+    }
+  };
+
+
 
   /* -------- Run -------- */
   const runWorkflow = useCallback(async () => {
