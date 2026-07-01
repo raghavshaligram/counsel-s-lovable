@@ -660,6 +660,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           // Always keep at least one tab open.
           const blank = makeBlankTab();
           setActiveId(blank.id);
+          tabsRef.current = [blank];
           return [blank];
         }
         if (activeIdRef.current === id) {
@@ -667,6 +668,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           const fallback = next[Math.max(0, idx - 1)] ?? next[0];
           setActiveId(fallback.id);
         }
+        tabsRef.current = next;
         return next;
       });
       setPendingCloseId(null);
