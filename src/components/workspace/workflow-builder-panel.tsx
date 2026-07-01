@@ -656,11 +656,11 @@ function StepCard({
           e.stopPropagation();
           onRemove();
         }}
-        className="rounded p-0.5 text-text-muted opacity-0 transition hover:bg-surface-2 hover:text-text group-hover:opacity-100"
+        className="rounded p-1 text-text-muted/60 transition hover:bg-surface-2 hover:text-danger"
         aria-label="Remove step"
         title="Remove"
       >
-        <X className="h-3.5 w-3.5" />
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
