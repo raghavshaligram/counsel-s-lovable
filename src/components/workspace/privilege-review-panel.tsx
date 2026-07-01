@@ -753,15 +753,28 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
                     className="flex-1 text-left"
                     title={`Jump to page ${f.page}`}
                   >
-                    <div className="flex items-center gap-1.5 text-foreground">
+                    <div className="flex flex-wrap items-center gap-1.5 text-foreground">
                       <span className="rounded bg-surface-3 px-1.5 py-[1px] text-[10px] font-medium uppercase tracking-wide text-text-2">
                         {TYPE_LABEL[f.type]}
                       </span>
                       <span className="text-text-muted">p. {f.page}</span>
+                      {f.negated && (
+                        <span
+                          className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-[1px] text-[10px] font-medium text-amber-400"
+                          title="A negation word appears just before this term — the surrounding sentence may indicate the opposite meaning."
+                        >
+                          negated?
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-1 line-clamp-2 text-text-2">
-                      {f.snippet}
+                    <div className="mt-1 line-clamp-3 text-text-2 leading-snug">
+                      <span className="text-text-muted">{f.before}</span>
+                      <mark className="rounded-sm bg-vault/25 px-[2px] text-foreground">
+                        {f.match}
+                      </mark>
+                      <span className="text-text-muted">{f.after}</span>
                     </div>
+
                   </button>
                   <button
                     type="button"
