@@ -24,6 +24,7 @@ import { sanitizePdfBytes } from "@/lib/pdf/sanitize";
 import { applyTextWatermark, type WatermarkOptions } from "@/lib/pdf/watermark";
 import { rotatePdf, type RotateOptions } from "@/lib/pdf/rotate";
 import { extractPages } from "@/lib/pdf/extract-pages";
+import { toPdfA } from "@/lib/pdf/to-pdfa";
 
 function bytesToFile(bytes: Uint8Array, name = "in.pdf"): File {
   return new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
@@ -67,6 +68,8 @@ const extract: RegisteredOp<{ ranges: string }> = async (bytes, params) => {
   return blobToBytes(res.blob);
 };
 
+const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
+
 /* ---------- Registry ---------- */
 
 export const OPS: Record<string, RegisteredOp<never>> = {
@@ -79,6 +82,7 @@ export const OPS: Record<string, RegisteredOp<never>> = {
   flatten: flattenOp as RegisteredOp<never>,
   sanitize: sanitize as RegisteredOp<never>,
   "extract-pages": extract as RegisteredOp<never>,
+  "to-pdfa": pdfA as RegisteredOp<never>,
 };
 
 export function getOp(name: string): RegisteredOp<unknown> | null {

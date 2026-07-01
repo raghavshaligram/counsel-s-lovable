@@ -33,6 +33,14 @@ import {
   FileText,
   Layers,
   Workflow as WorkflowIcon,
+  ScanText,
+  Eye,
+  FileCheck2,
+  Combine,
+  SplitSquareVertical,
+  Search,
+  Gavel,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -59,95 +67,214 @@ type OpDef = {
   icon: React.ComponentType<{ className?: string }>;
   blurb: string;
   defaults: Record<string, unknown>;
+  /** If set, the op is visible in the palette but cannot be dragged in.
+   *  Explains why (manual-only, multi-file, DOM-only, etc.). */
+  unavailable?: string;
 };
 
-const PALETTE: OpDef[] = [
+type PaletteGroup = {
+  category: string;
+  ops: OpDef[];
+};
+
+const PALETTE_GROUPS: PaletteGroup[] = [
   {
-    op: "sanitize",
-    label: "Sanitize metadata",
-    icon: ShieldCheck,
-    blurb: "Strip metadata, XMP, and JavaScript.",
-    defaults: {},
+    category: "Document",
+    ops: [
+      {
+        op: "rotate",
+        label: "Rotate pages",
+        icon: RotateCw,
+        blurb: "Rotate all/odd/even pages.",
+        defaults: { angle: 90, scope: "all" },
+      },
+      {
+        op: "extract-pages",
+        label: "Extract pages",
+        icon: Scissors,
+        blurb: "Keep only a range (e.g. 1-5, 8, 12-15).",
+        defaults: { ranges: "1-1" },
+      },
+      {
+        op: "split",
+        label: "Split into files",
+        icon: SplitSquareVertical,
+        blurb: "Produces multiple PDFs — run from the Split tool.",
+        defaults: {},
+        unavailable: "Split produces many outputs; workflows are single-output. Use the Split tool.",
+      },
+      {
+        op: "merge",
+        label: "Merge / combine",
+        icon: Combine,
+        blurb: "Combine multiple PDFs — needs more than one input.",
+        defaults: {},
+        unavailable: "Merge needs multiple input files; workflows run on a single open PDF.",
+      },
+    ],
   },
   {
-    op: "bates",
-    label: "Bates stamp",
-    icon: Hash,
-    blurb: "Sequential production numbers on every page.",
-    defaults: {
-      prefix: "BATES",
-      startAt: 1,
-      digits: 6,
-      position: "br",
-      fontSize: 10,
-      color: "black",
-      margin: 24,
-    },
+    category: "Layout",
+    ops: [
+      {
+        op: "bates",
+        label: "Bates stamp",
+        icon: Hash,
+        blurb: "Sequential production numbers on every page.",
+        defaults: {
+          prefix: "BATES",
+          startAt: 1,
+          digits: 6,
+          position: "br",
+          fontSize: 10,
+          color: "black",
+          margin: 24,
+        },
+      },
+      {
+        op: "page-numbers",
+        label: "Page numbers",
+        icon: FileText,
+        blurb: "Add page numbers at a chosen anchor.",
+        defaults: {
+          anchor: "bottom-center",
+          format: "n-of-m",
+          startAt: 1,
+          skipFirst: 0,
+          fontSize: 10,
+          margin: 24,
+        },
+      },
+      {
+        op: "header-footer",
+        label: "Header / footer",
+        icon: Layers,
+        blurb: "Text at top/bottom of each page.",
+        defaults: {
+          headerText: "",
+          footerText: "Confidential",
+          align: "center",
+          fontSize: 9,
+          margin: 24,
+          rule: "all",
+        },
+      },
+      {
+        op: "watermark",
+        label: "Watermark",
+        icon: Stamp,
+        blurb: "Diagonal text watermark.",
+        defaults: { text: "CONFIDENTIAL", opacity: 20, size: 72, pos: "diagonal" },
+      },
+    ],
   },
   {
-    op: "page-numbers",
-    label: "Page numbers",
-    icon: FileText,
-    blurb: "Add page numbers at a chosen anchor.",
-    defaults: {
-      anchor: "bottom-center",
-      format: "n-of-m",
-      startAt: 1,
-      skipFirst: 0,
-      fontSize: 10,
-      margin: 24,
-    },
+    category: "Redaction",
+    ops: [
+      {
+        op: "redact-pattern",
+        label: "Pattern / bulk redact",
+        icon: Ban,
+        blurb: "Regex or keyword redaction — coming to workflows.",
+        defaults: {},
+        unavailable: "Pattern redaction runs from the Redact tool today; workflow adapter pending.",
+      },
+      {
+        op: "redact-manual",
+        label: "Manual redaction",
+        icon: Ban,
+        blurb: "Draw redaction boxes by hand.",
+        defaults: {},
+        unavailable: "Manual redaction requires drawing boxes — not workflow-eligible. Use pattern/AI redaction.",
+      },
+    ],
   },
   {
-    op: "header-footer",
-    label: "Header / footer",
-    icon: Layers,
-    blurb: "Text at top/bottom of each page.",
-    defaults: {
-      headerText: "",
-      footerText: "Confidential",
-      align: "center",
-      fontSize: 9,
-      margin: 24,
-      rule: "all",
-    },
+    category: "Discovery",
+    ops: [
+      {
+        op: "ai-detect",
+        label: "AI detect sensitive",
+        icon: Sparkles,
+        blurb: "Find PII with pattern + NER.",
+        defaults: {},
+        unavailable: "AI detection surfaces findings for review, not bytes — runs from the Redact tool.",
+      },
+      {
+        op: "privilege-scan",
+        label: "Privilege scan",
+        icon: Gavel,
+        blurb: "Attorney-client / work-product keyword scan.",
+        defaults: {},
+        unavailable: "Privilege scan produces a report, not a modified PDF.",
+      },
+      {
+        op: "keyword-search",
+        label: "Keyword search",
+        icon: Search,
+        blurb: "Locate keywords across the document.",
+        defaults: {},
+        unavailable: "Search returns hits for review, not a modified PDF.",
+      },
+    ],
   },
   {
-    op: "watermark",
-    label: "Watermark",
-    icon: Stamp,
-    blurb: "Diagonal text watermark.",
-    defaults: { text: "CONFIDENTIAL", opacity: 20, size: 72, pos: "diagonal" },
+    category: "Convert",
+    ops: [
+      {
+        op: "ocr",
+        label: "OCR (text layer)",
+        icon: ScanText,
+        blurb: "Recognise text on scanned pages.",
+        defaults: {},
+        unavailable: "OCR needs the DOM (Tesseract). Run it from the OCR tool before the workflow.",
+      },
+      {
+        op: "to-pdfa",
+        label: "PDF/A export",
+        icon: FileCheck2,
+        blurb: "Convert to PDF/A archival format.",
+        defaults: {},
+      },
+      {
+        op: "compress",
+        label: "Compress",
+        icon: PackageOpen,
+        blurb: "Structural or rasterised compression.",
+        defaults: { preset: "medium" },
+      },
+    ],
   },
   {
-    op: "rotate",
-    label: "Rotate pages",
-    icon: RotateCw,
-    blurb: "Rotate all/odd/even pages.",
-    defaults: { angle: 90, scope: "all" },
-  },
-  {
-    op: "compress",
-    label: "Compress",
-    icon: PackageOpen,
-    blurb: "Structural or rasterised compression.",
-    defaults: { preset: "medium" },
-  },
-  {
-    op: "flatten",
-    label: "Flatten forms",
-    icon: Layers,
-    blurb: "Bake form values into page content (safety-gated).",
-    defaults: { forms: true, annotations: false, clearSensitiveFirst: false },
-  },
-  {
-    op: "extract-pages",
-    label: "Extract pages",
-    icon: Scissors,
-    blurb: "Keep only a range (e.g. 1-5, 8, 12-15).",
-    defaults: { ranges: "1-1" },
+    category: "Secure",
+    ops: [
+      {
+        op: "sanitize",
+        label: "Sanitize / strip metadata",
+        icon: ShieldCheck,
+        blurb: "Strip metadata, XMP, and JavaScript.",
+        defaults: {},
+      },
+      {
+        op: "flatten",
+        label: "Flatten forms",
+        icon: Layers,
+        blurb: "Bake form values into page content (safety-gated).",
+        defaults: { forms: true, annotations: false, clearSensitiveFirst: false },
+      },
+      {
+        op: "protect",
+        label: "Password protect",
+        icon: Eye,
+        blurb: "Add a password / permissions — coming to workflows.",
+        defaults: {},
+        unavailable: "Protect needs an interactive password prompt — use the Protect tool.",
+      },
+    ],
   },
 ];
+
+const PALETTE: OpDef[] = PALETTE_GROUPS.flatMap((g) => g.ops);
 
 function paletteFor(op: string): OpDef | undefined {
   return PALETTE.find((p) => p.op === op);
@@ -464,33 +591,73 @@ function WorkflowBuilderModal({
               <span className="text-[10.5px] text-text-muted">Drag →</span>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
-              <div className="flex flex-col gap-1.5">
-                {PALETTE.map((p) => {
-                  const Icon = p.icon;
-                  return (
-                    <button
-                      key={p.op}
-                      draggable
-                      onDragStart={onPaletteDragStart(p.op)}
-                      onDoubleClick={() =>
-                        onDropAt(steps.length)({ preventDefault: () => {} } as unknown as React.DragEvent)
-                      }
-                      className="group flex items-start gap-2 rounded-md border border-border bg-surface-1 px-2 py-2 text-left transition hover:border-vault/40 hover:bg-surface-2"
-                      title={`${p.blurb} — drag into the sequence or double-click to append`}
-                    >
-                      <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded bg-vault/10 text-vault">
-                        <Icon className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="flex flex-col overflow-hidden">
-                        <span className="truncate text-[12px] text-text">{p.label}</span>
-                        <span className="truncate text-[10.5px] text-text-muted">{p.blurb}</span>
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="flex flex-col gap-3">
+                {PALETTE_GROUPS.map((group) => (
+                  <div key={group.category} className="flex flex-col gap-1">
+                    <div className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted/80">
+                      {group.category}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {group.ops.map((p) => {
+                        const Icon = p.icon;
+                        const disabled = !!p.unavailable;
+                        return (
+                          <button
+                            key={p.op}
+                            draggable={!disabled}
+                            disabled={disabled}
+                            onDragStart={disabled ? undefined : onPaletteDragStart(p.op)}
+                            onDoubleClick={
+                              disabled
+                                ? undefined
+                                : () =>
+                                    onDropAt(steps.length)({
+                                      preventDefault: () => {},
+                                    } as unknown as React.DragEvent)
+                            }
+                            className={cn(
+                              "group flex items-start gap-2 rounded-md border px-2 py-2 text-left transition",
+                              disabled
+                                ? "cursor-not-allowed border-dashed border-border/60 bg-surface-1/40 opacity-60"
+                                : "cursor-grab border-border bg-surface-1 hover:border-vault/40 hover:bg-surface-2",
+                            )}
+                            title={
+                              disabled
+                                ? `Not workflow-eligible — ${p.unavailable}`
+                                : `${p.blurb} — drag into the sequence or double-click to append`
+                            }
+                          >
+                            <span
+                              className={cn(
+                                "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded",
+                                disabled ? "bg-surface-2 text-text-muted" : "bg-vault/10 text-vault",
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                            </span>
+                            <span className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                              <span className="flex items-center gap-1.5">
+                                <span className="truncate text-[12px] text-text">{p.label}</span>
+                                {disabled && (
+                                  <span className="shrink-0 rounded-sm border border-border px-1 text-[9px] uppercase tracking-wide text-text-muted">
+                                    n/a
+                                  </span>
+                                )}
+                              </span>
+                              <span className="truncate text-[10.5px] text-text-muted">
+                                {disabled ? p.unavailable : p.blurb}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </aside>
+
 
           {/* CENTER — sequence canvas */}
           <main
