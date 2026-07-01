@@ -417,7 +417,24 @@ function WorkflowBuilderModal({
   onOpenChange: (v: boolean) => void;
   ctx: ToolPanelCtx;
 }) {
-  const { file } = ctx;
+  const { file: currentFile } = ctx;
+
+  // File-source override: when the user picks/drops a file inside the builder,
+  // it takes precedence over the currently open document. Null = use current.
+  const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const activeFile = pickedFile ?? currentFile ?? null;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [dragOverFile, setDragOverFile] = useState(false);
+
+  const acceptPickedFile = useCallback((f: File | null | undefined) => {
+    if (!f) return;
+    if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") {
+      toast.error("Please choose a PDF file.");
+      return;
+    }
+    setPickedFile(f);
+    toast.success(`Using ${f.name}`);
+  }, []);
 
   const [name, setName] = useState("Untitled workflow");
   const [steps, setSteps] = useState<UiStep[]>([]);
