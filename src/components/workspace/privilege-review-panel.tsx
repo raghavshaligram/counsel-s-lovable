@@ -68,8 +68,16 @@ export type PrivilegeFinding = {
   page: number;
   /** Where on the page (0..1). Used to detect header/footer legends. */
   yFrac?: number;
-  /** Short surrounding phrase (never full document text). */
-  snippet: string;
+  /** Char offsets into the page's linearized text — used for merging. */
+  matchStart: number;
+  matchEnd: number;
+  /** Exact matched phrase (already word-trimmed). */
+  match: string;
+  /** Short readable context on either side of the match. */
+  before: string;
+  after: string;
+  /** True when the match sits inside a negated clause ("not privileged"). */
+  negated?: boolean;
 };
 
 const ATTORNEY_CLIENT_RE = /\battorney[\s-]client(?:\s+privileg\w*)?\b/gi;
@@ -82,10 +90,67 @@ const LAW_DOMAIN_HINT = /(law|legal|attorneys?|counsel|advocates?|solicitors?)/i
 const ESQ_RE = /\b([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+),?\s+Esq\.?\b/g;
 const ATTORNEY_FOR_RE = /\bAttorney(?:s)?\s+(?:for|at\s+law)\b[^\n]{0,80}/gi;
 
-function snip(source: string, start: number, end: number, radius = 40): string {
-  const lo = Math.max(0, start - radius);
-  const hi = Math.min(source.length, end + radius);
-  return source.slice(lo, hi).replace(/\s+/g, " ").trim();
+// Words that, appearing shortly before a match, invert its meaning.
+const NEGATION_RE = /\b(?:no|not|never|without|non[- ]?|isn'?t|aren'?t|wasn'?t|weren'?t|doesn'?t|don'?t|didn'?t|nothing)\b/i;
+
+// Prefer the more specific type when two matches overlap.
+const TYPE_PRIORITY: Record<FindingType, number> = {
+  "attorney-client": 100,
+  "work-product": 95,
+  "confidentiality-legend": 90,
+  "law-firm-email": 80,
+  "law-firm": 70,
+  "counsel-name": 60,
+  "privilege-phrase": 40,
+};
+
+/**
+ * Build a clean snippet: expand to word boundaries, then take up to
+ * `wordsEach` whitespace-delimited tokens on either side of the match. Never
+ * starts mid-word. Prepends/appends an ellipsis when text was trimmed.
+ */
+function buildSnippet(
+  source: string,
+  start: number,
+  end: number,
+  wordsEach = 10,
+): { before: string; match: string; after: string } {
+  // Expand the match itself to full word boundaries so we never quote
+  // "ed legal advice".
+  let ms = start;
+  while (ms > 0 && /\S/.test(source[ms - 1] ?? "")) ms--;
+  let me = end;
+  while (me < source.length && /\S/.test(source[me] ?? "")) me++;
+  const match = source.slice(ms, me).replace(/\s+/g, " ").trim();
+
+  // Pull up to ~200 chars each side, then trim to `wordsEach` words.
+  const leftRaw = source.slice(Math.max(0, ms - 240), ms).replace(/\s+/g, " ");
+  const rightRaw = source.slice(me, Math.min(source.length, me + 240)).replace(/\s+/g, " ");
+
+  const leftTokens = leftRaw.trim().split(" ").filter(Boolean);
+  const rightTokens = rightRaw.trim().split(" ").filter(Boolean);
+
+  const trimmedLeft = leftTokens.slice(-wordsEach);
+  const trimmedRight = rightTokens.slice(0, wordsEach);
+
+  const before =
+    (leftTokens.length > trimmedLeft.length ? "… " : "") +
+    trimmedLeft.join(" ") +
+    (trimmedLeft.length ? " " : "");
+  const after =
+    (trimmedRight.length ? " " : "") +
+    trimmedRight.join(" ") +
+    (rightTokens.length > trimmedRight.length ? " …" : "");
+
+  return { before, match, after };
+}
+
+function detectNegation(source: string, matchStart: number): boolean {
+  const window = source.slice(Math.max(0, matchStart - 40), matchStart);
+  if (!NEGATION_RE.test(window)) return false;
+  // Guard against "not only privileged" flipping meaning back — cheap heuristic.
+  if (/\bnot\s+only\b/i.test(window)) return false;
+  return true;
 }
 
 function pushMatches(
@@ -94,7 +159,7 @@ function pushMatches(
   text: string,
   re: RegExp,
   type: FindingType,
-  yFrac?: number,
+  itemLookup: (offset: number) => number | undefined,
 ): void {
   const r = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
   let m: RegExpExecArray | null;
@@ -103,14 +168,59 @@ function pushMatches(
       r.lastIndex++;
       continue;
     }
+    const snip = buildSnippet(text, m.index, m.index + m[0].length);
     out.push({
       id: `pr-${type}-${page}-${m.index}-${Math.random().toString(36).slice(2, 6)}`,
       type,
       page,
-      yFrac,
-      snippet: snip(text, m.index, m.index + m[0].length),
+      yFrac: itemLookup(m.index),
+      matchStart: m.index,
+      matchEnd: m.index + m[0].length,
+      match: snip.match,
+      before: snip.before,
+      after: snip.after,
+      negated: detectNegation(text, m.index),
     });
   }
+}
+
+/**
+ * Merge overlapping / adjacent matches on the same page. When two matches
+ * touch, we keep the higher-priority type and drop the lower one — this
+ * kills the "PRIVILEGED & CONFIDENTIAL flagged 4 times" noise.
+ */
+function mergeOverlapping(findings: PrivilegeFinding[]): PrivilegeFinding[] {
+  const byPage = new Map<number, PrivilegeFinding[]>();
+  for (const f of findings) {
+    const arr = byPage.get(f.page) ?? [];
+    arr.push(f);
+    byPage.set(f.page, arr);
+  }
+  const merged: PrivilegeFinding[] = [];
+  for (const [, arr] of byPage) {
+    arr.sort((a, b) => a.matchStart - b.matchStart);
+    const kept: PrivilegeFinding[] = [];
+    for (const f of arr) {
+      const prev = kept[kept.length - 1];
+      // Treat matches within 8 chars of each other as the same region.
+      if (prev && f.matchStart <= prev.matchEnd + 8) {
+        const winner = TYPE_PRIORITY[f.type] > TYPE_PRIORITY[prev.type] ? f : prev;
+        const loser = winner === f ? prev : f;
+        // Extend the winner's range to cover both matches.
+        winner.matchStart = Math.min(winner.matchStart, loser.matchStart);
+        winner.matchEnd = Math.max(winner.matchEnd, loser.matchEnd);
+        // If negation is present on either flag it — attorney should see it.
+        winner.negated = winner.negated || loser.negated;
+        kept[kept.length - 1] = winner;
+      } else {
+        kept.push(f);
+      }
+    }
+    merged.push(...kept);
+  }
+  // Preserve page order for stable rendering.
+  merged.sort((a, b) => a.page - b.page || a.matchStart - b.matchStart);
+  return merged;
 }
 
 async function scanPrivilege(
@@ -134,28 +244,75 @@ async function scanPrivilege(
         height: number;
       }>;
 
-      // Full page text (linearized) for phrase-level regex.
-      const pageText = items.map((it) => it.str ?? "").join(" ");
+      // Build linearized page text AND per-item char-range map so we can
+      // recover the y-position of any regex match.
+      const pageH = viewport.height || 1;
+      const parts: string[] = [];
+      const itemRanges: Array<{ start: number; end: number; yFrac: number }> = [];
+      let cursor = 0;
+      for (const it of items) {
+        const s = it.str ?? "";
+        if (!s) continue;
+        const y = it.transform?.[5] ?? 0;
+        const yFrac = (pageH - y) / pageH;
+        parts.push(s);
+        itemRanges.push({ start: cursor, end: cursor + s.length, yFrac });
+        cursor += s.length + 1; // +1 for the joining space below
+      }
+      const pageText = parts.join(" ");
+      const lookupY = (offset: number): number | undefined => {
+        // Small linear scan — item counts per page are modest.
+        for (const r of itemRanges) if (offset >= r.start && offset <= r.end) return r.yFrac;
+        return undefined;
+      };
 
-      pushMatches(out, i, pageText, ATTORNEY_CLIENT_RE, "attorney-client");
-      pushMatches(out, i, pageText, WORK_PRODUCT_RE, "work-product");
-      pushMatches(out, i, pageText, LAW_FIRM_RE, "law-firm");
-      pushMatches(out, i, pageText, ESQ_RE, "counsel-name");
-      pushMatches(out, i, pageText, ATTORNEY_FOR_RE, "counsel-name");
+      pushMatches(out, i, pageText, ATTORNEY_CLIENT_RE, "attorney-client", lookupY);
+      pushMatches(out, i, pageText, WORK_PRODUCT_RE, "work-product", lookupY);
+      pushMatches(out, i, pageText, LAW_FIRM_RE, "law-firm", lookupY);
+      pushMatches(out, i, pageText, ESQ_RE, "counsel-name", lookupY);
+      pushMatches(out, i, pageText, ATTORNEY_FOR_RE, "counsel-name", lookupY);
 
-      // Emails — filter to law-firm-looking domains.
+      // Legend / confidentiality phrases — if the match sits in the header
+      // or footer band, classify as a boilerplate legend; otherwise it stays
+      // as a general privilege phrase.
+      const legendRe = new RegExp(LEGEND_RE.source, "gi");
+      let lm: RegExpExecArray | null;
+      while ((lm = legendRe.exec(pageText)) !== null) {
+        const yFrac = lookupY(lm.index);
+        const isLegend = yFrac !== undefined && (yFrac < 0.15 || yFrac > 0.85);
+        const snip = buildSnippet(pageText, lm.index, lm.index + lm[0].length);
+        out.push({
+          id: `pr-legend-${i}-${lm.index}-${Math.random().toString(36).slice(2, 6)}`,
+          type: isLegend ? "confidentiality-legend" : "privilege-phrase",
+          page: i,
+          yFrac,
+          matchStart: lm.index,
+          matchEnd: lm.index + lm[0].length,
+          match: snip.match,
+          before: snip.before,
+          after: snip.after,
+          negated: detectNegation(pageText, lm.index),
+        });
+      }
+
+      // Law-firm-looking emails.
       const emailRe = new RegExp(EMAIL_RE.source, "g");
       let em: RegExpExecArray | null;
       while ((em = emailRe.exec(pageText)) !== null) {
         const domain = em[1] || "";
-        if (LAW_DOMAIN_HINT.test(domain)) {
-          out.push({
-            id: `pr-email-${i}-${em.index}-${Math.random().toString(36).slice(2, 6)}`,
-            type: "law-firm-email",
-            page: i,
-            snippet: snip(pageText, em.index, em.index + em[0].length),
-          });
-        }
+        if (!LAW_DOMAIN_HINT.test(domain)) continue;
+        const snip = buildSnippet(pageText, em.index, em.index + em[0].length);
+        out.push({
+          id: `pr-email-${i}-${em.index}-${Math.random().toString(36).slice(2, 6)}`,
+          type: "law-firm-email",
+          page: i,
+          yFrac: lookupY(em.index),
+          matchStart: em.index,
+          matchEnd: em.index + em[0].length,
+          match: snip.match,
+          before: snip.before,
+          after: snip.after,
+        });
       }
 
       // General privilege terms not already covered.
@@ -165,44 +322,26 @@ async function scanPrivilege(
         const t = gm[0].toLowerCase();
         if (/attorney[\s-]client/.test(t)) continue;
         if (/work[\s-]product/.test(t)) continue;
+        const snip = buildSnippet(pageText, gm.index, gm.index + gm[0].length);
         out.push({
           id: `pr-phrase-${i}-${gm.index}-${Math.random().toString(36).slice(2, 6)}`,
           type: "privilege-phrase",
           page: i,
-          snippet: snip(pageText, gm.index, gm.index + gm[0].length),
+          yFrac: lookupY(gm.index),
+          matchStart: gm.index,
+          matchEnd: gm.index + gm[0].length,
+          match: snip.match,
+          before: snip.before,
+          after: snip.after,
+          negated: detectNegation(pageText, gm.index),
         });
-      }
-
-      // Legend detection — same phrases, but require they sit in the top or
-      // bottom 15% of the page (header/footer position ⇒ boilerplate legend
-      // rather than in-body prose).
-      const pageH = viewport.height || 1;
-      const legendRe = new RegExp(LEGEND_RE.source, "gi");
-      for (const it of items) {
-        if (!it.str) continue;
-        if (!legendRe.test(it.str)) continue;
-        // PDF y-origin is bottom-left; treat top 15% and bottom 15% as legend zones.
-        const y = it.transform?.[5] ?? 0;
-        const yFromTop = pageH - y;
-        const yFrac = yFromTop / pageH;
-        if (yFrac < 0.15 || yFrac > 0.85) {
-          out.push({
-            id: `pr-legend-${i}-${Math.random().toString(36).slice(2, 8)}`,
-            type: "confidentiality-legend",
-            page: i,
-            yFrac,
-            snippet: it.str.trim().slice(0, 120),
-          });
-        }
-        legendRe.lastIndex = 0;
       }
     }
 
     if (opts.deep) {
       // Deep scan — NER over the first ~40k chars of concatenated text to
-      // surface counsel names that don't carry an "Esq." title. This can be
-      // slow on first run (model download); wrap in try/catch and don't fail
-      // the whole scan if the model can't init.
+      // surface counsel names that don't carry an "Esq." title. Best-effort:
+      // model init can fail; don't fail the whole scan when it does.
       try {
         const chunks: { page: number; text: string; base: number }[] = [];
         let total = 0;
@@ -217,18 +356,17 @@ async function scanPrivilege(
         const joined = chunks.map((c) => c.text).join("\n");
         const ents = await runNer(joined);
         const pageOf = (offset: number) => {
-          let cursor = 0;
+          let curs = 0;
           for (const c of chunks) {
-            const next = cursor + c.text.length + 1;
+            const next = curs + c.text.length + 1;
             if (offset < next) return c.page;
-            cursor = next;
+            curs = next;
           }
           return chunks[chunks.length - 1]?.page ?? 1;
         };
         for (const e of ents) {
           if (e.type !== "PER" && e.type !== "ORG") continue;
           if (e.score < 0.6) continue;
-          // Filter ORGs to law-firm-looking names only.
           if (e.type === "ORG" && !/\b(LLP|PLLC|LLC|P\.?C\.?|Law|Attorneys?|Counsel|Chambers)\b/i.test(e.text)) {
             continue;
           }
@@ -236,11 +374,14 @@ async function scanPrivilege(
             id: `pr-ner-${e.type}-${e.start}-${Math.random().toString(36).slice(2, 6)}`,
             type: e.type === "ORG" ? "law-firm" : "counsel-name",
             page: pageOf(e.start),
-            snippet: e.text.trim(),
+            matchStart: e.start,
+            matchEnd: e.end,
+            match: e.text.trim(),
+            before: "",
+            after: "",
           });
         }
       } catch (err) {
-        // Silent — deep-scan is best-effort.
         console.warn("[privilege-review] NER deep scan failed", err);
       }
     }
@@ -249,17 +390,9 @@ async function scanPrivilege(
     try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
   }
 
-  // De-dupe near-identical snippets on the same page.
-  const seen = new Set<string>();
-  const unique: PrivilegeFinding[] = [];
-  for (const f of out) {
-    const key = `${f.page}|${f.type}|${f.snippet.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(f);
-  }
-  return unique;
+  return mergeOverlapping(out);
 }
+
 
 /* --------------------------- Per-file marks ------------------------------ */
 
