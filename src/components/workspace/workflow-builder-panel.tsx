@@ -49,8 +49,11 @@ import {
   Check,
   FileUp,
   FileIcon,
+  Files,
+  FileArchive,
 } from "lucide-react";
 import { toast } from "sonner";
+import { zipSync, type Zippable } from "fflate";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
