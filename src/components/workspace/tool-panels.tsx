@@ -194,6 +194,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <CourtReadinessPanel ctx={ctx} />;
     case "privilege-scan":
       return <PrivilegeReviewPanel ctx={ctx} />;
+    case "workflow-builder":
+      return <WorkflowBuilderPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
