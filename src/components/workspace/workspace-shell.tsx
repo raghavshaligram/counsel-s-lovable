@@ -907,6 +907,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       active.editor.doc &&
       active.editor.doc.fileName === f.name &&
       active.editor.doc.pages.length > 0;
+    console.log("[open-effect:fire]", {
+      tabId,
+      name: f.name,
+      size: f.size,
+      type: f.type,
+      alreadyLoaded: !!already,
+      hasPdfDoc: pdfDocsRef.current.has(tabId),
+    });
     if (already) return;
     let cancelled = false;
     (async () => {
