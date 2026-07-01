@@ -175,9 +175,15 @@ const PALETTE_GROUPS: PaletteGroup[] = [
         op: "redact-pattern",
         label: "Pattern / bulk redact",
         icon: Ban,
-        blurb: "Regex or keyword redaction — coming to workflows.",
-        defaults: {},
-        unavailable: "Pattern redaction runs from the Redact tool today; workflow adapter pending.",
+        blurb: "Keyword or regex redaction — verified burn + gate.",
+        defaults: {
+          query: "",
+          matchCase: false,
+          wholeWord: true,
+          regex: false,
+          scope: "word",
+          ocr: false,
+        },
       },
       {
         op: "redact-manual",
