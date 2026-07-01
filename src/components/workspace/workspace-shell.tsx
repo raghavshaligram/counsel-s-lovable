@@ -320,6 +320,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     activeIdRef.current = activeId;
   }, [activeId]);
+  const tabsRef = useRef(tabs);
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
 
   // Flush any debounced sidecar writes before the tab is hidden / unloaded so
   // pending edits actually commit to IndexedDB.
@@ -361,7 +365,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   }, []);
   const patchActive = useCallback(
-    (patch: Partial<TabState>) => patchTab(activeIdRef.current, patch),
+    (patch: Partial<TabState>) => {
+      const targetId = tabsRef.current.some((t) => t.id === activeIdRef.current)
+        ? activeIdRef.current
+        : tabsRef.current[0]?.id;
+      if (!targetId) return;
+      if (targetId !== activeIdRef.current) {
+        activeIdRef.current = targetId;
+        setActiveId(targetId);
+      }
+      patchTab(targetId, patch);
+    },
     [patchTab],
   );
   const dispatchEditorFor = useCallback((id: string, action: EditorAction) => {
@@ -624,7 +638,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // the TabStrip only renders document tabs, so an empty tab would be
   // invisible and feel broken.
   const openNewStartTab = useCallback(() => {
-    const docCount = tabs.filter((t) => t.file !== null).length;
+    const docCount = tabsRef.current.filter((t) => t.file !== null).length;
     if (docCount >= TAB_CAP) {
       toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
       return;
@@ -633,7 +647,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     // Reset value so picking the same file twice still fires `change`.
     if (fileInputRef.current) fileInputRef.current.value = "";
     fileInputRef.current?.click();
-  }, [tabs]);
+  }, []);
 
 
   const closeTab = useCallback(
@@ -656,6 +670,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           // Always keep at least one tab open.
           const blank = makeBlankTab();
           setActiveId(blank.id);
+          tabsRef.current = [blank];
           return [blank];
         }
         if (activeIdRef.current === id) {
@@ -663,6 +678,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           const fallback = next[Math.max(0, idx - 1)] ?? next[0];
           setActiveId(fallback.id);
         }
+        tabsRef.current = next;
         return next;
       });
       setPendingCloseId(null);
@@ -679,7 +695,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       openInNewTabRef.current = false;
       if (!f) return;
       if (inNewTab) {
-        const docCount = tabs.filter((t) => t.file !== null).length;
+        const docCount = tabsRef.current.filter((t) => t.file !== null).length;
         if (docCount >= TAB_CAP) {
           toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
           return;
@@ -691,7 +707,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         const next = makeBlankTab({ file: f, isDirty: false });
         setTabs((ts) => {
           const cleaned = ts.filter((t) => t.file !== null);
-          return [...cleaned, next];
+          const updated = [...cleaned, next];
+          tabsRef.current = updated;
+          return updated;
         });
         setActiveId(next.id);
       } else {
@@ -737,22 +755,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         ocrPagesCopied: rec.ocrPagesCopied,
         ocrIsPartial: rec.ocrIsPartial,
       });
-      let placed = false;
+      const docCount = tabsRef.current.filter((t) => t.file !== null).length;
+      if (docCount >= TAB_CAP) {
+        setTabs((ts) => {
+          const docs = ts.filter((t) => t.file !== null);
+          tabsRef.current = docs;
+          return docs.length === ts.length ? ts : docs;
+        });
+        toast.error(`Tab limit reached (${TAB_CAP}). Close one to resume another.`);
+        return;
+      }
       setTabs((ts) => {
         // Strip stale empty tabs (no file) — they accumulate when opens fail
         // or when the initial blank sticks around after each doc open. Keep
         // only real document tabs, then place `next`.
         const docs = ts.filter((t) => t.file !== null);
-        if (docs.length >= TAB_CAP) {
-          return ts; // legit cap on real docs — leave untouched
-        }
-        placed = true;
-        return [...docs, next];
+        const updated = [...docs, next];
+        tabsRef.current = updated;
+        return updated;
       });
-      if (!placed) {
-        toast.error(`Tab limit reached (${TAB_CAP}). Close one to resume another.`);
-        return;
-      }
 
       setActiveId(next.id);
       console.log("[resume:tab-created]", { tabId: next.id, ms: Math.round(performance.now() - t0) });
