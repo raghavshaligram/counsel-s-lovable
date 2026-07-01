@@ -986,6 +986,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     if (already) return;
     let cancelled = false;
     let finished = false;
+    let loadingTask: { promise: Promise<unknown>; destroy?: () => Promise<void> } | null = null;
+    let loadingResolved = false;
     const runId = ++openRunSeqRef.current;
     latestOpenRunByTabRef.current.set(tabId, runId);
     activeOpenRunsRef.current += 1;
@@ -1022,7 +1024,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // and freezes the open path. Keep this transfer fast; export re-
         // reads fresh bytes from the active File on demand.
         console.debug("[open] getDocument:start", { tabId, runId });
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        loadingTask = pdfjs.getDocument({ data: bytes }) as { promise: Promise<unknown>; destroy?: () => Promise<void> };
+        const doc = await loadingTask.promise as {
+          numPages: number;
+          getPage: (pageNumber: number) => Promise<{ getViewport: (opts: { scale: number }) => { width: number; height: number } }>;
+        };
+        loadingResolved = true;
         console.debug("[open] getDocument:done", { tabId, runId, pages: doc.numPages });
         if (cancelled || !isLatest()) {
           console.debug("[open] aborted:after-getDocument", { tabId, runId });
@@ -1141,6 +1148,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       cancelled = true;
       if (latestOpenRunByTabRef.current.get(tabId) === runId) {
         latestOpenRunByTabRef.current.delete(tabId);
+      }
+      if (loadingTask && !loadingResolved) {
+        console.debug("[open] loadingTask.destroy", { tabId, runId });
+        try { void loadingTask.destroy?.().catch(() => {}); } catch { /* ignore */ }
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
