@@ -58,11 +58,14 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// DIAGNOSTIC FLAG (temporary): keep OFFLINE_MODE handling disabled so the SW
+// never rejects requests, matching the main-thread ISOLATION_ENABLED flag.
+const SW_ISOLATION_ENABLED = false;
 let OFFLINE_ISOLATED = false;
 
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
-  if (event.data && event.data.type === "OFFLINE_MODE") {
+  if (SW_ISOLATION_ENABLED && event.data && event.data.type === "OFFLINE_MODE") {
     OFFLINE_ISOLATED = Boolean(event.data.enabled);
   }
 });
