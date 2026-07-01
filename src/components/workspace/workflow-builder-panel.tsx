@@ -1606,6 +1606,17 @@ function StepParamsEditor({
   }
 }
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-[10.5px] uppercase tracking-wide text-text-muted">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+
+
 /* -------------------------------------------------------------------- */
 /* File source picker — lets the builder run on the current doc, a       */
 /* picked file, or a drag-dropped file, without requiring anything to be */
