@@ -10,7 +10,7 @@
  * Only configuration JSON is stored — never the file the user was editing
  * when they saved the template.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bookmark, ChevronDown, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,7 +31,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+
+const KIND_LABEL: Record<FirmTemplateKind, string> = {
+  bates: "Bates layout",
+  "header-footer": "Header / footer",
+  stamp: "Stamp preset",
+};
+
+function summarizeConfig(config: unknown): Array<[string, string]> {
+  if (!config || typeof config !== "object") return [];
+  const entries: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(config as Record<string, unknown>)) {
+    if (v === null || v === undefined || v === "") continue;
+    if (typeof v === "object") continue;
+    entries.push([k, String(v)]);
+  }
+  return entries.slice(0, 10);
+}
 
 type Props<T> = {
   kind: FirmTemplateKind;
@@ -49,6 +74,13 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
   const [items, setItems] = useState<FirmTemplate[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [pendingConfig, setPendingConfig] = useState<T | null>(null);
+  const configSummary = useMemo(
+    () => summarizeConfig(pendingConfig),
+    [pendingConfig],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +113,7 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
     if (authed && open && !items) void refresh();
   }, [authed, open, items, refresh]);
 
-  const save = useCallback(async () => {
+  const openSaveDialog = useCallback(async () => {
     const { data } = await supabase.auth.getUser();
     if (!data.user) {
       toast("Save your court styles and case templates across sessions — create a free account.", {
@@ -90,19 +122,32 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
       openLogin();
       return;
     }
-    const name = window.prompt("Template name (e.g. 'Smith v. Jones — Bates layout')");
-    if (!name?.trim()) return;
+    setPendingConfig(getConfig());
+    setName(sourceName ? `${sourceName.replace(/\.pdf$/i, "")} — ${KIND_LABEL[kind]}` : "");
+    setSaveOpen(true);
+  }, [getConfig, kind, openLogin, sourceName]);
+
+  const confirmSave = useCallback(async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error("Give this template a name");
+      return;
+    }
+    if (!pendingConfig) return;
     setBusy(true);
     try {
       await saveFirmTemplate({
         data: {
           kind,
-          name: name.trim(),
-          config: getConfig() as never,
+          name: trimmed,
+          config: pendingConfig as never,
           sourceName: sourceName ?? null,
         },
       });
       toast.success("Template saved");
+      setSaveOpen(false);
+      setName("");
+      setPendingConfig(null);
       setItems(null);
       await refresh();
     } catch (err) {
@@ -111,7 +156,7 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
     } finally {
       setBusy(false);
     }
-  }, [authed, getConfig, kind, openLogin, refresh, sourceName]);
+  }, [kind, name, pendingConfig, refresh, sourceName]);
 
   const remove = useCallback(
     async (id: string) => {
@@ -129,7 +174,7 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
     <div className="flex items-center gap-1.5">
       <button
         type="button"
-        onClick={save}
+        onClick={() => void openSaveDialog()}
         disabled={busy}
         className={cn(
           "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
@@ -200,6 +245,97 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      <Dialog
+        open={saveOpen}
+        onOpenChange={(next) => {
+          if (busy) return;
+          setSaveOpen(next);
+          if (!next) {
+            setName("");
+            setPendingConfig(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as firm template</DialogTitle>
+            <DialogDescription>
+              Reuse this {KIND_LABEL[kind].toLowerCase()} across future matters. Only the
+              settings below are saved — never the document itself.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="firm-template-name"
+                className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-text-muted"
+              >
+                Template name
+              </label>
+              <input
+                id="firm-template-name"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !busy) {
+                    e.preventDefault();
+                    void confirmSave();
+                  }
+                }}
+                placeholder="e.g. Smith v. Jones — Bates layout"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-text-muted focus:border-vault/60 focus:outline-none focus:ring-2 focus:ring-vault/30"
+              />
+            </div>
+
+            <div className="rounded-md border border-border bg-surface-1/60 p-3">
+              <div className="mb-2 text-[10.5px] uppercase tracking-[0.14em] text-text-muted">
+                What will be saved
+              </div>
+              {configSummary.length === 0 ? (
+                <div className="text-[12px] text-text-muted">No configurable values.</div>
+              ) : (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+                  {configSummary.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="truncate text-text-2">{k}</dt>
+                      <dd className="truncate font-mono text-foreground">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              {sourceName && (
+                <div className="mt-2 truncate text-[11px] text-text-muted">
+                  From: {sourceName}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setSaveOpen(false)}
+              disabled={busy}
+              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[12px] text-foreground hover:border-vault/40 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmSave()}
+              disabled={busy || !name.trim()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-vault/60 bg-vault/15 px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-vault/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bookmark className="h-3.5 w-3.5" />}
+              Save template
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
