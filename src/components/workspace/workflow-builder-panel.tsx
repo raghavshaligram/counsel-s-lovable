@@ -175,9 +175,15 @@ const PALETTE_GROUPS: PaletteGroup[] = [
         op: "redact-pattern",
         label: "Pattern / bulk redact",
         icon: Ban,
-        blurb: "Regex or keyword redaction — coming to workflows.",
-        defaults: {},
-        unavailable: "Pattern redaction runs from the Redact tool today; workflow adapter pending.",
+        blurb: "Keyword or regex redaction — verified burn + gate.",
+        defaults: {
+          query: "",
+          matchCase: false,
+          wholeWord: true,
+          regex: false,
+          scope: "word",
+          ocr: false,
+        },
       },
       {
         op: "redact-manual",
@@ -225,9 +231,8 @@ const PALETTE_GROUPS: PaletteGroup[] = [
         op: "ocr",
         label: "OCR (text layer)",
         icon: ScanText,
-        blurb: "Recognise text on scanned pages.",
-        defaults: {},
-        unavailable: "OCR needs the DOM (Tesseract). Run it from the OCR tool before the workflow.",
+        blurb: "Recognise text on scanned pages (main-thread step).",
+        defaults: { languages: ["eng"], highAccuracy: false },
       },
       {
         op: "to-pdfa",
@@ -498,6 +503,10 @@ function WorkflowBuilderModal({
                   ? { ...s, status: "done", message: `${Math.round(ev.elapsedMs)} ms` }
                   : s,
               ),
+            );
+          } else if (ev.type === "step-progress") {
+            setSteps((cur) =>
+              cur.map((s, i) => (i === ev.index ? { ...s, status: "running", message: ev.message ?? s.message } : s)),
             );
           } else if (ev.type === "step-error") {
             setSteps((cur) =>
@@ -1049,6 +1058,86 @@ function StepParamsEditor({
           <Input className="h-7 text-[12px]" value={str("ranges")} onChange={(e) => onChange({ ranges: e.target.value })} />
         </Field>
       );
+
+    case "ocr":
+      return (
+        <div className="flex flex-col gap-2">
+          <Field label="Languages (comma-separated Tesseract codes)">
+            <Input
+              className="h-7 text-[12px]"
+              value={Array.isArray(p.languages) ? (p.languages as string[]).join(", ") : "eng"}
+              onChange={(e) =>
+                onChange({
+                  languages: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-[11.5px] text-text">
+            <input
+              type="checkbox"
+              checked={!!p.highAccuracy}
+              onChange={(e) => onChange({ highAccuracy: e.target.checked })}
+            />
+            High accuracy (slower)
+          </label>
+          <p className="text-[10.5px] leading-snug text-text-muted">
+            Runs on the main thread (Tesseract + canvas). Progress reports per page.
+          </p>
+        </div>
+      );
+
+    case "redact-pattern":
+      return (
+        <div className="flex flex-col gap-2">
+          <Field label="Query (keyword or regex)">
+            <Input
+              className="h-7 text-[12px]"
+              value={str("query")}
+              placeholder="e.g. John Doe  or  \d{3}-\d{2}-\d{4}"
+              onChange={(e) => onChange({ query: e.target.value })}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Scope">
+              <Select value={str("scope") || "word"} onValueChange={(v) => onChange({ scope: v })}>
+                <SelectTrigger className="h-7 text-[12px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="word">Word</SelectItem>
+                  <SelectItem value="line">Line</SelectItem>
+                  <SelectItem value="sentence">Sentence</SelectItem>
+                  <SelectItem value="page">Whole page</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <div className="flex flex-col gap-1 text-[11.5px] text-text">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={!!p.matchCase} onChange={(e) => onChange({ matchCase: e.target.checked })} />
+                Match case
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={!!p.wholeWord} onChange={(e) => onChange({ wholeWord: e.target.checked })} />
+                Whole word
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={!!p.regex} onChange={(e) => onChange({ regex: e.target.checked })} />
+                Regex
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={!!p.ocr} onChange={(e) => onChange({ ocr: e.target.checked })} />
+                Include OCR on scanned pages
+              </label>
+            </div>
+          </div>
+          <p className="text-[10.5px] leading-snug text-text-muted">
+            Uses the verified rasterize + redaction-gate path — same as the manual Redact tool.
+          </p>
+        </div>
+      );
+
 
     default:
       return <p className="text-[11.5px] text-text-muted">No parameters.</p>;
