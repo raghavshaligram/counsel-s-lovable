@@ -310,7 +310,8 @@ export function EditorCanvas({
         try {
           console.debug("[pdf-render] cancel", { canvasId: cid, page: op.srcPage });
           renderTaskRef.current.cancel();
-          await renderTaskRef.current.promise.catch(() => {});
+          // Fire-and-forget: don't block on the cancelled render promise.
+          void renderTaskRef.current.promise.catch(() => {});
         } catch { /* noop */ }
         renderTaskRef.current = null;
       }
