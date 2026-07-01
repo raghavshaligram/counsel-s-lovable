@@ -167,6 +167,19 @@ export function getBlockedCount() {
 
 export function setOfflineMode(next: boolean) {
   install();
+  if (!ISOLATION_ENABLED) {
+    // Diagnostic: refuse to enter isolated mode. Persist the preference so
+    // UI reflects the user's intent, but never actually block traffic and
+    // never notify the SW.
+    enabled = false;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+    emit();
+    return;
+  }
   if (enabled === next) return;
   enabled = next;
   try {
@@ -187,6 +200,11 @@ export function subscribeOffline(fn: Listener): () => void {
 
 export function initNetworkIsolation() {
   install();
+  if (!ISOLATION_ENABLED) {
+    enabled = false;
+    emit();
+    return;
+  }
   let pref = false;
   try {
     pref = window.localStorage.getItem(STORAGE_KEY) === "true";
