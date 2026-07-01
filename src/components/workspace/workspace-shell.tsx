@@ -378,11 +378,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const pdfjs = await loadPdfjs();
     const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
-    if (prior && prior !== parsed) {
-      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
-    }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
+    // Fire-and-forget: never block the caller on the old doc's cleanup.
+    if (prior && prior !== parsed) {
+      try { void (prior as { destroy?: () => Promise<void> }).destroy?.()?.catch(() => {}); } catch { /* ignore */ }
+    }
   }, []);
 
   // Convenience aliases — every render reads from `active`.
