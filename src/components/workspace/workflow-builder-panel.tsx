@@ -1164,7 +1164,77 @@ function StepParamsEditor({
       );
 
 
-    default:
+    case "protect": {
+      const perms = (p.permissions as Record<string, boolean> | undefined) ?? {};
+      const setPerm = (k: string, v: boolean) =>
+        onChange({ permissions: { ...perms, [k]: v } });
+      return (
+        <div className="flex flex-col gap-2">
+          <Field label="User password (required)">
+            <Input
+              className="h-7 text-[12px]"
+              type="password"
+              value={str("userPassword")}
+              onChange={(e) => onChange({ userPassword: e.target.value })}
+            />
+          </Field>
+          <Field label="Owner password (optional)">
+            <Input
+              className="h-7 text-[12px]"
+              type="password"
+              value={str("ownerPassword")}
+              onChange={(e) => onChange({ ownerPassword: e.target.value })}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-1 pt-1 text-[11.5px] text-text">
+            {[
+              ["printing", "Printing"],
+              ["modifying", "Modify"],
+              ["copying", "Copy text"],
+              ["annotating", "Annotate"],
+              ["fillingForms", "Fill forms"],
+              ["contentAccessibility", "A11y"],
+              ["documentAssembly", "Assemble"],
+            ].map(([k, l]) => (
+              <label key={k} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={perms[k] !== false}
+                  onChange={(e) => setPerm(k, e.target.checked)}
+                />
+                {l}
+              </label>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    case "unlock":
+      return (
+        <div className="flex flex-col gap-2">
+          <Field label="Password (leave blank if unknown / not encrypted)">
+            <Input
+              className="h-7 text-[12px]"
+              type="password"
+              value={str("password")}
+              onChange={(e) => onChange({ password: e.target.value })}
+            />
+          </Field>
+          <p className="text-[10.5px] leading-snug text-text-muted">
+            Rebuilds the PDF without encryption via pdf-lib.
+          </p>
+        </div>
+      );
+
+    case "repair":
+      return (
+        <p className="text-[11.5px] text-text-muted">
+          No parameters. Tries pdf-lib → pdf.js rasterise → qpdf WASM in sequence.
+        </p>
+      );
+
+
       return <p className="text-[11.5px] text-text-muted">No parameters.</p>;
   }
 }
