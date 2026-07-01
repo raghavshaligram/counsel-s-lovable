@@ -719,7 +719,13 @@ function WorkflowBuilderModal({
                 <div className="mx-auto flex max-w-[520px] flex-col">
                   {steps.map((s, i) => (
                     <div key={s.uid}>
-                      <div onDragOver={allowDrop} onDrop={onDropAt(i)} className="h-2" />
+                      <div
+                        onDragOver={allowDrop}
+                        onDrop={onDropAt(i)}
+                        className="my-0.5 h-3 rounded border border-dashed border-transparent transition hover:border-vault/40 data-[active=true]:border-vault/60"
+                        data-active={false}
+                        aria-label={`Drop above step ${i + 1}`}
+                      />
                       <StepCard
                         step={s}
                         index={i}
@@ -728,21 +734,19 @@ function WorkflowBuilderModal({
                         onRemove={() => removeStep(s.uid)}
                         onDragStart={onReorderDragStart(i)}
                       />
-                      {i < steps.length - 1 && (
-                        <div className="my-1 flex h-4 items-center justify-center">
-                          <div className="h-4 w-px bg-border" />
-                        </div>
-                      )}
                     </div>
                   ))}
                   {/* trailing drop target */}
                   <div
                     onDragOver={allowDrop}
                     onDrop={onDropAt(steps.length)}
-                    className="mt-2 h-6 rounded border border-dashed border-border/60"
-                  />
+                    className="mt-2 grid h-8 place-items-center rounded border border-dashed border-border/60 text-[10.5px] text-text-muted/70 transition hover:border-vault/40 hover:text-text-muted"
+                  >
+                    Drop here to append
+                  </div>
                 </div>
               )}
+
             </div>
 
             {resultBytes && (
