@@ -3403,8 +3403,8 @@ const INSPECTOR_DEFAULT_WIDTH = 380;
 const INSPECTOR_WIDTH_KEY = "vaultpdf:inspectorWidth";
 
 function useInspectorWidth() {
-  const [width, setWidth] = React.useState<number>(INSPECTOR_DEFAULT_WIDTH);
-  React.useEffect(() => {
+  const [width, setWidth] = useState<number>(INSPECTOR_DEFAULT_WIDTH);
+  useEffect(() => {
     try {
       const raw = localStorage.getItem(INSPECTOR_WIDTH_KEY);
       if (raw) {
@@ -3415,7 +3415,7 @@ function useInspectorWidth() {
       }
     } catch {}
   }, []);
-  const persist = React.useCallback((w: number) => {
+  const persist = useCallback((w: number) => {
     const clamped = Math.min(INSPECTOR_MAX_WIDTH, Math.max(INSPECTOR_MIN_WIDTH, Math.round(w)));
     setWidth(clamped);
     try { localStorage.setItem(INSPECTOR_WIDTH_KEY, String(clamped)); } catch {}
@@ -3451,10 +3451,10 @@ function Inspector({
   clearFocusSection: () => void;
 }) {
   const [width, setWidth] = useInspectorWidth();
-  const [dragging, setDragging] = React.useState(false);
-  const asideRef = React.useRef<HTMLElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const asideRef = useRef<HTMLElement | null>(null);
 
-  const onDragStart = React.useCallback(
+  const onDragStart = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.preventDefault();
       const startX = e.clientX;
