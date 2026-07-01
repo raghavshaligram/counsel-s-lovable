@@ -190,6 +190,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ExhibitBinderPanel />;
     case "court-readiness":
       return <CourtReadinessPanel ctx={ctx} />;
+    case "privilege-scan":
+      return <PrivilegeReviewPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
