@@ -378,11 +378,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const pdfjs = await loadPdfjs();
     const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
-    if (prior && prior !== parsed) {
-      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
-    }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
+    // Fire-and-forget: never block the caller on the old doc's cleanup.
+    if (prior && prior !== parsed) {
+      try { void (prior as { destroy?: () => Promise<void> }).destroy?.()?.catch(() => {}); } catch { /* ignore */ }
+    }
   }, []);
 
   // Convenience aliases — every render reads from `active`.
@@ -923,7 +924,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // placeholder dims, hand the parsed pdfDoc to EditorPages via ref
         // (so it can render without re-parsing), and let EditorPages refine
         // real per-page dims lazily as pages scroll in.
+        console.debug("[open] start", { tabId, name: f.name, size: f.size });
         const bytes = new Uint8Array(await f.arrayBuffer());
+        console.debug("[open] bytes", { tabId, bytes: bytes.byteLength });
         const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         // Hand bytes straight to pdf.js — the worker transfers the buffer.
@@ -931,24 +934,31 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // and freezes the open path. Keep this transfer fast; export re-
         // reads fresh bytes from the active File on demand.
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        console.debug("[open] getDocument", { tabId, pages: doc.numPages });
         if (cancelled) {
-          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          try { void (doc as { destroy?: () => Promise<void> }).destroy?.()?.catch(() => {}); } catch { /* ignore */ }
           return;
         }
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         const numPages = doc.numPages;
-        // Replace any prior pdfDoc for this tab.
+        console.debug("[open] getPage1", { tabId });
+        // Replace any prior pdfDoc for this tab. Fire-and-forget destroy:
+        // awaiting destroy() can hang if the shared worker has pending
+        // messages racing with render-task cancellation from unmounting
+        // pages. The new doc must never wait for the old one to clean up.
         const prior = pdfDocsRef.current.get(tabId);
-        if (prior && prior !== doc) {
-          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
-        }
         pdfDocsRef.current.set(tabId, doc);
         setPdfDocVersion((v) => v + 1);
+        if (prior && prior !== doc) {
+          console.debug("[open] prior.destroy (fire-and-forget)", { tabId });
+          try { void (prior as { destroy?: () => Promise<void> }).destroy?.()?.catch(() => {}); } catch { /* ignore */ }
+        }
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
         }));
         if (cancelled) return;
+        console.debug("[open] LOAD dispatched", { tabId });
         dispatchEditorFor(tabId, {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
@@ -969,6 +979,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           postLoadToolRef.current.delete(tabId);
           dispatchEditorFor(tabId, { type: "SET_TOOL", t: pendingTool });
         }
+
 
       } catch (err) {
         console.error("[workspace] open failed", err);
