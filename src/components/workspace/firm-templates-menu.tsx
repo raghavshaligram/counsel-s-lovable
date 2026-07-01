@@ -174,7 +174,7 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
     <div className="flex items-center gap-1.5">
       <button
         type="button"
-        onClick={save}
+        onClick={() => void openSaveDialog()}
         disabled={busy}
         className={cn(
           "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
@@ -245,6 +245,97 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      <Dialog
+        open={saveOpen}
+        onOpenChange={(next) => {
+          if (busy) return;
+          setSaveOpen(next);
+          if (!next) {
+            setName("");
+            setPendingConfig(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as firm template</DialogTitle>
+            <DialogDescription>
+              Reuse this {KIND_LABEL[kind].toLowerCase()} across future matters. Only the
+              settings below are saved — never the document itself.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="firm-template-name"
+                className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-text-muted"
+              >
+                Template name
+              </label>
+              <input
+                id="firm-template-name"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !busy) {
+                    e.preventDefault();
+                    void confirmSave();
+                  }
+                }}
+                placeholder="e.g. Smith v. Jones — Bates layout"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-text-muted focus:border-vault/60 focus:outline-none focus:ring-2 focus:ring-vault/30"
+              />
+            </div>
+
+            <div className="rounded-md border border-border bg-surface-1/60 p-3">
+              <div className="mb-2 text-[10.5px] uppercase tracking-[0.14em] text-text-muted">
+                What will be saved
+              </div>
+              {configSummary.length === 0 ? (
+                <div className="text-[12px] text-text-muted">No configurable values.</div>
+              ) : (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+                  {configSummary.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="truncate text-text-2">{k}</dt>
+                      <dd className="truncate font-mono text-foreground">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              {sourceName && (
+                <div className="mt-2 truncate text-[11px] text-text-muted">
+                  From: {sourceName}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setSaveOpen(false)}
+              disabled={busy}
+              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[12px] text-foreground hover:border-vault/40 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmSave()}
+              disabled={busy || !name.trim()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-vault/60 bg-vault/15 px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-vault/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bookmark className="h-3.5 w-3.5" />}
+              Save template
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
