@@ -377,7 +377,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
     if (prior && prior !== parsed) {
-      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+      // Fire-and-forget: never block the open path on prior.destroy().
+      void Promise.resolve((prior as { destroy?: () => Promise<void> }).destroy?.()).catch(() => {});
     }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
@@ -441,6 +442,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // counter so EditorPages re-renders when the active tab's pdfDoc changes.
   const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
   const [, setPdfDocVersion] = useState(0);
+  // Monotonic open-token: each open effect run increments and captures its own
+  // token. A superseded run (new file opened before this one finished) exits
+  // without dispatching LOAD or installing pdfDoc, avoiding races.
+  const openTokenRef = useRef(0);
 
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
@@ -913,6 +918,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       active.editor.doc.pages.length > 0;
     if (already) return;
     let cancelled = false;
+    const myToken = ++openTokenRef.current;
+    console.debug("[open] open:start", { tabId, file: f.name, size: f.size, token: myToken });
     (async () => {
       try {
         // Open path — pdf.js only, no pdf-lib, no double parse.
@@ -922,6 +929,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // (so it can render without re-parsing), and let EditorPages refine
         // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
+        if (cancelled || myToken !== openTokenRef.current) return;
         const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         // Hand bytes straight to pdf.js — the worker transfers the buffer.
@@ -929,28 +937,32 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // and freezes the open path. Keep this transfer fast; export re-
         // reads fresh bytes from the active File on demand.
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
-        if (cancelled) {
-          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        console.debug("[open] getDocument:done", { tabId, token: myToken, numPages: doc.numPages });
+        if (cancelled || myToken !== openTokenRef.current) {
+          // Superseded — drop this doc without blocking the open path.
+          void Promise.resolve((doc as { destroy?: () => Promise<void> }).destroy?.()).catch(() => {});
           return;
         }
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         const numPages = doc.numPages;
-        // Replace any prior pdfDoc for this tab.
+        // Replace any prior pdfDoc for this tab. Fire-and-forget destroy —
+        // the open path must NEVER await the previous doc's teardown.
         const prior = pdfDocsRef.current.get(tabId);
         if (prior && prior !== doc) {
-          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          void Promise.resolve((prior as { destroy?: () => Promise<void> }).destroy?.()).catch(() => {});
         }
         pdfDocsRef.current.set(tabId, doc);
         setPdfDocVersion((v) => v + 1);
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
         }));
-        if (cancelled) return;
+        if (cancelled || myToken !== openTokenRef.current) return;
         dispatchEditorFor(tabId, {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
+        console.debug("[open] LOAD dispatched", { tabId, token: myToken, numPages });
         // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
         // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
