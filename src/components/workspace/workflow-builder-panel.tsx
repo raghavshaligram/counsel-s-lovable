@@ -67,95 +67,214 @@ type OpDef = {
   icon: React.ComponentType<{ className?: string }>;
   blurb: string;
   defaults: Record<string, unknown>;
+  /** If set, the op is visible in the palette but cannot be dragged in.
+   *  Explains why (manual-only, multi-file, DOM-only, etc.). */
+  unavailable?: string;
 };
 
-const PALETTE: OpDef[] = [
+type PaletteGroup = {
+  category: string;
+  ops: OpDef[];
+};
+
+const PALETTE_GROUPS: PaletteGroup[] = [
   {
-    op: "sanitize",
-    label: "Sanitize metadata",
-    icon: ShieldCheck,
-    blurb: "Strip metadata, XMP, and JavaScript.",
-    defaults: {},
+    category: "Document",
+    ops: [
+      {
+        op: "rotate",
+        label: "Rotate pages",
+        icon: RotateCw,
+        blurb: "Rotate all/odd/even pages.",
+        defaults: { angle: 90, scope: "all" },
+      },
+      {
+        op: "extract-pages",
+        label: "Extract pages",
+        icon: Scissors,
+        blurb: "Keep only a range (e.g. 1-5, 8, 12-15).",
+        defaults: { ranges: "1-1" },
+      },
+      {
+        op: "split",
+        label: "Split into files",
+        icon: SplitSquareVertical,
+        blurb: "Produces multiple PDFs — run from the Split tool.",
+        defaults: {},
+        unavailable: "Split produces many outputs; workflows are single-output. Use the Split tool.",
+      },
+      {
+        op: "merge",
+        label: "Merge / combine",
+        icon: Combine,
+        blurb: "Combine multiple PDFs — needs more than one input.",
+        defaults: {},
+        unavailable: "Merge needs multiple input files; workflows run on a single open PDF.",
+      },
+    ],
   },
   {
-    op: "bates",
-    label: "Bates stamp",
-    icon: Hash,
-    blurb: "Sequential production numbers on every page.",
-    defaults: {
-      prefix: "BATES",
-      startAt: 1,
-      digits: 6,
-      position: "br",
-      fontSize: 10,
-      color: "black",
-      margin: 24,
-    },
+    category: "Layout",
+    ops: [
+      {
+        op: "bates",
+        label: "Bates stamp",
+        icon: Hash,
+        blurb: "Sequential production numbers on every page.",
+        defaults: {
+          prefix: "BATES",
+          startAt: 1,
+          digits: 6,
+          position: "br",
+          fontSize: 10,
+          color: "black",
+          margin: 24,
+        },
+      },
+      {
+        op: "page-numbers",
+        label: "Page numbers",
+        icon: FileText,
+        blurb: "Add page numbers at a chosen anchor.",
+        defaults: {
+          anchor: "bottom-center",
+          format: "n-of-m",
+          startAt: 1,
+          skipFirst: 0,
+          fontSize: 10,
+          margin: 24,
+        },
+      },
+      {
+        op: "header-footer",
+        label: "Header / footer",
+        icon: Layers,
+        blurb: "Text at top/bottom of each page.",
+        defaults: {
+          headerText: "",
+          footerText: "Confidential",
+          align: "center",
+          fontSize: 9,
+          margin: 24,
+          rule: "all",
+        },
+      },
+      {
+        op: "watermark",
+        label: "Watermark",
+        icon: Stamp,
+        blurb: "Diagonal text watermark.",
+        defaults: { text: "CONFIDENTIAL", opacity: 20, size: 72, pos: "diagonal" },
+      },
+    ],
   },
   {
-    op: "page-numbers",
-    label: "Page numbers",
-    icon: FileText,
-    blurb: "Add page numbers at a chosen anchor.",
-    defaults: {
-      anchor: "bottom-center",
-      format: "n-of-m",
-      startAt: 1,
-      skipFirst: 0,
-      fontSize: 10,
-      margin: 24,
-    },
+    category: "Redaction",
+    ops: [
+      {
+        op: "redact-pattern",
+        label: "Pattern / bulk redact",
+        icon: Ban,
+        blurb: "Regex or keyword redaction — coming to workflows.",
+        defaults: {},
+        unavailable: "Pattern redaction runs from the Redact tool today; workflow adapter pending.",
+      },
+      {
+        op: "redact-manual",
+        label: "Manual redaction",
+        icon: Ban,
+        blurb: "Draw redaction boxes by hand.",
+        defaults: {},
+        unavailable: "Manual redaction requires drawing boxes — not workflow-eligible. Use pattern/AI redaction.",
+      },
+    ],
   },
   {
-    op: "header-footer",
-    label: "Header / footer",
-    icon: Layers,
-    blurb: "Text at top/bottom of each page.",
-    defaults: {
-      headerText: "",
-      footerText: "Confidential",
-      align: "center",
-      fontSize: 9,
-      margin: 24,
-      rule: "all",
-    },
+    category: "Discovery",
+    ops: [
+      {
+        op: "ai-detect",
+        label: "AI detect sensitive",
+        icon: Sparkles,
+        blurb: "Find PII with pattern + NER.",
+        defaults: {},
+        unavailable: "AI detection surfaces findings for review, not bytes — runs from the Redact tool.",
+      },
+      {
+        op: "privilege-scan",
+        label: "Privilege scan",
+        icon: Gavel,
+        blurb: "Attorney-client / work-product keyword scan.",
+        defaults: {},
+        unavailable: "Privilege scan produces a report, not a modified PDF.",
+      },
+      {
+        op: "keyword-search",
+        label: "Keyword search",
+        icon: Search,
+        blurb: "Locate keywords across the document.",
+        defaults: {},
+        unavailable: "Search returns hits for review, not a modified PDF.",
+      },
+    ],
   },
   {
-    op: "watermark",
-    label: "Watermark",
-    icon: Stamp,
-    blurb: "Diagonal text watermark.",
-    defaults: { text: "CONFIDENTIAL", opacity: 20, size: 72, pos: "diagonal" },
+    category: "Convert",
+    ops: [
+      {
+        op: "ocr",
+        label: "OCR (text layer)",
+        icon: ScanText,
+        blurb: "Recognise text on scanned pages.",
+        defaults: {},
+        unavailable: "OCR needs the DOM (Tesseract). Run it from the OCR tool before the workflow.",
+      },
+      {
+        op: "to-pdfa",
+        label: "PDF/A export",
+        icon: FileCheck2,
+        blurb: "Convert to PDF/A archival format.",
+        defaults: {},
+      },
+      {
+        op: "compress",
+        label: "Compress",
+        icon: PackageOpen,
+        blurb: "Structural or rasterised compression.",
+        defaults: { preset: "medium" },
+      },
+    ],
   },
   {
-    op: "rotate",
-    label: "Rotate pages",
-    icon: RotateCw,
-    blurb: "Rotate all/odd/even pages.",
-    defaults: { angle: 90, scope: "all" },
-  },
-  {
-    op: "compress",
-    label: "Compress",
-    icon: PackageOpen,
-    blurb: "Structural or rasterised compression.",
-    defaults: { preset: "medium" },
-  },
-  {
-    op: "flatten",
-    label: "Flatten forms",
-    icon: Layers,
-    blurb: "Bake form values into page content (safety-gated).",
-    defaults: { forms: true, annotations: false, clearSensitiveFirst: false },
-  },
-  {
-    op: "extract-pages",
-    label: "Extract pages",
-    icon: Scissors,
-    blurb: "Keep only a range (e.g. 1-5, 8, 12-15).",
-    defaults: { ranges: "1-1" },
+    category: "Secure",
+    ops: [
+      {
+        op: "sanitize",
+        label: "Sanitize / strip metadata",
+        icon: ShieldCheck,
+        blurb: "Strip metadata, XMP, and JavaScript.",
+        defaults: {},
+      },
+      {
+        op: "flatten",
+        label: "Flatten forms",
+        icon: Layers,
+        blurb: "Bake form values into page content (safety-gated).",
+        defaults: { forms: true, annotations: false, clearSensitiveFirst: false },
+      },
+      {
+        op: "protect",
+        label: "Password protect",
+        icon: Eye,
+        blurb: "Add a password / permissions — coming to workflows.",
+        defaults: {},
+        unavailable: "Protect needs an interactive password prompt — use the Protect tool.",
+      },
+    ],
   },
 ];
+
+const PALETTE: OpDef[] = PALETTE_GROUPS.flatMap((g) => g.ops);
 
 function paletteFor(op: string): OpDef | undefined {
   return PALETTE.find((p) => p.op === op);
