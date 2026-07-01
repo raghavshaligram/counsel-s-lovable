@@ -705,10 +705,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const resumeRecent = useCallback(
     async (id: string) => {
+      const t0 = performance.now();
+      console.log("[resume:start] id=", id);
       const rec = await getRecent(id);
+      console.log(
+        "[resume:bytes-read]",
+        rec
+          ? { name: rec.name, size: rec.size, byteLength: rec.bytes?.byteLength, ms: Math.round(performance.now() - t0) }
+          : "null (evicted or missing)",
+      );
       if (!rec) return;
       const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
       const f = new File([blob], rec.name, { type: "application/pdf" });
+      console.log("[resume:file-rebuilt]", { name: f.name, size: f.size, type: f.type, ms: Math.round(performance.now() - t0) });
       patchActive({
         file: f,
         isDirty: false,
@@ -716,12 +725,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         ocrPagesCopied: rec.ocrPagesCopied,
         ocrIsPartial: rec.ocrIsPartial,
       });
+      console.log("[resume:patchActive-called] ms=", Math.round(performance.now() - t0));
       await addRecent(f, {
         ocrPages: rec.ocrPages,
         ocrPagesCopied: rec.ocrPagesCopied,
         ocrIsPartial: rec.ocrIsPartial,
       });
       setRecents(await listRecents());
+      console.log("[resume:done] total ms=", Math.round(performance.now() - t0));
     },
     [patchActive],
   );
