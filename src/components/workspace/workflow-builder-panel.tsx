@@ -1156,19 +1156,40 @@ function WorkflowBuilderModal({
                 Save as…
               </Button>
             )}
-            <Button
-              size="sm"
-              className="h-8 gap-1.5 bg-vault px-3 text-white hover:bg-vault/90"
-              onClick={runWorkflow}
-              disabled={running || !activeFile || steps.length === 0}
-            >
-              {running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              Run
-            </Button>
+            {mode === "batch" && batchRunning ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 px-3"
+                onClick={cancelBatch}
+              >
+                <X className="h-4 w-4" />
+                Stop after current
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 bg-vault px-3 text-white hover:bg-vault/90"
+                onClick={mode === "batch" ? runBatch : runWorkflow}
+                disabled={
+                  mode === "batch"
+                    ? batchRunning || batchFiles.length === 0 || steps.length === 0
+                    : running || !activeFile || steps.length === 0
+                }
+                title={
+                  mode === "batch"
+                    ? `Run the workflow on ${batchFiles.length} file${batchFiles.length === 1 ? "" : "s"}`
+                    : "Run the workflow on the selected file"
+                }
+              >
+                {running || batchRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {mode === "batch" ? `Run batch (${batchFiles.length})` : "Run"}
+              </Button>
+            )}
             <div className="mx-0.5 h-4 w-px bg-border" />
             <Button
               size="sm"
