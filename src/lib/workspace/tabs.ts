@@ -33,9 +33,6 @@ export type TabState = {
   ocrPagesCopied?: number[];
   // True when the last OCR run was stopped before completion.
   ocrIsPartial?: boolean;
-  // True while pdfjs is parsing this tab's file. Surfaced in the tab strip
-  // so a slow / hung open is visible instead of looking stuck.
-  isOpening?: boolean;
 };
 
 export const TAB_CAP = 10;

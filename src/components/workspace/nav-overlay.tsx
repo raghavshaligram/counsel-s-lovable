@@ -568,17 +568,12 @@ function PageThumb({
   useEffect(() => {
     if (!inView) return;
     let cancelled = false;
-    // Track the active RenderTask so we can .cancel() it on unmount /
-    // page change. Without this, doc.destroy() during tab close waits on
-    // orphaned thumbnail renders and pins the pdf.js worker — the exact
-    // path that wedged repeated open/close cycles.
-    let activeTask: { cancel: () => void; promise: Promise<unknown> } | null = null;
     queueRef.current = queueRef.current.then(async () => {
       if (cancelled) return;
       try {
         const page = await doc.getPage(index + 1) as {
           getViewport: (o: { scale: number }) => { width: number; height: number };
-          render: (o: { canvas: HTMLCanvasElement; canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void>; cancel: () => void };
+          render: (o: { canvas: HTMLCanvasElement; canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void> };
         };
         if (cancelled) return;
         const vp1 = page.getViewport({ scale: 1 });
@@ -591,28 +586,11 @@ function PageThumb({
         c.height = v2.height;
         const ctx = c.getContext("2d");
         if (!ctx) return;
-        const task = page.render({ canvas: c, canvasContext: ctx, viewport: v2 });
-        activeTask = task;
-        try {
-          await task.promise;
-        } catch (e) {
-          const name = (e as { name?: string } | null)?.name;
-          if (name === "RenderingCancelledException" || cancelled) return;
-          throw e;
-        } finally {
-          if (activeTask === task) activeTask = null;
-        }
+        await page.render({ canvas: c, canvasContext: ctx, viewport: v2 }).promise;
         if (!cancelled) setReady(true);
       } catch { /* ignore */ }
     });
-    return () => {
-      cancelled = true;
-      if (activeTask) {
-        try { activeTask.cancel(); } catch { /* ignore */ }
-        activeTask.promise.catch(() => undefined);
-        activeTask = null;
-      }
-    };
+    return () => { cancelled = true; };
   }, [inView, doc, index, queueRef]);
 
   return (

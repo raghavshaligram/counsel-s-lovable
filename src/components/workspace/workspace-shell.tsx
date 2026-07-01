@@ -374,34 +374,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const replaceActivePdfBytes = useCallback(async (bytes: Uint8Array) => {
     const tabId = activeIdRef.current;
-    const { loadPdfjs, withPdfjsWatchdog, createPdfWorker, destroyPdfWorker } =
-      await importChunk(() => import("@/lib/pdf/worker"));
+    const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
     const pdfjs = await loadPdfjs();
-    // Fresh dedicated worker for this parse so the doc can be terminated
-    // in isolation later. The PARSE still runs exactly once here.
-    const worker = await createPdfWorker();
-    let parsed: unknown;
-    try {
-      parsed = await withPdfjsWatchdog(
-        pdfjs.getDocument({ data: bytes.slice(), worker: worker as never }).promise,
-        30_000,
-        () => toast.message("Re-initialising PDF engine — please try again."),
-        worker,
-      );
-    } catch (err) {
-      // Watchdog already terminated the worker; make sure it's gone.
-      await destroyPdfWorker(worker);
-      throw err;
-    }
+    const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
-    if (prior && prior.doc !== parsed) {
-      try {
-        const p = (prior.doc as { destroy?: () => Promise<void> }).destroy?.();
-        if (p) await Promise.race([p, new Promise((r) => setTimeout(r, 1500))]);
-      } catch { /* ignore */ }
-      await destroyPdfWorker(prior.worker);
+    if (prior && prior !== parsed) {
+      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
     }
-    pdfDocsRef.current.set(tabId, { doc: parsed, worker });
+    pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
   }, []);
 
@@ -457,20 +437,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // text-editing tool, not Select.
   const postLoadToolRef = useRef<Map<string, EditorTool>>(new Map());
 
-  // Parsed pdf.js docs, keyed by tab id. Each entry owns a DEDICATED
-  // pdf.js Web Worker so a hung document can be terminated in isolation
-  // — a stuck doc no longer wedges the shared worker singleton for every
-  // other tab. Held in a ref (not React state) so we can destroy() on
-  // tab close / new file load without the doc identity being captured
-  // into reducer state. setPdfDocVersion bumps a render-only counter so
-  // EditorPages re-renders when the active tab's pdfDoc changes.
-  type PdfDocEntry = { doc: unknown; worker: import("@/lib/pdf/worker").PdfWorkerHandle | null };
-  const pdfDocsRef = useRef<Map<string, PdfDocEntry>>(new Map());
+  // Parsed pdf.js docs, keyed by tab id. Held in a ref (not React state) so
+  // we can destroy() on tab close / new file load without the doc identity
+  // being captured into reducer state. setPdfDocVersion bumps a render-only
+  // counter so EditorPages re-renders when the active tab's pdfDoc changes.
+  const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
   const [, setPdfDocVersion] = useState(0);
-  // Tabs whose teardown (destroy + worker terminate) hasn't finished
-  // yet. The open effect skips these so a fresh parse never queues
-  // behind a half-torn-down doc / worker.
-  const closingTabsRef = useRef<Set<string>>(new Set());
 
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
@@ -683,31 +655,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingCloseId(id);
         return;
       }
-      // Destroy the parsed pdfDoc AND its dedicated worker for this tab.
-      // We await destroy with a 1.5s race, then unconditionally terminate
-      // the worker — a wedged worker cannot linger and queue the next
-      // open behind it. The tab id is marked "closing" so the open effect
-      // won't try to parse a new file into it before teardown settles.
-      const entry = pdfDocsRef.current.get(id);
-      if (entry) {
+      // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
+      const doc = pdfDocsRef.current.get(id);
+      if (doc) {
+        try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         pdfDocsRef.current.delete(id);
-        closingTabsRef.current.add(id);
-        void (async () => {
-          try {
-            const p = (entry.doc as { destroy?: () => Promise<void> }).destroy?.();
-            if (p) {
-              await Promise.race([
-                p.catch(() => undefined),
-                new Promise((r) => setTimeout(r, 1500)),
-              ]);
-            }
-          } catch { /* ignore */ }
-          try {
-            const { destroyPdfWorker } = await importChunk(() => import("@/lib/pdf/worker"));
-            await destroyPdfWorker(entry.worker);
-          } catch { /* ignore */ }
-          closingTabsRef.current.delete(id);
-        })();
       }
       setTabs((ts) => {
         const next = ts.filter((t) => t.id !== id);
@@ -724,25 +676,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         }
         return next;
       });
-      // If no document tabs remain, free the NER worker so the 110 MB model
-      // isn't sitting in memory next to a fresh pdf.js worker.
-      const docsLeft = tabs.filter((t) => t.id !== id && t.file !== null).length;
-      if (docsLeft === 0) {
-        void import("@/lib/pdf/ner").then((m) => m.terminateNerWorker()).catch(() => {});
-      }
       setPendingCloseId(null);
     },
     [tabs],
   );
 
   // ----------------- File open (into the ACTIVE tab) ------------------
-  const openFile = useCallback(() => {
-    // Always reset the input value so picking the SAME file twice still
-    // fires `change`. Without this, a re-pick is silently ignored and
-    // feels like the app is "stuck".
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    fileInputRef.current?.click();
-  }, []);
+  const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback(
     (files: FileList | null) => {
       const f = files?.[0];
@@ -969,67 +909,41 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const tabId = active.id;
     const f = active.file;
     if (!f || f.size === 0) return;
-    // Skip while a previous doc/worker for this tab id is still tearing
-    // down — parsing into a tab whose destroy hasn't settled is exactly
-    // what caused the "5th open stalls" symptom.
-    if (closingTabsRef.current.has(tabId)) return;
-    // Tightened guard: also require a live pdfDoc for this tab. Without
-    // this check, closing and re-opening a same-named file in a fresh tab
-    // skipped parsing AND had no pdfDoc registered → blank canvas.
     const already =
       active.editor.doc &&
       active.editor.doc.fileName === f.name &&
-      active.editor.doc.srcBytes.byteLength === f.size &&
-      active.editor.doc.pages.length > 0 &&
-      pdfDocsRef.current.has(tabId);
+      active.editor.doc.pages.length > 0;
     if (already) return;
     let cancelled = false;
-    patchTab(tabId, { isOpening: true });
     (async () => {
-      let retried = false;
-      const runOpen = async (): Promise<void> => {
+      try {
         // Open path — pdf.js only, no pdf-lib, no double parse.
-        // pdf.js parses inside its own dedicated Web Worker (one per doc)
-        // so the main thread stays free even on 400-page docs AND a
-        // single wedged doc can be terminated without affecting others.
+        // pdf.js parses inside its Web Worker so the main thread stays free
+        // even on 400-page docs. We grab numPages + page-1 viewport for
+        // placeholder dims, hand the parsed pdfDoc to EditorPages via ref
+        // (so it can render without re-parsing), and let EditorPages refine
+        // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
-        const { loadPdfjs, withPdfjsWatchdog, createPdfWorker, destroyPdfWorker } =
-          await importChunk(() => import("@/lib/pdf/worker"));
+        const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
-        const worker = await createPdfWorker();
-        // 30s watchdog: if this doc's worker wedges, the watchdog kills
-        // it and rejects — the retry below spawns a fresh worker so the
-        // next attempt is unaffected by the previous stuck one.
-        let doc: Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>;
-        try {
-          doc = await withPdfjsWatchdog(
-            pdfjs.getDocument({ data: bytes, worker: worker as never }).promise,
-            30_000,
-            () => toast.message("Re-initialising PDF engine…"),
-            worker,
-          );
-        } catch (err) {
-          await destroyPdfWorker(worker);
-          throw err;
-        }
+        // Hand bytes straight to pdf.js — the worker transfers the buffer.
+        // For 400p PDFs slicing here copies tens of MB on the main thread
+        // and freezes the open path. Keep this transfer fast; export re-
+        // reads fresh bytes from the active File on demand.
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
-          await destroyPdfWorker(worker);
           return;
         }
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         const numPages = doc.numPages;
-        // Replace any prior pdfDoc for this tab (also terminate its worker).
+        // Replace any prior pdfDoc for this tab.
         const prior = pdfDocsRef.current.get(tabId);
-        if (prior && prior.doc !== doc) {
-          try {
-            const p = (prior.doc as { destroy?: () => Promise<void> }).destroy?.();
-            if (p) await Promise.race([p, new Promise((r) => setTimeout(r, 1500))]);
-          } catch { /* ignore */ }
-          await destroyPdfWorker(prior.worker);
+        if (prior && prior !== doc) {
+          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         }
-        pdfDocsRef.current.set(tabId, { doc, worker });
+        pdfDocsRef.current.set(tabId, doc);
         setPdfDocVersion((v) => v + 1);
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
@@ -1039,6 +953,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
         });
+        // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
+        // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
         if (!cancelled && side) {
           dispatchEditorFor(tabId, {
@@ -1053,29 +969,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           postLoadToolRef.current.delete(tabId);
           dispatchEditorFor(tabId, { type: "SET_TOOL", t: pendingTool });
         }
-      };
-      try {
-        await runOpen();
+
       } catch (err) {
-        const isHang = err instanceof Error && err.message === "pdfjs-watchdog-timeout";
-        if (isHang && !retried) {
-          retried = true;
-          try {
-            await runOpen();
-            if (!cancelled) patchTab(tabId, { isOpening: false });
-            return;
-          } catch (err2) {
-            console.error("[workspace] open retry failed", err2);
-          }
-        } else {
-          console.error("[workspace] open failed", err);
-        }
+        console.error("[workspace] open failed", err);
         const failed = f;
-        toast.error(isHang ? "PDF engine was busy — please try again" : "Couldn't open this PDF", {
-          description: isHang
-            ? "We reset it just now. Re-open the file."
-            : "The file may be damaged. Try to repair it?",
-          action: isHang ? undefined : {
+        toast.error("Couldn't open this PDF", {
+          description: "The file may be damaged. Try to repair it?",
+          action: {
             label: "Repair",
             onClick: () => {
               void (async () => {
@@ -1113,9 +1013,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             },
           },
         });
-      } finally {
-        if (!cancelled) patchTab(tabId, { isOpening: false });
       }
+
+
     })();
     return () => {
       cancelled = true;
@@ -1406,12 +1306,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         type="file"
         accept="application/pdf"
         className="hidden"
-        onChange={(e) => {
-          const files = e.target.files;
-          // Reset so picking the SAME file later still fires `change`.
-          e.target.value = "";
-          onFiles(files);
-        }}
+        onChange={(e) => onFiles(e.target.files)}
       />
 
       {/* TOP BAR */}
@@ -1618,7 +1513,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   defaultTab={navTab}
                   fileName={file?.name ?? null}
                   fileSize={file?.size ?? null}
-                  pdfDoc={pdfDocsRef.current.get(active.id)?.doc ?? null}
+                  pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
                   pageCount={editorState.doc?.pages.length ?? 0}
                   annotations={editorState.doc?.annotations ?? []}
                   currentPage={editorState.current}
@@ -1803,7 +1698,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onAutoFit={autoFit}
                     fitNonce={fitNonce}
                     zoomMode={zoomMode}
-                    pdfDoc={pdfDocsRef.current.get(active.id)?.doc ?? null}
+                    pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
                   />
 
 

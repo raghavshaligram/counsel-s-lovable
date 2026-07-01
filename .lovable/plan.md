@@ -1,70 +1,32 @@
-## Repeated open/close stall — root cause and fix (shipped)
+## Plan: position-based true redaction for custom-font PDFs
 
-### Root cause
+1. **Replace string-dependent deletion with geometry-only deletion**
+   - Refactor `src/lib/editor/text-rewrite.ts` so redaction does not depend on decoded `Tj`/`TJ` text.
+   - Walk each page content stream in operator order and track graphics/text state: `q/Q`, `cm`, `BT/ET`, `Tm`, `Td`, `TD`, `T*`, text leading, font selection `Tf`, font size, character spacing, word spacing, horizontal scale.
+   - For every text-show operator (`Tj`, `TJ`, `'`, `"`), compute the rendered text bounding box from current text position, font size, and approximate advance width.
+   - If that bounding box intersects any redaction rectangle, remove that text-show operation based only on position.
 
-All tabs used one shared pdf.js Web Worker (spawned from
-`GlobalWorkerOptions.workerSrc`). `closeTab` did fire-and-forget
-`doc.destroy()`, and per-page `RenderTask`s from `EditorPages` and
-`nav-overlay` thumbnails were never cancelled before unmount — so
-destroy waited on orphaned renders and pinned the singleton worker.
-After ~4 open/close cycles the worker's queue was jammed; the 5th
-`getDocument()` never resolved. `resetPdfjs()` only nulled the local
-module cache, so the browser's ESM cache handed back the same wedged
-worker on retry.
+2. **Add font-width lookup for custom fonts/CMaps**
+   - Resolve the active page font resource selected by `Tf` from the copied PDF page resources.
+   - Estimate text-show advance using `/Widths`, `/FirstChar`, `/MissingWidth`, `/DW`, and `/W` where available, with a safe default width fallback.
+   - Decode string bytes only as glyph/code units for width lookup, not for matching visible text.
+   - Preserve surrounding text operators whose bounding boxes do not intersect the redaction rectangles.
 
-### Fix (all shipped)
+3. **Decode and re-encode common PDF stream filter chains**
+   - Extend stream handling beyond single `/FlateDecode` to support common chains needed by generated/legal PDFs, especially `ASCII85Decode + FlateDecode` and aliases.
+   - Re-encode streams after mutation with a safe supported filter chain so the exported PDF remains readable.
+   - Continue skipping unsupported binary/image-only filters rather than corrupting them.
 
-1. **Per-document PDFWorker** (`src/lib/pdf/worker.ts`)
-   - `createPdfWorker()` returns a fresh `new pdfjs.PDFWorker()` per open.
-   - `destroyPdfWorker()` awaits graceful `destroy()` with a 1.5s race,
-     then unconditionally `terminate()`s the Worker thread.
-   - `withPdfjsWatchdog(task, ms, onTimeout, worker?)` now terminates
-     the doc's dedicated worker on timeout before rejecting.
-   - `resetPdfjs()` kept as a no-op export for back-compat.
+4. **Verify by redaction regions, not strings**
+   - Update `src/lib/editor/verify-redaction.ts` to accept redaction rectangles in page coordinates.
+   - Re-open the exported PDF with pdf.js, extract text items with transforms/positions, and fail if any text item bounding box intersects a redaction rectangle.
+   - Keep string verification as diagnostic metadata only where available, but success must be based on “no text remains inside the redacted regions.”
 
-2. **Per-doc worker ownership** (`src/components/workspace/workspace-shell.tsx`)
-   - `pdfDocsRef` stores `{ doc, worker }` per tab id.
-   - Open path (`useEffect`) and `replaceActivePdfBytes` create a fresh
-     worker, pass it via `pdfjs.getDocument({ data, worker })`, and
-     store the pair. On cancel/timeout the worker is terminated.
-   - **Parse-once invariant preserved**: the "already loaded" guard
-     still short-circuits when the tab has a live pdfDoc; the doc is
-     shared with `EditorPages` and `NavOverlay` via the same ref.
+5. **Wire region verification through export flows**
+   - In `src/components/workspace/tool-panels.tsx` and `src/components/workspace/export-dialog.tsx`, pass actual redaction boxes to verification after `exportEditedPdf`.
+   - Update success/error wording to report region removal, e.g. all redaction regions cleared.
+   - Ensure the Certificate of Redaction only states verified removal when the region-based check passes.
 
-3. **Cancel render tasks before unmount** (`src/components/workspace/nav-overlay.tsx`)
-   - `PageThumb` tracks the active `RenderTask`, calls `.cancel()` on
-     effect cleanup, and swallows `RenderingCancelledException`. This
-     lets `doc.destroy()` resolve immediately during tab close.
-   - `EditorPages` already cancelled its render tasks
-     (`editor-canvas.tsx` ~309); left as-is.
-
-4. **Tighter close sequencing** (`closeTab`)
-   - Await `doc.destroy()` with a 1.5s race, then `destroyPdfWorker()`
-     the tab's dedicated worker.
-   - New `closingTabsRef: Set<string>` — the open effect skips any
-     tab id whose teardown hasn't settled, so a fresh parse can never
-     queue behind a half-destroyed doc/worker.
-
-### Verification
-
-Playwright stress test at `/tmp/browser/openclose/run.py`:
-open → close the same PDF 10 times in a row.
-
-    cycle  1: OK  open=1.06s
-    cycle  2: OK  open=0.68s
-    …
-    cycle 10: OK  open=0.66s
-    SUMMARY: 10/10 cycles passed
-
-Previously wedged on cycle 5. Open time stays sub-second across all
-cycles, no worker termination or unrelated errors surfaced.
-
-### Files touched
-- `src/lib/pdf/worker.ts`
-- `src/components/workspace/workspace-shell.tsx`
-- `src/components/workspace/nav-overlay.tsx`
-
-Not touched: engine, sidecar, NER worker, storage-audit code, batch
-ops, other routes that still use the global worker (`/compare`,
-`/organize`, `/ocr`, etc. run one doc at a time and are not part of
-the workspace open/close lifecycle).
+6. **Validation target**
+   - Use the existing custom-font test case behavior described by the user: redact all detected items, export, re-extract text with positions, and confirm no text items intersect any redaction rectangle while surrounding text outside rectangles remains extractable.
+   - Do not report success unless post-export verification passes with zero text in redaction regions.
