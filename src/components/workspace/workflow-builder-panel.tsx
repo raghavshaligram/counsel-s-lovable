@@ -42,7 +42,7 @@ import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import type { Pipeline, PipelineStep, ProgressEvent } from "@/lib/automation/types";
 import { runPipeline, downloadBytes } from "@/lib/automation";
 
-import type { ToolPanelCtx } from "./tool-panels-shared";
+import type { ToolPanelCtx } from "./tool-panels";
 
 /* -------------------------------------------------------------------- */
 /* Palette                                                              */
