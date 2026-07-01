@@ -504,6 +504,10 @@ function WorkflowBuilderModal({
                   : s,
               ),
             );
+          } else if (ev.type === "step-progress") {
+            setSteps((cur) =>
+              cur.map((s, i) => (i === ev.index ? { ...s, status: "running", message: ev.message ?? s.message } : s)),
+            );
           } else if (ev.type === "step-error") {
             setSteps((cur) =>
               cur.map((s, i) => (i === ev.index ? { ...s, status: "error", message: ev.error } : s)),
