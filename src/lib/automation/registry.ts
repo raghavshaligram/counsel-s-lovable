@@ -68,6 +68,8 @@ const extract: RegisteredOp<{ ranges: string }> = async (bytes, params) => {
   return blobToBytes(res.blob);
 };
 
+const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
+
 /* ---------- Registry ---------- */
 
 export const OPS: Record<string, RegisteredOp<never>> = {
@@ -80,6 +82,7 @@ export const OPS: Record<string, RegisteredOp<never>> = {
   flatten: flattenOp as RegisteredOp<never>,
   sanitize: sanitize as RegisteredOp<never>,
   "extract-pages": extract as RegisteredOp<never>,
+  "to-pdfa": pdfA as RegisteredOp<never>,
 };
 
 export function getOp(name: string): RegisteredOp<unknown> | null {
