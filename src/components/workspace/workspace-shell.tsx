@@ -324,6 +324,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+  // Forward-ref to the tab-cap toast helper (defined after closeTab). Lets
+  // callbacks declared earlier (openNewStartTab, onFiles) trigger it
+  // without a TDZ on the const.
+  const showTabCapToastRef = useRef<(verb: "open" | "resume") => void>(() => {});
+
 
   // Flush any debounced sidecar writes before the tab is hidden / unloaded so
   // pending edits actually commit to IndexedDB.
