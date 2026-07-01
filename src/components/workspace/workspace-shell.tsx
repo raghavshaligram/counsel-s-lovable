@@ -711,6 +711,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     },
     [closeTab],
   );
+  useEffect(() => {
+    showTabCapToastRef.current = showTabCapToast;
+  }, [showTabCapToast]);
+
 
   // Memory hygiene: keep only the ACTIVE tab's parsed pdf.js doc alive.
   // Background tabs' parsed docs (and their worker-side memory) are
