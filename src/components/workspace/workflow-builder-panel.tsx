@@ -872,11 +872,36 @@ function StepCard({
 }
 
 function StatusDot({ status }: { status: StepStatus }) {
-  if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-vault" />;
-  if (status === "done") return <CheckCircle2 className="h-3.5 w-3.5 text-vault" />;
-  if (status === "error") return <AlertTriangle className="h-3.5 w-3.5 text-red-400" />;
-  return <Circle className="h-3.5 w-3.5 text-text-muted/40" />;
+  const label =
+    status === "running"
+      ? "Running"
+      : status === "done"
+        ? "Done"
+        : status === "error"
+          ? "Failed"
+          : "Pending";
+  const icon =
+    status === "running" ? (
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-vault" />
+    ) : status === "done" ? (
+      <CheckCircle2 className="h-3.5 w-3.5 text-vault" />
+    ) : status === "error" ? (
+      <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+    ) : (
+      <Circle className="h-3.5 w-3.5 text-text-muted/50" />
+    );
+  return (
+    <span
+      role="status"
+      aria-label={`Step status: ${label}`}
+      title={label}
+      className="inline-flex shrink-0 items-center"
+    >
+      {icon}
+    </span>
+  );
 }
+
 
 /* -------------------------------------------------------------------- */
 /* Params editor                                                        */
