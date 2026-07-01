@@ -113,7 +113,7 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
     if (authed && open && !items) void refresh();
   }, [authed, open, items, refresh]);
 
-  const save = useCallback(async () => {
+  const openSaveDialog = useCallback(async () => {
     const { data } = await supabase.auth.getUser();
     if (!data.user) {
       toast("Save your court styles and case templates across sessions — create a free account.", {
@@ -122,19 +122,32 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
       openLogin();
       return;
     }
-    const name = window.prompt("Template name (e.g. 'Smith v. Jones — Bates layout')");
-    if (!name?.trim()) return;
+    setPendingConfig(getConfig());
+    setName(sourceName ? `${sourceName.replace(/\.pdf$/i, "")} — ${KIND_LABEL[kind]}` : "");
+    setSaveOpen(true);
+  }, [getConfig, kind, openLogin, sourceName]);
+
+  const confirmSave = useCallback(async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error("Give this template a name");
+      return;
+    }
+    if (!pendingConfig) return;
     setBusy(true);
     try {
       await saveFirmTemplate({
         data: {
           kind,
-          name: name.trim(),
-          config: getConfig() as never,
+          name: trimmed,
+          config: pendingConfig as never,
           sourceName: sourceName ?? null,
         },
       });
       toast.success("Template saved");
+      setSaveOpen(false);
+      setName("");
+      setPendingConfig(null);
       setItems(null);
       await refresh();
     } catch (err) {
@@ -143,7 +156,7 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
     } finally {
       setBusy(false);
     }
-  }, [authed, getConfig, kind, openLogin, refresh, sourceName]);
+  }, [kind, name, pendingConfig, refresh, sourceName]);
 
   const remove = useCallback(
     async (id: string) => {
