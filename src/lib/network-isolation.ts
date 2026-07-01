@@ -8,6 +8,12 @@ type Listener = (state: { enabled: boolean; blocked: number }) => void;
 
 const STORAGE_KEY = "counselpdf:work-offline";
 
+// DIAGNOSTIC FLAG (temporary): gate the fetch/XHR/WS/EventSource monkey-patch
+// and the service-worker OFFLINE_MODE handshake behind a single switch so we
+// can test whether isolation contributes to the open-freeze. Flip to `true`
+// to restore full isolation behavior.
+const ISOLATION_ENABLED = false;
+
 let installed = false;
 let enabled = false;
 let blocked = 0;
@@ -53,6 +59,12 @@ function notifySW(active: boolean) {
 
 function install() {
   if (installed || typeof window === "undefined") return;
+  if (!ISOLATION_ENABLED) {
+    // Diagnostic: skip monkey-patching entirely. Nothing is wrapped, so
+    // pdf.js worker/WASM fetches, font loads, etc. run untouched.
+    installed = true;
+    return;
+  }
   installed = true;
 
   origFetch = window.fetch.bind(window);
@@ -155,6 +167,19 @@ export function getBlockedCount() {
 
 export function setOfflineMode(next: boolean) {
   install();
+  if (!ISOLATION_ENABLED) {
+    // Diagnostic: refuse to enter isolated mode. Persist the preference so
+    // UI reflects the user's intent, but never actually block traffic and
+    // never notify the SW.
+    enabled = false;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+    emit();
+    return;
+  }
   if (enabled === next) return;
   enabled = next;
   try {
@@ -175,6 +200,11 @@ export function subscribeOffline(fn: Listener): () => void {
 
 export function initNetworkIsolation() {
   install();
+  if (!ISOLATION_ENABLED) {
+    enabled = false;
+    emit();
+    return;
+  }
   let pref = false;
   try {
     pref = window.localStorage.getItem(STORAGE_KEY) === "true";
