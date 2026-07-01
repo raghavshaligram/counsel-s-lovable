@@ -724,14 +724,44 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       const blob = new Blob([new Uint8Array(rec.bytes)], { type: "application/pdf" });
       const f = new File([blob], rec.name, { type: "application/pdf" });
       console.log("[resume:file-rebuilt]", { name: f.name, size: f.size, type: f.type, ms: Math.round(performance.now() - t0) });
-      patchActive({
+      // Mirror onFiles' new-tab path exactly: build the tab OUTSIDE the setter
+      // (StrictMode double-invokes updaters, and makeBlankTab mints a fresh id
+      // each call) and setActiveId to that same id. Never rely on
+      // activeIdRef — it can point at a tab that was just replaced by the
+      // Start view / close-tab fallback, in which case patchActive silently
+      // drops the file.
+      const next = makeBlankTab({
         file: f,
         isDirty: false,
         ocrPages: rec.ocrPages,
         ocrPagesCopied: rec.ocrPagesCopied,
         ocrIsPartial: rec.ocrIsPartial,
       });
-      console.log("[resume:patchActive-called] ms=", Math.round(performance.now() - t0));
+      let placed = false;
+      setTabs((ts) => {
+        // If the current active tab is blank (no file), replace it in place
+        // rather than accumulating empty tabs. Otherwise append, respecting
+        // TAB_CAP.
+        const activeIdx = ts.findIndex((t) => t.id === activeIdRef.current);
+        const activeTab = activeIdx >= 0 ? ts[activeIdx] : null;
+        if (activeTab && !activeTab.file) {
+          const copy = ts.slice();
+          copy[activeIdx] = next;
+          placed = true;
+          return copy;
+        }
+        if (ts.length >= TAB_CAP) {
+          return ts;
+        }
+        placed = true;
+        return [...ts, next];
+      });
+      if (!placed) {
+        toast.error(`Tab limit reached (${TAB_CAP}). Close one to resume another.`);
+        return;
+      }
+      setActiveId(next.id);
+      console.log("[resume:tab-created]", { tabId: next.id, ms: Math.round(performance.now() - t0) });
       await addRecent(f, {
         ocrPages: rec.ocrPages,
         ocrPagesCopied: rec.ocrPagesCopied,
@@ -740,7 +770,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setRecents(await listRecents());
       console.log("[resume:done] total ms=", Math.round(performance.now() - t0));
     },
-    [patchActive],
+    [],
   );
 
 
