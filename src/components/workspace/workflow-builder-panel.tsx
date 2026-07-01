@@ -231,9 +231,8 @@ const PALETTE_GROUPS: PaletteGroup[] = [
         op: "ocr",
         label: "OCR (text layer)",
         icon: ScanText,
-        blurb: "Recognise text on scanned pages.",
-        defaults: {},
-        unavailable: "OCR needs the DOM (Tesseract). Run it from the OCR tool before the workflow.",
+        blurb: "Recognise text on scanned pages (main-thread step).",
+        defaults: { languages: ["eng"], highAccuracy: false },
       },
       {
         op: "to-pdfa",
