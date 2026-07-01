@@ -59,6 +59,12 @@ function notifySW(active: boolean) {
 
 function install() {
   if (installed || typeof window === "undefined") return;
+  if (!ISOLATION_ENABLED) {
+    // Diagnostic: skip monkey-patching entirely. Nothing is wrapped, so
+    // pdf.js worker/WASM fetches, font loads, etc. run untouched.
+    installed = true;
+    return;
+  }
   installed = true;
 
   origFetch = window.fetch.bind(window);
