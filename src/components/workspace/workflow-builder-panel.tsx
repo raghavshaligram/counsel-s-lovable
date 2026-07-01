@@ -591,33 +591,73 @@ function WorkflowBuilderModal({
               <span className="text-[10.5px] text-text-muted">Drag →</span>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
-              <div className="flex flex-col gap-1.5">
-                {PALETTE.map((p) => {
-                  const Icon = p.icon;
-                  return (
-                    <button
-                      key={p.op}
-                      draggable
-                      onDragStart={onPaletteDragStart(p.op)}
-                      onDoubleClick={() =>
-                        onDropAt(steps.length)({ preventDefault: () => {} } as unknown as React.DragEvent)
-                      }
-                      className="group flex items-start gap-2 rounded-md border border-border bg-surface-1 px-2 py-2 text-left transition hover:border-vault/40 hover:bg-surface-2"
-                      title={`${p.blurb} — drag into the sequence or double-click to append`}
-                    >
-                      <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded bg-vault/10 text-vault">
-                        <Icon className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="flex flex-col overflow-hidden">
-                        <span className="truncate text-[12px] text-text">{p.label}</span>
-                        <span className="truncate text-[10.5px] text-text-muted">{p.blurb}</span>
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="flex flex-col gap-3">
+                {PALETTE_GROUPS.map((group) => (
+                  <div key={group.category} className="flex flex-col gap-1">
+                    <div className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted/80">
+                      {group.category}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {group.ops.map((p) => {
+                        const Icon = p.icon;
+                        const disabled = !!p.unavailable;
+                        return (
+                          <button
+                            key={p.op}
+                            draggable={!disabled}
+                            disabled={disabled}
+                            onDragStart={disabled ? undefined : onPaletteDragStart(p.op)}
+                            onDoubleClick={
+                              disabled
+                                ? undefined
+                                : () =>
+                                    onDropAt(steps.length)({
+                                      preventDefault: () => {},
+                                    } as unknown as React.DragEvent)
+                            }
+                            className={cn(
+                              "group flex items-start gap-2 rounded-md border px-2 py-2 text-left transition",
+                              disabled
+                                ? "cursor-not-allowed border-dashed border-border/60 bg-surface-1/40 opacity-60"
+                                : "cursor-grab border-border bg-surface-1 hover:border-vault/40 hover:bg-surface-2",
+                            )}
+                            title={
+                              disabled
+                                ? `Not workflow-eligible — ${p.unavailable}`
+                                : `${p.blurb} — drag into the sequence or double-click to append`
+                            }
+                          >
+                            <span
+                              className={cn(
+                                "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded",
+                                disabled ? "bg-surface-2 text-text-muted" : "bg-vault/10 text-vault",
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                            </span>
+                            <span className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                              <span className="flex items-center gap-1.5">
+                                <span className="truncate text-[12px] text-text">{p.label}</span>
+                                {disabled && (
+                                  <span className="shrink-0 rounded-sm border border-border px-1 text-[9px] uppercase tracking-wide text-text-muted">
+                                    n/a
+                                  </span>
+                                )}
+                              </span>
+                              <span className="truncate text-[10.5px] text-text-muted">
+                                {disabled ? p.unavailable : p.blurb}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </aside>
+
 
           {/* CENTER — sequence canvas */}
           <main
