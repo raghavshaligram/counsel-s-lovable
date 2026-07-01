@@ -450,6 +450,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // being captured into reducer state. setPdfDocVersion bumps a render-only
   // counter so EditorPages re-renders when the active tab's pdfDoc changes.
   const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
+  // Track the byteLength of the srcBytes each parsed pdfDoc was built from.
+  // If srcBytes gets replaced in-place (e.g. apply-now redaction sanitizes
+  // form fields / metadata and swaps in cleaned bytes with the SAME
+  // filename), the "alreadyLoaded" check would otherwise keep the stale
+  // pdfDoc alive and the viewer would still render the pre-redaction form
+  // field. Comparing byteLength forces a re-parse.
+  const pdfDocByteLenRef = useRef<Map<string, number>>(new Map());
   const [, setPdfDocVersion] = useState(0);
 
 
