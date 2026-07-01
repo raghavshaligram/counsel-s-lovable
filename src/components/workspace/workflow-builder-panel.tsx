@@ -1234,7 +1234,7 @@ function StepParamsEditor({
         </p>
       );
 
-
+    default:
       return <p className="text-[11.5px] text-text-muted">No parameters.</p>;
   }
 }
