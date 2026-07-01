@@ -374,21 +374,34 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const replaceActivePdfBytes = useCallback(async (bytes: Uint8Array) => {
     const tabId = activeIdRef.current;
-    const { loadPdfjs, withPdfjsWatchdog } = await importChunk(() => import("@/lib/pdf/worker"));
+    const { loadPdfjs, withPdfjsWatchdog, createPdfWorker, destroyPdfWorker } =
+      await importChunk(() => import("@/lib/pdf/worker"));
     const pdfjs = await loadPdfjs();
-    const parsed = await withPdfjsWatchdog(
-      pdfjs.getDocument({ data: bytes.slice() }).promise,
-      30_000,
-      () => toast.message("Re-initialising PDF engine — please try again."),
-    );
-    const prior = pdfDocsRef.current.get(tabId);
-    if (prior && prior !== parsed) {
-      try {
-        const p = (prior as { destroy?: () => Promise<void> }).destroy?.();
-        if (p) await Promise.race([p, new Promise((r) => setTimeout(r, 2000))]);
-      } catch { /* ignore */ }
+    // Fresh dedicated worker for this parse so the doc can be terminated
+    // in isolation later. The PARSE still runs exactly once here.
+    const worker = await createPdfWorker();
+    let parsed: unknown;
+    try {
+      parsed = await withPdfjsWatchdog(
+        pdfjs.getDocument({ data: bytes.slice(), worker: worker as never }).promise,
+        30_000,
+        () => toast.message("Re-initialising PDF engine — please try again."),
+        worker,
+      );
+    } catch (err) {
+      // Watchdog already terminated the worker; make sure it's gone.
+      await destroyPdfWorker(worker);
+      throw err;
     }
-    pdfDocsRef.current.set(tabId, parsed);
+    const prior = pdfDocsRef.current.get(tabId);
+    if (prior && prior.doc !== parsed) {
+      try {
+        const p = (prior.doc as { destroy?: () => Promise<void> }).destroy?.();
+        if (p) await Promise.race([p, new Promise((r) => setTimeout(r, 1500))]);
+      } catch { /* ignore */ }
+      await destroyPdfWorker(prior.worker);
+    }
+    pdfDocsRef.current.set(tabId, { doc: parsed, worker });
     setPdfDocVersion((v) => v + 1);
   }, []);
 
