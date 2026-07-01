@@ -49,8 +49,11 @@ import {
   Check,
   FileUp,
   FileIcon,
+  Files,
+  FileArchive,
 } from "lucide-react";
 import { toast } from "sonner";
+import { zipSync, type Zippable } from "fflate";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -419,8 +422,11 @@ function WorkflowBuilderModal({
 }) {
   const { file: currentFile } = ctx;
 
-  // File-source override: when the user picks/drops a file inside the builder,
-  // it takes precedence over the currently open document. Null = use current.
+  // Run mode: single file (current or picked) vs batch (many files, sequential).
+  const [mode, setMode] = useState<"single" | "batch">("single");
+
+  // Single-file source override: when the user picks/drops a file inside the
+  // builder, it takes precedence over the currently open document.
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const activeFile = pickedFile ?? currentFile ?? null;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -435,6 +441,57 @@ function WorkflowBuilderModal({
     setPickedFile(f);
     toast.success(`Using ${f.name}`);
   }, []);
+
+  // Batch source state (queue of files) + per-file result rows.
+  type BatchRow = {
+    id: string;
+    name: string;
+    size: number;
+    status: "queued" | "processing" | "done" | "failed";
+    outName?: string;
+    bytes?: Uint8Array;
+    error?: string;
+    elapsedMs?: number;
+  };
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
+  const [batchIndex, setBatchIndex] = useState<number>(-1);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [outputNameMode, setOutputNameMode] = useState<"suffix" | "keep">("suffix");
+  const [outputSuffix, setOutputSuffix] = useState<string>("-processed");
+  const batchInputRef = useRef<HTMLInputElement | null>(null);
+  const batchAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
+
+  const acceptBatchFiles = useCallback((files: FileList | File[] | null | undefined) => {
+    if (!files) return;
+    const arr = Array.from(files).filter(
+      (f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf",
+    );
+    if (arr.length === 0) {
+      toast.error("No PDFs found in that selection.");
+      return;
+    }
+    setBatchFiles((cur) => {
+      // De-dupe by name+size to avoid accidental double-drops.
+      const key = (f: File) => `${f.name}::${f.size}`;
+      const existing = new Set(cur.map(key));
+      const merged = [...cur];
+      for (const f of arr) if (!existing.has(key(f))) merged.push(f);
+      return merged;
+    });
+    toast.success(`Added ${arr.length} PDF${arr.length === 1 ? "" : "s"}`);
+  }, []);
+
+  const removeBatchFile = (idx: number) => {
+    setBatchFiles((cur) => cur.filter((_, i) => i !== idx));
+    setBatchRows((cur) => cur.filter((_, i) => i !== idx));
+  };
+  const clearBatch = () => {
+    setBatchFiles([]);
+    setBatchRows([]);
+    setBatchIndex(-1);
+  };
+
 
   const [name, setName] = useState("Untitled workflow");
   const [steps, setSteps] = useState<UiStep[]>([]);
@@ -701,6 +758,134 @@ function WorkflowBuilderModal({
     downloadBytes(resultBytes, `${base}-workflow.pdf`);
   };
 
+  /* -------- Batch run (sequential, memory-safe) -------- */
+  const renameOutput = useCallback(
+    (name: string) => {
+      const base = name.replace(/\.pdf$/i, "");
+      if (outputNameMode === "keep") return `${base}.pdf`;
+      const suf = outputSuffix.trim() || "-processed";
+      return `${base}${suf}.pdf`;
+    },
+    [outputNameMode, outputSuffix],
+  );
+
+  const runBatch = useCallback(async () => {
+    if (batchFiles.length === 0) {
+      toast.error("Add at least one PDF to the batch.");
+      return;
+    }
+    if (steps.length === 0) {
+      toast.error("Drag operations into the sequence first.");
+      return;
+    }
+
+    // Reset rows -> all queued, clear any previous output bytes to free memory.
+    setBatchRows(
+      batchFiles.map((f) => ({
+        id: `${f.name}::${f.size}::${Math.random().toString(36).slice(2, 8)}`,
+        name: f.name,
+        size: f.size,
+        status: "queued",
+      })),
+    );
+    setBatchIndex(-1);
+    setBatchRunning(true);
+    batchAbortRef.current = { aborted: false };
+
+    const pipeline: Pipeline = steps.map(({ op, params, label }) => ({ op, params, label }));
+
+    // Sequential — one file's bytes in memory at a time. When a file finishes,
+    // its input Uint8Array goes out of scope and the browser can reclaim it.
+    for (let i = 0; i < batchFiles.length; i++) {
+      if (batchAbortRef.current.aborted) break;
+      const file = batchFiles[i];
+      setBatchIndex(i);
+      setBatchRows((cur) =>
+        cur.map((r, idx) => (idx === i ? { ...r, status: "processing" } : r)),
+      );
+
+      const tStart = performance.now();
+      try {
+        // Read bytes lazily per-file so we never hold N inputs at once.
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const res = await runPipeline(bytes, pipeline);
+        const elapsed = performance.now() - tStart;
+        setBatchRows((cur) =>
+          cur.map((r, idx) =>
+            idx === i
+              ? {
+                  ...r,
+                  status: "done",
+                  bytes: res.bytes,
+                  outName: renameOutput(file.name),
+                  elapsedMs: elapsed,
+                }
+              : r,
+          ),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setBatchRows((cur) =>
+          cur.map((r, idx) =>
+            idx === i ? { ...r, status: "failed", error: msg } : r,
+          ),
+        );
+      }
+      // Yield to the event loop so the UI stays responsive between files.
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    setBatchIndex(-1);
+    setBatchRunning(false);
+    toast.success("Batch complete.");
+  }, [batchFiles, steps, renameOutput]);
+
+  const cancelBatch = () => {
+    batchAbortRef.current.aborted = true;
+    toast.message("Batch will stop after the current file.");
+  };
+
+  const downloadBatchRow = (row: BatchRow) => {
+    if (row.status !== "done" || !row.bytes || !row.outName) return;
+    downloadBytes(row.bytes, row.outName);
+  };
+
+  const downloadBatchZip = () => {
+    const done = batchRows.filter((r) => r.status === "done" && r.bytes && r.outName);
+    if (done.length === 0) {
+      toast.error("Nothing to download yet.");
+      return;
+    }
+    const z: Zippable = {};
+    for (const r of done) {
+      let name = r.outName!;
+      let n = 2;
+      while (z[name]) {
+        name = r.outName!.replace(/(\.pdf)?$/i, `-${n}$1`);
+        n++;
+      }
+      z[name] = r.bytes!;
+    }
+    const zipped = zipSync(z, { level: 6 });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const blob = new Blob([new Uint8Array(zipped)], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(name.trim() || "workflow").replace(/[^\w-]+/g, "_") || "workflow"}-${stamp}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const batchStats = useMemo(() => {
+    const done = batchRows.filter((r) => r.status === "done").length;
+    const failed = batchRows.filter((r) => r.status === "failed").length;
+    const processing = batchRows.filter((r) => r.status === "processing").length;
+    return { done, failed, processing, total: batchRows.length };
+  }, [batchRows]);
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -722,17 +907,63 @@ function WorkflowBuilderModal({
             placeholder="Workflow name"
           />
           <div className="ml-auto flex items-center gap-2">
-            <FileSourcePicker
-              activeFile={activeFile}
-              currentFile={currentFile ?? null}
-              pickedFile={pickedFile}
-              onPick={acceptPickedFile}
-              onClearOverride={() => setPickedFile(null)}
-              onUseCurrent={() => setPickedFile(null)}
-              fileInputRef={fileInputRef}
-              dragOver={dragOverFile}
-              setDragOver={setDragOverFile}
-            />
+            {/* Run-mode toggle */}
+            <div className="flex items-center rounded-md border border-border bg-surface-1 p-0.5 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setMode("single")}
+                className={cn(
+                  "flex items-center gap-1 rounded px-2 py-1 transition",
+                  mode === "single"
+                    ? "bg-vault/15 text-text"
+                    : "text-text-muted hover:text-text",
+                )}
+                title="Run on a single file"
+              >
+                <FileIcon className="h-3 w-3" />
+                Single
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("batch")}
+                className={cn(
+                  "flex items-center gap-1 rounded px-2 py-1 transition",
+                  mode === "batch"
+                    ? "bg-vault/15 text-text"
+                    : "text-text-muted hover:text-text",
+                )}
+                title="Run the workflow on many files sequentially"
+              >
+                <Files className="h-3 w-3" />
+                Batch
+              </button>
+            </div>
+
+            {mode === "single" ? (
+              <FileSourcePicker
+                activeFile={activeFile}
+                currentFile={currentFile ?? null}
+                pickedFile={pickedFile}
+                onPick={acceptPickedFile}
+                onClearOverride={() => setPickedFile(null)}
+                onUseCurrent={() => setPickedFile(null)}
+                fileInputRef={fileInputRef}
+                dragOver={dragOverFile}
+                setDragOver={setDragOverFile}
+              />
+            ) : (
+              <BatchSourcePicker
+                fileCount={batchFiles.length}
+                doneCount={batchStats.done}
+                failedCount={batchStats.failed}
+                running={batchRunning}
+                onPick={acceptBatchFiles}
+                onClear={clearBatch}
+                inputRef={batchInputRef}
+              />
+            )}
+
+
 
 
 
@@ -925,19 +1156,40 @@ function WorkflowBuilderModal({
                 Save as…
               </Button>
             )}
-            <Button
-              size="sm"
-              className="h-8 gap-1.5 bg-vault px-3 text-white hover:bg-vault/90"
-              onClick={runWorkflow}
-              disabled={running || !activeFile || steps.length === 0}
-            >
-              {running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              Run
-            </Button>
+            {mode === "batch" && batchRunning ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 px-3"
+                onClick={cancelBatch}
+              >
+                <X className="h-4 w-4" />
+                Stop after current
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 bg-vault px-3 text-white hover:bg-vault/90"
+                onClick={mode === "batch" ? runBatch : runWorkflow}
+                disabled={
+                  mode === "batch"
+                    ? batchRunning || batchFiles.length === 0 || steps.length === 0
+                    : running || !activeFile || steps.length === 0
+                }
+                title={
+                  mode === "batch"
+                    ? `Run the workflow on ${batchFiles.length} file${batchFiles.length === 1 ? "" : "s"}`
+                    : "Run the workflow on the selected file"
+                }
+              >
+                {running || batchRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {mode === "batch" ? `Run batch (${batchFiles.length})` : "Run"}
+              </Button>
+            )}
             <div className="mx-0.5 h-4 w-px bg-border" />
             <Button
               size="sm"
@@ -1087,7 +1339,7 @@ function WorkflowBuilderModal({
 
             </div>
 
-            {resultBytes && (
+            {mode === "single" && resultBytes && (
               <div className="flex items-center justify-between border-t border-border bg-vault/5 px-4 py-2.5 text-[12px] text-text">
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-vault" />
@@ -1098,6 +1350,23 @@ function WorkflowBuilderModal({
                   Download
                 </Button>
               </div>
+            )}
+
+            {mode === "batch" && batchRows.length > 0 && (
+              <BatchProgressPanel
+                rows={batchRows}
+                current={batchIndex}
+                running={batchRunning}
+                stats={batchStats}
+                outputNameMode={outputNameMode}
+                setOutputNameMode={setOutputNameMode}
+                outputSuffix={outputSuffix}
+                setOutputSuffix={setOutputSuffix}
+                onDownload={downloadBatchRow}
+                onDownloadZip={downloadBatchZip}
+                onRemove={removeBatchFile}
+                onClear={clearBatch}
+              />
             )}
           </main>
 
@@ -1719,6 +1988,296 @@ function FileSourcePicker({
           e.target.value = "";
         }}
       />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Batch source picker — drop many PDFs at once (or a folder).           */
+/* -------------------------------------------------------------------- */
+function BatchSourcePicker({
+  fileCount,
+  doneCount,
+  failedCount,
+  running,
+  onPick,
+  onClear,
+  inputRef,
+}: {
+  fileCount: number;
+  doneCount: number;
+  failedCount: number;
+  running: boolean;
+  onPick: (files: FileList | File[] | null | undefined) => void;
+  onClear: () => void;
+  inputRef: React.MutableRefObject<HTMLInputElement | null>;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const label =
+    fileCount === 0
+      ? "Drop PDFs or click Pick files"
+      : `${fileCount} file${fileCount === 1 ? "" : "s"} queued` +
+        (doneCount || failedCount
+          ? ` · ${doneCount} done${failedCount ? ` · ${failedCount} failed` : ""}`
+          : "");
+  return (
+    <div
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("Files")) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        onPick(e.dataTransfer.files);
+      }}
+      className={cn(
+        "flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px]",
+        dragOver
+          ? "border-vault/60 bg-vault/10 text-text"
+          : fileCount
+            ? "border-border bg-surface-1 text-text"
+            : "border-dashed border-border/70 bg-surface-1/50 text-text-muted",
+      )}
+      title="Drop many PDFs here, or pick files / a folder"
+    >
+      <Files className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+      <span className="max-w-[260px] truncate">{label}</span>
+      {fileCount > 0 && !running && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="ml-1 rounded px-1 py-0.5 text-[10.5px] text-text-muted hover:text-text"
+          title="Clear queue"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={running}
+        onClick={() => inputRef.current?.click()}
+        className="ml-1 inline-flex items-center gap-1 rounded border border-border/70 bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-text-muted hover:text-text disabled:opacity-50"
+      >
+        <FileUp className="h-3 w-3" />
+        {fileCount ? "Add more" : "Pick files"}
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        // Chromium-only folder pick (harmless attributes elsewhere).
+        // Multi-file selection; folders can be dropped in via drag-drop.
+        className="hidden"
+        onChange={(e) => {
+          onPick(e.target.files);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Batch progress panel — per-file status + downloads + naming controls  */
+/* -------------------------------------------------------------------- */
+type BatchPanelRow = {
+  id: string;
+  name: string;
+  size: number;
+  status: "queued" | "processing" | "done" | "failed";
+  outName?: string;
+  bytes?: Uint8Array;
+  error?: string;
+  elapsedMs?: number;
+};
+
+function BatchProgressPanel({
+  rows,
+  current,
+  running,
+  stats,
+  outputNameMode,
+  setOutputNameMode,
+  outputSuffix,
+  setOutputSuffix,
+  onDownload,
+  onDownloadZip,
+  onRemove,
+  onClear,
+}: {
+  rows: BatchPanelRow[];
+  current: number;
+  running: boolean;
+  stats: { done: number; failed: number; processing: number; total: number };
+  outputNameMode: "suffix" | "keep";
+  setOutputNameMode: (m: "suffix" | "keep") => void;
+  outputSuffix: string;
+  setOutputSuffix: (s: string) => void;
+  onDownload: (row: BatchPanelRow) => void;
+  onDownloadZip: () => void;
+  onRemove: (index: number) => void;
+  onClear: () => void;
+}) {
+  const overallPct =
+    stats.total === 0 ? 0 : Math.round(((stats.done + stats.failed) / stats.total) * 100);
+  const currentName = current >= 0 && current < rows.length ? rows[current].name : null;
+  return (
+    <div className="flex max-h-[42%] min-h-[180px] flex-col border-t border-border bg-surface-2/50">
+      {/* Summary bar */}
+      <div className="flex items-center gap-3 border-b border-border bg-vault/5 px-4 py-2 text-[12px] text-text">
+        <span className="flex items-center gap-1.5">
+          <Files className="h-4 w-4 text-vault" />
+          {running
+            ? `Processing ${Math.min(current + 1, stats.total)} of ${stats.total}${
+                currentName ? ` — ${currentName}` : ""
+              }`
+            : `${stats.done} done · ${stats.failed} failed · ${stats.total} total`}
+        </span>
+        <div className="relative ml-1 h-1.5 flex-1 overflow-hidden rounded-full bg-surface-1">
+          <div
+            className="absolute inset-y-0 left-0 bg-vault transition-[width]"
+            style={{ width: `${overallPct}%` }}
+          />
+        </div>
+        <span className="text-[10.5px] text-text-muted">{overallPct}%</span>
+        <div className="mx-2 h-4 w-px bg-border" />
+
+        {/* Output naming controls */}
+        <div className="flex items-center gap-1.5 text-[10.5px] text-text-muted">
+          <span>Names:</span>
+          <select
+            className="h-6 rounded border border-border bg-surface-1 px-1 text-[10.5px] text-text"
+            value={outputNameMode}
+            onChange={(e) => setOutputNameMode(e.target.value as "suffix" | "keep")}
+            disabled={running}
+          >
+            <option value="suffix">Add suffix</option>
+            <option value="keep">Keep original</option>
+          </select>
+          {outputNameMode === "suffix" && (
+            <input
+              type="text"
+              value={outputSuffix}
+              onChange={(e) => setOutputSuffix(e.target.value)}
+              placeholder="-processed"
+              disabled={running}
+              className="h-6 w-24 rounded border border-border bg-surface-1 px-1.5 text-[10.5px] text-text"
+            />
+          )}
+        </div>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1"
+            onClick={onDownloadZip}
+            disabled={stats.done === 0}
+            title="Download all successful outputs as a ZIP"
+          >
+            <FileArchive className="h-3.5 w-3.5" />
+            Download ZIP
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 text-text-muted hover:text-text"
+            onClick={onClear}
+            disabled={running}
+            title="Clear the batch queue"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Clear
+          </Button>
+        </div>
+      </div>
+
+      {/* Per-file rows */}
+      <div className="flex-1 overflow-y-auto">
+        <table className="w-full text-[11.5px]">
+          <tbody>
+            {rows.map((r, i) => (
+              <tr
+                key={r.id}
+                className={cn(
+                  "border-b border-border/60",
+                  r.status === "processing" && "bg-vault/5",
+                )}
+              >
+                <td className="w-6 py-1.5 pl-3 pr-1">
+                  {r.status === "queued" && (
+                    <Circle className="h-3.5 w-3.5 text-text-muted/50" />
+                  )}
+                  {r.status === "processing" && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-vault" />
+                  )}
+                  {r.status === "done" && (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-vault" />
+                  )}
+                  {r.status === "failed" && (
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                  )}
+                </td>
+                <td className="max-w-[320px] truncate py-1.5 pr-2 text-text">{r.name}</td>
+                <td className="w-20 py-1.5 pr-2 text-[10.5px] text-text-muted">
+                  {(r.size / 1024).toFixed(0)} KB
+                </td>
+                <td className="py-1.5 pr-2 text-[10.5px] text-text-muted">
+                  {r.status === "failed" ? (
+                    <span
+                      className="text-red-500"
+                      title={r.error}
+                    >
+                      Failed: {r.error?.slice(0, 80)}
+                      {r.error && r.error.length > 80 ? "…" : ""}
+                    </span>
+                  ) : r.status === "done" ? (
+                    <>
+                      <span className="text-text">{r.outName}</span>
+                      {r.elapsedMs != null && (
+                        <span className="ml-1.5">· {Math.round(r.elapsedMs)} ms</span>
+                      )}
+                    </>
+                  ) : r.status === "processing" ? (
+                    <span>Running workflow…</span>
+                  ) : (
+                    <span>Queued</span>
+                  )}
+                </td>
+                <td className="w-28 py-1.5 pr-3 text-right">
+                  {r.status === "done" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 gap-1 px-1.5 text-[10.5px] text-text-muted hover:text-text"
+                      onClick={() => onDownload(r)}
+                    >
+                      <Download className="h-3 w-3" />
+                      Download
+                    </Button>
+                  )}
+                  {(r.status === "queued" || r.status === "failed") && !running && (
+                    <button
+                      type="button"
+                      onClick={() => onRemove(i)}
+                      className="rounded p-1 text-text-muted hover:text-text"
+                      title="Remove from queue"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
