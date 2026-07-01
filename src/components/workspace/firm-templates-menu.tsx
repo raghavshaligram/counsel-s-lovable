@@ -10,7 +10,7 @@
  * Only configuration JSON is stored — never the file the user was editing
  * when they saved the template.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bookmark, ChevronDown, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,7 +31,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+
+const KIND_LABEL: Record<FirmTemplateKind, string> = {
+  bates: "Bates layout",
+  "header-footer": "Header / footer",
+  stamp: "Stamp preset",
+};
+
+function summarizeConfig(config: unknown): Array<[string, string]> {
+  if (!config || typeof config !== "object") return [];
+  const entries: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(config as Record<string, unknown>)) {
+    if (v === null || v === undefined || v === "") continue;
+    if (typeof v === "object") continue;
+    entries.push([k, String(v)]);
+  }
+  return entries.slice(0, 10);
+}
 
 type Props<T> = {
   kind: FirmTemplateKind;
