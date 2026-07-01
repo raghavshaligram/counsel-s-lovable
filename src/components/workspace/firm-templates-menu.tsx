@@ -74,6 +74,13 @@ export function FirmTemplatesMenu<T>({ kind, getConfig, onApply, sourceName }: P
   const [items, setItems] = useState<FirmTemplate[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [pendingConfig, setPendingConfig] = useState<T | null>(null);
+  const configSummary = useMemo(
+    () => summarizeConfig(pendingConfig),
+    [pendingConfig],
+  );
 
   useEffect(() => {
     let cancelled = false;
