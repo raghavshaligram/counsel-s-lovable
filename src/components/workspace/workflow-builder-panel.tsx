@@ -10,7 +10,8 @@
  * Does NOT touch the PDF viewer, tab lifecycle, editor-canvas, or the
  * open path. Reuses OPS registry + runPipeline verbatim.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Play,
   Save,
@@ -41,6 +42,11 @@ import {
   Search,
   Gavel,
   Ban,
+  FolderOpen,
+  BookTemplate,
+  Trash2,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,14 +54,24 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 
 import type { Pipeline, PipelineStep, ProgressEvent } from "@/lib/automation/types";
 import { runPipeline, downloadBytes } from "@/lib/automation";
+import {
+  listWorkflows,
+  saveWorkflow as saveWorkflowFn,
+  renameWorkflow as renameWorkflowFn,
+  deleteWorkflow as deleteWorkflowFn,
+  type SavedWorkflow,
+} from "@/lib/workflows.functions";
+import { WORKFLOW_TEMPLATES, type WorkflowTemplate } from "@/lib/workflow-templates";
 
 import type { ToolPanelCtx } from "./tool-panels";
+
 
 /* -------------------------------------------------------------------- */
 /* Palette                                                              */
