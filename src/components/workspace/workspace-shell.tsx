@@ -450,6 +450,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // being captured into reducer state. setPdfDocVersion bumps a render-only
   // counter so EditorPages re-renders when the active tab's pdfDoc changes.
   const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
+  // Track the byteLength of the srcBytes each parsed pdfDoc was built from.
+  // If srcBytes gets replaced in-place (e.g. apply-now redaction sanitizes
+  // form fields / metadata and swaps in cleaned bytes with the SAME
+  // filename), the "alreadyLoaded" check would otherwise keep the stale
+  // pdfDoc alive and the viewer would still render the pre-redaction form
+  // field. Comparing byteLength forces a re-parse.
+  const pdfDocByteLenRef = useRef<Map<string, number>>(new Map());
   const [, setPdfDocVersion] = useState(0);
 
 
@@ -669,6 +676,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         pdfDocsRef.current.delete(id);
       }
+      pdfDocByteLenRef.current.delete(id);
       setTabs((ts) => {
         const next = ts.filter((t) => t.id !== id);
         if (next.length === 0) {
@@ -725,6 +733,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (id === activeId) continue;
       try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
       pdfDocsRef.current.delete(id);
+      pdfDocByteLenRef.current.delete(id);
     }
   }, [activeId]);
 
@@ -1003,10 +1012,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       fileSize: f?.size ?? null,
     });
     if (!f || f.size === 0) return;
+    const currentBytesLen = active.editor.doc?.srcBytes.byteLength ?? 0;
+    const parsedBytesLen = pdfDocByteLenRef.current.get(tabId) ?? -1;
+    const bytesMatchParsed = currentBytesLen > 0 && currentBytesLen === parsedBytesLen;
     const already =
       active.editor.doc &&
       active.editor.doc.fileName === f.name &&
-      active.editor.doc.pages.length > 0;
+      active.editor.doc.pages.length > 0 &&
+      // If srcBytes was swapped (apply-now redaction sanitize/replace),
+      // treat as NOT-already-loaded so the pdfDoc gets re-parsed. Otherwise
+      // the viewer keeps rendering the pre-redaction form-field widget.
+      currentBytesLen === f.size;
     console.log("[open-effect:fire]", {
       tabId,
       name: f.name,
@@ -1014,14 +1030,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       type: f.type,
       alreadyLoaded: !!already,
       hasPdfDoc: pdfDocsRef.current.has(tabId),
+      bytesMatchParsed,
+      currentBytesLen,
+      parsedBytesLen,
     });
     // Re-parse when we already have the editor doc but the pdf.js doc was
-    // unloaded by the background-tab memory sweep — the canvas needs it.
-    // Fast path: editor state already loaded, but the pdf.js doc was
-    // unloaded by the background-tab memory sweep. Re-parse ONLY the
-    // pdf.js doc (for the canvas) — do not re-dispatch LOAD, which would
-    // clobber in-memory edits not yet flushed to the sidecar.
-    if (already && !pdfDocsRef.current.has(tabId)) {
+    // unloaded by the background-tab memory sweep, OR the parsed bytes no
+    // longer match the current srcBytes (post-redaction sanitize replace).
+    if (already && (!pdfDocsRef.current.has(tabId) || !bytesMatchParsed)) {
       let cancelledFast = false;
       void (async () => {
         try {
@@ -1033,7 +1049,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
             return;
           }
+          const prior = pdfDocsRef.current.get(tabId);
+          if (prior && prior !== doc) {
+            try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+          }
           pdfDocsRef.current.set(tabId, doc);
+          pdfDocByteLenRef.current.set(tabId, bytes.byteLength);
           setPdfDocVersion((v) => v + 1);
         } catch (err) {
           console.error("[workspace] background re-parse failed", err);
@@ -1075,6 +1096,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         }
         pdfDocsRef.current.set(tabId, doc);
+        pdfDocByteLenRef.current.set(tabId, bytes.byteLength);
         setPdfDocVersion((v) => v + 1);
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
