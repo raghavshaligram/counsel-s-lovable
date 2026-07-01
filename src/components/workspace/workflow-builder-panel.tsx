@@ -758,6 +758,134 @@ function WorkflowBuilderModal({
     downloadBytes(resultBytes, `${base}-workflow.pdf`);
   };
 
+  /* -------- Batch run (sequential, memory-safe) -------- */
+  const renameOutput = useCallback(
+    (name: string) => {
+      const base = name.replace(/\.pdf$/i, "");
+      if (outputNameMode === "keep") return `${base}.pdf`;
+      const suf = outputSuffix.trim() || "-processed";
+      return `${base}${suf}.pdf`;
+    },
+    [outputNameMode, outputSuffix],
+  );
+
+  const runBatch = useCallback(async () => {
+    if (batchFiles.length === 0) {
+      toast.error("Add at least one PDF to the batch.");
+      return;
+    }
+    if (steps.length === 0) {
+      toast.error("Drag operations into the sequence first.");
+      return;
+    }
+
+    // Reset rows -> all queued, clear any previous output bytes to free memory.
+    setBatchRows(
+      batchFiles.map((f) => ({
+        id: `${f.name}::${f.size}::${Math.random().toString(36).slice(2, 8)}`,
+        name: f.name,
+        size: f.size,
+        status: "queued",
+      })),
+    );
+    setBatchIndex(-1);
+    setBatchRunning(true);
+    batchAbortRef.current = { aborted: false };
+
+    const pipeline: Pipeline = steps.map(({ op, params, label }) => ({ op, params, label }));
+
+    // Sequential — one file's bytes in memory at a time. When a file finishes,
+    // its input Uint8Array goes out of scope and the browser can reclaim it.
+    for (let i = 0; i < batchFiles.length; i++) {
+      if (batchAbortRef.current.aborted) break;
+      const file = batchFiles[i];
+      setBatchIndex(i);
+      setBatchRows((cur) =>
+        cur.map((r, idx) => (idx === i ? { ...r, status: "processing" } : r)),
+      );
+
+      const tStart = performance.now();
+      try {
+        // Read bytes lazily per-file so we never hold N inputs at once.
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const res = await runPipeline(bytes, pipeline);
+        const elapsed = performance.now() - tStart;
+        setBatchRows((cur) =>
+          cur.map((r, idx) =>
+            idx === i
+              ? {
+                  ...r,
+                  status: "done",
+                  bytes: res.bytes,
+                  outName: renameOutput(file.name),
+                  elapsedMs: elapsed,
+                }
+              : r,
+          ),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setBatchRows((cur) =>
+          cur.map((r, idx) =>
+            idx === i ? { ...r, status: "failed", error: msg } : r,
+          ),
+        );
+      }
+      // Yield to the event loop so the UI stays responsive between files.
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    setBatchIndex(-1);
+    setBatchRunning(false);
+    toast.success("Batch complete.");
+  }, [batchFiles, steps, renameOutput]);
+
+  const cancelBatch = () => {
+    batchAbortRef.current.aborted = true;
+    toast.message("Batch will stop after the current file.");
+  };
+
+  const downloadBatchRow = (row: BatchRow) => {
+    if (row.status !== "done" || !row.bytes || !row.outName) return;
+    downloadBytes(row.bytes, row.outName);
+  };
+
+  const downloadBatchZip = () => {
+    const done = batchRows.filter((r) => r.status === "done" && r.bytes && r.outName);
+    if (done.length === 0) {
+      toast.error("Nothing to download yet.");
+      return;
+    }
+    const z: Zippable = {};
+    for (const r of done) {
+      let name = r.outName!;
+      let n = 2;
+      while (z[name]) {
+        name = r.outName!.replace(/(\.pdf)?$/i, `-${n}$1`);
+        n++;
+      }
+      z[name] = r.bytes!;
+    }
+    const zipped = zipSync(z, { level: 6 });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const blob = new Blob([new Uint8Array(zipped)], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(name.trim() || "workflow").replace(/[^\w-]+/g, "_") || "workflow"}-${stamp}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const batchStats = useMemo(() => {
+    const done = batchRows.filter((r) => r.status === "done").length;
+    const failed = batchRows.filter((r) => r.status === "failed").length;
+    const processing = batchRows.filter((r) => r.status === "processing").length;
+    return { done, failed, processing, total: batchRows.length };
+  }, [batchRows]);
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
