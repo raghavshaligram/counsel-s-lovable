@@ -422,8 +422,11 @@ function WorkflowBuilderModal({
 }) {
   const { file: currentFile } = ctx;
 
-  // File-source override: when the user picks/drops a file inside the builder,
-  // it takes precedence over the currently open document. Null = use current.
+  // Run mode: single file (current or picked) vs batch (many files, sequential).
+  const [mode, setMode] = useState<"single" | "batch">("single");
+
+  // Single-file source override: when the user picks/drops a file inside the
+  // builder, it takes precedence over the currently open document.
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const activeFile = pickedFile ?? currentFile ?? null;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -438,6 +441,57 @@ function WorkflowBuilderModal({
     setPickedFile(f);
     toast.success(`Using ${f.name}`);
   }, []);
+
+  // Batch source state (queue of files) + per-file result rows.
+  type BatchRow = {
+    id: string;
+    name: string;
+    size: number;
+    status: "queued" | "processing" | "done" | "failed";
+    outName?: string;
+    bytes?: Uint8Array;
+    error?: string;
+    elapsedMs?: number;
+  };
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
+  const [batchIndex, setBatchIndex] = useState<number>(-1);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [outputNameMode, setOutputNameMode] = useState<"suffix" | "keep">("suffix");
+  const [outputSuffix, setOutputSuffix] = useState<string>("-processed");
+  const batchInputRef = useRef<HTMLInputElement | null>(null);
+  const batchAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
+
+  const acceptBatchFiles = useCallback((files: FileList | File[] | null | undefined) => {
+    if (!files) return;
+    const arr = Array.from(files).filter(
+      (f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf",
+    );
+    if (arr.length === 0) {
+      toast.error("No PDFs found in that selection.");
+      return;
+    }
+    setBatchFiles((cur) => {
+      // De-dupe by name+size to avoid accidental double-drops.
+      const key = (f: File) => `${f.name}::${f.size}`;
+      const existing = new Set(cur.map(key));
+      const merged = [...cur];
+      for (const f of arr) if (!existing.has(key(f))) merged.push(f);
+      return merged;
+    });
+    toast.success(`Added ${arr.length} PDF${arr.length === 1 ? "" : "s"}`);
+  }, []);
+
+  const removeBatchFile = (idx: number) => {
+    setBatchFiles((cur) => cur.filter((_, i) => i !== idx));
+    setBatchRows((cur) => cur.filter((_, i) => i !== idx));
+  };
+  const clearBatch = () => {
+    setBatchFiles([]);
+    setBatchRows([]);
+    setBatchIndex(-1);
+  };
+
 
   const [name, setName] = useState("Untitled workflow");
   const [steps, setSteps] = useState<UiStep[]>([]);
