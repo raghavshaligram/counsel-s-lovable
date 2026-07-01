@@ -298,7 +298,18 @@ export function EditorCanvas({
 
   // Render this page. Reuses a shared pdf.js doc when provided so we don't
   // re-parse the file per page. DPR capped at 2 to limit memory.
+  // Log identity of every dep on every effect fire — if any of these change
+  // identity per render (new object each time), the effect re-fires forever.
   useEffect(() => {
+    console.count("canvas-render-effect");
+    console.debug("[canvas-render-effect] deps", {
+      page: op.srcPage,
+      pdfDocNull: pdfDoc == null,
+      opId: (op as unknown as { __id?: number }).__id ?? "n/a",
+      srcBytesLen: srcBytes?.byteLength,
+      ocrLayerLen: state.doc?.ocrLayer?.length ?? 0,
+      scale,
+    });
     let cancelled = false;
     setTextLoaded(false);
     setBannerDismissed(false);
@@ -326,7 +337,7 @@ export function EditorCanvas({
       }
       try {
         const pdfjs = await loadPdfjs();
-        const doc = pdfDoc ?? (await pdfjs.getDocument({ data: srcBytes.slice() }).promise);
+        const doc = pdfDoc ?? (console.count("getDocument-called"), console.warn("[getDocument-called] no shared pdfDoc — re-parsing srcBytes", { page: op.srcPage, srcBytesLen: srcBytes.byteLength }), await pdfjs.getDocument({ data: srcBytes.slice() }).promise);
         if (cancelled) return;
         const page = await doc.getPage(op.srcPage + 1);
         if (cancelled) return;
