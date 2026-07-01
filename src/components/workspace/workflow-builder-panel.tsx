@@ -401,6 +401,7 @@ function WorkflowBuilderModal({
         className={cn(
           "flex h-[88vh] max-h-[88vh] w-[96vw] max-w-[1280px] flex-col gap-0 overflow-hidden p-0",
           "border-border bg-surface-1 text-text sm:rounded-lg",
+          "[&>button:last-of-type]:hidden",
         )}
       >
         {/* Header */}
@@ -413,31 +414,41 @@ function WorkflowBuilderModal({
             className="h-8 max-w-[320px] text-[13px]"
             placeholder="Workflow name"
           />
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
             {!file && (
               <span className="text-[11.5px] text-text-muted">Open a PDF to run</span>
             )}
             <Button
               size="sm"
-              variant="outline"
-              className="h-8"
+              variant="ghost"
+              className="h-8 gap-1.5 px-2.5 text-text-muted hover:text-text"
               onClick={saveWorkflow}
             >
-              <Save className="mr-1 h-3.5 w-3.5" />
+              <Save className="h-4 w-4" />
               Save
             </Button>
             <Button
               size="sm"
-              className="h-8 bg-vault text-white hover:bg-vault/90"
+              className="h-8 gap-1.5 bg-vault px-3 text-white hover:bg-vault/90"
               onClick={runWorkflow}
               disabled={running || !file || steps.length === 0}
             >
               {running ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Play className="mr-1 h-3.5 w-3.5" />
+                <Play className="h-4 w-4" />
               )}
               Run
+            </Button>
+            <div className="mx-1 h-4 w-px bg-border" />
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-text-muted hover:text-text"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
             </Button>
           </div>
         </div>
