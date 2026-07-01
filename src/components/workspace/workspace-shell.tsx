@@ -377,7 +377,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
     if (prior && prior !== parsed) {
-      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+      // Fire-and-forget: never block the open path on prior.destroy().
+      void Promise.resolve((prior as { destroy?: () => Promise<void> }).destroy?.()).catch(() => {});
     }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
