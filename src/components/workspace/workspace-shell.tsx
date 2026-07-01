@@ -1505,7 +1505,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         </div>
         <div className="flex items-center gap-2">
           <PrivacyShield hasDocument={!!file} />
-          <OfflineToggle hasDocument={!!file} enabled={workOffline} onChange={setWorkOffline} />
+          <OfflineToggle enabled={workOffline} onChange={setWorkOffline} />
           <button
             type="button"
             onClick={() => {
