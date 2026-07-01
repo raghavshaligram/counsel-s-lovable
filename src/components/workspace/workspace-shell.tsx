@@ -50,6 +50,7 @@ import {
   Hash,
   Layers,
   ScanSearch,
+  Workflow as WorkflowIcon,
   Grid3x3,
   Search,
   Pin,
