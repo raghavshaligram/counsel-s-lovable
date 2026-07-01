@@ -33,6 +33,14 @@ import {
   FileText,
   Layers,
   Workflow as WorkflowIcon,
+  ScanText,
+  Eye,
+  FileCheck2,
+  Combine,
+  SplitSquareVertical,
+  Search,
+  Gavel,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 
