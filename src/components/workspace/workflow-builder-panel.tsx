@@ -722,9 +722,19 @@ function WorkflowBuilderModal({
             placeholder="Workflow name"
           />
           <div className="ml-auto flex items-center gap-2">
-            {!file && (
-              <span className="text-[11.5px] text-text-muted">Open a PDF to run</span>
-            )}
+            <FileSourcePicker
+              activeFile={activeFile}
+              currentFile={currentFile ?? null}
+              pickedFile={pickedFile}
+              onPick={acceptPickedFile}
+              onClearOverride={() => setPickedFile(null)}
+              onUseCurrent={() => setPickedFile(null)}
+              fileInputRef={fileInputRef}
+              dragOver={dragOverFile}
+              setDragOver={setDragOverFile}
+            />
+
+
 
             {/* Templates */}
             <Popover open={templatesOpen} onOpenChange={setTemplatesOpen}>
