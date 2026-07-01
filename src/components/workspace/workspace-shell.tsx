@@ -733,6 +733,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (id === activeId) continue;
       try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
       pdfDocsRef.current.delete(id);
+      pdfDocByteLenRef.current.delete(id);
     }
   }, [activeId]);
 
