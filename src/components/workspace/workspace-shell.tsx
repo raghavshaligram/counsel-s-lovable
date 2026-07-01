@@ -926,6 +926,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // (so it can render without re-parsing), and let EditorPages refine
         // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
+        console.log("[open-effect:arrayBuffer-read]", { tabId, byteLength: bytes.byteLength });
         const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         // Hand bytes straight to pdf.js — the worker transfers the buffer.
