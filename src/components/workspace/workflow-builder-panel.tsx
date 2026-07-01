@@ -907,17 +907,63 @@ function WorkflowBuilderModal({
             placeholder="Workflow name"
           />
           <div className="ml-auto flex items-center gap-2">
-            <FileSourcePicker
-              activeFile={activeFile}
-              currentFile={currentFile ?? null}
-              pickedFile={pickedFile}
-              onPick={acceptPickedFile}
-              onClearOverride={() => setPickedFile(null)}
-              onUseCurrent={() => setPickedFile(null)}
-              fileInputRef={fileInputRef}
-              dragOver={dragOverFile}
-              setDragOver={setDragOverFile}
-            />
+            {/* Run-mode toggle */}
+            <div className="flex items-center rounded-md border border-border bg-surface-1 p-0.5 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setMode("single")}
+                className={cn(
+                  "flex items-center gap-1 rounded px-2 py-1 transition",
+                  mode === "single"
+                    ? "bg-vault/15 text-text"
+                    : "text-text-muted hover:text-text",
+                )}
+                title="Run on a single file"
+              >
+                <FileIcon className="h-3 w-3" />
+                Single
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("batch")}
+                className={cn(
+                  "flex items-center gap-1 rounded px-2 py-1 transition",
+                  mode === "batch"
+                    ? "bg-vault/15 text-text"
+                    : "text-text-muted hover:text-text",
+                )}
+                title="Run the workflow on many files sequentially"
+              >
+                <Files className="h-3 w-3" />
+                Batch
+              </button>
+            </div>
+
+            {mode === "single" ? (
+              <FileSourcePicker
+                activeFile={activeFile}
+                currentFile={currentFile ?? null}
+                pickedFile={pickedFile}
+                onPick={acceptPickedFile}
+                onClearOverride={() => setPickedFile(null)}
+                onUseCurrent={() => setPickedFile(null)}
+                fileInputRef={fileInputRef}
+                dragOver={dragOverFile}
+                setDragOver={setDragOverFile}
+              />
+            ) : (
+              <BatchSourcePicker
+                fileCount={batchFiles.length}
+                doneCount={batchStats.done}
+                failedCount={batchStats.failed}
+                running={batchRunning}
+                onPick={acceptBatchFiles}
+                onClear={clearBatch}
+                inputRef={batchInputRef}
+              />
+            )}
+
+
 
 
 
