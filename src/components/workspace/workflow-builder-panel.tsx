@@ -1339,7 +1339,7 @@ function WorkflowBuilderModal({
 
             </div>
 
-            {resultBytes && (
+            {mode === "single" && resultBytes && (
               <div className="flex items-center justify-between border-t border-border bg-vault/5 px-4 py-2.5 text-[12px] text-text">
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-vault" />
@@ -1350,6 +1350,23 @@ function WorkflowBuilderModal({
                   Download
                 </Button>
               </div>
+            )}
+
+            {mode === "batch" && batchRows.length > 0 && (
+              <BatchProgressPanel
+                rows={batchRows}
+                current={batchIndex}
+                running={batchRunning}
+                stats={batchStats}
+                outputNameMode={outputNameMode}
+                setOutputNameMode={setOutputNameMode}
+                outputSuffix={outputSuffix}
+                setOutputSuffix={setOutputSuffix}
+                onDownload={downloadBatchRow}
+                onDownloadZip={downloadBatchZip}
+                onRemove={removeBatchFile}
+                onClear={clearBatch}
+              />
             )}
           </main>
 
