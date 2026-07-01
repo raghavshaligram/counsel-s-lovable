@@ -50,6 +50,7 @@ import {
   Hash,
   Layers,
   ScanSearch,
+  Workflow as WorkflowIcon,
   Grid3x3,
   Search,
   Pin,
@@ -159,6 +160,7 @@ const TOOLS: RailTool[] = [
   { id: "ocr", label: "Make Searchable", icon: ScanText, group: "legal", groupLabel: "Legal" },
   { id: "exhibit-binder", label: "Exhibit Binder", icon: BookOpen, group: "legal", groupLabel: "Legal" },
   { id: "court-readiness", label: "Court Readiness", icon: Gavel, group: "legal", groupLabel: "Legal" },
+  { id: "workflow-builder", label: "Workflow Builder", icon: WorkflowIcon, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
 
   // Assemble

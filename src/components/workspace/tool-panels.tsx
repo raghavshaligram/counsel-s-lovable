@@ -106,6 +106,7 @@ import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import { FirmTemplatesMenu } from "./firm-templates-menu";
 import { CourtReadinessSection } from "./court-readiness";
 import { PrivilegeReviewPanel } from "./privilege-review-panel";
+import { WorkflowBuilderPanel } from "./workflow-builder-panel";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -193,6 +194,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <CourtReadinessPanel ctx={ctx} />;
     case "privilege-scan":
       return <PrivilegeReviewPanel ctx={ctx} />;
+    case "workflow-builder":
+      return <WorkflowBuilderPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
