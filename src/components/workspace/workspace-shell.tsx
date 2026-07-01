@@ -1017,7 +1017,31 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     });
     // Re-parse when we already have the editor doc but the pdf.js doc was
     // unloaded by the background-tab memory sweep — the canvas needs it.
-    if (already && pdfDocsRef.current.has(tabId)) return;
+    // Fast path: editor state already loaded, but the pdf.js doc was
+    // unloaded by the background-tab memory sweep. Re-parse ONLY the
+    // pdf.js doc (for the canvas) — do not re-dispatch LOAD, which would
+    // clobber in-memory edits not yet flushed to the sidecar.
+    if (already && !pdfDocsRef.current.has(tabId)) {
+      let cancelledFast = false;
+      void (async () => {
+        try {
+          const bytes = new Uint8Array(await f.arrayBuffer());
+          const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
+          const pdfjs = await loadPdfjs();
+          const doc = await pdfjs.getDocument({ data: bytes }).promise;
+          if (cancelledFast) {
+            try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+            return;
+          }
+          pdfDocsRef.current.set(tabId, doc);
+          setPdfDocVersion((v) => v + 1);
+        } catch (err) {
+          console.error("[workspace] background re-parse failed", err);
+        }
+      })();
+      return () => { cancelledFast = true; };
+    }
+    if (already) return;
     let cancelled = false;
     (async () => {
       try {
