@@ -739,27 +739,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       });
       let placed = false;
       setTabs((ts) => {
-        // If the current active tab is blank (no file), replace it in place
-        // rather than accumulating empty tabs. Otherwise append, respecting
-        // TAB_CAP.
-        const activeIdx = ts.findIndex((t) => t.id === activeIdRef.current);
-        const activeTab = activeIdx >= 0 ? ts[activeIdx] : null;
-        if (activeTab && !activeTab.file) {
-          const copy = ts.slice();
-          copy[activeIdx] = next;
-          placed = true;
-          return copy;
-        }
-        if (ts.length >= TAB_CAP) {
-          return ts;
+        // Strip stale empty tabs (no file) — they accumulate when opens fail
+        // or when the initial blank sticks around after each doc open. Keep
+        // only real document tabs, then place `next`.
+        const docs = ts.filter((t) => t.file !== null);
+        if (docs.length >= TAB_CAP) {
+          return ts; // legit cap on real docs — leave untouched
         }
         placed = true;
-        return [...ts, next];
+        return [...docs, next];
       });
       if (!placed) {
         toast.error(`Tab limit reached (${TAB_CAP}). Close one to resume another.`);
         return;
       }
+
       setActiveId(next.id);
       console.log("[resume:tab-created]", { tabId: next.id, ms: Math.round(performance.now() - t0) });
       await addRecent(f, {
