@@ -2072,7 +2072,7 @@ function BatchSourcePicker({
         accept="application/pdf,.pdf"
         multiple
         // Chromium-only folder pick (harmless attributes elsewhere).
-        {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        // Multi-file selection; folders can be dropped in via drag-drop.
         className="hidden"
         onChange={(e) => {
           onPick(e.target.files);
