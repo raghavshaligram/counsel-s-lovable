@@ -3397,6 +3397,32 @@ function ShortcutChip({
 
 /* --------------------------- Inspector ------------------------------- */
 
+const INSPECTOR_MIN_WIDTH = 280;
+const INSPECTOR_MAX_WIDTH = 640;
+const INSPECTOR_DEFAULT_WIDTH = 380;
+const INSPECTOR_WIDTH_KEY = "vaultpdf:inspectorWidth";
+
+function useInspectorWidth() {
+  const [width, setWidth] = React.useState<number>(INSPECTOR_DEFAULT_WIDTH);
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(INSPECTOR_WIDTH_KEY);
+      if (raw) {
+        const n = parseInt(raw, 10);
+        if (Number.isFinite(n)) {
+          setWidth(Math.min(INSPECTOR_MAX_WIDTH, Math.max(INSPECTOR_MIN_WIDTH, n)));
+        }
+      }
+    } catch {}
+  }, []);
+  const persist = React.useCallback((w: number) => {
+    const clamped = Math.min(INSPECTOR_MAX_WIDTH, Math.max(INSPECTOR_MIN_WIDTH, Math.round(w)));
+    setWidth(clamped);
+    try { localStorage.setItem(INSPECTOR_WIDTH_KEY, String(clamped)); } catch {}
+  }, []);
+  return [width, persist] as const;
+}
+
 function Inspector({
   open,
   activeTool,
@@ -3424,23 +3450,82 @@ function Inspector({
   focusSection: string | null;
   clearFocusSection: () => void;
 }) {
+  const [width, setWidth] = useInspectorWidth();
+  const [dragging, setDragging] = React.useState(false);
+  const asideRef = React.useRef<HTMLElement | null>(null);
+
+  const onDragStart = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = width;
+      setDragging(true);
+      const onMove = (ev: PointerEvent) => {
+        // Handle sits on the LEFT edge of a right-docked panel:
+        // moving pointer left = wider panel.
+        const delta = startX - ev.clientX;
+        setWidth(startWidth + delta);
+      };
+      const onUp = () => {
+        setDragging(false);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [width, setWidth],
+  );
+
+  const onHandleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft") { e.preventDefault(); setWidth(width + 16); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); setWidth(width - 16); }
+    else if (e.key === "Home") { e.preventDefault(); setWidth(INSPECTOR_MAX_WIDTH); }
+    else if (e.key === "End") { e.preventDefault(); setWidth(INSPECTOR_MIN_WIDTH); }
+  };
+
+  const panelWidth = open && activeTool ? width : 0;
+
   return (
     <aside
+      ref={asideRef}
       aria-label="Inspector"
       className={cn(
-        "shrink-0 border-l border-border bg-surface-1 overflow-hidden",
-        "transition-[width] duration-200",
+        "relative shrink-0 border-l border-border bg-surface-1 overflow-hidden",
+        !dragging && "transition-[width] duration-200",
       )}
       style={{
-        width: open && activeTool ? 280 : 0,
+        width: panelWidth,
         transitionTimingFunction: "cubic-bezier(0.2, 0, 0, 1)",
       }}
     >
+      {open && activeTool && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize inspector"
+          aria-valuenow={width}
+          aria-valuemin={INSPECTOR_MIN_WIDTH}
+          aria-valuemax={INSPECTOR_MAX_WIDTH}
+          tabIndex={0}
+          onPointerDown={onDragStart}
+          onKeyDown={onHandleKeyDown}
+          onDoubleClick={() => setWidth(INSPECTOR_DEFAULT_WIDTH)}
+          className={cn(
+            "absolute inset-y-0 left-0 z-10 w-1.5 -translate-x-1/2 cursor-col-resize",
+            "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-border/60",
+            "hover:before:bg-vault/60 focus-visible:before:bg-vault focus-visible:outline-none",
+            dragging && "before:bg-vault",
+          )}
+        />
+      )}
       {activeTool ? (
-        <div className="flex h-full w-[280px] flex-col">
+        <div className="flex h-full w-full flex-col" style={{ minWidth: INSPECTOR_MIN_WIDTH }}>
           <header className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2.5">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-soft text-vault">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-accent-soft text-vault">
                 <activeTool.icon className="h-[15px] w-[15px]" />
               </span>
               <div className="min-w-0">
@@ -3452,12 +3537,12 @@ function Inspector({
               type="button"
               onClick={onClose}
               aria-label="Close inspector"
-              className="grid h-7 w-7 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-text-2 hover:bg-surface-2 hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </button>
           </header>
-          <div className="flex-1 overflow-auto px-3 py-3">
+          <div className={cn("flex-1 overflow-auto px-3 py-3", dragging && "pointer-events-none select-none")}>
             <ToolPanel
               toolId={activeTool.id}
               ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
@@ -3466,7 +3551,7 @@ function Inspector({
         </div>
       ) : (
         open && (
-          <div className="grid h-full w-[280px] place-items-center px-4 text-center text-[11.5px] text-text-muted">
+          <div className="grid h-full w-full place-items-center px-4 text-center text-[11.5px] text-text-muted">
             Mount slot — feature panel loads here
           </div>
         )
