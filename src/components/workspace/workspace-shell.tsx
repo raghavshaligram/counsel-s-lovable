@@ -933,7 +933,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // For 400p PDFs slicing here copies tens of MB on the main thread
         // and freezes the open path. Keep this transfer fast; export re-
         // reads fresh bytes from the active File on demand.
+        console.log("[open-effect:getDocument-start]", { tabId });
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        console.log("[open-effect:getDocument-done]", { tabId, numPages: doc.numPages });
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
