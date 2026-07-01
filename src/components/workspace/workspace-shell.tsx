@@ -683,22 +683,30 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingCloseId(id);
         return;
       }
-      // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
-      // We await with a short timeout — fire-and-forget destroys can queue the
-      // next getDocument() behind half-torn-down state and wedge the pdf.js worker.
-      const doc = pdfDocsRef.current.get(id);
-      if (doc) {
+      // Destroy the parsed pdfDoc AND its dedicated worker for this tab.
+      // We await destroy with a 1.5s race, then unconditionally terminate
+      // the worker — a wedged worker cannot linger and queue the next
+      // open behind it. The tab id is marked "closing" so the open effect
+      // won't try to parse a new file into it before teardown settles.
+      const entry = pdfDocsRef.current.get(id);
+      if (entry) {
         pdfDocsRef.current.delete(id);
+        closingTabsRef.current.add(id);
         void (async () => {
           try {
-            const p = (doc as { destroy?: () => Promise<void> }).destroy?.();
+            const p = (entry.doc as { destroy?: () => Promise<void> }).destroy?.();
             if (p) {
               await Promise.race([
-                p,
-                new Promise((r) => setTimeout(r, 2000)),
+                p.catch(() => undefined),
+                new Promise((r) => setTimeout(r, 1500)),
               ]);
             }
           } catch { /* ignore */ }
+          try {
+            const { destroyPdfWorker } = await importChunk(() => import("@/lib/pdf/worker"));
+            await destroyPdfWorker(entry.worker);
+          } catch { /* ignore */ }
+          closingTabsRef.current.delete(id);
         })();
       }
       setTabs((ts) => {
