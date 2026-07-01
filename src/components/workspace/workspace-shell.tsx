@@ -324,6 +324,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+  // Forward-ref to the tab-cap toast helper (defined after closeTab). Lets
+  // callbacks declared earlier (openNewStartTab, onFiles) trigger it
+  // without a TDZ on the const.
+  const showTabCapToastRef = useRef<(verb: "open" | "resume") => void>(() => {});
+
 
   // Flush any debounced sidecar writes before the tab is hidden / unloaded so
   // pending edits actually commit to IndexedDB.
@@ -640,7 +645,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const openNewStartTab = useCallback(() => {
     const docCount = tabsRef.current.filter((t) => t.file !== null).length;
     if (docCount >= TAB_CAP) {
-      toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+      showTabCapToastRef.current("open");
       return;
     }
     openInNewTabRef.current = true;
@@ -686,6 +691,44 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [tabs],
   );
 
+  // Helper: helpful toast when the tab cap is legitimately full. Offers a
+  // one-click close of the oldest non-active document so the user is never
+  // blocked without a clear way to proceed.
+  const showTabCapToast = useCallback(
+    (verb: "open" | "resume") => {
+      toast.error(`Too many documents open (${TAB_CAP})`, {
+        description: `Close a document to ${verb} another.`,
+        action: {
+          label: "Close oldest",
+          onClick: () => {
+            const oldest = tabsRef.current.find(
+              (t) => t.file !== null && t.id !== activeIdRef.current,
+            );
+            if (oldest) closeTab(oldest.id, { force: true });
+          },
+        },
+      });
+    },
+    [closeTab],
+  );
+  useEffect(() => {
+    showTabCapToastRef.current = showTabCapToast;
+  }, [showTabCapToast]);
+
+
+  // Memory hygiene: keep only the ACTIVE tab's parsed pdf.js doc alive.
+  // Background tabs' parsed docs (and their worker-side memory) are
+  // destroyed on switch; the open-effect re-parses from active.file when
+  // the user switches back. Editor state / sidecar edits are preserved.
+  useEffect(() => {
+    for (const [id, doc] of pdfDocsRef.current) {
+      if (id === activeId) continue;
+      try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+      pdfDocsRef.current.delete(id);
+    }
+  }, [activeId]);
+
+
   // ----------------- File open (into the ACTIVE tab) ------------------
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback(
@@ -697,7 +740,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       if (inNewTab) {
         const docCount = tabsRef.current.filter((t) => t.file !== null).length;
         if (docCount >= TAB_CAP) {
-          toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+          showTabCapToastRef.current("open");
           return;
         }
         // Build the new tab OUTSIDE the setState updater. Updaters can run
@@ -762,7 +805,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           tabsRef.current = docs;
           return docs.length === ts.length ? ts : docs;
         });
-        toast.error(`Tab limit reached (${TAB_CAP}). Close one to resume another.`);
+        showTabCapToastRef.current("resume");
         return;
       }
       setTabs((ts) => {
@@ -972,6 +1015,32 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       alreadyLoaded: !!already,
       hasPdfDoc: pdfDocsRef.current.has(tabId),
     });
+    // Re-parse when we already have the editor doc but the pdf.js doc was
+    // unloaded by the background-tab memory sweep — the canvas needs it.
+    // Fast path: editor state already loaded, but the pdf.js doc was
+    // unloaded by the background-tab memory sweep. Re-parse ONLY the
+    // pdf.js doc (for the canvas) — do not re-dispatch LOAD, which would
+    // clobber in-memory edits not yet flushed to the sidecar.
+    if (already && !pdfDocsRef.current.has(tabId)) {
+      let cancelledFast = false;
+      void (async () => {
+        try {
+          const bytes = new Uint8Array(await f.arrayBuffer());
+          const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
+          const pdfjs = await loadPdfjs();
+          const doc = await pdfjs.getDocument({ data: bytes }).promise;
+          if (cancelledFast) {
+            try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+            return;
+          }
+          pdfDocsRef.current.set(tabId, doc);
+          setPdfDocVersion((v) => v + 1);
+        } catch (err) {
+          console.error("[workspace] background re-parse failed", err);
+        }
+      })();
+      return () => { cancelledFast = true; };
+    }
     if (already) return;
     let cancelled = false;
     (async () => {

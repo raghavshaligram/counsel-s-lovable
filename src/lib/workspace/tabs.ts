@@ -35,7 +35,11 @@ export type TabState = {
   ocrIsPartial?: boolean;
 };
 
-export const TAB_CAP = 10;
+// Generous cap. Background tabs release their parsed pdf.js doc on switch
+// (see workspace-shell), so only the active document sits fully in memory.
+// If a user ever bumps this, the toast offers one-click close instead of
+// blocking them.
+export const TAB_CAP = 20;
 
 let counter = 0;
 export function newTabId(): string {
