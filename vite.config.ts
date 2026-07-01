@@ -12,4 +12,10 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    // The automation worker (src/lib/automation/worker.ts) uses dynamic
+    // imports via importChunk, which requires code-splitting. Rollup can't
+    // code-split IIFE workers, so force ES module output.
+    worker: { format: "es" },
+  },
 });
