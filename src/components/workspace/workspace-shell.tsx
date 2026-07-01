@@ -365,7 +365,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   }, []);
   const patchActive = useCallback(
-    (patch: Partial<TabState>) => patchTab(activeIdRef.current, patch),
+    (patch: Partial<TabState>) => {
+      const targetId = tabsRef.current.some((t) => t.id === activeIdRef.current)
+        ? activeIdRef.current
+        : tabsRef.current[0]?.id;
+      if (!targetId) return;
+      if (targetId !== activeIdRef.current) {
+        activeIdRef.current = targetId;
+        setActiveId(targetId);
+      }
+      patchTab(targetId, patch);
+    },
     [patchTab],
   );
   const dispatchEditorFor = useCallback((id: string, action: EditorAction) => {
