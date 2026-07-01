@@ -43,6 +43,9 @@ interface TextItem {
   bg: RGB;
 }
 
+const DEFAULT_TEXT_COLOR: RGB = { r: 0, g: 0, b: 0 };
+const DEFAULT_PAGE_BG: RGB = { r: 1, g: 1, b: 1 };
+
 function cssFontFamilyName(stack: string | undefined): string {
   return (stack ?? "")
     .split(",")[0]
@@ -330,7 +333,7 @@ export function EditorCanvas({
       if (op.blank) {
         const w = op.width * scale, h = op.height * scale;
         canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext("2d"); if (!ctx) return;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true }); if (!ctx) return;
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
         setTextItems([]);
         setTextLoaded(true);
@@ -349,7 +352,7 @@ export function EditorCanvas({
         canvas.height = Math.ceil(vp.height);
         canvas.style.width = `${Math.ceil(cssVp.width)}px`;
         canvas.style.height = `${Math.ceil(cssVp.height)}px`;
-        const ctx = canvas.getContext("2d"); if (!ctx) return;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true }); if (!ctx) return;
         console.debug("[pdf-render] start", { canvasId: cid, page: op.srcPage, scale });
         const task = page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]);
         renderTaskRef.current = task as unknown as { cancel: () => void; promise: Promise<unknown> };
@@ -391,8 +394,11 @@ export function EditorCanvas({
           const fontKey = det.key;
           const fontApprox = det.approximate;
           const x = m[4], y = m[5] - fh;
-          const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
-          const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
+          // Do not sample pixels per text item on load. Thousands of synchronous
+          // getImageData readbacks here freeze text-heavy documents. Precise ink
+          // and background colors are sampled lazily only when this item is edited.
+          const color = DEFAULT_TEXT_COLOR;
+          const bg = DEFAULT_PAGE_BG;
           const letterSpacing = estimateLetterSpacing(
             ctx,
             it.str,
@@ -979,6 +985,24 @@ export function EditorCanvas({
 
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
+    const canvas = canvasRef.current;
+    const sampled = (() => {
+      if (!canvas) return { color: it.color, bg: it.bg };
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return { color: it.color, bg: it.bg };
+      const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
+      const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
+      const dprX = canvas.width / Math.max(1, cssW);
+      const dprY = canvas.height / Math.max(1, cssH);
+      const sx = it.x * scale * dprX;
+      const sy = it.y * scale * dprY;
+      const sw = it.w * scale * dprX;
+      const sh = it.h * scale * dprY;
+      return {
+        color: sampleTextColor(ctx, sx, sy, sw, sh),
+        bg: samplePageBg(ctx, sx, sy, sw, sh),
+      };
+    })();
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
     // Cover bbox: expand generously around the captured glyph bounds so
@@ -1047,10 +1071,10 @@ export function EditorCanvas({
       // descenders without affecting the visible edit chrome.
       x: it.x, y: it.y + baselineNudge,
       w: it.w, h: it.h,
-      color: it.color, opacity: 1,
+      color: sampled.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
-      bg: it.bg,
+      bg: sampled.bg,
       family,
       fontKey,
       fontFamilyOverride,
@@ -1073,8 +1097,8 @@ export function EditorCanvas({
       coverPdf: cover,
       annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
-      sampledBg: it.bg,
-      intendedCoverBackground: `rgba(${Math.round(it.bg.r*255)},${Math.round(it.bg.g*255)},${Math.round(it.bg.b*255)},1)`,
+      sampledBg: sampled.bg,
+      intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
     });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
