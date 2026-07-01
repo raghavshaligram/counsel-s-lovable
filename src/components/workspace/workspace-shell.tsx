@@ -1015,7 +1015,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       alreadyLoaded: !!already,
       hasPdfDoc: pdfDocsRef.current.has(tabId),
     });
-    if (already) return;
+    // Re-parse when we already have the editor doc but the pdf.js doc was
+    // unloaded by the background-tab memory sweep — the canvas needs it.
+    if (already && pdfDocsRef.current.has(tabId)) return;
     let cancelled = false;
     (async () => {
       try {
