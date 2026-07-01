@@ -308,6 +308,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     () => tabs.find((t) => t.id === activeId) ?? tabs[0],
     [tabs, activeId],
   );
+  console.log("[shell:render]", {
+    activeId,
+    tabsCount: tabs.length,
+    activeFile: active.file ? { name: active.file.name, size: active.file.size } : null,
+    editorDocFile: active.editor.doc?.fileName ?? null,
+  });
   // Stable ref for callbacks that need the current active id without
   // re-binding every render.
   const activeIdRef = useRef(activeId);
@@ -902,6 +908,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     const tabId = active.id;
     const f = active.file;
+    console.log("[open-effect:entered]", {
+      tabId,
+      hasFile: !!f,
+      fileName: f?.name ?? null,
+      fileSize: f?.size ?? null,
+    });
     if (!f || f.size === 0) return;
     const already =
       active.editor.doc &&
