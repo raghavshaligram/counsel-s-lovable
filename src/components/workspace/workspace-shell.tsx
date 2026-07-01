@@ -645,7 +645,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const openNewStartTab = useCallback(() => {
     const docCount = tabsRef.current.filter((t) => t.file !== null).length;
     if (docCount >= TAB_CAP) {
-      toast.error(`Tab limit reached (${TAB_CAP}). Close one to open another.`);
+      showTabCapToastRef.current("open");
       return;
     }
     openInNewTabRef.current = true;
