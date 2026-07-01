@@ -72,8 +72,6 @@ const extract: RegisteredOp<{ ranges: string }> = async (bytes, params) => {
 
 const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
 
-const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
-
 const unlock: RegisteredOp<{ password?: string }> = async (bytes, params) => {
   const res = await unlockPdf(bytesToFile(bytes), params?.password);
   return blobToBytes(res.blob);
