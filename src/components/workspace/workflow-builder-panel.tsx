@@ -10,7 +10,8 @@
  * Does NOT touch the PDF viewer, tab lifecycle, editor-canvas, or the
  * open path. Reuses OPS registry + runPipeline verbatim.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Play,
   Save,
@@ -41,6 +42,11 @@ import {
   Search,
   Gavel,
   Ban,
+  FolderOpen,
+  BookTemplate,
+  Trash2,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,14 +54,24 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 
 import type { Pipeline, PipelineStep, ProgressEvent } from "@/lib/automation/types";
 import { runPipeline, downloadBytes } from "@/lib/automation";
+import {
+  listWorkflows,
+  saveWorkflow as saveWorkflowFn,
+  renameWorkflow as renameWorkflowFn,
+  deleteWorkflow as deleteWorkflowFn,
+  type SavedWorkflow,
+} from "@/lib/workflows.functions";
+import { WORKFLOW_TEMPLATES, type WorkflowTemplate } from "@/lib/workflow-templates";
 
 import type { ToolPanelCtx } from "./tool-panels";
+
 
 /* -------------------------------------------------------------------- */
 /* Palette                                                              */
@@ -406,14 +422,47 @@ function WorkflowBuilderModal({
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [resultBytes, setResultBytes] = useState<Uint8Array | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SavedWorkflow[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [savingNow, setSavingNow] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
   const dragKind = useRef<"palette" | "reorder" | null>(null);
   const dragOp = useRef<string | null>(null);
   const dragIndex = useRef<number | null>(null);
+
+  const listWorkflowsFn = useServerFn(listWorkflows);
+  const saveFn = useServerFn(saveWorkflowFn);
+  const renameFn = useServerFn(renameWorkflowFn);
+  const deleteFn = useServerFn(deleteWorkflowFn);
 
   const selected = useMemo(
     () => (selectedUid ? steps.find((s) => s.uid === selectedUid) ?? null : null),
     [selectedUid, steps],
   );
+
+  const refreshSaved = useCallback(async () => {
+    setLoadingSaved(true);
+    try {
+      const rows = await listWorkflowsFn();
+      setSaved(rows);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Could not load saved workflows: ${msg}`);
+    } finally {
+      setLoadingSaved(false);
+    }
+  }, [listWorkflowsFn]);
+
+  // Fetch on modal open.
+  useEffect(() => {
+    if (!open) return;
+    void refreshSaved();
+  }, [open, refreshSaved]);
 
   /* -------- Palette drag start -------- */
   const onPaletteDragStart = (op: string) => (e: React.DragEvent) => {
@@ -477,25 +526,102 @@ function WorkflowBuilderModal({
     );
   };
 
-  /* -------- Save -------- */
-  const saveWorkflow = () => {
-    if (steps.length === 0) {
-      toast.error("Add at least one step before saving.");
+  /* -------- Load (from saved or template) -------- */
+  const loadSteps = useCallback((wfName: string, pipelineSteps: PipelineStep[], id: string | null) => {
+    setName(wfName);
+    setSavedId(id);
+    setResultBytes(null);
+    const ui: UiStep[] = pipelineSteps.map((s) => ({
+      uid: nextUid(),
+      op: s.op,
+      label: s.label,
+      params: (s.params ?? {}) as Record<string, unknown>,
+      status: "idle",
+    }));
+    setSteps(ui);
+    setSelectedUid(ui[0]?.uid ?? null);
+  }, []);
+
+  const loadSaved = (wf: SavedWorkflow) => {
+    loadSteps(wf.name, wf.steps as PipelineStep[], wf.id);
+    setLibraryOpen(false);
+    toast.success(`Loaded “${wf.name}”`);
+  };
+
+  const loadTemplate = (tpl: WorkflowTemplate) => {
+    // Start from template as a new (unsaved) workflow so "Save" creates a personal copy.
+    loadSteps(tpl.name, tpl.steps, null);
+    setTemplatesOpen(false);
+    toast.success(`Template “${tpl.name}” loaded — customize and save.`);
+  };
+
+  /* -------- Save (cloud, per-user via RLS) -------- */
+  const doSave = useCallback(
+    async (opts: { asNew?: boolean } = {}) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        toast.error("Give the workflow a name before saving.");
+        return;
+      }
+      if (steps.length === 0) {
+        toast.error("Add at least one step before saving.");
+        return;
+      }
+      setSavingNow(true);
+      try {
+        const cleanSteps = steps.map(({ op, params, label }) => ({
+          op,
+          params: (params ?? {}) as Record<string, unknown>,
+          label,
+        }));
+        const res = await saveFn({
+          data: { id: opts.asNew ? null : savedId, name: trimmed, steps: cleanSteps },
+        });
+        setSavedId(res.id);
+        await refreshSaved();
+        toast.success(`Saved “${trimmed}”`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`Could not save: ${msg}`);
+      } finally {
+        setSavingNow(false);
+      }
+    },
+    [name, steps, savedId, saveFn, refreshSaved],
+  );
+
+  const doRename = async (id: string, next: string) => {
+    const trimmed = next.trim();
+    if (!trimmed) {
+      toast.error("Name cannot be empty.");
       return;
     }
-    const key = "counselpdf.workflows";
     try {
-      const raw = localStorage.getItem(key);
-      const list = raw ? (JSON.parse(raw) as Array<{ name: string; steps: PipelineStep[] }>) : [];
-      const cleanSteps: PipelineStep[] = steps.map(({ op, params, label }) => ({ op, params, label }));
-      const dedup = list.filter((w) => w.name !== name);
-      dedup.push({ name, steps: cleanSteps });
-      localStorage.setItem(key, JSON.stringify(dedup));
-      toast.success(`Saved “${name}”`);
-    } catch {
-      toast.error("Could not save workflow.");
+      await renameFn({ data: { id, name: trimmed } });
+      if (savedId === id) setName(trimmed);
+      await refreshSaved();
+      setRenameId(null);
+      toast.success("Renamed.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Rename failed: ${msg}`);
     }
   };
+
+  const doDelete = async (id: string, wfName: string) => {
+    if (!confirm(`Delete workflow “${wfName}”? This cannot be undone.`)) return;
+    try {
+      await deleteFn({ data: { id } });
+      if (savedId === id) setSavedId(null);
+      await refreshSaved();
+      toast.success("Deleted.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Delete failed: ${msg}`);
+    }
+  };
+
+
 
   /* -------- Run -------- */
   const runWorkflow = useCallback(async () => {
@@ -575,19 +701,200 @@ function WorkflowBuilderModal({
             className="h-8 max-w-[320px] text-[13px]"
             placeholder="Workflow name"
           />
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2">
             {!file && (
               <span className="text-[11.5px] text-text-muted">Open a PDF to run</span>
             )}
+
+            {/* Templates */}
+            <Popover open={templatesOpen} onOpenChange={setTemplatesOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 gap-1.5 px-2.5 text-text-muted hover:text-text"
+                >
+                  <BookTemplate className="h-4 w-4" />
+                  Templates
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[340px] p-0">
+                <div className="border-b border-border px-3 py-2 text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
+                  Legal starter templates
+                </div>
+                <div className="max-h-[360px] overflow-y-auto p-1.5">
+                  {WORKFLOW_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => loadTemplate(tpl)}
+                      className="flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left hover:bg-surface-2"
+                    >
+                      <span className="text-[12.5px] font-medium text-text">{tpl.name}</span>
+                      <span className="text-[10.5px] leading-snug text-text-muted">
+                        {tpl.description}
+                      </span>
+                      <span className="mt-0.5 text-[10px] uppercase tracking-wide text-text-muted/70">
+                        {tpl.steps.length} step{tpl.steps.length === 1 ? "" : "s"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* My workflows */}
+            <Popover open={libraryOpen} onOpenChange={setLibraryOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 gap-1.5 px-2.5 text-text-muted hover:text-text"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  My workflows
+                  {saved.length > 0 && (
+                    <span className="ml-0.5 rounded bg-surface-1 px-1 text-[10px] text-text-muted">
+                      {saved.length}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[360px] p-0">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <span className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
+                    Saved (syncs across devices)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void refreshSaved()}
+                    className="text-[10.5px] text-text-muted hover:text-text"
+                    disabled={loadingSaved}
+                  >
+                    {loadingSaved ? "Loading…" : "Refresh"}
+                  </button>
+                </div>
+                <div className="max-h-[360px] overflow-y-auto p-1.5">
+                  {loadingSaved && saved.length === 0 ? (
+                    <div className="grid place-items-center py-6 text-[11.5px] text-text-muted">
+                      <Loader2 className="mb-1 h-4 w-4 animate-spin" />
+                      Loading…
+                    </div>
+                  ) : saved.length === 0 ? (
+                    <div className="px-2.5 py-4 text-[11.5px] leading-snug text-text-muted">
+                      No saved workflows yet. Build a pipeline and click Save.
+                    </div>
+                  ) : (
+                    saved.map((wf) => (
+                      <div
+                        key={wf.id}
+                        className={cn(
+                          "flex items-center gap-1 rounded-md px-1.5 py-1.5 hover:bg-surface-2",
+                          savedId === wf.id && "bg-surface-2/60",
+                        )}
+                      >
+                        {renameId === wf.id ? (
+                          <>
+                            <Input
+                              value={renameDraft}
+                              onChange={(e) => setRenameDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void doRename(wf.id, renameDraft);
+                                if (e.key === "Escape") setRenameId(null);
+                              }}
+                              autoFocus
+                              className="h-7 flex-1 text-[12px]"
+                            />
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => void doRename(wf.id, renameDraft)}
+                              aria-label="Confirm rename"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => setRenameId(null)}
+                              aria-label="Cancel rename"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => loadSaved(wf)}
+                              className="flex min-w-0 flex-1 flex-col items-start px-1.5 py-0.5 text-left"
+                              title="Load into builder"
+                            >
+                              <span className="truncate text-[12.5px] text-text">{wf.name}</span>
+                              <span className="text-[10px] text-text-muted">
+                                {wf.steps.length} step{wf.steps.length === 1 ? "" : "s"} · updated{" "}
+                                {new Date(wf.updatedAt).toLocaleDateString()}
+                              </span>
+                            </button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-text-muted hover:text-text"
+                              onClick={() => {
+                                setRenameId(wf.id);
+                                setRenameDraft(wf.name);
+                              }}
+                              aria-label="Rename"
+                              title="Rename"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-text-muted hover:text-danger"
+                              onClick={() => void doDelete(wf.id, wf.name)}
+                              aria-label="Delete"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <div className="mx-0.5 h-4 w-px bg-border" />
+
             <Button
               size="sm"
               variant="ghost"
               className="h-8 gap-1.5 px-2.5 text-text-muted hover:text-text"
-              onClick={saveWorkflow}
+              onClick={() => void doSave()}
+              disabled={savingNow || steps.length === 0}
+              title={savedId ? "Update this workflow" : "Save workflow to your library"}
             >
-              <Save className="h-4 w-4" />
-              Save
+              {savingNow ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {savedId ? "Save" : "Save"}
             </Button>
+            {savedId && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 gap-1.5 px-2.5 text-text-muted hover:text-text"
+                onClick={() => void doSave({ asNew: true })}
+                disabled={savingNow || steps.length === 0}
+                title="Save as a new workflow"
+              >
+                Save as…
+              </Button>
+            )}
             <Button
               size="sm"
               className="h-8 gap-1.5 bg-vault px-3 text-white hover:bg-vault/90"
@@ -601,7 +908,7 @@ function WorkflowBuilderModal({
               )}
               Run
             </Button>
-            <div className="mx-1 h-4 w-px bg-border" />
+            <div className="mx-0.5 h-4 w-px bg-border" />
             <Button
               size="sm"
               variant="ghost"
@@ -613,6 +920,7 @@ function WorkflowBuilderModal({
             </Button>
           </div>
         </div>
+
 
         {/* Body — three columns */}
         <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)_320px]">
