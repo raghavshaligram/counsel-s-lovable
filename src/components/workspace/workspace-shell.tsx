@@ -444,12 +444,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // text-editing tool, not Select.
   const postLoadToolRef = useRef<Map<string, EditorTool>>(new Map());
 
-  // Parsed pdf.js docs, keyed by tab id. Held in a ref (not React state) so
-  // we can destroy() on tab close / new file load without the doc identity
-  // being captured into reducer state. setPdfDocVersion bumps a render-only
-  // counter so EditorPages re-renders when the active tab's pdfDoc changes.
-  const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
+  // Parsed pdf.js docs, keyed by tab id. Each entry owns a DEDICATED
+  // pdf.js Web Worker so a hung document can be terminated in isolation
+  // — a stuck doc no longer wedges the shared worker singleton for every
+  // other tab. Held in a ref (not React state) so we can destroy() on
+  // tab close / new file load without the doc identity being captured
+  // into reducer state. setPdfDocVersion bumps a render-only counter so
+  // EditorPages re-renders when the active tab's pdfDoc changes.
+  type PdfDocEntry = { doc: unknown; worker: import("@/lib/pdf/worker").PdfWorkerHandle | null };
+  const pdfDocsRef = useRef<Map<string, PdfDocEntry>>(new Map());
   const [, setPdfDocVersion] = useState(0);
+  // Tabs whose teardown (destroy + worker terminate) hasn't finished
+  // yet. The open effect skips these so a fresh parse never queues
+  // behind a half-torn-down doc / worker.
+  const closingTabsRef = useRef<Set<string>>(new Set());
 
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
