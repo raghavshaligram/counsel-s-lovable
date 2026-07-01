@@ -612,7 +612,7 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
     // Stash the flagged terms for the Redact panel to seed its keyword input.
     try {
       const terms = Array.from(
-        new Set(selected.map((f) => f.snippet).filter(Boolean)),
+        new Set(selected.map((f) => f.match).filter(Boolean)),
       ).slice(0, 20);
       window.sessionStorage.setItem(
         "vault.privilege.handoff",
