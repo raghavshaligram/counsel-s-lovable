@@ -719,7 +719,8 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
           <button
             type="button"
             onClick={handoffToRedact}
-            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3"
+            disabled={privilegedCount === 0}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Shield className="h-3.5 w-3.5 text-vault" aria-hidden />
             Hand off to Redact instead
