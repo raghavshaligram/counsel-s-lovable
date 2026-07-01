@@ -805,7 +805,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           tabsRef.current = docs;
           return docs.length === ts.length ? ts : docs;
         });
-        toast.error(`Tab limit reached (${TAB_CAP}). Close one to resume another.`);
+        showTabCapToastRef.current("resume");
         return;
       }
       setTabs((ts) => {
