@@ -24,6 +24,7 @@ import { sanitizePdfBytes } from "@/lib/pdf/sanitize";
 import { applyTextWatermark, type WatermarkOptions } from "@/lib/pdf/watermark";
 import { rotatePdf, type RotateOptions } from "@/lib/pdf/rotate";
 import { extractPages } from "@/lib/pdf/extract-pages";
+import { toPdfA } from "@/lib/pdf/to-pdfa";
 
 function bytesToFile(bytes: Uint8Array, name = "in.pdf"): File {
   return new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
