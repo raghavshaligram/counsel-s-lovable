@@ -43,13 +43,6 @@ interface TextItem {
   bg: RGB;
 }
 
-const TEXT_PROCESS_CHUNK = 120;
-const TEXT_PIXEL_SAMPLE_LIMIT = 80;
-
-function yieldToMainThread(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, 0));
-}
-
 function cssFontFamilyName(stack: string | undefined): string {
   return (stack ?? "")
     .split(",")[0]
@@ -316,12 +309,8 @@ export function EditorCanvas({
       if (renderTaskRef.current) {
         try {
           console.debug("[pdf-render] cancel", { canvasId: cid, page: op.srcPage });
-          const t = renderTaskRef.current;
-          t.cancel();
-          // Fire-and-forget: awaiting a cancelled render on a doc whose
-          // worker is being destroyed can hang indefinitely (the worker
-          // never replies). Swallow the rejection off the critical path.
-          void t.promise.catch(() => {});
+          renderTaskRef.current.cancel();
+          await renderTaskRef.current.promise.catch(() => {});
         } catch { /* noop */ }
         renderTaskRef.current = null;
       }
@@ -349,7 +338,7 @@ export function EditorCanvas({
         canvas.style.width = `${Math.ceil(cssVp.width)}px`;
         canvas.style.height = `${Math.ceil(cssVp.height)}px`;
         const ctx = canvas.getContext("2d"); if (!ctx) return;
-        console.debug("[pdf-render] render:start", { canvasId: cid, page: op.srcPage, scale });
+        console.debug("[pdf-render] start", { canvasId: cid, page: op.srcPage, scale });
         const task = page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]);
         renderTaskRef.current = task as unknown as { cancel: () => void; promise: Promise<unknown> };
         try {
@@ -370,24 +359,10 @@ export function EditorCanvas({
         const baseVp = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
         if (cancelled) return;
-        console.debug("[pdf-render] text:start", {
-          canvasId: cid,
-          page: op.srcPage,
-          items: (content.items as unknown[]).length,
-        });
         const styles = (content as unknown as { styles: Record<string, { fontFamily?: string }> }).styles ?? {};
         type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
-        const items: TextItem[] = [];
-        let sampledPixels = 0;
-        let processedTextItems = 0;
-        for (const it of content.items as Raw[]) {
-          if (cancelled) return;
-          processedTextItems += 1;
-          if (processedTextItems % TEXT_PROCESS_CHUNK === 0) {
-            await yieldToMainThread();
-            if (cancelled) return;
-          }
-          if (!it.str || !it.str.trim()) continue;
+        const items: TextItem[] = (content.items as Raw[]).flatMap((it) => {
+          if (!it.str || !it.str.trim()) return [];
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
           const ff = (it.fontName && styles[it.fontName]?.fontFamily) || it.fontName || "";
@@ -404,14 +379,8 @@ export function EditorCanvas({
           const fontKey = det.key;
           const fontApprox = det.approximate;
           const x = m[4], y = m[5] - fh;
-          const shouldSamplePixels = sampledPixels < TEXT_PIXEL_SAMPLE_LIMIT;
-          const color = shouldSamplePixels
-            ? sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr)
-            : { r: 0, g: 0, b: 0 };
-          const bg = shouldSamplePixels
-            ? samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr)
-            : { r: 1, g: 1, b: 1 };
-          if (shouldSamplePixels) sampledPixels += 1;
+          const color = sampleTextColor(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
+          const bg = samplePageBg(ctx, x * scale * dpr, y * scale * dpr, it.width * scale * dpr, fh * scale * dpr);
           const letterSpacing = estimateLetterSpacing(
             ctx,
             it.str,
@@ -422,13 +391,7 @@ export function EditorCanvas({
             matchedFont.fontStyle ?? (italic ? "italic" : "normal"),
             scale * dpr,
           );
-          items.push({ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, fontWeight, lineHeight: 1, letterSpacing, color, bg });
-        }
-        console.debug("[pdf-render] text:done", {
-          canvasId: cid,
-          page: op.srcPage,
-          items: items.length,
-          sampledPixels,
+          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, fontWeight, lineHeight: 1, letterSpacing, color, bg }];
         });
 
         // Merge sidecar OCR tokens for this SOURCE page (top-left PDF

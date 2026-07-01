@@ -61,7 +61,6 @@ import {
 
   BookOpen,
   Gavel,
-  Workflow,
 } from "lucide-react";
 
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -162,7 +161,6 @@ const TOOLS: RailTool[] = [
   { id: "ocr", label: "Make Searchable", icon: ScanText, group: "legal", groupLabel: "Legal" },
   { id: "exhibit-binder", label: "Exhibit Binder", icon: BookOpen, group: "legal", groupLabel: "Legal" },
   { id: "court-readiness", label: "Court Readiness", icon: Gavel, group: "legal", groupLabel: "Legal" },
-  { id: "workflows", label: "Workflows", icon: Workflow, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
 
   // Assemble
@@ -372,93 +370,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [dispatchEditorFor],
   );
 
-  // Parsed pdf.js docs, keyed by tab id. Held in a ref (not React state) so
-  // we can destroy() on tab close / new file load without the doc identity
-  // being captured into reducer state. setPdfDocVersion bumps a render-only
-  // counter so EditorPages re-renders when the active tab's pdfDoc changes.
-  const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
-  const [, setPdfDocVersion] = useState(0);
-
-  // Every open run gets a monotonic token. If a newer open starts for the
-  // same tab, older async work must stop before it installs a doc, dispatches
-  // LOAD, or touches pdfDocsRef. This closes the rapid Resume/replace race.
-  const openRunSeqRef = useRef(0);
-  const latestOpenRunByTabRef = useRef<Map<string, number>>(new Map());
-  const loadedFileByTabRef = useRef<Map<string, File>>(new Map());
-  const activeOpenRunsRef = useRef(0);
-  const destroyQueueRef = useRef<Array<{
-    doc: { destroy?: () => Promise<void> | void };
-    tabId: string;
-    reason: string;
-    runId?: number;
-  }>>([]);
-  const destroyFlushTimerRef = useRef<number | null>(null);
-
-  const scheduleDestroyFlush = useCallback((delay = 400) => {
-    if (destroyFlushTimerRef.current !== null) {
-      window.clearTimeout(destroyFlushTimerRef.current);
-    }
-    destroyFlushTimerRef.current = window.setTimeout(() => {
-      destroyFlushTimerRef.current = null;
-      if (activeOpenRunsRef.current > 0) {
-        scheduleDestroyFlush(delay);
-        return;
-      }
-      const queued = destroyQueueRef.current.splice(0);
-      for (const item of queued) {
-        console.debug("[pdf-destroy] start", {
-          tabId: item.tabId,
-          reason: item.reason,
-          runId: item.runId,
-        });
-        try {
-          const result = item.doc.destroy?.();
-          if (result && typeof (result as Promise<void>).catch === "function") {
-            void (result as Promise<void>).catch((err) => {
-              console.debug("[pdf-destroy] failed", {
-                tabId: item.tabId,
-                reason: item.reason,
-                runId: item.runId,
-                err,
-              });
-            });
-          }
-        } catch (err) {
-          console.debug("[pdf-destroy] failed", {
-            tabId: item.tabId,
-            reason: item.reason,
-            runId: item.runId,
-            err,
-          });
-        }
-      }
-    }, delay);
-  }, []);
-
-  const queuePdfDestroy = useCallback((
-    doc: unknown,
-    meta: { tabId: string; reason: string; runId?: number },
-  ) => {
-    const destroyable = doc as { destroy?: () => Promise<void> | void };
-    if (!destroyable?.destroy) return;
-    destroyQueueRef.current.push({ doc: destroyable, ...meta });
-    console.debug("[pdf-destroy] queued", meta);
-    scheduleDestroyFlush();
-  }, [scheduleDestroyFlush]);
-
   const replaceActivePdfBytes = useCallback(async (bytes: Uint8Array) => {
     const tabId = activeIdRef.current;
     const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
     const pdfjs = await loadPdfjs();
     const parsed = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     const prior = pdfDocsRef.current.get(tabId);
+    if (prior && prior !== parsed) {
+      try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+    }
     pdfDocsRef.current.set(tabId, parsed);
     setPdfDocVersion((v) => v + 1);
-    // Fire-and-forget: never block the caller on the old doc's cleanup.
-    if (prior && prior !== parsed) {
-      queuePdfDestroy(prior, { tabId, reason: "replace-active-bytes" });
-    }
-  }, [queuePdfDestroy]);
+  }, []);
 
   // Convenience aliases — every render reads from `active`.
   const file = active.file;
@@ -511,6 +434,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // so we re-apply "edit-text" immediately after so the user lands on the
   // text-editing tool, not Select.
   const postLoadToolRef = useRef<Map<string, EditorTool>>(new Map());
+
+  // Parsed pdf.js docs, keyed by tab id. Held in a ref (not React state) so
+  // we can destroy() on tab close / new file load without the doc identity
+  // being captured into reducer state. setPdfDocVersion bumps a render-only
+  // counter so EditorPages re-renders when the active tab's pdfDoc changes.
+  const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
+  const [, setPdfDocVersion] = useState(0);
+
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
   useEffect(() => {
@@ -725,10 +656,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
       const doc = pdfDocsRef.current.get(id);
       if (doc) {
+        try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         pdfDocsRef.current.delete(id);
-        latestOpenRunByTabRef.current.delete(id);
-        loadedFileByTabRef.current.delete(id);
-        queuePdfDestroy(doc, { tabId: id, reason: "close-tab" });
       }
       setTabs((ts) => {
         const next = ts.filter((t) => t.id !== id);
@@ -747,7 +676,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       });
       setPendingCloseId(null);
     },
-    [tabs, queuePdfDestroy],
+    [tabs],
   );
 
   // ----------------- File open (into the ACTIVE tab) ------------------
@@ -979,25 +908,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     const f = active.file;
     if (!f || f.size === 0) return;
     const already =
-      loadedFileByTabRef.current.get(tabId) === f &&
       active.editor.doc &&
       active.editor.doc.fileName === f.name &&
       active.editor.doc.pages.length > 0;
     if (already) return;
     let cancelled = false;
-    let finished = false;
-    let loadingTask: { promise: Promise<unknown>; destroy?: () => Promise<void> } | null = null;
-    let loadingResolved = false;
-    const runId = ++openRunSeqRef.current;
-    latestOpenRunByTabRef.current.set(tabId, runId);
-    activeOpenRunsRef.current += 1;
-    const isLatest = () => latestOpenRunByTabRef.current.get(tabId) === runId;
-    const finishRun = () => {
-      if (finished) return;
-      finished = true;
-      activeOpenRunsRef.current = Math.max(0, activeOpenRunsRef.current - 1);
-      if (activeOpenRunsRef.current === 0) scheduleDestroyFlush(250);
-    };
     (async () => {
       try {
         // Open path — pdf.js only, no pdf-lib, no double parse.
@@ -1006,69 +921,32 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // placeholder dims, hand the parsed pdfDoc to EditorPages via ref
         // (so it can render without re-parsing), and let EditorPages refine
         // real per-page dims lazily as pages scroll in.
-        console.debug("[open] open:start", { tabId, runId, name: f.name, size: f.size });
         const bytes = new Uint8Array(await f.arrayBuffer());
-        if (cancelled || !isLatest()) {
-          console.debug("[open] aborted:bytes", { tabId, runId });
-          return;
-        }
-        console.debug("[open] bytes", { tabId, runId, bytes: bytes.byteLength });
         const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
-        if (cancelled || !isLatest()) {
-          console.debug("[open] aborted:pdfjs", { tabId, runId });
-          return;
-        }
         // Hand bytes straight to pdf.js — the worker transfers the buffer.
         // For 400p PDFs slicing here copies tens of MB on the main thread
         // and freezes the open path. Keep this transfer fast; export re-
         // reads fresh bytes from the active File on demand.
-        console.debug("[open] getDocument:start", { tabId, runId });
-        loadingTask = pdfjs.getDocument({ data: bytes }) as { promise: Promise<unknown>; destroy?: () => Promise<void> };
-        const doc = await loadingTask.promise as {
-          numPages: number;
-          getPage: (pageNumber: number) => Promise<{ getViewport: (opts: { scale: number }) => { width: number; height: number } }>;
-        };
-        loadingResolved = true;
-        console.debug("[open] getDocument:done", { tabId, runId, pages: doc.numPages });
-        if (cancelled || !isLatest()) {
-          console.debug("[open] aborted:after-getDocument", { tabId, runId });
-          queuePdfDestroy(doc, { tabId, runId, reason: "stale-open-doc" });
+        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        if (cancelled) {
+          try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
         }
         const p1 = await doc.getPage(1);
         const vp = p1.getViewport({ scale: 1 });
         const numPages = doc.numPages;
-        console.debug("[open] getPage1:done", { tabId, runId });
-        if (cancelled || !isLatest()) {
-          console.debug("[open] aborted:after-getPage1", { tabId, runId });
-          queuePdfDestroy(doc, { tabId, runId, reason: "stale-open-doc" });
-          return;
-        }
-        // Replace any prior pdfDoc for this tab. Fire-and-forget destroy:
-        // awaiting destroy() can hang if the shared worker has pending
-        // messages racing with render-task cancellation from unmounting
-        // pages. The new doc must never wait for the old one to clean up.
+        // Replace any prior pdfDoc for this tab.
         const prior = pdfDocsRef.current.get(tabId);
+        if (prior && prior !== doc) {
+          try { await (prior as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        }
         pdfDocsRef.current.set(tabId, doc);
         setPdfDocVersion((v) => v + 1);
-        if (prior && prior !== doc) {
-          queuePdfDestroy(prior, { tabId, runId, reason: "replace-open-doc" });
-        }
         const pages: PageOp[] = Array.from({ length: numPages }, (_, i) => ({
           srcPage: i, rotation: 0, width: vp.width, height: vp.height,
         }));
-        if (cancelled || !isLatest()) {
-          console.debug("[open] aborted:before-LOAD", { tabId, runId });
-          if (pdfDocsRef.current.get(tabId) === doc) {
-            pdfDocsRef.current.delete(tabId);
-            setPdfDocVersion((v) => v + 1);
-          }
-          queuePdfDestroy(doc, { tabId, runId, reason: "stale-installed-doc" });
-          return;
-        }
-        console.debug("[open] LOAD dispatched", { tabId, runId });
-        loadedFileByTabRef.current.set(tabId, f);
+        if (cancelled) return;
         dispatchEditorFor(tabId, {
           type: "LOAD",
           doc: { fileName: f.name, srcBytes: bytes, pages, annotations: [] },
@@ -1076,7 +954,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // Replay the on-device sidecar (annotations + page-ops + ocrLayer)
         // for this file identity, if any.
         const side = await loadSidecar(f.name, f.size);
-        if (!cancelled && isLatest() && side) {
+        if (!cancelled && side) {
           dispatchEditorFor(tabId, {
             type: "LOAD_SIDECAR",
             annotations: side.annotations,
@@ -1085,17 +963,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           });
         }
         const pendingTool = postLoadToolRef.current.get(tabId);
-        if (!cancelled && isLatest() && pendingTool) {
+        if (pendingTool) {
           postLoadToolRef.current.delete(tabId);
           dispatchEditorFor(tabId, { type: "SET_TOOL", t: pendingTool });
         }
 
-
       } catch (err) {
-        if (cancelled || !isLatest()) {
-          console.debug("[open] aborted:error", { tabId, runId, err });
-          return;
-        }
         console.error("[workspace] open failed", err);
         const failed = f;
         toast.error("Couldn't open this PDF", {
@@ -1138,24 +1011,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             },
           },
         });
-      } finally {
-        finishRun();
       }
 
 
     })();
     return () => {
       cancelled = true;
-      if (latestOpenRunByTabRef.current.get(tabId) === runId) {
-        latestOpenRunByTabRef.current.delete(tabId);
-      }
-      if (loadingTask && !loadingResolved) {
-        console.debug("[open] loadingTask.destroy", { tabId, runId });
-        try {
-          const result = loadingTask.destroy?.();
-          if (result && typeof result.catch === "function") void result.catch(() => {});
-        } catch { /* ignore */ }
-      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.id, active.file]);

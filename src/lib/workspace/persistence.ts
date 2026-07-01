@@ -164,62 +164,37 @@ export async function clearOpenTabs(): Promise<void> {
 }
 
 /* ----------------------------- Recents ----------------------------- */
-// PERF: recents metadata is cached in memory after first hydration so the
-// rail/empty-state "Resume" lists don't re-scan IndexedDB on every render or
-// tab swap. The cache is invalidated on every write (add/remove/clear).
-// We also use a single `getAll()` cursor read instead of getAllKeys + N gets,
-// which removes per-record transaction overhead (the previous N+1 pattern
-// was the main source of perceived lag on the empty workspace screen).
 
 function uid() {
   return crypto.randomUUID();
 }
 
-let recentsMetaCache: RecentMeta[] | null = null;
-const recentsListeners = new Set<() => void>();
-function notifyRecents() {
-  for (const l of recentsListeners) l();
-}
-export function subscribeRecents(l: () => void): () => void {
-  recentsListeners.add(l);
-  return () => {
-    recentsListeners.delete(l);
-  };
-}
-function metaOf(v: RecentDoc): RecentMeta {
-  return {
-    id: v.id,
-    name: v.name,
-    size: v.size,
-    addedAt: v.addedAt,
-    ocrPages: v.ocrPages,
-    ocrPagesCopied: v.ocrPagesCopied,
-    ocrIsPartial: v.ocrIsPartial,
-  };
-}
-
 export async function listRecents(): Promise<RecentMeta[]> {
-  if (recentsMetaCache) return recentsMetaCache;
   const d = db();
   if (!d) return [];
   try {
     const conn = await d;
     await dedupe(conn);
-    // Single cursor read — one transaction, not N. We pay for the bytes
-    // once on hydration; subsequent calls return the cached meta array.
-    const all = (await conn.getAll(DOC_STORE)) as RecentDoc[];
-    const out = all.map(metaOf).sort((a, b) => b.addedAt - a.addedAt);
-    recentsMetaCache = out;
-    return out;
+    const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
+    const out: RecentMeta[] = [];
+    for (const k of keys) {
+      const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+      if (v)
+        out.push({
+          id: v.id,
+          name: v.name,
+          size: v.size,
+          addedAt: v.addedAt,
+          ocrPages: v.ocrPages,
+          ocrPagesCopied: v.ocrPagesCopied,
+          ocrIsPartial: v.ocrIsPartial,
+        });
+    }
+    return out.sort((a, b) => b.addedAt - a.addedAt);
   } catch (err) {
     console.warn("[persistence] listRecents failed", err);
     return [];
   }
-}
-
-/** Synchronous accessor for components that already hydrated. */
-export function getCachedRecents(): RecentMeta[] | null {
-  return recentsMetaCache;
 }
 
 export async function getRecent(id: string): Promise<RecentDoc | null> {
@@ -254,17 +229,14 @@ export async function addRecent(
     const bytes = new Uint8Array(await file.arrayBuffer());
     const key = identityKey(file.name, file.size);
 
-    // Single getAll() instead of getAllKeys + N gets — same logical work,
-    // one transaction.
-    const all = (await conn.getAll(DOC_STORE)) as RecentDoc[];
+    // Find existing entry with same identity (any number of duplicates).
     const allKeys = (await conn.getAllKeys(DOC_STORE)) as string[];
     let reuseId: string | null = null;
     let prevOcrPages: number[] | undefined;
     let prevOcrPagesCopied: number[] | undefined;
     let prevOcrIsPartial: boolean | undefined;
-    for (let i = 0; i < all.length; i++) {
-      const v = all[i];
-      const k = allKeys[i];
+    for (const k of allKeys) {
+      const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
       if (!v) continue;
       if (identityKey(v.name, v.size) === key) {
         if (!reuseId) {
@@ -291,13 +263,15 @@ export async function addRecent(
     };
     await conn.put(DOC_STORE, rec, id);
     await evict(conn);
-
-    // Refresh the cache from disk so the eviction outcome is reflected
-    // exactly. Cheap — we already paid for the read above.
-    const fresh = (await conn.getAll(DOC_STORE)) as RecentDoc[];
-    recentsMetaCache = fresh.map(metaOf).sort((a, b) => b.addedAt - a.addedAt);
-    notifyRecents();
-    return metaOf(rec);
+    return {
+      id,
+      name: rec.name,
+      size: rec.size,
+      addedAt: rec.addedAt,
+      ocrPages: rec.ocrPages,
+      ocrPagesCopied: rec.ocrPagesCopied,
+      ocrIsPartial: rec.ocrIsPartial,
+    };
   } catch (err) {
     console.error("[persistence] addRecent failed", err);
     return null;
@@ -310,10 +284,6 @@ export async function removeRecent(id: string): Promise<void> {
   try {
     const conn = await d;
     await conn.delete(DOC_STORE, id);
-    if (recentsMetaCache) {
-      recentsMetaCache = recentsMetaCache.filter((r) => r.id !== id);
-      notifyRecents();
-    }
   } catch (err) {
     console.warn("[persistence] removeRecent failed", err);
   }
@@ -325,22 +295,17 @@ export async function clearRecents(): Promise<void> {
   try {
     const conn = await d;
     await conn.clear(DOC_STORE);
-    recentsMetaCache = [];
-    notifyRecents();
   } catch (err) {
     console.warn("[persistence] clearRecents failed", err);
   }
 }
 
 async function evict(conn: IDBPDatabase): Promise<void> {
-  // Single getAll(), no N+1.
-  const all = (await conn.getAll(DOC_STORE)) as RecentDoc[];
-  const allKeys = (await conn.getAllKeys(DOC_STORE)) as string[];
+  const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
   const metas: Array<RecentMeta & { key: string }> = [];
-  for (let i = 0; i < all.length; i++) {
-    const v = all[i];
-    if (!v) continue;
-    metas.push({ id: v.id, name: v.name, size: v.size, addedAt: v.addedAt, key: allKeys[i] });
+  for (const k of keys) {
+    const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
+    if (v) metas.push({ id: v.id, name: v.name, size: v.size, addedAt: v.addedAt, key: k });
   }
   // newest first
   metas.sort((a, b) => b.addedAt - a.addedAt);
@@ -361,13 +326,11 @@ async function evict(conn: IDBPDatabase): Promise<void> {
 // One-shot dedupe of stored recents: collapse any entries sharing (name+size)
 // to a single record — the newest addedAt wins; older duplicates are deleted.
 async function dedupe(conn: IDBPDatabase): Promise<void> {
-  const all = (await conn.getAll(DOC_STORE)) as RecentDoc[];
-  const allKeys = (await conn.getAllKeys(DOC_STORE)) as string[];
+  const keys = (await conn.getAllKeys(DOC_STORE)) as string[];
   const byKey = new Map<string, { key: string; addedAt: number }>();
   const toDelete: string[] = [];
-  for (let i = 0; i < all.length; i++) {
-    const v = all[i];
-    const k = allKeys[i];
+  for (const k of keys) {
+    const v = (await conn.get(DOC_STORE, k)) as RecentDoc | undefined;
     if (!v) continue;
     const ident = identityKey(v.name, v.size);
     const prev = byKey.get(ident);
