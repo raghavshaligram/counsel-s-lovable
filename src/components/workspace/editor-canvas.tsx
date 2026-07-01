@@ -309,8 +309,12 @@ export function EditorCanvas({
       if (renderTaskRef.current) {
         try {
           console.debug("[pdf-render] cancel", { canvasId: cid, page: op.srcPage });
-          renderTaskRef.current.cancel();
-          await renderTaskRef.current.promise.catch(() => {});
+          const t = renderTaskRef.current;
+          t.cancel();
+          // Fire-and-forget: awaiting a cancelled render on a doc whose
+          // worker is being destroyed can hang indefinitely (the worker
+          // never replies). Swallow the rejection off the critical path.
+          void t.promise.catch(() => {});
         } catch { /* noop */ }
         renderTaskRef.current = null;
       }
