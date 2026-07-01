@@ -141,6 +141,7 @@ function samplePageBg(
   sw: number,
   sh: number,
 ): RGB {
+  console.count("samplePageBg");
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   const bx = Math.max(0, Math.floor(sx));
   const by = Math.max(0, Math.floor(sy));
