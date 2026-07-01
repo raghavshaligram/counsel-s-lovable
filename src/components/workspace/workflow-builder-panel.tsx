@@ -1,7 +1,11 @@
 /**
  * Workflow Builder — visual pipeline authoring on top of the existing
- * automation engine (src/lib/automation). Pro-gated. Isolated panel: reads
- * the active tab's file, runs steps in a worker, writes result via download.
+ * automation engine (src/lib/automation). Pro-gated.
+ *
+ * Presentation: launched from the Legal rail. The inspector panel shows
+ * a small launcher; the actual builder opens in a wide modal with three
+ * regions — LEFT palette, CENTER sequence canvas, RIGHT step inspector —
+ * because a cramped side panel can't host a drag/drop workflow surface.
  *
  * Does NOT touch the PDF viewer, tab lifecycle, editor-canvas, or the
  * open path. Reuses OPS registry + runPipeline verbatim.
@@ -33,6 +37,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -164,29 +169,14 @@ let uidSeq = 0;
 const nextUid = () => `ws-${++uidSeq}-${Date.now()}`;
 
 /* -------------------------------------------------------------------- */
-/* Panel                                                                */
+/* Inspector-side launcher                                              */
 /* -------------------------------------------------------------------- */
 
 export function WorkflowBuilderPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const isPro = useIsPro();
   const requirePro = useRequirePro();
-  const { file } = ctx;
+  const [open, setOpen] = useState(false);
 
-  const [name, setName] = useState("Untitled workflow");
-  const [steps, setSteps] = useState<UiStep[]>([]);
-  const [selectedUid, setSelectedUid] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const [resultBytes, setResultBytes] = useState<Uint8Array | null>(null);
-  const dragKind = useRef<"palette" | "reorder" | null>(null);
-  const dragOp = useRef<string | null>(null);
-  const dragIndex = useRef<number | null>(null);
-
-  const selected = useMemo(
-    () => (selectedUid ? steps.find((s) => s.uid === selectedUid) ?? null : null),
-    [selectedUid, steps],
-  );
-
-  /* -------- Pro gate -------- */
   if (!isPro) {
     return (
       <div className="flex flex-col gap-3">
@@ -211,6 +201,62 @@ export function WorkflowBuilderPanel({ ctx }: { ctx: ToolPanelCtx }) {
       </div>
     );
   }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-md border border-border bg-surface-2 p-3 text-[12px] leading-snug text-text">
+        <div className="mb-2 flex items-center gap-2 text-vault">
+          <WorkflowIcon className="h-4 w-4" />
+          <span className="font-medium">Workflow Builder</span>
+        </div>
+        <p className="text-text-muted">
+          Compose OCR, Bates, sanitize, watermark, compress and more into a
+          reusable, on-device pipeline. Opens in a full workspace with a
+          palette, sequence canvas, and step inspector.
+        </p>
+      </div>
+      <Button
+        size="sm"
+        className="bg-vault text-white hover:bg-vault/90"
+        onClick={() => setOpen(true)}
+      >
+        <WorkflowIcon className="mr-1 h-3.5 w-3.5" />
+        Open Workflow Builder
+      </Button>
+
+      <WorkflowBuilderModal open={open} onOpenChange={setOpen} ctx={ctx} />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Modal — full 3-column builder                                        */
+/* -------------------------------------------------------------------- */
+
+function WorkflowBuilderModal({
+  open,
+  onOpenChange,
+  ctx,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  ctx: ToolPanelCtx;
+}) {
+  const { file } = ctx;
+
+  const [name, setName] = useState("Untitled workflow");
+  const [steps, setSteps] = useState<UiStep[]>([]);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [resultBytes, setResultBytes] = useState<Uint8Array | null>(null);
+  const dragKind = useRef<"palette" | "reorder" | null>(null);
+  const dragOp = useRef<string | null>(null);
+  const dragIndex = useRef<number | null>(null);
+
+  const selected = useMemo(
+    () => (selectedUid ? steps.find((s) => s.uid === selectedUid) ?? null : null),
+    [selectedUid, steps],
+  );
 
   /* -------- Palette drag start -------- */
   const onPaletteDragStart = (op: string) => (e: React.DragEvent) => {
@@ -349,157 +395,190 @@ export function WorkflowBuilderPanel({ ctx }: { ctx: ToolPanelCtx }) {
     downloadBytes(resultBytes, `${base}-workflow.pdf`);
   };
 
-  /* -------- Render -------- */
   return (
-    <div className="flex flex-col gap-3">
-      {/* Top: name + actions */}
-      <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-2.5">
-        <div className="flex items-center gap-2">
-          <WorkflowIcon className="h-4 w-4 text-vault" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn(
+          "flex h-[88vh] max-h-[88vh] w-[96vw] max-w-[1280px] flex-col gap-0 overflow-hidden p-0",
+          "border-border bg-surface-1 text-text sm:rounded-lg",
+        )}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-border bg-surface-2 px-4 py-3">
+          <WorkflowIcon className="h-4 w-4 shrink-0 text-vault" />
+          <DialogTitle className="sr-only">Workflow Builder</DialogTitle>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="h-7 flex-1 text-[12px]"
+            className="h-8 max-w-[320px] text-[13px]"
             placeholder="Workflow name"
           />
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            className="h-7 flex-1 bg-vault text-white hover:bg-vault/90"
-            onClick={runWorkflow}
-            disabled={running || !file || steps.length === 0}
-          >
-            {running ? (
-              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Play className="mr-1 h-3.5 w-3.5" />
+          <div className="ml-auto flex items-center gap-2">
+            {!file && (
+              <span className="text-[11.5px] text-text-muted">Open a PDF to run</span>
             )}
-            Run
-          </Button>
-          <Button size="sm" variant="outline" className="h-7" onClick={saveWorkflow}>
-            <Save className="mr-1 h-3.5 w-3.5" />
-            Save
-          </Button>
-        </div>
-        {!file && (
-          <p className="text-[11px] leading-snug text-text-muted">
-            Open a PDF to run the workflow.
-          </p>
-        )}
-      </div>
-
-      {/* Palette */}
-      <section className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between px-0.5">
-          <span className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
-            Operations
-          </span>
-          <span className="text-[10.5px] text-text-muted">Drag into sequence ↓</span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          {PALETTE.map((p) => {
-            const Icon = p.icon;
-            return (
-              <button
-                key={p.op}
-                draggable
-                onDragStart={onPaletteDragStart(p.op)}
-                onDoubleClick={() => onDropAt(steps.length)({ preventDefault: () => {} } as unknown as React.DragEvent)}
-                className="group flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-left text-[11.5px] text-text transition hover:border-vault/40 hover:bg-surface-2"
-                title={`${p.blurb} — drag into the sequence or double-click to append`}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0 text-vault" />
-                <span className="truncate">{p.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Sequence */}
-      <section
-        className="flex min-h-[120px] flex-col gap-1.5 rounded-md border border-dashed border-border bg-surface-1/40 p-2"
-        onDragOver={allowDrop}
-        onDrop={onDropAt(steps.length)}
-      >
-        <div className="flex items-center justify-between px-0.5">
-          <span className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
-            Sequence
-          </span>
-          <span className="text-[10.5px] text-text-muted">{steps.length} step{steps.length === 1 ? "" : "s"}</span>
-        </div>
-
-        {steps.length === 0 && (
-          <div className="grid flex-1 place-items-center px-2 py-6 text-center text-[11.5px] text-text-muted">
-            <div className="flex flex-col items-center gap-1">
-              <Plus className="h-4 w-4" />
-              Drop operations here to build your pipeline.
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={saveWorkflow}
+            >
+              <Save className="mr-1 h-3.5 w-3.5" />
+              Save
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 bg-vault text-white hover:bg-vault/90"
+              onClick={runWorkflow}
+              disabled={running || !file || steps.length === 0}
+            >
+              {running ? (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="mr-1 h-3.5 w-3.5" />
+              )}
+              Run
+            </Button>
           </div>
-        )}
+        </div>
 
-        {steps.map((s, i) => (
-          <div key={s.uid}>
-            {/* Drop zone above each step */}
-            <div
-              onDragOver={allowDrop}
-              onDrop={onDropAt(i)}
-              className="h-1.5"
-            />
-            <StepCard
-              step={s}
-              index={i}
-              selected={selectedUid === s.uid}
-              onSelect={() => setSelectedUid(s.uid)}
-              onRemove={() => removeStep(s.uid)}
-              onDragStart={onReorderDragStart(i)}
-            />
-            {/* Connector arrow */}
-            {i < steps.length - 1 && (
-              <div className="my-0.5 flex h-3 items-center justify-center text-text-muted">
-                <div className="h-3 w-px bg-border" />
+        {/* Body — three columns */}
+        <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)_320px]">
+          {/* LEFT — palette */}
+          <aside className="flex min-h-0 flex-col border-r border-border bg-surface-2/40">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <span className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
+                Operations
+              </span>
+              <span className="text-[10.5px] text-text-muted">Drag →</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              <div className="flex flex-col gap-1.5">
+                {PALETTE.map((p) => {
+                  const Icon = p.icon;
+                  return (
+                    <button
+                      key={p.op}
+                      draggable
+                      onDragStart={onPaletteDragStart(p.op)}
+                      onDoubleClick={() =>
+                        onDropAt(steps.length)({ preventDefault: () => {} } as unknown as React.DragEvent)
+                      }
+                      className="group flex items-start gap-2 rounded-md border border-border bg-surface-1 px-2 py-2 text-left transition hover:border-vault/40 hover:bg-surface-2"
+                      title={`${p.blurb} — drag into the sequence or double-click to append`}
+                    >
+                      <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded bg-vault/10 text-vault">
+                        <Icon className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="flex flex-col overflow-hidden">
+                        <span className="truncate text-[12px] text-text">{p.label}</span>
+                        <span className="truncate text-[10.5px] text-text-muted">{p.blurb}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </aside>
+
+          {/* CENTER — sequence canvas */}
+          <main
+            className="flex min-h-0 flex-col bg-surface-1"
+            onDragOver={allowDrop}
+            onDrop={onDropAt(steps.length)}
+          >
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <span className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
+                Sequence
+              </span>
+              <span className="text-[10.5px] text-text-muted">
+                {steps.length} step{steps.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {steps.length === 0 ? (
+                <div className="grid h-full min-h-[240px] place-items-center rounded-lg border border-dashed border-border bg-surface-2/30 px-6 py-12 text-center text-[12.5px] text-text-muted">
+                  <div className="flex flex-col items-center gap-2">
+                    <Plus className="h-5 w-5" />
+                    Drag operations from the left into this canvas to build your pipeline.
+                  </div>
+                </div>
+              ) : (
+                <div className="mx-auto flex max-w-[520px] flex-col">
+                  {steps.map((s, i) => (
+                    <div key={s.uid}>
+                      <div onDragOver={allowDrop} onDrop={onDropAt(i)} className="h-2" />
+                      <StepCard
+                        step={s}
+                        index={i}
+                        selected={selectedUid === s.uid}
+                        onSelect={() => setSelectedUid(s.uid)}
+                        onRemove={() => removeStep(s.uid)}
+                        onDragStart={onReorderDragStart(i)}
+                      />
+                      {i < steps.length - 1 && (
+                        <div className="my-1 flex h-4 items-center justify-center">
+                          <div className="h-4 w-px bg-border" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {/* trailing drop target */}
+                  <div
+                    onDragOver={allowDrop}
+                    onDrop={onDropAt(steps.length)}
+                    className="mt-2 h-6 rounded border border-dashed border-border/60"
+                  />
+                </div>
+              )}
+            </div>
+
+            {resultBytes && (
+              <div className="flex items-center justify-between border-t border-border bg-vault/5 px-4 py-2.5 text-[12px] text-text">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-vault" />
+                  Output ready ({(resultBytes.byteLength / 1024).toFixed(1)} KB)
+                </span>
+                <Button size="sm" variant="outline" className="h-7" onClick={downloadResult}>
+                  <Download className="mr-1 h-3.5 w-3.5" />
+                  Download
+                </Button>
               </div>
             )}
-          </div>
-        ))}
-      </section>
+          </main>
 
-      {/* Inspector */}
-      {selected && (
-        <section className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
-              Step parameters
-            </span>
-            <span className="text-[11px] text-text">{paletteFor(selected.op)?.label ?? selected.op}</span>
-          </div>
-          <StepParamsEditor
-            step={selected}
-            onChange={(patch) => updateParams(selected.uid, patch)}
-          />
-        </section>
-      )}
-
-      {/* Result */}
-      {resultBytes && (
-        <div className="flex items-center justify-between rounded-md border border-vault/30 bg-vault/5 px-2.5 py-2 text-[11.5px] text-text">
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="h-3.5 w-3.5 text-vault" />
-            Output ready ({(resultBytes.byteLength / 1024).toFixed(1)} KB)
-          </span>
-          <Button size="sm" variant="outline" className="h-7" onClick={downloadResult}>
-            <Download className="mr-1 h-3.5 w-3.5" />
-            Download
-          </Button>
+          {/* RIGHT — step inspector */}
+          <aside className="flex min-h-0 flex-col border-l border-border bg-surface-2/40">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <span className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
+                Step parameters
+              </span>
+              {selected && (
+                <span className="truncate text-[11px] text-text">
+                  {paletteFor(selected.op)?.label ?? selected.op}
+                </span>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {selected ? (
+                <StepParamsEditor
+                  step={selected}
+                  onChange={(patch) => updateParams(selected.uid, patch)}
+                />
+              ) : (
+                <p className="px-1 text-[11.5px] leading-snug text-text-muted">
+                  Select a step in the sequence to edit its parameters.
+                </p>
+              )}
+              <p className="mt-4 border-t border-border pt-3 text-[10.5px] leading-snug text-text-muted">
+                Runs on-device in a Web Worker via the shared automation engine.
+                Output uses the same verified export path as manual tools.
+              </p>
+            </div>
+          </aside>
         </div>
-      )}
-
-      <p className="text-[10.5px] leading-snug text-text-muted">
-        Runs on-device in a Web Worker via the shared automation engine.
-        Output uses the same verified export path as manual tools.
-      </p>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -528,7 +607,7 @@ function StepCard({
     <div
       onClick={onSelect}
       className={cn(
-        "group flex items-center gap-2 rounded-md border bg-surface-1 px-2 py-1.5 transition",
+        "group flex items-center gap-2 rounded-md border bg-surface-1 px-2.5 py-2 transition",
         selected ? "border-vault/60 ring-1 ring-vault/30" : "border-border hover:border-vault/30",
       )}
     >
@@ -539,13 +618,13 @@ function StepCard({
         className="cursor-grab text-text-muted hover:text-text"
         title="Drag to reorder"
       >
-        <GripVertical className="h-3.5 w-3.5" />
+        <GripVertical className="h-4 w-4" />
       </span>
-      <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-vault/10 text-vault">
-        <Icon className="h-3 w-3" />
+      <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-vault/10 text-vault">
+        <Icon className="h-3.5 w-3.5" />
       </span>
       <span className="flex flex-1 flex-col overflow-hidden">
-        <span className="truncate text-[12px] text-text">
+        <span className="truncate text-[12.5px] text-text">
           {index + 1}. {def?.label ?? step.op}
         </span>
         {step.message && (
@@ -570,7 +649,7 @@ function StepCard({
         aria-label="Remove step"
         title="Remove"
       >
-        <X className="h-3 w-3" />
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   );
