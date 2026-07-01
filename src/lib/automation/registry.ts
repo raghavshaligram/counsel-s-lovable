@@ -72,6 +72,25 @@ const extract: RegisteredOp<{ ranges: string }> = async (bytes, params) => {
 
 const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
 
+const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
+
+const unlock: RegisteredOp<{ password?: string }> = async (bytes, params) => {
+  const res = await unlockPdf(bytesToFile(bytes), params?.password);
+  return blobToBytes(res.blob);
+};
+
+const protect: RegisteredOp<Partial<ProtectOptions> & { userPassword: string }> = async (
+  bytes,
+  params,
+) => {
+  const res = await protectPdf(bytesToFile(bytes), {
+    userPassword: params.userPassword,
+    ownerPassword: params.ownerPassword,
+    permissions: { ...DEFAULT_PROTECT_PERMS, ...(params.permissions ?? {}) },
+  });
+  return blobToBytes(res.blob);
+};
+
 /* ---------- Registry ---------- */
 
 export const OPS: Record<string, RegisteredOp<never>> = {
@@ -85,6 +104,8 @@ export const OPS: Record<string, RegisteredOp<never>> = {
   sanitize: sanitize as RegisteredOp<never>,
   "extract-pages": extract as RegisteredOp<never>,
   "to-pdfa": pdfA as RegisteredOp<never>,
+  unlock: unlock as RegisteredOp<never>,
+  protect: protect as RegisteredOp<never>,
 };
 
 export function getOp(name: string): RegisteredOp<unknown> | null {
