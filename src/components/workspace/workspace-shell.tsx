@@ -442,6 +442,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // counter so EditorPages re-renders when the active tab's pdfDoc changes.
   const pdfDocsRef = useRef<Map<string, unknown>>(new Map());
   const [, setPdfDocVersion] = useState(0);
+  // Monotonic open-token: each open effect run increments and captures its own
+  // token. A superseded run (new file opened before this one finished) exits
+  // without dispatching LOAD or installing pdfDoc, avoiding races.
+  const openTokenRef = useRef(0);
 
 
   // Hydrate persisted UI, usage, recents, and the previously-open tab set.
