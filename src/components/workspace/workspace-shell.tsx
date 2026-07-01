@@ -1618,7 +1618,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   defaultTab={navTab}
                   fileName={file?.name ?? null}
                   fileSize={file?.size ?? null}
-                  pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
+                  pdfDoc={pdfDocsRef.current.get(active.id)?.doc ?? null}
                   pageCount={editorState.doc?.pages.length ?? 0}
                   annotations={editorState.doc?.annotations ?? []}
                   currentPage={editorState.current}
@@ -1803,7 +1803,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onAutoFit={autoFit}
                     fitNonce={fitNonce}
                     zoomMode={zoomMode}
-                    pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
+                    pdfDoc={pdfDocsRef.current.get(active.id)?.doc ?? null}
                   />
 
 
