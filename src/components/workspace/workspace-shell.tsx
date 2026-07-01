@@ -686,6 +686,40 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [tabs],
   );
 
+  // Helper: helpful toast when the tab cap is legitimately full. Offers a
+  // one-click close of the oldest non-active document so the user is never
+  // blocked without a clear way to proceed.
+  const showTabCapToast = useCallback(
+    (verb: "open" | "resume") => {
+      toast.error(`Too many documents open (${TAB_CAP})`, {
+        description: `Close a document to ${verb} another.`,
+        action: {
+          label: "Close oldest",
+          onClick: () => {
+            const oldest = tabsRef.current.find(
+              (t) => t.file !== null && t.id !== activeIdRef.current,
+            );
+            if (oldest) closeTab(oldest.id, { force: true });
+          },
+        },
+      });
+    },
+    [closeTab],
+  );
+
+  // Memory hygiene: keep only the ACTIVE tab's parsed pdf.js doc alive.
+  // Background tabs' parsed docs (and their worker-side memory) are
+  // destroyed on switch; the open-effect re-parses from active.file when
+  // the user switches back. Editor state / sidecar edits are preserved.
+  useEffect(() => {
+    for (const [id, doc] of pdfDocsRef.current) {
+      if (id === activeId) continue;
+      try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+      pdfDocsRef.current.delete(id);
+    }
+  }, [activeId]);
+
+
   // ----------------- File open (into the ACTIVE tab) ------------------
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback(
