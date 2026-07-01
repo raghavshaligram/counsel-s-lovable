@@ -644,8 +644,8 @@ function WorkflowBuilderModal({
 
   /* -------- Run -------- */
   const runWorkflow = useCallback(async () => {
-    if (!file) {
-      toast.error("Open a PDF first.");
+    if (!activeFile) {
+      toast.error("Add a PDF to run this workflow on.");
       return;
     }
     if (steps.length === 0) {
@@ -657,7 +657,7 @@ function WorkflowBuilderModal({
     setSteps((cur) => cur.map((s) => ({ ...s, status: "idle", message: undefined })));
 
     const pipeline: Pipeline = steps.map(({ op, params, label }) => ({ op, params, label }));
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const bytes = new Uint8Array(await activeFile.arrayBuffer());
 
     try {
       const res = await runPipeline(bytes, pipeline, {
@@ -693,13 +693,14 @@ function WorkflowBuilderModal({
     } finally {
       setRunning(false);
     }
-  }, [file, steps]);
+  }, [activeFile, steps]);
 
   const downloadResult = () => {
     if (!resultBytes) return;
-    const base = file?.name.replace(/\.pdf$/i, "") ?? "workflow-output";
+    const base = activeFile?.name.replace(/\.pdf$/i, "") ?? "workflow-output";
     downloadBytes(resultBytes, `${base}-workflow.pdf`);
   };
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
