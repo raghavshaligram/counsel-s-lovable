@@ -319,6 +319,7 @@ export async function renderToa(
   const font = await doc.embedFont(StandardFonts.TimesRoman);
   const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
   const links: ToaLinkRect[] = [];
+  const entryLinks: ToaEntryLink[] = [];
 
   /**
    * Draw an invisible marker on every TOA page so downstream tools can
