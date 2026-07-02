@@ -505,10 +505,9 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
           </div>
           <p className="text-[10.5px] leading-snug text-text-subtle">
             One action produces the combined PDF: inline body citations become external
-            lookup links (CourtListener / Cornell); a Table of Authorities is prepended
-            where authority names jump to the first cited page and page numbers jump to
-            each occurrence — all internal. Idempotent: re-running strips any prior TOA
-            page so you never stack duplicates.
+            Google Scholar lookup links; a Table of Authorities is prepended where
+            page numbers jump to each occurrence — all internal. Idempotent:
+            re-running strips any prior TOA page so you never stack duplicates.
           </p>
         </>
       )}
