@@ -40,7 +40,7 @@ export const TOA_PAGE_MARKER = "__VPDF_TOA_PAGE__";
 const TOA_PAGE_NODE_KEY = "VPDFToaPage";
 
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { PATTERNS, detectCitations, type CitationKind } from "./detect";
+import { PATTERNS, detectCitations, buildLookupUrl, type CitationKind } from "./detect";
 import { applyCitationLinks } from "./apply";
 
 export type ToaSection = "cases" | "statutes" | "rules" | "other";
@@ -57,6 +57,8 @@ export interface ToaEntry {
   /** Raw reporter citation as extracted (for reference). */
   citation: string;
   kind: CitationKind;
+  /** Google Scholar lookup URL for the underlying citation. */
+  lookupUrl: string;
 }
 
 export const SECTION_TITLES: Record<ToaSection, string> = {
@@ -197,6 +199,7 @@ export async function buildToa(
               pages: [p],
               citation: cite,
               kind,
+              lookupUrl: buildLookupUrl(kind, cite),
             });
           }
         }

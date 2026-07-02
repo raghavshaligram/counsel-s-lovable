@@ -215,7 +215,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
           <p className="mt-1 text-[11.5px] leading-snug text-text-muted">
             Detects US legal citations and inserts clickable links.{" "}
             <span className="text-text-subtle">
-              Targets point to a public LOOKUP (CourtListener / Cornell LII search) for each citation — not a guaranteed case page.
+              Targets point to a Google Scholar search for each citation — not a guaranteed case page.
             </span>
           </p>
         </div>

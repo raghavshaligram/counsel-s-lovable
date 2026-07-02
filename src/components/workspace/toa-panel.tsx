@@ -156,7 +156,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   /**
    * ONE combined action: hyperlink inline body citations (external
-   * CourtListener/Cornell URIs) AND prepend a Table of Authorities whose
+   * Google Scholar URIs) AND prepend a Table of Authorities whose
    * entries are navigational (internal /Dest jumps only). Replaces the
    * open document with the combined output.
    */
@@ -292,7 +292,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             {!isPro && <LockBadge title="Pro — Table of Authorities" />}
           </div>
           <p className="mt-1 text-[11.5px] leading-snug text-text-muted">
-            Hyperlinks inline body citations to CourtListener / Cornell AND prepends a Table of Authorities with internal page-jump links — one action.{" "}
+            Hyperlinks inline body citations to Google Scholar AND prepends a Table of Authorities with internal page-jump links — one action.{" "}
             <span className="text-text-subtle">
               Automated parsing isn't perfect — review before inserting.
             </span>
@@ -420,6 +420,15 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
                                     </button>
                                   ))}
                                 </div>
+                                <a
+                                  href={row.lookupUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-0.5 block truncate text-[10.5px] text-vault hover:underline"
+                                  title={row.lookupUrl}
+                                >
+                                  {row.lookupUrl}
+                                </a>
                               </div>
                               <div className="flex shrink-0 items-center gap-0.5">
                                 <button
@@ -496,10 +505,9 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
           </div>
           <p className="text-[10.5px] leading-snug text-text-subtle">
             One action produces the combined PDF: inline body citations become external
-            lookup links (CourtListener / Cornell); a Table of Authorities is prepended
-            where authority names jump to the first cited page and page numbers jump to
-            each occurrence — all internal. Idempotent: re-running strips any prior TOA
-            page so you never stack duplicates.
+            Google Scholar lookup links; a Table of Authorities is prepended where
+            page numbers jump to each occurrence — all internal. Idempotent:
+            re-running strips any prior TOA page so you never stack duplicates.
           </p>
         </>
       )}
