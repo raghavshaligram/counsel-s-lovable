@@ -13,6 +13,7 @@ import fontkit from "@pdf-lib/fontkit";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
+import { getUploadedFontBytes } from "./embedded-fonts";
 import { importChunk } from "@/lib/chunk-import";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
