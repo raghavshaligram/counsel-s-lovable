@@ -407,6 +407,9 @@ export async function renderToa(
       if (line) wrapped.push(line);
 
       const entryRects: Array<[number, number, number, number]> = [];
+      // Match the page-number link color so authority text visually reads
+      // as a hyperlink at a glance — same treatment as the page-refs.
+      const entryLinkColor = rgb(0.16, 0.36, 0.68);
       const recordEntryRect = (
         x: number,
         yLine: number,
@@ -419,6 +422,13 @@ export async function renderToa(
           x + w + 0.5,
           yLine + bodySize + 0.5,
         ]);
+        // Thin blue underline just below the glyph band. Never a fill.
+        page.drawLine({
+          start: { x, y: yLine - 1.2 },
+          end: { x: x + w, y: yLine - 1.2 },
+          thickness: 0.6,
+          color: entryLinkColor,
+        });
       };
 
       for (let i = 0; i < wrapped.length - 1; i++) {
@@ -428,6 +438,7 @@ export async function renderToa(
           y,
           font,
           size: bodySize,
+          color: entryLinkColor,
         });
         recordEntryRect(margin, y, wrapped[i]);
         y -= lineHeight;
@@ -435,7 +446,7 @@ export async function renderToa(
 
       const last = wrapped[wrapped.length - 1];
       ensureRoom(lineHeight);
-      page.drawText(last, { x: margin, y, font, size: bodySize });
+      page.drawText(last, { x: margin, y, font, size: bodySize, color: entryLinkColor });
       const lastW = font.widthOfTextAtSize(last, bodySize);
       recordEntryRect(margin, y, last);
       const dotStart = margin + lastW + gutter;
