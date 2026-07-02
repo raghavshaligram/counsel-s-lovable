@@ -161,7 +161,8 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } else if (!(await ensureModel())) return;
     setQuerying(true);
     try {
-      const results = await queryIndex(docKey, query.trim(), 20);
+      const cleaned = focusQuery(query.trim());
+      const results = await queryIndex(docKey, cleaned, 20);
       // Semantic-only ranking: require a meaningful cosine score and stay
       // within a reasonable gap from the top match. MiniLM cosines run
       // 0.2–0.6 for "kind of related" and 0.4+ for genuinely relevant.
