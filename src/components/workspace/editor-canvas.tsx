@@ -150,7 +150,6 @@ function samplePageBg(
   sw: number,
   sh: number,
 ): RGB {
-  console.count("samplePageBg");
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   const bx = Math.max(0, Math.floor(sx));
   const by = Math.max(0, Math.floor(sy));
@@ -1072,18 +1071,6 @@ export function EditorCanvas({
     const embeddedFamily = looksEmbedded(it.cssFamily) ? it.cssFamily : "";
     const fontFamilyOverride = embeddedFamily || matched?.fontFamily;
     const fontWeight = numericFontWeight(matched?.fontWeight, it.bold);
-    console.log("[text-edit-font] extraction", {
-      rawPdfFontName: it.fontName,
-      pdfCssFamily: it.cssFamily,
-      matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
-      fontFamilyOverride: fontFamilyOverride ?? "",
-      fontKey,
-      fontApproximate: !!it.fontApprox,
-      fontSize: it.h,
-      fontWeight,
-      lineHeight: it.lineHeight ?? 1,
-      letterSpacing: it.letterSpacing ?? 0,
-    });
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       // Anchor the editable box to the ORIGINAL glyph bounds. Do not apply
@@ -1111,15 +1098,6 @@ export function EditorCanvas({
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
     } });
-    console.log("[text-edit-bounds-init]", {
-      id,
-      originalGlyphPdf: originalGlyph,
-      coverPdf: cover,
-      annoPdf: { x: it.x, y: it.y, w: it.w, h: it.h },
-      pads: { coverPadX, coverPadTop, coverPadBottom },
-      sampledBg: sampled.bg,
-      intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
-    });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
     setEditingId(id);
@@ -1143,145 +1121,6 @@ export function EditorCanvas({
       (a.id === editingId || a.id === state.selectedAnnoId) &&
       (a.kind === "text" || a.kind === "text-edit"),
   ) as (typeof annos[number] & { kind: "text" | "text-edit" }) | undefined;
-
-  useEffect(() => {
-    if (!activeText || activeText.kind !== "text-edit") return;
-    const frame = window.requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLElement>(`[data-text-edit-id="${activeText.id}"]`);
-      if (!el) return;
-      const computed = window.getComputedStyle(el);
-      const override = activeText.fontFamilyOverride ?? "";
-      console.log("[text-edit-font] dom", {
-        rawPdfFontName: activeText.source?.fontName ?? "",
-        matchedFontName: override
-          ? cssFontFamilyName(override)
-          : activeText.fontKey && FONT_META[activeText.fontKey as FontKey]
-          ? FONT_META[activeText.fontKey as FontKey].label
-          : "",
-        fontFamilyOverride: override,
-        computedDomFontFamily: computed.fontFamily,
-        computedFontWeight: computed.fontWeight,
-        computedLineHeight: computed.lineHeight,
-        computedLetterSpacing: computed.letterSpacing,
-      });
-      // Layout audit: compare the original extracted text bbox (in PDF
-      // points, captured at click time) to the live textarea geometry
-      // (screen pixels, converted back to PDF points via `scale`).
-      const rect = el.getBoundingClientRect();
-      const wrap = overlayRef.current
-        ?? el.closest<HTMLElement>("[data-vault-element='page-wrap']")
-        ?? el.offsetParent as HTMLElement | null;
-      const wrapRect = wrap?.getBoundingClientRect();
-      const cover = activeText.cover;
-      console.log("[text-edit-layout]", {
-        id: activeText.id,
-        // Original extracted glyph bbox (PDF points)
-        extractedLeft: activeText.source?.bounds?.x ?? activeText.x,
-        extractedTop: activeText.source?.bounds?.y ?? activeText.y,
-        extractedWidth: activeText.source?.bounds?.w ?? activeText.w,
-        extractedHeight: activeText.source?.bounds?.h ?? activeText.h,
-        originalLeft: activeText.source?.bounds?.x ?? activeText.x,
-        originalTop: activeText.source?.bounds?.y ?? activeText.y,
-        originalWidth: activeText.source?.bounds?.w ?? activeText.w,
-        originalHeight: activeText.source?.bounds?.h ?? activeText.h,
-        // Padded cover bbox (PDF points) — deliberately larger than glyphs
-        coverLeft: cover?.x ?? null,
-        coverTop: cover?.y ?? null,
-        coverWidth: cover?.w ?? null,
-        coverHeight: cover?.h ?? null,
-        // Annotation box (PDF points) — what the textarea is anchored to
-        annoLeft: activeText.x,
-        annoTop: activeText.y,
-        annoWidth: activeText.w,
-        annoHeight: activeText.h,
-        // Live textarea (screen px and PDF-point equivalent)
-        textareaLeftPx: wrapRect ? rect.left - wrapRect.left : rect.left,
-        textareaTopPx: wrapRect ? rect.top - wrapRect.top : rect.top,
-        textareaWidthPx: rect.width,
-        textareaHeightPx: rect.height,
-        textareaLeftPt: (wrapRect ? rect.left - wrapRect.left : rect.left) / scale,
-        textareaTopPt: (wrapRect ? rect.top - wrapRect.top : rect.top) / scale,
-        textareaWidthPt: rect.width / scale,
-        textareaHeightPt: rect.height / scale,
-        scale,
-        text: activeText.text,
-      });
-      // Bounds audit — query the cover DOM and compare screen rects of
-      // original glyphs vs cover vs textarea. Also surface intended vs
-      // computed background so we can prove whether the transparent branch
-      // ran and whether another rule overrides it.
-      const coverEl = document.querySelector<HTMLElement>(
-        `[data-vault-element='text-edit-cover'][data-anno-id='${activeText.id}']`,
-      );
-      const coverRect = coverEl?.getBoundingClientRect();
-      const coverComputed = coverEl ? window.getComputedStyle(coverEl) : null;
-      const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
-      // Textarea visibility audit — computed paint properties that can hide
-      // glyphs (color match, opacity, -webkit-text-fill-color, visibility).
-      console.log("[text-edit-style]", {
-        id: activeText.id,
-        color: computed.color,
-        backgroundColor: computed.backgroundColor,
-        opacity: computed.opacity,
-        visibility: computed.visibility,
-        display: computed.display,
-        zIndex: computed.zIndex,
-        webkitTextFillColor: computed.getPropertyValue("-webkit-text-fill-color"),
-        caretColor: computed.getPropertyValue("caret-color"),
-        textareaInlineColor: (el as HTMLElement).style.color,
-        expectedTextColor: rgbCss(activeText.color, activeText.opacity),
-        originalString: activeText.source?.originalString ?? "",
-        currentText: activeText.text,
-      });
-      console.log("[text-edit-layers]", {
-        id: activeText.id,
-        coverZIndex: coverComputed?.zIndex ?? "(no cover)",
-        textareaZIndex: computed.zIndex,
-        // The cover is fixed below the editable annotation wrapper so it can
-        // hide the PDF canvas glyphs without covering the live textarea text.
-        coverDomIndex: coverEl
-          ? Array.from(coverEl.parentElement?.children ?? []).indexOf(coverEl)
-          : -1,
-        textareaWrapperDomIndex: (() => {
-          const wrapAnno = el.parentElement; // baseStyle wrapper for the anno
-          const parent = wrapAnno?.parentElement;
-          return parent && wrapAnno
-            ? Array.from(parent.children).indexOf(wrapAnno)
-            : -1;
-        })(),
-      });
-      console.log("[text-edit-width-explain]", {
-        id: activeText.id,
-        originalWidthPt: activeText.source?.bounds?.w ?? activeText.w,
-        extractedWidthPt: activeText.source?.bounds?.w ?? activeText.w,
-        coverWidthPt: activeText.cover?.w ?? null,
-        textareaWidthPt: rect.width / scale,
-        annoWidthPt: activeText.w,
-        deltaPt: (activeText.cover?.w ?? 0) - rect.width / scale,
-        coverPadXApproxPt:
-          ((activeText.cover?.w ?? 0) - activeText.w) / 2,
-        note:
-          "The textarea wrapper uses the padded cover rect so it cannot appear shorter; the text content is inset back onto the original glyph bounds.",
-      });
-      console.log("[text-edit-bounds]", {
-        id: activeText.id,
-        intendedBackground,
-        computedBackground: coverComputed?.backgroundColor ?? "(no cover element)",
-        coverInlineStyle: coverEl?.style.background ?? "(no cover element)",
-        coverScreen: coverRect && wrapRect
-          ? { x: coverRect.left - wrapRect.left, y: coverRect.top - wrapRect.top, w: coverRect.width, h: coverRect.height }
-          : null,
-        textareaScreen: wrapRect
-          ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
-          : null,
-        originalGlyphPdf: activeText.source?.bounds ?? null,
-        coverPdf: activeText.cover,
-        annoPdf: { x: activeText.x, y: activeText.y, w: activeText.w, h: activeText.h },
-        editing: editingId === activeText.id,
-      });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeText, scale, editingId]);
 
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
@@ -1394,47 +1233,17 @@ export function EditorCanvas({
             they sit beneath the editable text box but always hide the
             original glyphs at their captured bounds (independent of the
             auto-grown text box size). */}
-        {(() => {
-          // Count rendered text-edit overlays per annotation id for the
-          // duplicate-text audit.
-          const textEditCounts = new Map<string, number>();
-          for (const a of annos) {
-            if (a.kind === "text-edit") {
-              textEditCounts.set(a.id, (textEditCounts.get(a.id) ?? 0) + 1);
-            }
-          }
-          for (const [id, n] of textEditCounts) {
-            console.log("[text-edit-render]", {
-              annotationId: id,
-              renderCount: n,
-              editingId,
-              expected: 1,
-            });
-          }
-          return null;
-        })()}
         {annos.map((a) => {
-          if (a.kind !== "text-edit" || !a.cover) return null;
+          if (a.kind !== "text-edit" || !a.cover || editingId === a.id) return null;
           // A text-edit annotation is a PERMANENT replacement of the
           // underlying PDF glyphs. The cover must always be painted —
           // even when the typed text still matches the original — or the
           // PDF canvas glyphs will show through and double up with the
           // overlay textarea on top, producing duplicate text.
-          const isEditing = editingId === a.id;
           const cover = a.source?.bounds ?? a.cover;
           const tl = toScreen(cover.x, cover.y);
           const br = toScreen(cover.x + cover.w, cover.y + cover.h);
-          const bgCss = isEditing ? "transparent" : rgbCss(a.bg);
-          if (isEditing) {
-            console.log("[text-edit-cover]", {
-              id: a.id,
-              editing: true,
-              background: bgCss,
-              sampledBg: a.bg,
-              coverPdf: cover,
-              coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
-            });
-          }
+          const bgCss = rgbCss(a.bg);
           return (
             <div
               key={`cover-${a.id}`}
