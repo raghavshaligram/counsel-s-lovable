@@ -14,11 +14,14 @@ import { cn } from "@/lib/utils";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import type { ToolPanelCtx } from "./tool-panels";
 import {
+  addDiscoveryDebug,
   capabilityCheck,
+  getDiscoveryDebugLines,
   hasIndex,
   indexDocument,
   loadModel,
   queryIndex,
+  subscribeDiscoveryDebug,
   type Hit,
   type LoadProgress,
 } from "@/lib/discovery/client";
@@ -72,8 +75,11 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [querying, setQuerying] = useState(false);
   const [hits, setHits] = useState<Hit[]>([]);
   const [lastQuery, setLastQuery] = useState("");
+  const [debugLines, setDebugLines] = useState<string[]>(() => getDiscoveryDebugLines());
 
   const indexedKeyRef = useRef<string>("");
+  useEffect(() => subscribeDiscoveryDebug(setDebugLines), []);
+
   useEffect(() => {
     if (indexedKeyRef.current !== docKey) {
       indexedKeyRef.current = docKey;
@@ -138,6 +144,11 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
         "[pre-discovery] chunk/page sample",
         sample.map((c) => ({ page0: c.page, page1: c.page + 1, textHead: c.text.slice(0, 60) })),
       );
+      addDiscoveryDebug("chunk/page sample", sample.map((c) => ({
+        page0: c.page,
+        page1: c.page + 1,
+        textHead: c.text.slice(0, 120),
+      })));
       setIndexProgress({ done: 0, total: chunks.length });
       await indexDocument(docKey, chunks, (done, total) =>
         setIndexProgress({ done, total }),
@@ -197,6 +208,20 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
         "sampleScores",
         results.slice(0, 5).map((r) => r.score.toFixed(3)),
       );
+      addDiscoveryDebug("query filtered results", {
+        query: q,
+        ranking: "cosine(MiniLM embeddings)",
+        top: +top.toFixed(3),
+        floor: +floor.toFixed(3),
+        kept: filtered.length,
+        returned: results.length,
+        top5: results.slice(0, 5).map((r) => ({
+          page0: r.page,
+          page1: r.page + 1,
+          score: +r.score.toFixed(3),
+          textHead: r.text.slice(0, 120),
+        })),
+      });
       setHits(filtered);
       setLastQuery(query.trim());
     } catch (err) {
@@ -217,6 +242,18 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     },
     [editorDispatch],
   );
+
+  const copyDiagnostics = useCallback(async () => {
+    const body = debugLines.length
+      ? debugLines.join("\n")
+      : "No Pre-Discovery diagnostics yet. Run a search first.";
+    try {
+      await navigator.clipboard.writeText(body);
+      toast.success("Diagnostics copied");
+    } catch {
+      toast.error("Could not copy diagnostics");
+    }
+  }, [debugLines]);
 
   /* ---------- render ---------- */
 
@@ -346,6 +383,28 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
             <div className="text-[11px] text-text-subtle">
               First search will build a local index of this document (~a few
               seconds per 100 pages). The model downloads once and is cached.
+            </div>
+          )}
+
+          {debugLines.length > 0 && (
+            <div className="rounded-md border border-border bg-surface-2 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10.5px] uppercase tracking-wide text-text-subtle">
+                  Search diagnostics
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={copyDiagnostics}
+                >
+                  Copy
+                </Button>
+              </div>
+              <pre className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-[10.5px] leading-snug text-text-muted">
+                {debugLines.slice(-8).join("\n")}
+              </pre>
             </div>
           )}
 
