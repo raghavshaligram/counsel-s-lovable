@@ -110,6 +110,7 @@ import { WorkflowBuilderPanel } from "./workflow-builder-panel";
 import { CitationHyperlinkerPanel } from "./citation-hyperlinker-panel";
 import { TableOfAuthoritiesPanel } from "./toa-panel";
 import { DocumentHashPanel } from "./document-hash-panel";
+import { PreDiscoveryPanel } from "./pre-discovery-panel";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
