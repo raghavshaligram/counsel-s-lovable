@@ -477,14 +477,14 @@ export async function renderToa(
         }
       }
 
-      // Record the wrapped display-line rects as an external URI link.
-      // TOA generates its own case-name/citation lookups — no dependency
-      // on Citation Hyperlinker having been run.
-      if (entryRects.length > 0) {
+      // Record display-line rects as an INTERNAL /Dest jump to the first
+      // page where this authority is cited. External URI lookups belong on
+      // the inline body citations (Citation Hyperlinker step), not here.
+      if (entryRects.length > 0 && entry.pages.length > 0) {
         entryLinks.push({
           toaPageIndex: pageIdx,
           rects: entryRects,
-          url: buildLookupUrl(entry.kind, entry.citation),
+          targetOriginalPage: entry.pages[0],
           text: entry.display,
         });
       }
