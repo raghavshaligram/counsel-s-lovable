@@ -906,11 +906,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     patchActive({ file: new File([], "Untitled.pdf", { type: "application/pdf" }), isDirty: false });
   }, [patchActive]);
   const loadTemplate = useCallback(
-    (name: string) => {
-      patchActive({
-        file: new File([], `${name}.pdf`, { type: "application/pdf" }),
-        isDirty: false,
-      });
+    async (id: string) => {
+      try {
+        const { buildLegalTemplateFile, LEGAL_TEMPLATES } = await import("@/lib/legal-templates");
+        const known = LEGAL_TEMPLATES.find((t) => t.id === id);
+        if (!known) {
+          patchActive({
+            file: new File([], `${id}.pdf`, { type: "application/pdf" }),
+            isDirty: false,
+          });
+          return;
+        }
+        const file = await buildLegalTemplateFile(known.id);
+        patchActive({ file, isDirty: false });
+      } catch (err) {
+        console.error("[templates] build failed", err);
+        toast.error("Couldn't open template.");
+      }
     },
     [patchActive],
   );
