@@ -123,8 +123,9 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     setIndexing(true);
     setIndexProgress({ done: 0, total: 0 });
     try {
-      const { extractPdfChunks } = await import("@/lib/chat/pdf-extract");
-      const raw = await extractPdfChunks(file, 900, 120);
+      const { extractPdfParagraphChunks } = await import("@/lib/chat/pdf-extract");
+      // Paragraph-level ~300-char chunks give MiniLM sharper score separation.
+      const raw = await extractPdfParagraphChunks(file, 300, 120);
       // extractPdfChunks emits 1-based pages; the editor uses 0-based.
       // Normalise to 0-based here so jumpTo and the "Page N" label both
       // agree with the actual page the passage came from.
