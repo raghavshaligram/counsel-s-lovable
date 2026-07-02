@@ -1330,12 +1330,16 @@ export function EditorCanvas({
     const measuredW = el.offsetWidth / scale + padLeft + padRight + 1;
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
-    const minH = a.fontSize * 1.15 + padTop + padBottom;
+    // For text-edit, the minimum is the ORIGINAL glyph height — we never
+    // want to grow the cover beyond the source unless the user has typed
+    // enough content that the textarea truly needs more room. For plain
+    // `text` annotations the box still gets a line-height floor.
+    const minH = a.kind === "text-edit"
+      ? a.h
+      : a.fontSize * 1.15 + padTop + padBottom;
     // Keep width locked to the original run so replacement text tracks the
-    // original justified line. HEIGHT must be free to GROW — locking it to
-    // the single-line original glyph box caused multi-line edits to clip at
-    // the bottom (classic one-line-height sizing bug). We take max(original,
-    // measured) so the box never shrinks below the source line either.
+    // original justified line. HEIGHT must be free to GROW when the user
+    // types multi-line content — but never SHRINK below the source line.
     const lockedW = a.kind === "text-edit" ? a.w : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
     const newH = Math.max(minH, a.kind === "text-edit" ? Math.max(a.h, measuredH) : measuredH);
