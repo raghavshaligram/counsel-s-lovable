@@ -580,11 +580,9 @@ function buildUriLinkAnnot(
 }
 
 /**
- * Standalone TOA PDF. Includes external URI /Link annotations on every
- * case name / citation (CourtListener / Cornell lookups) so the TOA is
- * self-contained even without a source brief to prepend to. Internal
- * page-number GoTo links are omitted here because there is no target
- * document.
+ * Standalone TOA PDF (secondary export). No source brief means there is
+ * nothing to internally jump to, so authority names carry no annotations.
+ * Page-number tokens are still drawn in blue as a visual convention.
  */
 export async function buildToaPdfBytes(
   entries: ToaEntry[],
@@ -592,15 +590,6 @@ export async function buildToaPdfBytes(
 ): Promise<Uint8Array> {
   const render = await renderToa(entries, { ...opts, shift: 0 });
   const doc = await PDFDocument.load(render.bytes);
-  const ctx = doc.context;
-  for (const el of render.entryLinks) {
-    if (el.toaPageIndex < 0 || el.toaPageIndex >= doc.getPageCount()) continue;
-    const page = doc.getPage(el.toaPageIndex);
-    for (const rect of el.rects) {
-      const ref = buildUriLinkAnnot(ctx, rect, el.url, el.text);
-      pushAnnot(ctx, page.node, ref);
-    }
-  }
   return doc.save();
 }
 
