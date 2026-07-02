@@ -2282,10 +2282,19 @@ const CONTEXTUAL_GROUPS: Record<
   ],
 };
 
+const LEGAL_TOOLBAR: Array<{ id: string; label: string; Icon: React.ComponentType<{ className?: string }>; variant?: "redact" }> = [
+  { id: "redact", label: "Redact — permanently remove content", Icon: Shield, variant: "redact" },
+  { id: "sign", label: "Sign & Fill", Icon: PenLine },
+  { id: "citation-hyperlinker", label: "Link / Citation", Icon: Link2 },
+];
+
 function FloatingToolbar({
   activeToolId,
   active,
   onChange,
+  onOpenTool,
+  onDeleteSelected,
+  canDelete,
   onUndo,
   onRedo,
   onToggleNav,
@@ -2294,6 +2303,9 @@ function FloatingToolbar({
   activeToolId: string | null;
   active: EditorTool;
   onChange: (t: EditorTool) => void;
+  onOpenTool: (id: string) => void;
+  onDeleteSelected: () => void;
+  canDelete: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onToggleNav: () => void;
@@ -2315,6 +2327,24 @@ function FloatingToolbar({
         </ToolbarBtn>
       </span>
       <span className="mx-1 h-5 w-px bg-border" />
+      {!contextual && (
+        <>
+          <div className="flex items-center gap-0.5" aria-label="Legal tools">
+            {LEGAL_TOOLBAR.map(({ id, label, Icon, variant }) => (
+              <ToolbarBtn
+                key={id}
+                label={label}
+                active={activeToolId === id}
+                onClick={() => onOpenTool(id)}
+                variant={variant}
+              >
+                <Icon className="h-[15px] w-[15px]" />
+              </ToolbarBtn>
+            ))}
+          </div>
+          <span className="mx-1 h-5 w-px bg-border" />
+        </>
+      )}
       {groups.map((group, gi) => (
         <div key={gi} className="flex items-center gap-0.5">
           {gi > 0 && <span className="mx-1 h-5 w-px bg-border" />}
@@ -2331,6 +2361,10 @@ function FloatingToolbar({
         </div>
       ))}
       <span className="mx-1 h-5 w-px bg-border" />
+      <ToolbarBtn label="Delete selected annotation" onClick={onDeleteSelected} disabled={!canDelete}>
+        <Trash2 className="h-[15px] w-[15px]" />
+      </ToolbarBtn>
+      <span className="mx-1 h-5 w-px bg-border" />
       <ToolbarBtn label="Undo" onClick={onUndo}>
         <Undo2 className="h-[15px] w-[15px]" />
       </ToolbarBtn>
@@ -2340,6 +2374,7 @@ function FloatingToolbar({
     </div>
   );
 }
+
 
 function ToolbarBtn({
   children,
