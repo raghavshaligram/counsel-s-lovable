@@ -354,6 +354,37 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </ul>
           </div>
 
+          <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5">
+            <div className="text-[10.5px] font-medium uppercase tracking-wide text-text-subtle">
+              Link appearance
+            </div>
+            <div className="flex gap-1">
+              {(
+                [
+                  { id: "underline", label: "Underline" },
+                  { id: "underline-tint", label: "Underline + tint" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setLinkStyle(opt.id)}
+                  className={cn(
+                    "flex-1 rounded border px-2 py-1 text-[11px] transition-colors",
+                    linkStyle === opt.id
+                      ? "border-vault bg-vault/10 text-text"
+                      : "border-border bg-surface text-text-muted hover:text-text",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] leading-snug text-text-subtle">
+              Legal-brief blue underline is baked into the exported PDF so citations read as links in any viewer.
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
             <Button
               size="sm"
