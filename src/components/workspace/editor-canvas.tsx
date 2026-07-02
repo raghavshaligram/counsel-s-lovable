@@ -874,7 +874,8 @@ export function EditorCanvas({
         const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
         const minVerticalPadPt = a.kind === "text-edit" ? TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001) : 0;
         const padTopPt = cover ? Math.max(minVerticalPadPt, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-        const padBottomPt = cover ? Math.max(minVerticalPadPt, a.textPadBottom ?? 0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
+        const textEditPadBottom = a.kind === "text-edit" ? a.textPadBottom ?? 0 : 0;
+        const padBottomPt = cover ? Math.max(minVerticalPadPt, textEditPadBottom, cover.y + cover.h - (a.y + a.h)) : textEditPadBottom;
         const padTop = padTopPt * scale;
         const padLeft = padLeftPt * scale;
         const padRight = padRightPt * scale;
