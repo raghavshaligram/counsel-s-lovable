@@ -340,6 +340,10 @@ export async function renderToa(
       size: 1,
       color: rgb(1, 1, 1),
     });
+    // Also mark the page node itself — a private PDF-dict key so the
+    // strip pass can identify TOA pages without needing pdf.js text
+    // extraction. Preserved across pdf-lib copyPages / save cycles.
+    p.node.set(PDFName.of(TOA_PAGE_NODE_KEY), PDFBool.True);
   };
 
   let page = doc.addPage([W, H]);
