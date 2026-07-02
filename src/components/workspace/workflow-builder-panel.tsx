@@ -785,6 +785,7 @@ function WorkflowBuilderModal({
   );
 
   const runBatch = useCallback(async () => {
+    if (!isPro && !requirePro("Workflows & automation")) return;
     if (batchFiles.length === 0) {
       toast.error("Add at least one PDF to the batch.");
       return;
