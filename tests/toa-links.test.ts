@@ -89,8 +89,8 @@ describe("TOA — combined design", () => {
 
     const { uris, destCount } = await summarize(out, 0);
     expect(uris).toHaveLength(0);
-    // 2 authority-name jumps + 3 page-number tokens (3, 7, 5) = 5 internal links.
-    expect(destCount).toBe(5);
+    // Only page-number tokens (3, 7, 5) get internal links — authority names do not.
+    expect(destCount).toBe(3);
   });
 
   it("re-prepending on a doc that already has a TOA strips the old one", async () => {
@@ -102,6 +102,6 @@ describe("TOA — combined design", () => {
     expect(doc.getPageCount()).toBe(11);
     const { uris, destCount } = await summarize(twice, 0);
     expect(uris).toHaveLength(0);
-    expect(destCount).toBe(5);
+    expect(destCount).toBe(3);
   });
 });
