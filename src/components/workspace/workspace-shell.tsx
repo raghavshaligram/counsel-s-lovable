@@ -1679,11 +1679,18 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   activeToolId={activeToolId}
                   active={editorTool}
                   onChange={setEditorTool}
+                  onOpenTool={openTool}
+                  onDeleteSelected={() => {
+                    const id = editorState.selectedAnnoId;
+                    if (id) editorDispatch({ type: "DELETE_ANNO", id });
+                  }}
+                  canDelete={!!editorState.selectedAnnoId}
                   onUndo={() => editorDispatch({ type: "UNDO" })}
                   onRedo={() => editorDispatch({ type: "REDO" })}
                   onToggleNav={() => setNavOpen((v) => !v)}
                   navOpen={navOpen}
                 />
+
                 <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
                 <NavOverlay
                   open={navOpen}
