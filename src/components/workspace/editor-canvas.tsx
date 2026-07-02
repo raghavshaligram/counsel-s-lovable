@@ -1266,6 +1266,10 @@ export function EditorCanvas({
       if (!el) return;
       const computed = window.getComputedStyle(el);
       const override = activeText.fontFamilyOverride ?? "";
+      const resolvedFamName = cssFontFamilyName(computed.fontFamily);
+      const boldFaceLoaded700 = resolvedFamName && typeof document !== "undefined" && "fonts" in document
+        ? document.fonts.check(`700 16px "${resolvedFamName}"`)
+        : null;
       console.log("[text-edit-font] dom", {
         rawPdfFontName: activeText.source?.fontName ?? "",
         matchedFontName: override
@@ -1276,6 +1280,7 @@ export function EditorCanvas({
         fontFamilyOverride: override,
         computedDomFontFamily: computed.fontFamily,
         computedFontWeight: computed.fontWeight,
+        boldFaceLoaded700,
         computedLineHeight: computed.lineHeight,
         computedLetterSpacing: computed.letterSpacing,
       });
