@@ -1018,18 +1018,20 @@ export function EditorCanvas({
     })();
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
-    // Cover bbox: expand generously around the captured glyph bounds so
-    // anti-aliased thick strokes, italic skew, and ascenders/descenders
-    // never leak through. Pad more vertically because pdf.js' glyph bbox
-    // hugs cap-height; descenders ("y", "g") sit a few px below.
-    const coverPadX = Math.max(2, it.h * (it.italic ? 0.28 : 0.18));
-    const coverPadTop = Math.max(2, it.h * (it.bold ? 0.30 : 0.22));
-    const coverPadBottom = Math.max(2, it.h * 0.40);
+    // Cover bbox: keep it EXACTLY at the original glyph bounds so the
+    // edit box matches the size of the text it's replacing — no over-hang
+    // onto adjacent text on the same line, no visible white rectangle
+    // extending above/below into the surrounding page. Tiny anti-aliased
+    // glyph edges outside these bounds are acceptable — they blend against
+    // the page and are cleaned up at export via text-rewrite.
+    const coverPadX = 0;
+    const coverPadTop = 0;
+    const coverPadBottom = 0;
     const cover = {
-      x: it.x - coverPadX,
-      y: it.y - coverPadTop,
-      w: it.w + coverPadX * 2,
-      h: it.h + coverPadTop + coverPadBottom,
+      x: it.x,
+      y: it.y,
+      w: it.w,
+      h: it.h,
     };
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const id = uid();
