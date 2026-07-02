@@ -31,6 +31,7 @@ import { importChunk } from "@/lib/chunk-import";
 import type { ToolPanelCtx } from "./tool-panels";
 import type { CitationHit } from "@/lib/citations/detect";
 import { CITATION_KIND_LABEL } from "@/lib/citations/detect";
+import type { CitationLinkStyle } from "@/lib/citations/apply";
 
 interface Row extends CitationHit {
   enabled: boolean;
@@ -47,6 +48,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [applying, setApplying] = useState(false);
   const [progress, setProgress] = useState<string>("");
   const [scannedFor, setScannedFor] = useState<string>("");
+  const [linkStyle, setLinkStyle] = useState<CitationLinkStyle>("underline");
   const draftUrls = useRef<Map<string, string>>(new Map());
 
   const fileKey = file ? `${file.name}:${file.size}:${file.lastModified}` : "";
