@@ -67,6 +67,12 @@ import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import type { Pipeline, PipelineStep, ProgressEvent } from "@/lib/automation/types";
 import { runPipeline, downloadBytes } from "@/lib/automation";
 import {
+  CONDITION_LABELS,
+  CONDITION_SHORT,
+  type ConditionKind,
+  type StepCondition,
+} from "@/lib/automation/conditions";
+import {
   listWorkflows,
   saveWorkflow as saveWorkflowFn,
   renameWorkflow as renameWorkflowFn,
@@ -335,7 +341,7 @@ function paletteFor(op: string): OpDef | undefined {
 /* Types                                                                */
 /* -------------------------------------------------------------------- */
 
-type StepStatus = "idle" | "running" | "done" | "error";
+type StepStatus = "idle" | "running" | "done" | "error" | "skipped";
 
 type UiStep = PipelineStep & {
   uid: string;
