@@ -906,11 +906,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     patchActive({ file: new File([], "Untitled.pdf", { type: "application/pdf" }), isDirty: false });
   }, [patchActive]);
   const loadTemplate = useCallback(
-    (name: string) => {
-      patchActive({
-        file: new File([], `${name}.pdf`, { type: "application/pdf" }),
-        isDirty: false,
-      });
+    async (id: string) => {
+      try {
+        const { buildLegalTemplateFile, LEGAL_TEMPLATES } = await import("@/lib/legal-templates");
+        const known = LEGAL_TEMPLATES.find((t) => t.id === id);
+        if (!known) {
+          patchActive({
+            file: new File([], `${id}.pdf`, { type: "application/pdf" }),
+            isDirty: false,
+          });
+          return;
+        }
+        const file = await buildLegalTemplateFile(known.id);
+        patchActive({ file, isDirty: false });
+      } catch (err) {
+        console.error("[templates] build failed", err);
+        toast.error("Couldn't open template.");
+      }
     },
     [patchActive],
   );
@@ -3128,11 +3140,12 @@ function PageCanvas({
 
 /* -------------------------- Empty start ------------------------------ */
 
-const TEMPLATES = [
-  { id: "invoice", label: "Invoice" },
-  { id: "resume", label: "Resume" },
-  { id: "letter", label: "Letter" },
-  { id: "blank", label: "Blank A4" },
+const TEMPLATES: { id: string; label: string; description: string }[] = [
+  { id: "demand-letter", label: "Demand Letter", description: "Facts, demand, deadline, consequences." },
+  { id: "engagement-letter", label: "Engagement Letter", description: "Retainer & scope of representation." },
+  { id: "legal-memo", label: "Legal Memo (IRAC)", description: "Question, Answer, Facts, Discussion." },
+  { id: "transmittal-letter", label: "Transmittal Letter", description: "Cover letter with enclosures list." },
+  { id: "fee-agreement", label: "Fee Agreement", description: "Hourly / flat / contingency options." },
 ];
 
 function EmptyStart({
@@ -3321,23 +3334,29 @@ function EmptyStart({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2">
               {TEMPLATES.map((t) => (
                 <button
                   key={t.id}
                   type="button"
                   onClick={() => {
-                    onTemplate(t.label);
+                    onTemplate(t.id);
                     setPickerOpen(false);
                   }}
-                  className="flex items-center gap-2 border border-border bg-surface-1 px-3 py-3 text-left text-[13px] text-foreground hover:bg-surface-3 transition-colors"
+                  className="flex items-start gap-2.5 border border-border bg-surface-1 px-3 py-2.5 text-left hover:bg-surface-3 transition-colors"
                   style={{ borderRadius: 9 }}
                 >
-                  <LayoutTemplate className="h-[15px] w-[15px] text-vault" />
-                  {t.label}
+                  <LayoutTemplate className="mt-0.5 h-[15px] w-[15px] shrink-0 text-vault" />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] text-foreground">{t.label}</span>
+                    <span className="block text-[11px] text-text-muted">{t.description}</span>
+                  </span>
                 </button>
               ))}
             </div>
+            <p className="mt-3 text-[10.5px] leading-snug text-text-muted">
+              Templates are starting structures — review and adapt for your jurisdiction and matter. Not legal advice.
+            </p>
           </div>
         </div>
       )}
