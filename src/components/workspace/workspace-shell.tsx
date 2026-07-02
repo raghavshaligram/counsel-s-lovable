@@ -1518,7 +1518,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             onClick={() => {
               if (!file) return;
               if (activeToolId === "doc-settings" && inspectorOpen) {
-                patchActive({ inspectorOpen: false });
+                patchActive({ inspectorOpen: false, activeToolId: null });
               } else {
                 openTool("doc-settings");
               }
