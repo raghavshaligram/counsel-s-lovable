@@ -868,7 +868,7 @@ function WorkflowBuilderModal({
     setBatchIndex(-1);
     setBatchRunning(false);
     toast.success("Batch complete.");
-  }, [batchFiles, steps, renameOutput]);
+  }, [batchFiles, steps, renameOutput, isPro, requirePro]);
 
   const cancelBatch = () => {
     batchAbortRef.current.aborted = true;
