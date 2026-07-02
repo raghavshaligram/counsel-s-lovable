@@ -954,7 +954,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         aiRef.current?.focus();
       } else if (meta && e.key === "\\") {
         e.preventDefault();
-        patchActive({ inspectorOpen: !inspectorOpen });
+        patchActive(inspectorOpen ? { inspectorOpen: false, activeToolId: null } : { inspectorOpen: true });
       } else if (meta && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setNavOpen((v) => !v);
