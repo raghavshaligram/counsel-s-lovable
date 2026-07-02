@@ -424,10 +424,26 @@ export async function renderToa(
       let cx = pagesX;
       const sep = ", ";
       const sepW = font.widthOfTextAtSize(sep, bodySize);
+      // Link-blue matches the inline citation hyperlinker treatment so
+      // TOA page-refs read as clickable at a glance.
+      const linkColor = rgb(0.16, 0.36, 0.68);
       for (let i = 0; i < shownPages.length; i++) {
         const shownStr = String(shownPages[i]);
         const numW = font.widthOfTextAtSize(shownStr, bodySize);
-        page.drawText(shownStr, { x: cx, y, font, size: bodySize });
+        page.drawText(shownStr, {
+          x: cx,
+          y,
+          font,
+          size: bodySize,
+          color: linkColor,
+        });
+        // Underline under the page number.
+        page.drawLine({
+          start: { x: cx, y: y - 1.2 },
+          end: { x: cx + numW, y: y - 1.2 },
+          thickness: 0.6,
+          color: linkColor,
+        });
         links.push({
           toaPageIndex: pageIdx,
           rect: [
