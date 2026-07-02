@@ -21,7 +21,16 @@ import {
   PDFNumber,
   PDFRef,
   StandardFonts,
+  rgb,
 } from "pdf-lib";
+
+/**
+ * Invisible marker string stamped on every generated TOA page. Detectors
+ * (Citation Hyperlinker) look for this in the pdf.js text layer to
+ * exclude TOA pages from external URI linking — TOA page numbers are
+ * internal jumps and must never be re-linked to CourtListener / Cornell.
+ */
+export const TOA_PAGE_MARKER = "__VPDF_TOA_PAGE__";
 
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { PATTERNS, type CitationKind } from "./detect";
