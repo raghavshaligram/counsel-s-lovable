@@ -203,6 +203,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <CitationHyperlinkerPanel ctx={ctx} />;
     case "toa":
       return <TableOfAuthoritiesPanel ctx={ctx} />;
+    case "document-hash":
+      return <DocumentHashPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
