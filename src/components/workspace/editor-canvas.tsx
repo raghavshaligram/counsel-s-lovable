@@ -143,7 +143,7 @@ function samplePageBg(
   sy: number,
   sw: number,
   sh: number,
-): RGB {
+): { color: RGB; confidence: number } {
   console.count("samplePageBg");
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   const bx = Math.max(0, Math.floor(sx));
@@ -151,9 +151,6 @@ function samplePageBg(
   const bw = Math.max(1, Math.floor(sw));
   const bh = Math.max(1, Math.floor(sh));
 
-  // Try progressively larger rings if the first pass yields too few opaque
-  // pixels (small glyph in a busy line). Reading further out also dodges
-  // adjacent baselines that would skew the mode toward ink.
   const rings = [
     Math.max(4, Math.floor(sh * 0.6)),
     Math.max(8, Math.floor(sh * 1.4)),
@@ -176,7 +173,6 @@ function samplePageBg(
     read(bx - band, by, band, bh, strips);
     read(bx + bw, by, band, bh, strips);
 
-    // Mode by 8-step quantization (32 buckets per channel = 32768 keys).
     const counts = new Map<number, { n: number; r: number; g: number; b: number }>();
     let total = 0;
     for (const img of strips) {
@@ -192,12 +188,6 @@ function samplePageBg(
       }
     }
     if (total < 20) continue;
-    // Find the brightest CLUSTER that is also well-represented. Pages are
-    // overwhelmingly lighter than ink, but a tight ring around a glyph can
-    // be dominated by anti-aliased mid-grays — taking the plain mode then
-    // yields e.g. rgb(241,241,241) instead of the real page white. We
-    // pick the cluster with the highest luminance among those that hold
-    // at least 15% of sampled pixels (≥3% if nothing qualifies).
     const clusters = [...counts.values()].sort((a, b) => b.n - a.n);
     const minShareStrong = total * 0.15;
     const minShareWeak = total * 0.03;
@@ -216,18 +206,29 @@ function samplePageBg(
     }
     if (!best) best = clusters[0] ?? null;
     if (!best) continue;
-    return { r: best.r / best.n / 255, g: best.g / best.n / 255, b: best.b / best.n / 255 };
+    // Dominant-bucket share: fraction of opaque ring pixels that fell in the
+    // winning cluster. Low share => busy/tinted/gradient background where an
+    // opaque cover would paint the wrong color; caller should fall back to
+    // transparent instead.
+    const share = best.n / Math.max(1, total);
+    const sampleFloor = total < 80 ? 0.6 : 1;
+    const confidence = Math.max(0, Math.min(1, share * sampleFloor));
+    return {
+      color: { r: best.r / best.n / 255, g: best.g / best.n / 255, b: best.b / best.n / 255 },
+      confidence,
+    };
   }
-  // Last resort: sample a single pixel far above the bbox. Avoids hardcoded white.
+  // Last resort: single pixel far above the bbox. Low confidence by definition.
   try {
     const fx = Math.max(0, Math.min(cw - 1, bx + (bw >> 1)));
     const fy = Math.max(0, by - Math.max(20, sh * 3));
     const d = ctx.getImageData(fx, fy, 1, 1).data;
-    return { r: d[0] / 255, g: d[1] / 255, b: d[2] / 255 };
+    return { color: { r: d[0] / 255, g: d[1] / 255, b: d[2] / 255 }, confidence: 0 };
   } catch {
-    return { r: 1, g: 1, b: 1 };
+    return { color: { r: 1, g: 1, b: 1 }, confidence: 0 };
   }
 }
+
 
 export interface EditorCanvasProps {
   pageIndex: number;
@@ -1000,9 +1001,11 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
+      const bgRes = samplePageBg(ctx, sx, sy, sw, sh);
       return {
         color: sampleTextColor(ctx, sx, sy, sw, sh),
-        bg: samplePageBg(ctx, sx, sy, sw, sh),
+        bg: bgRes.color,
+        bgConfidence: bgRes.confidence,
       };
     })();
     // Workspace native: place a text-edit overlay pre-filled with the original
@@ -1086,6 +1089,7 @@ export function EditorCanvas({
       text: it.str,
       fontSize: it.h,
       bg: sampled.bg,
+      bgConfidence: sampled.bgConfidence,
       family,
       fontKey,
       fontFamilyOverride,
@@ -1401,12 +1405,18 @@ export function EditorCanvas({
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
           const bgCss = rgbCss(a.bg);
+          // Low-confidence sample => busy/tinted/gradient background. Painting
+          // an opaque bar there produces a visibly wrong-colored block; a
+          // missing mask (original glyph faintly showing) is strictly better.
+          const conf = a.bgConfidence ?? 1;
+          const maskBg = conf < 0.5 ? "transparent" : bgCss;
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
-              background: bgCss,
+              background: maskBg,
               sampledBg: a.bg,
+              bgConfidence: conf,
               coverPdf: a.cover,
               coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
             });
@@ -1420,7 +1430,7 @@ export function EditorCanvas({
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: bgCss,
+                background: maskBg,
                 pointerEvents: "none",
                 zIndex: 1,
               }}

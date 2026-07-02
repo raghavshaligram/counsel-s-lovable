@@ -190,6 +190,10 @@ export interface TextEditAnno extends BaseAnno {
   letterSpacing?: number;
   // background fill colour painted over original glyphs
   bg: RGB;
+  // 0..1 confidence in the sampled `bg` color. Low values mean the ring
+  // around the glyph was busy / tinted / gradient — an opaque cover would
+  // paint the wrong color, so the mask should fall back to transparent.
+  bgConfidence?: number;
   family?: FontFamily;
   // Bundled metric-compatible open font: "carlito" | "arimo" | "tinos" | "caladea" | "cousine".
   // When present, overrides `family` for both on-screen overlay and PDF embed.
