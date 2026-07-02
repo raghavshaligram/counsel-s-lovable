@@ -16,6 +16,7 @@ export const PAID_TOOL_IDS = new Set<string>([
   "exhibit-binder",        // Multi-file court-ready binder
   "workflow-builder",      // Visual Workflow Builder
   "citation-hyperlinker",  // Bluebook citation → clickable public lookup
+  "toa",                   // Table of Authorities (Bluebook-style TOA generator)
 ]);
 
 /**

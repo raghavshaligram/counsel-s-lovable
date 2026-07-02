@@ -63,6 +63,7 @@ import {
   BookOpen,
   Gavel,
   Link2,
+  BookMarked,
 } from "lucide-react";
 
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -163,6 +164,7 @@ const TOOLS: RailTool[] = [
   { id: "court-readiness", label: "Court Readiness", icon: Gavel, group: "legal", groupLabel: "Legal" },
   { id: "workflow-builder", label: "Workflow Builder", icon: WorkflowIcon, group: "legal", groupLabel: "Legal" },
   { id: "citation-hyperlinker", label: "Citation Hyperlinker", icon: Link2, group: "legal", groupLabel: "Legal" },
+  { id: "toa", label: "Table of Authorities", icon: BookMarked, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
 
   // Assemble
