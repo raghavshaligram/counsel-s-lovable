@@ -278,10 +278,25 @@ export interface ToaLinkRect {
   targetOriginalPage: number;
 }
 
+/**
+ * Per-entry external-lookup rect captured while drawing the display text
+ * (case name / citation). One entry can produce multiple rects when its
+ * display wraps across lines. Attached as URI /Link annotations pointing
+ * at CourtListener / Cornell — same URL-building logic the Citation
+ * Hyperlinker uses (`buildLookupUrl`).
+ */
+export interface ToaEntryLink {
+  toaPageIndex: number;
+  rects: Array<[number, number, number, number]>;
+  url: string;
+  text: string;
+}
+
 export interface ToaRender {
   bytes: Uint8Array;
   pageCount: number;
   links: ToaLinkRect[];
+  entryLinks: ToaEntryLink[];
 }
 
 /**
