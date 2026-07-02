@@ -184,15 +184,30 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const q = query.trim();
       const results = await queryIndex(docKey, q, 20);
       // Pure cosine ranking on MiniLM (L2-normalised → dot product).
-      // MiniLM cosines: ~0.15 unrelated, 0.25–0.35 loosely related,
-      // 0.35+ clearly relevant. Keep an absolute floor to filter noise
-      // and a relative gap so weak tail results don't survive when the
-      // top match is strong.
-      const MIN_ABS = 0.3;
+      // MiniLM scores are absolute-low for short queries (2-word queries
+      // can top out around 0.20 even when semantically correct), so we
+      // don't gate on an absolute floor alone. Rule:
+      //   1. Drop anything below MIN_ABS (pure noise).
+      //   2. Always keep the top hit if it clearly dominates the runner-up
+      //      (gap ≥ MIN_GAP OR ratio ≥ DOMINANCE).
+      //   3. Keep additional hits only if within REL_GAP of the top.
+      const MIN_ABS = 0.15;
+      const MIN_GAP = 0.05;
+      const DOMINANCE = 1.5;
       const REL_GAP = 0.75;
       const top = results[0]?.score ?? 0;
-      const floor = Math.max(MIN_ABS, top * REL_GAP);
-      const filtered = results.filter((r) => r.score >= floor).slice(0, 8);
+      const second = results[1]?.score ?? 0;
+      const topDominates =
+        top >= MIN_ABS && (top - second >= MIN_GAP || top >= second * DOMINANCE);
+      const floor = top * REL_GAP;
+      const filtered = results
+        .filter((r, i) => {
+          if (r.score < MIN_ABS) return false;
+          if (i === 0) return topDominates || r.score >= MIN_ABS;
+          return r.score >= floor;
+        })
+        .slice(0, 8);
+
       console.log(
         "[pre-discovery] query",
         JSON.stringify(q),
