@@ -19,6 +19,12 @@ import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
 import { matchPdfFont } from "@/lib/utils/fontMatcher";
+import {
+  registerEmbeddedFont,
+  registerUploadedFont,
+  looksEmbedded,
+  getFontInfo,
+} from "@/lib/editor/embedded-fonts";
 
 interface TextItem {
   x: number;
