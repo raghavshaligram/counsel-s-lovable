@@ -3334,23 +3334,29 @@ function EmptyStart({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2">
               {TEMPLATES.map((t) => (
                 <button
                   key={t.id}
                   type="button"
                   onClick={() => {
-                    onTemplate(t.label);
+                    onTemplate(t.id);
                     setPickerOpen(false);
                   }}
-                  className="flex items-center gap-2 border border-border bg-surface-1 px-3 py-3 text-left text-[13px] text-foreground hover:bg-surface-3 transition-colors"
+                  className="flex items-start gap-2.5 border border-border bg-surface-1 px-3 py-2.5 text-left hover:bg-surface-3 transition-colors"
                   style={{ borderRadius: 9 }}
                 >
-                  <LayoutTemplate className="h-[15px] w-[15px] text-vault" />
-                  {t.label}
+                  <LayoutTemplate className="mt-0.5 h-[15px] w-[15px] shrink-0 text-vault" />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] text-foreground">{t.label}</span>
+                    <span className="block text-[11px] text-text-muted">{t.description}</span>
+                  </span>
                 </button>
               ))}
             </div>
+            <p className="mt-3 text-[10.5px] leading-snug text-text-muted">
+              Templates are starting structures — review and adapt for your jurisdiction and matter. Not legal advice.
+            </p>
           </div>
         </div>
       )}
