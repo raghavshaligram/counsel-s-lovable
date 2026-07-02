@@ -1419,10 +1419,18 @@ function WorkflowBuilderModal({
             </div>
             <div className="flex-1 overflow-y-auto p-3">
               {selected ? (
-                <StepParamsEditor
-                  step={selected}
-                  onChange={(patch) => updateParams(selected.uid, patch)}
-                />
+                <div className="flex flex-col gap-3">
+                  <ConditionEditor
+                    condition={selected.condition}
+                    onChange={(c) => updateCondition(selected.uid, c)}
+                  />
+                  <div className="border-t border-border pt-3">
+                    <StepParamsEditor
+                      step={selected}
+                      onChange={(patch) => updateParams(selected.uid, patch)}
+                    />
+                  </div>
+                </div>
               ) : (
                 <p className="px-1 text-[11.5px] leading-snug text-text-muted">
                   Select a step in the sequence to edit its parameters.
