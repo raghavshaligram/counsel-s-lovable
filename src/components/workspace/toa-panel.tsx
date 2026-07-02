@@ -154,24 +154,30 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     [editorDispatch],
   );
 
+  /**
+   * ONE combined action: hyperlink inline body citations (external
+   * CourtListener/Cornell URIs) AND prepend a Table of Authorities whose
+   * entries are navigational (internal /Dest jumps only). Replaces the
+   * open document with the combined output.
+   */
   const insertAtFront = useCallback(async () => {
     if (!file || rows.length === 0) return;
     if (!requirePro("Table of Authorities")) return;
     setWorking("insert");
     try {
-      const { prependToaToPdf } = await importChunk(
+      const { buildCombinedCitationsAndToa } = await importChunk(
         () => import("@/lib/citations/toa"),
       );
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const out = await prependToaToPdf(bytes, rows);
+      const out = await buildCombinedCitationsAndToa(bytes, rows);
       const next = new File([new Uint8Array(out)], file.name, {
         type: "application/pdf",
       });
       replaceFile(next);
-      toast.success("Table of Authorities inserted at the front.");
+      toast.success("Body citations linked and TOA prepended.");
     } catch (err) {
-      console.error("[toa] insert failed", err);
-      toast.error("Could not insert TOA", {
+      console.error("[toa] combined insert failed", err);
+      toast.error("Could not build combined document", {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -195,24 +201,24 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 
   /**
-   * Primary download: ONE combined PDF (TOA + brief). Page references
-   * inside the TOA are internal go-to-page jumps to the shifted page
-   * numbers — same rendering path as "Insert at front", just written to
-   * disk instead of replacing the active tab.
+   * Primary download: ONE combined PDF — inline body citations become
+   * external URI links, plus a TOA is prepended with internal /Dest
+   * jumps. Same pipeline as the insert action, written to disk instead
+   * of replacing the active tab.
    */
   const downloadCombined = useCallback(async () => {
     if (!file || rows.length === 0) return;
     if (!requirePro("Table of Authorities")) return;
     setWorking("download");
     try {
-      const { prependToaToPdf } = await importChunk(
+      const { buildCombinedCitationsAndToa } = await importChunk(
         () => import("@/lib/citations/toa"),
       );
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const out = await prependToaToPdf(bytes, rows);
+      const out = await buildCombinedCitationsAndToa(bytes, rows);
       const base = file.name.replace(/\.pdf$/i, "");
       triggerDownload(new Uint8Array(out), `${base} - with TOA.pdf`);
-      toast.success("Combined PDF downloaded (TOA + brief).");
+      toast.success("Combined PDF downloaded (body links + TOA).");
     } catch (err) {
       console.error("[toa] combined download failed", err);
       toast.error("Could not build combined PDF", {
