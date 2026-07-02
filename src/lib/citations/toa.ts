@@ -721,4 +721,39 @@ export async function prependToaToPdf(
   return target.save();
 }
 
+/**
+ * ONE-SHOT combined pipeline: applies external URI /Link annotations to
+ * every inline body citation (Citation Hyperlinker behavior), then
+ * prepends a Table of Authorities whose entries are navigational only —
+ * authority names jump internally to the first cited page, page numbers
+ * jump internally to their respective pages.
+ *
+ * Division of concerns:
+ *   - External URL lookups  → INLINE body citations (this step).
+ *   - Internal jumps        → TOA entries + page-number tokens.
+ *
+ * The double-prepend guard (`stripExistingToaPages`) still runs, and the
+ * TOA marker still causes the Citation Hyperlinker's own detection pass
+ * to skip TOA pages — so authority names on the TOA never receive
+ * external URIs.
+ */
+export async function buildCombinedCitationsAndToa(
+  sourceBytes: Uint8Array,
+  entries: ToaEntry[],
+  opts: RenderOpts = {},
+): Promise<Uint8Array> {
+  const hits = await detectCitations(sourceBytes);
+  const linked = hits.length
+    ? await applyCitationLinks(
+        sourceBytes,
+        hits.map((h) => ({
+          page: h.page,
+          rect: h.rect,
+          url: h.lookupUrl,
+          text: h.text,
+        })),
+      )
+    : sourceBytes;
+  return prependToaToPdf(linked, entries, opts);
+}
 
