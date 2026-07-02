@@ -623,8 +623,8 @@ export function EditorCanvas({
 
   const renderAnno = (a: Anno) => {
     const selected = state.selectedAnnoId === a.id;
-    const displayRect = a.kind === "text-edit" && a.cover
-      ? a.cover
+    const displayRect = a.kind === "text-edit"
+      ? a.source?.bounds ?? a.cover ?? { x: a.x, y: a.y, w: a.w, h: a.h }
       : { x: a.x, y: a.y, w: a.w, h: a.h };
     const pts = [
       toScreen(displayRect.x, displayRect.y), toScreen(displayRect.x + displayRect.w, displayRect.y),
@@ -810,11 +810,11 @@ export function EditorCanvas({
         // changing the cover area.
         const bg = "transparent";
         const fam = resolveTextFontFamily(a);
-        const cover = a.kind === "text-edit" ? a.cover : undefined;
-        const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
-        const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
-        const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-        const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
+        const cover = a.kind === "text-edit" ? a.source?.bounds ?? a.cover : undefined;
+        const padLeftPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, a.x - cover.x) : 0;
+        const padRightPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
+        const padTopPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, a.y - cover.y) : 0;
+        const padBottomPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : 0;
         const padTop = padTopPt * scale;
         const padLeft = padLeftPt * scale;
         const padRight = padRightPt * scale;
@@ -829,6 +829,7 @@ export function EditorCanvas({
         const showEditChrome = isEditing && a.kind === "text";
         const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
+          display: "block",
           width: "100%", height: "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
           color: textColor,
@@ -841,9 +842,10 @@ export function EditorCanvas({
           textAlign: align,
           lineHeight: a.lineHeight ?? 1.15,
           letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflow: "hidden",
+          whiteSpace: a.kind === "text-edit" ? "pre" : "pre-wrap",
+          wordBreak: a.kind === "text-edit" ? "normal" : "break-word",
+          overflowWrap: a.kind === "text-edit" ? "normal" : undefined,
+          overflow: a.kind === "text-edit" ? "visible" : "hidden",
           padding: 0,
           paddingTop: padTop,
           paddingLeft: padLeft,
@@ -906,6 +908,7 @@ export function EditorCanvas({
             onPointerDown={(e) => e.stopPropagation()}
             data-text-edit-id={a.id}
             data-raw-pdf-font={a.kind === "text-edit" ? a.source?.fontName ?? "" : ""}
+            wrap={a.kind === "text-edit" ? "off" : undefined}
             style={textStyle}
           />
         ) : (
@@ -1072,23 +1075,12 @@ export function EditorCanvas({
       lineHeight: it.lineHeight ?? 1,
       letterSpacing: it.letterSpacing ?? 0,
     });
-    // Baseline compensation. pdf.js gives the glyph BASELINE at m[5];
-    // we store `it.y = m[5] - fontSize` (top of em-box). A browser
-    // textarea with `font-size: fontSize` renders its glyph with the
-    // ascender near the em-box top, so anchoring the textarea at
-    // `it.y` makes the rendered glyph paint ~(em − ascent) above the
-    // PDF canvas glyph — a visible "notch up" when entering edit mode.
-    // Empirically ascent ≈ 0.82·em for Helvetica/Times/Arial, so shift
-    // the textarea DOWN by 0.18·fontSize to align baselines.
-    const baselineNudge = it.h * 0.18;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
-      // Anchor the editable box to the ORIGINAL glyph bounds so the
-      // textarea, caret, and selection ring sit exactly where the user
-      // sees the source text. The padded `cover` rectangle below is a
-      // separate masking layer that hides anti-aliased glyph edges and
-      // descenders without affecting the visible edit chrome.
-      x: it.x, y: it.y + baselineNudge,
+      // Anchor the editable box to the ORIGINAL glyph bounds. Do not apply
+      // a baseline nudge here: it turns into top padding inside a fixed-height
+      // text field and clips wrapped/descender pixels.
+      x: it.x, y: it.y,
       w: it.w, h: it.h,
       color: sampled.color, opacity: 1,
       text: it.str,
@@ -1114,7 +1106,7 @@ export function EditorCanvas({
       id,
       originalGlyphPdf: originalGlyph,
       coverPdf: cover,
-      annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
+      annoPdf: { x: it.x, y: it.y, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
       sampledBg: sampled.bg,
       intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
@@ -1289,74 +1281,72 @@ export function EditorCanvas({
     const el = measureRef.current;
     if (!el) return;
     const a = activeText;
+    if (a.kind === "text-edit") {
+      const originalW = a.source?.bounds?.w ?? a.w;
+      const slots = Math.max(0, (a.text || "").length - 1);
+      if (originalW > 0 && slots > 0 && !a.text.includes("\n")) {
+        el.style.fontSize = `${a.fontSize * scale}px`;
+        el.style.fontFamily = resolveTextFontFamily(a);
+        el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
+        el.style.fontStyle = a.italic ? "italic" : "normal";
+        el.style.lineHeight = `${a.lineHeight ?? 1}`;
+        el.style.letterSpacing = "0px";
+        el.style.whiteSpace = "pre";
+        el.textContent = a.text || " ";
+        const untrackedW = el.offsetWidth / scale;
+        const fittedTracking = Math.max(-a.fontSize * 0.25, Math.min(a.fontSize * 0.6, (originalW - untrackedW) / slots));
+        if (Number.isFinite(fittedTracking) && Math.abs(fittedTracking - (a.letterSpacing ?? 0)) > 0.02) {
+          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: fittedTracking } as Partial<Anno> });
+          return;
+        }
+      }
+      const original = a.source?.bounds;
+      if (original) {
+        let patch: Partial<Anno> = {};
+        if (
+          Math.abs(a.x - original.x) > 0.5 ||
+          Math.abs(a.y - original.y) > 0.5 ||
+          Math.abs(a.w - original.w) > 0.5 ||
+          Math.abs(a.h - original.h) > 0.5
+        ) {
+          patch = { ...patch, x: original.x, y: original.y, w: original.w, h: original.h } as Partial<Anno>;
+        }
+        if (
+          !a.cover ||
+          Math.abs(a.cover.x - original.x) > 0.5 ||
+          Math.abs(a.cover.y - original.y) > 0.5 ||
+          Math.abs(a.cover.w - original.w) > 0.5 ||
+          Math.abs(a.cover.h - original.h) > 0.5
+        ) {
+          patch = { ...patch, cover: original } as Partial<Anno>;
+        }
+        if (Object.keys(patch).length) dispatch({ type: "UPDATE_ANNO", id: a.id, patch });
+      }
+      return;
+    }
     const fam = resolveTextFontFamily(a);
-    const cover = a.kind === "text-edit" ? a.cover : undefined;
-    const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
-    const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;
-    const padTop = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-    const padBottom = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
+    const padLeft = 0;
+    const padRight = 0;
+    const padTop = 0;
+    const padBottom = 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
     el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
-    if (a.kind === "text-edit" && !a.text.includes("\n")) {
-      const targetTextW = a.source?.bounds?.w ?? a.w;
-      const slots = Math.max(0, (a.text || "").length - 1);
-      if (targetTextW > 0 && slots > 0) {
-        el.style.letterSpacing = "0px";
-        el.style.whiteSpace = "pre";
-        el.textContent = a.text && a.text.length > 0 ? a.text : " ";
-        const untrackedTextW = el.offsetWidth / scale;
-        const desiredTracking = Math.max(0, Math.min(a.fontSize * 0.6, (targetTextW - untrackedTextW) / slots));
-        if (Number.isFinite(desiredTracking) && Math.abs(desiredTracking - (a.letterSpacing ?? 0)) > 0.02) {
-          console.log("[text-edit-fit]", {
-            id: a.id,
-            targetTextWidthPt: targetTextW,
-            untrackedTextWidthPt: untrackedTextW,
-            previousLetterSpacingPt: a.letterSpacing ?? 0,
-            nextLetterSpacingPt: desiredTracking,
-            slots,
-          });
-          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: desiredTracking } as Partial<Anno> });
-          return;
-        }
-      }
-    }
     el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
     // Measure widest line + total height; convert px → PDF points.
     const measuredW = el.offsetWidth / scale + padLeft + padRight + 1;
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
-    const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
-    // For text-edit, the minimum is the ORIGINAL glyph height — we never
-    // want to grow the cover beyond the source unless the user has typed
-    // enough content that the textarea truly needs more room. For plain
-    // `text` annotations the box still gets a line-height floor.
-    const minH = a.kind === "text-edit"
-      ? a.h
-      : a.fontSize * 1.15 + padTop + padBottom;
-    // Keep width locked to the original run so replacement text tracks the
-    // original justified line. HEIGHT must be free to GROW when the user
-    // types multi-line content — but never SHRINK below the source line.
-    const lockedW = a.kind === "text-edit" ? a.w : null;
-    const newW = lockedW ?? Math.max(minW, measuredW);
-    const newH = Math.max(minH, a.kind === "text-edit" ? Math.max(a.h, measuredH) : measuredH);
+    const minW = Math.max(40, a.fontSize * 2);
+    const minH = a.fontSize * 1.15 + padTop + padBottom;
+    const newW = Math.max(minW, measuredW);
+    const newH = Math.max(minH, measuredH);
     let patch: Partial<Anno> = {};
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
       patch = { w: newW, h: newH } as Partial<Anno>;
-    }
-    // Grow the cover mask to match, so the padded wrapper (which hides the
-    // underlying PDF glyphs) never clips the live textarea's extra lines.
-    if (a.kind === "text-edit" && a.cover) {
-      const needCoverH = newH + padTop + padBottom;
-      const needCoverW = newW + padLeft + padRight;
-      const nextCover = { ...a.cover };
-      let coverChanged = false;
-      if (needCoverH > a.cover.h + 0.5) { nextCover.h = needCoverH; coverChanged = true; }
-      if (needCoverW > a.cover.w + 0.5) { nextCover.w = needCoverW; coverChanged = true; }
-      if (coverChanged) patch = { ...patch, cover: nextCover } as Partial<Anno>;
     }
     if (Object.keys(patch).length) {
       dispatch({ type: "UPDATE_ANNO", id: a.id, patch });
@@ -1422,8 +1412,9 @@ export function EditorCanvas({
           // PDF canvas glyphs will show through and double up with the
           // overlay textarea on top, producing duplicate text.
           const isEditing = editingId === a.id;
-          const tl = toScreen(a.cover.x, a.cover.y);
-          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
+          const cover = a.source?.bounds ?? a.cover;
+          const tl = toScreen(cover.x, cover.y);
+          const br = toScreen(cover.x + cover.w, cover.y + cover.h);
           const bgCss = rgbCss(a.bg);
           if (isEditing) {
             console.log("[text-edit-cover]", {
@@ -1431,7 +1422,7 @@ export function EditorCanvas({
               editing: true,
               background: bgCss,
               sampledBg: a.bg,
-              coverPdf: a.cover,
+              coverPdf: cover,
               coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
             });
           }
