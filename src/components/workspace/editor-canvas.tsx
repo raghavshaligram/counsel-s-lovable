@@ -1662,9 +1662,30 @@ function TextMiniToolbar({
   const keepFocus = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); };
 
   const isApprox = a.kind === "text-edit" && !!(a as { fontApproximate?: boolean }).fontApproximate;
+  // Detect font source: embedded from the PDF, user-uploaded, matched to a
+  // bundled/standard family, or unresolved (approximate substitute).
+  const overrideInfo = getFontInfo(manualFamily);
+  const detectedPdfName = a.kind === "text-edit" ? (a.source?.fontName ?? "").replace(/^[A-Z]{6}\+/, "") : "";
+  const fontSource: "embedded" | "upload" | "matched" | "approximate" =
+    overrideInfo?.source === "embedded" ? "embedded"
+    : overrideInfo?.source === "upload" ? "upload"
+    : isApprox ? "approximate"
+    : "matched";
   const [hintDismissed, setHintDismissed] = useState(false);
   useEffect(() => { setHintDismissed(false); }, [a.id]);
-  const showHint = isApprox && !hintDismissed;
+  const showHint = fontSource === "approximate" && !hintDismissed;
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const onUploadFont = async (file: File | null | undefined) => {
+    if (!file) return;
+    try {
+      const { cssFamily, displayName } = await registerUploadedFont(file);
+      console.log("[text-edit-font] upload", { file: file.name, cssFamily, displayName });
+      update({ fontFamilyOverride: cssFamily, fontApproximate: false } as Partial<Anno>);
+      setHintDismissed(true);
+    } catch (err) {
+      console.error("[text-edit-font] upload failed", err);
+    }
+  };
 
   return (
     <div
