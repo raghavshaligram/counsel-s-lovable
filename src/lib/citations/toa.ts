@@ -419,31 +419,6 @@ export async function renderToa(
       }
       if (line) wrapped.push(line);
 
-      const entryRects: Array<[number, number, number, number]> = [];
-      // Match the page-number link color so authority text visually reads
-      // as a hyperlink at a glance — same treatment as the page-refs.
-      const entryLinkColor = rgb(0.16, 0.36, 0.68);
-      const recordEntryRect = (
-        x: number,
-        yLine: number,
-        text: string,
-      ) => {
-        const w = font.widthOfTextAtSize(text, bodySize);
-        entryRects.push([
-          x - 0.5,
-          yLine - 1.5,
-          x + w + 0.5,
-          yLine + bodySize + 0.5,
-        ]);
-        // Thin blue underline just below the glyph band. Never a fill.
-        page.drawLine({
-          start: { x, y: yLine - 1.2 },
-          end: { x: x + w, y: yLine - 1.2 },
-          thickness: 0.6,
-          color: entryLinkColor,
-        });
-      };
-
       for (let i = 0; i < wrapped.length - 1; i++) {
         ensureRoom(lineHeight);
         page.drawText(wrapped[i], {
@@ -451,17 +426,14 @@ export async function renderToa(
           y,
           font,
           size: bodySize,
-          color: entryLinkColor,
         });
-        recordEntryRect(margin, y, wrapped[i]);
         y -= lineHeight;
       }
 
       const last = wrapped[wrapped.length - 1];
       ensureRoom(lineHeight);
-      page.drawText(last, { x: margin, y, font, size: bodySize, color: entryLinkColor });
+      page.drawText(last, { x: margin, y, font, size: bodySize });
       const lastW = font.widthOfTextAtSize(last, bodySize);
-      recordEntryRect(margin, y, last);
       const dotStart = margin + lastW + gutter;
       const pagesX = margin + contentW - pagesW;
       const dotEnd = pagesX - gutter;
@@ -478,17 +450,7 @@ export async function renderToa(
         }
       }
 
-      // Record display-line rects as an INTERNAL /Dest jump to the first
-      // page where this authority is cited. External URI lookups belong on
-      // the inline body citations (Citation Hyperlinker step), not here.
-      if (entryRects.length > 0 && entry.pages.length > 0) {
-        entryLinks.push({
-          toaPageIndex: pageIdx,
-          rects: entryRects,
-          targetOriginalPage: entry.pages[0],
-          text: entry.display,
-        });
-      }
+
 
 
       // Draw each page number as its own token so we can capture per-
