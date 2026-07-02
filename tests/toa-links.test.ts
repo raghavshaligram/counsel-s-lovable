@@ -36,6 +36,7 @@ const ENTRIES: ToaEntry[] = [
     pages: [3, 7],
     citation: "384 U.S. 436",
     kind: "us-supreme",
+    lookupUrl: "https://scholar.google.com/scholar?q=384%20U.S.%20436&hl=en&as_sdt=6",
   },
   {
     id: "2",
@@ -45,6 +46,7 @@ const ENTRIES: ToaEntry[] = [
     pages: [5],
     citation: "42 U.S.C. § 1983",
     kind: "us-code",
+    lookupUrl: "https://scholar.google.com/scholar?q=42%20U.S.C.%20%C2%A7%201983&hl=en&as_sdt=6",
   },
 ];
 
