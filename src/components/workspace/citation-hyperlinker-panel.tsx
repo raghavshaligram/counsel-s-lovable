@@ -362,7 +362,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
               {(
                 [
                   { id: "underline", label: "Underline" },
-                  { id: "underline-tint", label: "Underline + tint" },
+                  { id: "underline-blue-text", label: "Underline + blue text" },
                 ] as const
               ).map((opt) => (
                 <button
