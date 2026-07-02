@@ -834,6 +834,7 @@ export function EditorCanvas({
           whiteSpace: a.kind === "text-edit" && !a.text.includes("\n") ? "pre" : "pre-wrap",
           wordBreak: a.kind === "text-edit" && !a.text.includes("\n") ? "normal" : "break-word",
           overflow: "hidden",
+          transform: a.kind === "text-edit" ? `translateY(${a.fontSize * 0.18 * scale}px)` : undefined,
           padding: 0,
           paddingTop: padTop,
           paddingLeft: padLeft,
@@ -1071,7 +1072,6 @@ export function EditorCanvas({
     // so no additive top nudge is needed once the box height accounts
     // for line-height. Adding a nudge on top of a short, clipped box
     // pushed text into the clip region.
-    const baselineNudge = 0;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       // Anchor the editable box to the ORIGINAL glyph bounds so the
@@ -1079,7 +1079,7 @@ export function EditorCanvas({
       // sees the source text. The padded `cover` rectangle below is a
       // separate masking layer that hides anti-aliased glyph edges and
       // descenders without affecting the visible edit chrome.
-      x: it.x, y: it.y + baselineNudge,
+      x: it.x, y: it.y,
       // Box height must be >= fontSize * lineHeight or the textarea clips
       // the bottom ~15% of every glyph. Keep fontSize separate from box h.
       w: it.w, h: it.h * (it.lineHeight ?? 1.15),
