@@ -431,7 +431,15 @@ export function EditorCanvas({
         if (cancelled) return;
         const styles = (content as unknown as { styles: Record<string, { fontFamily?: string; fontWeight?: number | string }> }).styles ?? {};
         type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
-        const items: TextItem[] = (content.items as Raw[]).flatMap((it) => {
+        const rawItems = content.items as Raw[];
+        // Resolve real font descriptors up-front — commonObjs is populated
+        // during render(), so by this point the callbacks fire immediately.
+        const fontInfo = await resolvePdfFontInfo(
+          page as unknown as { commonObjs: { get: (id: string, cb: (font: unknown) => void) => void } },
+          rawItems.map((it) => it.fontName).filter((n): n is string => !!n),
+        );
+        if (cancelled) return;
+        const items: TextItem[] = rawItems.flatMap((it) => {
           if (!it.str || !it.str.trim()) return [];
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
@@ -443,21 +451,40 @@ export function EditorCanvas({
             (typeof styleWeight === "number" && styleWeight >= 600) ||
             (typeof styleWeight === "string" && (/bold/i.test(styleWeight) || Number.parseInt(styleWeight, 10) >= 600));
           const nameIsBold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold|medi|\bmd\b|\bsb\b|\bbd\b|600|700|800|900/.test(ffl);
-          const bold = weightIsBold || nameIsBold;
+          // Font descriptor from pdf.js — authoritative when pdf.js masks the
+          // font name as "g_d0_f1" (generated PDFs / Standard-14 fonts).
+          const descriptor = it.fontName ? fontInfo.get(it.fontName) : undefined;
+          const descRealName = descriptor?.realName ?? "";
+          const descriptorIsBold = !!descriptor?.bold;
+          const descriptorIsItalic = !!descriptor?.italic;
+          const realNameIsBold = descRealName
+            ? /bold|black|heavy|semibold|demibold|extrabold|ultrabold/i.test(descRealName)
+            : false;
+          const realNameIsItalic = descRealName ? /italic|oblique/i.test(descRealName) : false;
+          const bold = descriptorIsBold || realNameIsBold || weightIsBold || nameIsBold;
           const family: "sans" | "serif" | "mono" =
             /mono|courier|consol|typewriter/.test(ffl) ? "mono" :
             /serif|times|roman|garamond|georgia|cambria|book|caslon|didot|bodoni|minion|baskerville/.test(ffl) ? "serif" :
             "sans";
-          const italic = /italic|oblique/.test(ffl);
-          const det = detectFontKey(it.fontName ?? ff, family, ff);
-          const matchedFont = matchPdfFont(it.fontName || ff || "");
-          const fontWeight = numericFontWeight(matchedFont.fontWeight, bold);
+          const italic = descriptorIsItalic || realNameIsItalic || /italic|oblique/.test(ffl);
+          // Sanitise the name we hand to the matcher / store on the item:
+          // opaque pdf.js ids must never surface as CSS font-family values.
+          const sanitizedFontName =
+            descRealName && !isOpaquePdfjsFontId(descRealName) ? descRealName :
+            it.fontName && !isOpaquePdfjsFontId(it.fontName) ? it.fontName :
+            "";
+          const sanitizedCssFamily = ff && !isOpaquePdfjsFontId(ff) ? ff : "";
+          const genericStack =
+            family === "serif" ? '"Times New Roman", Times, serif' :
+            family === "mono" ? '"Courier New", Courier, monospace' :
+            "Helvetica, Arial, sans-serif";
+          const det = detectFontKey(sanitizedFontName || sanitizedCssFamily, family, sanitizedCssFamily);
+          const matchedFont = matchPdfFont(sanitizedFontName || sanitizedCssFamily || "");
+          const resolvedFontFamily = matchedFont.matched ? matchedFont.fontFamily : genericStack;
+          const fontWeight = numericFontWeight(matchedFont.matched ? matchedFont.fontWeight : undefined, bold);
           const fontKey = det.key;
           const fontApprox = det.approximate;
           const x = m[4], y = m[5] - fh;
-          // Do not sample pixels per text item on load. Thousands of synchronous
-          // getImageData readbacks here freeze text-heavy documents. Precise ink
-          // and background colors are sampled lazily only when this item is edited.
           const color = DEFAULT_TEXT_COLOR;
           const bg = DEFAULT_PAGE_BG;
           const letterSpacing = estimateLetterSpacing(
@@ -465,26 +492,39 @@ export function EditorCanvas({
             it.str,
             it.width,
             fh * scale * dpr,
-            matchedFont.fontFamily,
+            resolvedFontFamily,
             fontWeight,
-            matchedFont.fontStyle ?? (italic ? "italic" : "normal"),
+            italic ? "italic" : "normal",
             scale * dpr,
           );
           if (it.str && it.str.length >= 2) {
             console.log("[bold-diag] extract", {
               str: it.str.slice(0, 40),
               rawPdfFontName: it.fontName,
+              descriptorRealName: descRealName || null,
+              descriptorIsBold,
+              descriptorIsItalic,
+              realNameIsBold,
               pdfCssFamily: styleEntry?.fontFamily,
               pdfjsStyleFontWeight: styleWeight,
               weightIsBold,
               nameIsBold,
               detectedBold: bold,
-              matcherFontFamily: matchedFont.fontFamily,
+              resolvedFontFamily,
+              matcherMatched: matchedFont.matched,
               matcherFontWeight: matchedFont.fontWeight,
               storedFontWeight: fontWeight,
             });
           }
-          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, fontWeight, lineHeight: 1.15, letterSpacing, color, bg }];
+          return [{
+            x, y, w: it.width, h: fh, str: it.str, family, bold, italic,
+            transform: it.transform,
+            // Store SANITISED names so the click-to-edit path never sees "g_d0_f1"
+            fontName: sanitizedFontName || undefined,
+            cssFamily: resolvedFontFamily,
+            fontKey, fontApprox, fontWeight,
+            lineHeight: 1.15, letterSpacing, color, bg,
+          }];
         });
 
         // Merge sidecar OCR tokens for this SOURCE page (top-left PDF
