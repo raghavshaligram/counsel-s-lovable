@@ -705,12 +705,40 @@ export async function prependToaToPdf(
     pushAnnot(ctx, toaPage.node, ref);
   }
 
-  // External URI annotations on every case name / citation.
+  // Internal /Dest annotations on every authority name — jump to the
+  // FIRST page in the brief where that authority is cited. No external
+  // URI annotations here: external links live on the inline body
+  // citations, applied separately by the combined pipeline.
+  const totalPages2 = target.getPageCount();
   for (const el of render.entryLinks) {
     if (el.toaPageIndex < 0 || el.toaPageIndex >= shift) continue;
+    const finalIdx = shift + el.targetOriginalPage - 1;
+    if (finalIdx < 0 || finalIdx >= totalPages2) continue;
     const toaPage = target.getPage(el.toaPageIndex);
+    const targetPage = target.getPage(finalIdx);
+    const dest = ctx.obj([
+      targetPage.ref,
+      PDFName.of("XYZ"),
+      PDFNull,
+      PDFNull,
+      PDFNull,
+    ]);
     for (const rect of el.rects) {
-      const ref = buildUriLinkAnnot(ctx, rect, el.url, el.text);
+      const annot = ctx.obj({}) as PDFDict;
+      annot.set(PDFName.of("Type"), PDFName.of("Annot"));
+      annot.set(PDFName.of("Subtype"), PDFName.of("Link"));
+      annot.set(
+        PDFName.of("Rect"),
+        ctx.obj(rect.map((n) => PDFNumber.of(n))),
+      );
+      annot.set(
+        PDFName.of("Border"),
+        ctx.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+      );
+      annot.set(PDFName.of("H"), PDFName.of("I"));
+      annot.set(PDFName.of("Dest"), dest);
+      if (el.text) annot.set(PDFName.of("Contents"), PDFString.of(el.text));
+      const ref: PDFRef = ctx.register(annot);
       pushAnnot(ctx, toaPage.node, ref);
     }
   }
