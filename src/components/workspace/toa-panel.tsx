@@ -154,24 +154,30 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     [editorDispatch],
   );
 
+  /**
+   * ONE combined action: hyperlink inline body citations (external
+   * CourtListener/Cornell URIs) AND prepend a Table of Authorities whose
+   * entries are navigational (internal /Dest jumps only). Replaces the
+   * open document with the combined output.
+   */
   const insertAtFront = useCallback(async () => {
     if (!file || rows.length === 0) return;
     if (!requirePro("Table of Authorities")) return;
     setWorking("insert");
     try {
-      const { prependToaToPdf } = await importChunk(
+      const { buildCombinedCitationsAndToa } = await importChunk(
         () => import("@/lib/citations/toa"),
       );
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const out = await prependToaToPdf(bytes, rows);
+      const out = await buildCombinedCitationsAndToa(bytes, rows);
       const next = new File([new Uint8Array(out)], file.name, {
         type: "application/pdf",
       });
       replaceFile(next);
-      toast.success("Table of Authorities inserted at the front.");
+      toast.success("Body citations linked and TOA prepended.");
     } catch (err) {
-      console.error("[toa] insert failed", err);
-      toast.error("Could not insert TOA", {
+      console.error("[toa] combined insert failed", err);
+      toast.error("Could not build combined document", {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -195,24 +201,24 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 
   /**
-   * Primary download: ONE combined PDF (TOA + brief). Page references
-   * inside the TOA are internal go-to-page jumps to the shifted page
-   * numbers — same rendering path as "Insert at front", just written to
-   * disk instead of replacing the active tab.
+   * Primary download: ONE combined PDF — inline body citations become
+   * external URI links, plus a TOA is prepended with internal /Dest
+   * jumps. Same pipeline as the insert action, written to disk instead
+   * of replacing the active tab.
    */
   const downloadCombined = useCallback(async () => {
     if (!file || rows.length === 0) return;
     if (!requirePro("Table of Authorities")) return;
     setWorking("download");
     try {
-      const { prependToaToPdf } = await importChunk(
+      const { buildCombinedCitationsAndToa } = await importChunk(
         () => import("@/lib/citations/toa"),
       );
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const out = await prependToaToPdf(bytes, rows);
+      const out = await buildCombinedCitationsAndToa(bytes, rows);
       const base = file.name.replace(/\.pdf$/i, "");
       triggerDownload(new Uint8Array(out), `${base} - with TOA.pdf`);
-      toast.success("Combined PDF downloaded (TOA + brief).");
+      toast.success("Combined PDF downloaded (body links + TOA).");
     } catch (err) {
       console.error("[toa] combined download failed", err);
       toast.error("Could not build combined PDF", {
@@ -286,7 +292,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             {!isPro && <LockBadge title="Pro — Table of Authorities" />}
           </div>
           <p className="mt-1 text-[11.5px] leading-snug text-text-muted">
-            Extracts every citation in the brief, groups by authority type, alphabetizes, and lists page references.{" "}
+            Hyperlinks inline body citations to CourtListener / Cornell AND prepends a Table of Authorities with internal page-jump links — one action.{" "}
             <span className="text-text-subtle">
               Automated parsing isn't perfect — review before inserting.
             </span>
@@ -450,17 +456,17 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
               className="h-7"
               onClick={insertAtFront}
               disabled={working !== null || scanning}
-              title="Prepend the rendered TOA as new pages at the front of this document"
+              title="Link inline body citations externally AND prepend a Table of Authorities with internal page-jumps — in one action"
             >
               <FileInput className="mr-1 h-3.5 w-3.5" />
-              {working === "insert" ? "Inserting…" : "Insert at front"}
+              {working === "insert" ? "Building…" : "Link citations + insert TOA"}
             </Button>
             <Button
               size="sm"
               className="h-7"
               onClick={downloadCombined}
               disabled={working !== null || scanning}
-              title="Download one combined PDF: TOA prepended to the original brief, with clickable page references"
+              title="Download one combined PDF: body citations linked externally + TOA prepended with internal page-jumps"
             >
               <Download className="mr-1 h-3.5 w-3.5" />
               {working === "download" ? "Building…" : "Download combined PDF"}
@@ -489,10 +495,11 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </button>
           </div>
           <p className="text-[10.5px] leading-snug text-text-subtle">
-            Insert produces one combined PDF (TOA + brief). Page numbers in the TOA
-            reflect the final page numbers AFTER insertion, and each page number is
-            a clickable internal jump. Any external Citation Hyperlinker links
-            already on the brief pages are preserved.
+            One action produces the combined PDF: inline body citations become external
+            lookup links (CourtListener / Cornell); a Table of Authorities is prepended
+            where authority names jump to the first cited page and page numbers jump to
+            each occurrence — all internal. Idempotent: re-running strips any prior TOA
+            page so you never stack duplicates.
           </p>
         </>
       )}

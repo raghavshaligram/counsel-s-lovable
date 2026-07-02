@@ -40,7 +40,8 @@ export const TOA_PAGE_MARKER = "__VPDF_TOA_PAGE__";
 const TOA_PAGE_NODE_KEY = "VPDFToaPage";
 
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { PATTERNS, buildLookupUrl, type CitationKind } from "./detect";
+import { PATTERNS, detectCitations, type CitationKind } from "./detect";
+import { applyCitationLinks } from "./apply";
 
 export type ToaSection = "cases" | "statutes" | "rules" | "other";
 
@@ -285,16 +286,19 @@ export interface ToaLinkRect {
 }
 
 /**
- * Per-entry external-lookup rect captured while drawing the display text
- * (case name / citation). One entry can produce multiple rects when its
- * display wraps across lines. Attached as URI /Link annotations pointing
- * at CourtListener / Cornell — same URL-building logic the Citation
- * Hyperlinker uses (`buildLookupUrl`).
+ * Per-entry rect captured while drawing the display text (case name /
+ * citation) on the TOA. One entry can produce multiple rects when its
+ * display wraps across lines. Attached as INTERNAL /Dest /Link
+ * annotations pointing at the FIRST page in the brief where that
+ * authority appears — the TOA is a navigational index, not a source of
+ * external lookups. External URI links live on the INLINE body citations
+ * (applied by the Citation Hyperlinker step of the combined action).
  */
 export interface ToaEntryLink {
   toaPageIndex: number;
   rects: Array<[number, number, number, number]>;
-  url: string;
+  /** 1-based page in the ORIGINAL brief (before shift). */
+  targetOriginalPage: number;
   text: string;
 }
 
@@ -474,14 +478,14 @@ export async function renderToa(
         }
       }
 
-      // Record the wrapped display-line rects as an external URI link.
-      // TOA generates its own case-name/citation lookups — no dependency
-      // on Citation Hyperlinker having been run.
-      if (entryRects.length > 0) {
+      // Record display-line rects as an INTERNAL /Dest jump to the first
+      // page where this authority is cited. External URI lookups belong on
+      // the inline body citations (Citation Hyperlinker step), not here.
+      if (entryRects.length > 0 && entry.pages.length > 0) {
         entryLinks.push({
           toaPageIndex: pageIdx,
           rects: entryRects,
-          url: buildLookupUrl(entry.kind, entry.citation),
+          targetOriginalPage: entry.pages[0],
           text: entry.display,
         });
       }
@@ -549,39 +553,11 @@ function pushAnnot(ctx: PDFContext, pageNode: PDFDict, ref: PDFRef): void {
   }
 }
 
-function buildUriLinkAnnot(
-  ctx: PDFContext,
-  rect: [number, number, number, number],
-  url: string,
-  text: string,
-): PDFRef {
-  const annot = ctx.obj({}) as PDFDict;
-  annot.set(PDFName.of("Type"), PDFName.of("Annot"));
-  annot.set(PDFName.of("Subtype"), PDFName.of("Link"));
-  annot.set(
-    PDFName.of("Rect"),
-    ctx.obj(rect.map((n) => PDFNumber.of(n))),
-  );
-  annot.set(
-    PDFName.of("Border"),
-    ctx.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
-  );
-  annot.set(PDFName.of("H"), PDFName.of("I"));
-  if (text) annot.set(PDFName.of("Contents"), PDFString.of(text));
-  const action = ctx.obj({}) as PDFDict;
-  action.set(PDFName.of("Type"), PDFName.of("Action"));
-  action.set(PDFName.of("S"), PDFName.of("URI"));
-  action.set(PDFName.of("URI"), PDFString.of(url));
-  annot.set(PDFName.of("A"), action);
-  return ctx.register(annot);
-}
 
 /**
- * Standalone TOA PDF. Includes external URI /Link annotations on every
- * case name / citation (CourtListener / Cornell lookups) so the TOA is
- * self-contained even without a source brief to prepend to. Internal
- * page-number GoTo links are omitted here because there is no target
- * document.
+ * Standalone TOA PDF (secondary export). No source brief means there is
+ * nothing to internally jump to, so authority names carry no annotations.
+ * Page-number tokens are still drawn in blue as a visual convention.
  */
 export async function buildToaPdfBytes(
   entries: ToaEntry[],
@@ -589,15 +565,6 @@ export async function buildToaPdfBytes(
 ): Promise<Uint8Array> {
   const render = await renderToa(entries, { ...opts, shift: 0 });
   const doc = await PDFDocument.load(render.bytes);
-  const ctx = doc.context;
-  for (const el of render.entryLinks) {
-    if (el.toaPageIndex < 0 || el.toaPageIndex >= doc.getPageCount()) continue;
-    const page = doc.getPage(el.toaPageIndex);
-    for (const rect of el.rects) {
-      const ref = buildUriLinkAnnot(ctx, rect, el.url, el.text);
-      pushAnnot(ctx, page.node, ref);
-    }
-  }
   return doc.save();
 }
 
@@ -713,12 +680,40 @@ export async function prependToaToPdf(
     pushAnnot(ctx, toaPage.node, ref);
   }
 
-  // External URI annotations on every case name / citation.
+  // Internal /Dest annotations on every authority name — jump to the
+  // FIRST page in the brief where that authority is cited. No external
+  // URI annotations here: external links live on the inline body
+  // citations, applied separately by the combined pipeline.
+  const totalPages2 = target.getPageCount();
   for (const el of render.entryLinks) {
     if (el.toaPageIndex < 0 || el.toaPageIndex >= shift) continue;
+    const finalIdx = shift + el.targetOriginalPage - 1;
+    if (finalIdx < 0 || finalIdx >= totalPages2) continue;
     const toaPage = target.getPage(el.toaPageIndex);
+    const targetPage = target.getPage(finalIdx);
+    const dest = ctx.obj([
+      targetPage.ref,
+      PDFName.of("XYZ"),
+      PDFNull,
+      PDFNull,
+      PDFNull,
+    ]);
     for (const rect of el.rects) {
-      const ref = buildUriLinkAnnot(ctx, rect, el.url, el.text);
+      const annot = ctx.obj({}) as PDFDict;
+      annot.set(PDFName.of("Type"), PDFName.of("Annot"));
+      annot.set(PDFName.of("Subtype"), PDFName.of("Link"));
+      annot.set(
+        PDFName.of("Rect"),
+        ctx.obj(rect.map((n) => PDFNumber.of(n))),
+      );
+      annot.set(
+        PDFName.of("Border"),
+        ctx.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+      );
+      annot.set(PDFName.of("H"), PDFName.of("I"));
+      annot.set(PDFName.of("Dest"), dest);
+      if (el.text) annot.set(PDFName.of("Contents"), PDFString.of(el.text));
+      const ref: PDFRef = ctx.register(annot);
       pushAnnot(ctx, toaPage.node, ref);
     }
   }
@@ -726,4 +721,39 @@ export async function prependToaToPdf(
   return target.save();
 }
 
+/**
+ * ONE-SHOT combined pipeline: applies external URI /Link annotations to
+ * every inline body citation (Citation Hyperlinker behavior), then
+ * prepends a Table of Authorities whose entries are navigational only —
+ * authority names jump internally to the first cited page, page numbers
+ * jump internally to their respective pages.
+ *
+ * Division of concerns:
+ *   - External URL lookups  → INLINE body citations (this step).
+ *   - Internal jumps        → TOA entries + page-number tokens.
+ *
+ * The double-prepend guard (`stripExistingToaPages`) still runs, and the
+ * TOA marker still causes the Citation Hyperlinker's own detection pass
+ * to skip TOA pages — so authority names on the TOA never receive
+ * external URIs.
+ */
+export async function buildCombinedCitationsAndToa(
+  sourceBytes: Uint8Array,
+  entries: ToaEntry[],
+  opts: RenderOpts = {},
+): Promise<Uint8Array> {
+  const hits = await detectCitations(sourceBytes);
+  const linked = hits.length
+    ? await applyCitationLinks(
+        sourceBytes,
+        hits.map((h) => ({
+          page: h.page,
+          rect: h.rect,
+          url: h.lookupUrl,
+          text: h.text,
+        })),
+      )
+    : sourceBytes;
+  return prependToaToPdf(linked, entries, opts);
+}
 

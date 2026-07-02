@@ -1,14 +1,20 @@
 /**
- * Regression guard: Table of Authorities is self-contained.
+ * Regression guard: TOA structure after the design change to a combined
+ * citations + TOA pipeline.
  *
- * A single TOA generation MUST produce, without any prior Citation
- * Hyperlinker run:
- *   - external URI /Link annotations on every authority display line
- *     (case name / statute citation), pointing at CourtListener / Cornell
- *   - internal /Dest /Link annotations on every page-number token,
- *     targeting the SHIFTED page index in the combined PDF
- *   - a TOA page marker so a later Citation Hyperlinker run skips the
- *     TOA page instead of re-linking its entries externally
+ * `buildCombinedCitationsAndToa` internally calls `detectCitations`
+ * (browser-only: uses pdf.js) followed by `prependToaToPdf`. The tests
+ * below cover the deterministic pdf-lib half (prepend + link geometry)
+ * that runs in Node; the pdf.js-driven body-link step is exercised at
+ * runtime in the browser.
+ *
+ * Contract enforced here:
+ *   - TOA page has ZERO external URI /Link annotations
+ *     (external lookups belong on inline body citations, not the TOA)
+ *   - TOA page has internal /Dest /Link annotations for BOTH
+ *     authority names AND page-number tokens
+ *   - Re-running `prependToaToPdf` on a doc that already carries a TOA
+ *     strips the old TOA (no duplication, no drift of internal targets)
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -19,7 +25,7 @@ import {
   PDFRef,
   PDFString,
 } from "pdf-lib";
-import { buildToaPdfBytes, prependToaToPdf, type ToaEntry } from "@/lib/citations/toa";
+import { prependToaToPdf, type ToaEntry } from "@/lib/citations/toa";
 
 const ENTRIES: ToaEntry[] = [
   {
@@ -68,47 +74,34 @@ async function summarize(bytes: Uint8Array, pageIdx: number): Promise<AnnotSumma
   return out;
 }
 
-describe("TOA — self-contained links", () => {
-  it("TOA-only PDF has external URI links for every authority", async () => {
-    const bytes = await buildToaPdfBytes(ENTRIES);
-    const { uris, destCount } = await summarize(bytes, 0);
-    expect(uris.length).toBeGreaterThanOrEqual(2);
-    expect(uris.some((u) => u.includes("courtlistener.com"))).toBe(true);
-    expect(uris.some((u) => u.includes("law.cornell.edu"))).toBe(true);
-    // Standalone TOA has no target brief — no internal /Dest links.
-    expect(destCount).toBe(0);
+async function makeEmptyBrief(pages = 10): Promise<Uint8Array> {
+  const src = await PDFDocument.create();
+  for (let i = 0; i < pages; i++) src.addPage([612, 792]);
+  return src.save();
+}
+
+describe("TOA — combined design", () => {
+  it("prepended TOA has ZERO external URIs and only internal /Dest links", async () => {
+    const srcBytes = await makeEmptyBrief();
+    const out = await prependToaToPdf(srcBytes, ENTRIES);
+    const doc = await PDFDocument.load(out);
+    expect(doc.getPageCount()).toBe(11);
+
+    const { uris, destCount } = await summarize(out, 0);
+    expect(uris).toHaveLength(0);
+    // 2 authority-name jumps + 3 page-number tokens (3, 7, 5) = 5 internal links.
+    expect(destCount).toBe(5);
   });
 
-  it("Combined PDF prepends TOA with BOTH external URI and internal /Dest links", async () => {
-    const src = await PDFDocument.create();
-    for (let i = 0; i < 10; i++) src.addPage([612, 792]);
-    const srcBytes = await src.save();
-
-    const combined = await prependToaToPdf(srcBytes, ENTRIES);
-    const combinedDoc = await PDFDocument.load(combined);
-    expect(combinedDoc.getPageCount()).toBe(11);
-
-    const { uris, destCount } = await summarize(combined, 0);
-    // External URI on every authority (Miranda + statute)
-    expect(uris.length).toBeGreaterThanOrEqual(2);
-    expect(uris.some((u) => u.includes("384%20U.S.%20436"))).toBe(true);
-    // Internal /Dest for each page-number token: 3, 7, 5 → 3 links.
-    expect(destCount).toBe(3);
-  });
-
-  it("re-prepending on a file that already has a TOA strips the old one (no duplication)", async () => {
-    const src = await PDFDocument.create();
-    for (let i = 0; i < 10; i++) src.addPage([612, 792]);
-    const srcBytes = await src.save();
-
+  it("re-prepending on a doc that already has a TOA strips the old one", async () => {
+    const srcBytes = await makeEmptyBrief();
     const once = await prependToaToPdf(srcBytes, ENTRIES);
     const twice = await prependToaToPdf(once, ENTRIES);
     const doc = await PDFDocument.load(twice);
-    // Should still be 1 TOA + 10 brief = 11, NOT 12.
+    // Idempotent: 1 TOA + 10 brief, not 2 TOA + 10.
     expect(doc.getPageCount()).toBe(11);
-
     const { uris, destCount } = await summarize(twice, 0);
-    expect(uris.length).toBeGreaterThanOrEqual(2);
-    expect(destCount).toBe(3);
+    expect(uris).toHaveLength(0);
+    expect(destCount).toBe(5);
   });
 });
