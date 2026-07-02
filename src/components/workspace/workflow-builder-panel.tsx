@@ -416,6 +416,9 @@ function WorkflowBuilderModal({
   ctx: ToolPanelCtx;
 }) {
   const { file: currentFile } = ctx;
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+
 
   // Run mode: single file (current or picked) vs batch (many files, sequential).
   const [mode, setMode] = useState<"single" | "batch">("single");
