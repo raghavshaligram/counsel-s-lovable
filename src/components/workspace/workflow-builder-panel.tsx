@@ -1538,7 +1538,9 @@ function StatusDot({ status }: { status: StepStatus }) {
         ? "Done"
         : status === "error"
           ? "Failed"
-          : "Pending";
+          : status === "skipped"
+            ? "Skipped (condition not met)"
+            : "Pending";
   const icon =
     status === "running" ? (
       <Loader2 className="h-3.5 w-3.5 animate-spin text-vault" />
@@ -1546,6 +1548,8 @@ function StatusDot({ status }: { status: StepStatus }) {
       <CheckCircle2 className="h-3.5 w-3.5 text-vault" />
     ) : status === "error" ? (
       <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+    ) : status === "skipped" ? (
+      <Ban className="h-3.5 w-3.5 text-text-muted/70" />
     ) : (
       <Circle className="h-3.5 w-3.5 text-text-muted/50" />
     );
