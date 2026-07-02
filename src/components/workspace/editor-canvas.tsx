@@ -683,7 +683,7 @@ export function EditorCanvas({
   const renderAnno = (a: Anno) => {
     const selected = state.selectedAnnoId === a.id;
     const displayRect = a.kind === "text-edit" && a.cover
-      ? a.cover
+      ? unionRects([a.cover, { x: a.x, y: a.y, w: a.w, h: a.h }])
       : { x: a.x, y: a.y, w: a.w, h: a.h };
     const pts = [
       toScreen(displayRect.x, displayRect.y), toScreen(displayRect.x + displayRect.w, displayRect.y),
@@ -890,6 +890,9 @@ export function EditorCanvas({
         const showEditChrome = isEditing && a.kind === "text";
         const textColor = rgbCss(a.color, a.opacity);
         const singleLineTextEdit = a.kind === "text-edit" && !a.text.includes("\n");
+        const minTextBoxWidth = singleLineTextEdit
+          ? Math.max(a.w * scale, (a.source?.bounds?.w ?? a.w) * scale, 1)
+          : "100%";
         // Sizing rules (single-line clipping fix):
         //  • height auto + minHeight 100% — box grows with content, never
         //    shorter than the wrapper's one-line box.
@@ -904,6 +907,7 @@ export function EditorCanvas({
         const textStyle: React.CSSProperties = {
           display: "block",
           width: "100%",
+          minWidth: minTextBoxWidth,
           height: "auto",
           minHeight: a.kind === "text-edit" ? minTextBoxHeight : "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
@@ -920,6 +924,7 @@ export function EditorCanvas({
           whiteSpace: singleLineTextEdit ? "pre" : "pre-wrap",
           wordBreak: singleLineTextEdit ? "normal" : "break-word",
           overflowWrap: singleLineTextEdit ? "normal" : "break-word",
+          textWrap: singleLineTextEdit ? "nowrap" : undefined,
           overflow: "visible",
           padding: 0,
           paddingTop: padTop + 1,
@@ -1508,7 +1513,7 @@ export function EditorCanvas({
           return null;
         })()}
         {annos.map((a) => {
-          if (a.kind !== "text-edit" || !a.cover) return null;
+          if (a.kind !== "text-edit" || !a.cover || editingId === a.id) return null;
           // A text-edit annotation is a PERMANENT replacement of the
           // underlying PDF glyphs. The cover must always be painted —
           // even when the typed text still matches the original — or the
