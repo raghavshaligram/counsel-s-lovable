@@ -1371,10 +1371,12 @@ export function EditorCanvas({
     const a = activeText;
     const fam = resolveTextFontFamily(a);
     const cover = a.kind === "text-edit" ? a.cover : undefined;
+    const minVerticalPad = a.kind === "text-edit" ? TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001) : 0;
+    const textEditPadBottom = a.kind === "text-edit" ? a.textPadBottom ?? 0 : 0;
     const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
     const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;
-    const padTop = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-    const padBottom = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
+    const padTop = cover ? Math.max(minVerticalPad, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+    const padBottom = cover ? Math.max(minVerticalPad, textEditPadBottom, cover.y + cover.h - (a.y + a.h)) : textEditPadBottom;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
