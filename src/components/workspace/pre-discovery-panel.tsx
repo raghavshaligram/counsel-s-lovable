@@ -89,6 +89,27 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [docKey]);
 
+  /**
+   * Prefill + auto-run when the unified command bar routes a query here.
+   * The event fires just after the panel mounts (see workspace-shell).
+   * Uses a ref-callback pattern so `runQuery` (declared below) is captured
+   * at call time, not at bind time — the panel would otherwise fire an
+   * empty search.
+   */
+  const runQueryRef = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    const onCmd = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ query?: string }>).detail;
+      const q = (detail?.query ?? "").trim();
+      if (!q) return;
+      setQuery(q);
+      // Give React a tick to flush the query state, then invoke.
+      setTimeout(() => void runQueryRef.current(), 30);
+    };
+    window.addEventListener("commandbar:query", onCmd as EventListener);
+    return () => window.removeEventListener("commandbar:query", onCmd as EventListener);
+  }, []);
+
   const ensureModel = useCallback(async (): Promise<boolean> => {
     if (modelReady) return true;
     setLoadStage("Preparing on-device model…");
@@ -249,6 +270,12 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       setQuerying(false);
     }
   }, [file, query, docKey, indexed, buildIndex, ensureModel, requirePro]);
+
+  // Keep the ref pointed at the current runQuery so the commandbar
+  // listener always invokes the latest closure (with current `query`).
+  useEffect(() => {
+    runQueryRef.current = runQuery;
+  }, [runQuery]);
 
   const jumpTo = useCallback(
     (page: number) => {

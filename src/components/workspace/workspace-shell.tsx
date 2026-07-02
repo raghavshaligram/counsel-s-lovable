@@ -118,6 +118,7 @@ import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
+import { classifyCommand, intentLabel, type Intent } from "@/lib/command/intent";
 
 
 type ToolId =
@@ -421,6 +422,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [viewOpen, setViewOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [aiText, setAiText] = useState("");
+  /** Popover above the command bar: confirmation (action) or clarify (ambiguous). */
+  const [pendingIntent, setPendingIntent] = useState<Intent | null>(null);
+  const [lastIntentLabel, setLastIntentLabel] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
@@ -1005,12 +1009,56 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [onFiles],
   );
 
+  /**
+   * Route a classified intent to the right panel. ACTION intents that are
+   * destructive stop at the popover — the user has to confirm first.
+   * QUESTION and SEARCH open the Pre-Discovery panel (the workspace's
+   * on-device AI Assist / semantic search surface) with the query
+   * prefilled and auto-executed via a window event the panel listens for.
+   */
+  const executeIntent = useCallback(
+    (intent: Intent) => {
+      setLastIntentLabel(intentLabel(intent));
+      if (intent.kind === "action") {
+        openTool(intent.toolId);
+        toast.info(intent.title, { description: intent.description });
+        setPendingIntent(null);
+        return;
+      }
+      if (intent.kind === "question" || intent.kind === "search") {
+        openTool("pre-discovery");
+        // Panel listens for this and runs the query on the current file.
+        // Timeout lets the panel mount before it receives the event.
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("commandbar:query", {
+              detail: { query: intent.query, mode: intent.kind },
+            }),
+          );
+        }, 60);
+        setPendingIntent(null);
+        return;
+      }
+    },
+    [openTool],
+  );
+
   const submitAi = useCallback(() => {
-    if (!aiText.trim()) return;
-    // eslint-disable-next-line no-console
-    console.log("[workspace] routeCommand", aiText);
+    const raw = aiText.trim();
+    if (!raw) return;
+    const intent = classifyCommand(raw);
+    setLastIntentLabel(intentLabel(intent));
+    // Destructive actions and ambiguous prompts pause for confirmation.
+    if (
+      (intent.kind === "action" && intent.destructive) ||
+      intent.kind === "ambiguous"
+    ) {
+      setPendingIntent(intent);
+      return;
+    }
+    executeIntent(intent);
     setAiText("");
-  }, [aiText]);
+  }, [aiText, executeIntent]);
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
@@ -1939,27 +1987,52 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               )}
             </div>
 
-            {/* AI command bar */}
-            <div className="flex h-[56px] shrink-0 items-center justify-center px-3">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  submitAi();
-                }}
-                className="flex w-full max-w-[520px] items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
-                style={{ boxShadow: "var(--shadow-float)" }}
-              >
-                <Sparkles className="h-4 w-4 text-vault shrink-0" />
-                <input
-                  ref={aiRef}
-                  value={aiText}
-                  onChange={(e) => setAiText(e.target.value)}
-                  placeholder='Tell CounselPDF what to do — "redact every phone number"'
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-                />
-                <KeyChip>⌘K</KeyChip>
-              </form>
+            {/* AI command bar — unified intent router. Action/ambiguous
+                intents pause here with a confirmation popover; questions
+                and searches open the Pre-Discovery panel with the query
+                prefilled and auto-executed. Destructive ops NEVER run
+                without explicit confirm. */}
+            <div className="relative flex h-[56px] shrink-0 items-center justify-center px-3">
+              <div className="relative w-full max-w-[520px]">
+                {pendingIntent && (
+                  <CommandConfirmPopover
+                    intent={pendingIntent}
+                    onCancel={() => setPendingIntent(null)}
+                    onConfirm={(next) => {
+                      executeIntent(next);
+                      setAiText("");
+                    }}
+                  />
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitAi();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
+                  style={{ boxShadow: "var(--shadow-float)" }}
+                >
+                  <Sparkles className="h-4 w-4 text-vault shrink-0" />
+                  <input
+                    ref={aiRef}
+                    value={aiText}
+                    onChange={(e) => {
+                      setAiText(e.target.value);
+                      if (pendingIntent) setPendingIntent(null);
+                    }}
+                    placeholder='Ask, search, or run — "summarize this", "find SSNs", "redact phone numbers"'
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                  {lastIntentLabel && !pendingIntent && (
+                    <span className="hidden sm:inline-flex items-center rounded-md border border-border bg-surface-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-text-muted">
+                      {lastIntentLabel}
+                    </span>
+                  )}
+                  <KeyChip>⌘K</KeyChip>
+                </form>
+              </div>
             </div>
+
           </main>
 
           {/* INSPECTOR slide-over */}
@@ -3906,6 +3979,100 @@ function ZoomModeSelect({
 }
 
 
+
+/**
+ * Confirmation / clarification popover anchored above the command bar.
+ *  - action + destructive → "Preview / Confirm / Cancel"
+ *  - ambiguous            → two chips ("Redact them" / "Just find them")
+ * Never auto-executes; the user always makes the final call.
+ */
+function CommandConfirmPopover({
+  intent,
+  onConfirm,
+  onCancel,
+}: {
+  intent: Intent;
+  onConfirm: (next: Intent) => void;
+  onCancel: () => void;
+}) {
+  if (intent.kind === "ambiguous") {
+    return (
+      <div
+        className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-border bg-surface-2 p-3 text-[12.5px] shadow-lg"
+        style={{ boxShadow: "var(--shadow-float)" }}
+        role="dialog"
+        aria-label="Clarify command"
+      >
+        <div className="mb-2 text-text">{intent.reason}</div>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => onConfirm(intent.options[0])}
+            className="rounded-md border border-border bg-surface-1 px-2.5 py-1 text-[12px] text-text hover:bg-vault/10 hover:text-vault"
+          >
+            {intent.options[0].kind === "action"
+              ? intent.options[0].title
+              : "Redact them"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(intent.options[1])}
+            className="rounded-md border border-border bg-surface-1 px-2.5 py-1 text-[12px] text-text hover:bg-vault/10 hover:text-vault"
+          >
+            Just find them
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="ml-auto rounded-md px-2 py-1 text-[11.5px] text-text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (intent.kind === "action") {
+    return (
+      <div
+        className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-border bg-surface-2 p-3 shadow-lg"
+        style={{ boxShadow: "var(--shadow-float)" }}
+        role="dialog"
+        aria-label="Confirm action"
+      >
+        <div className="mb-0.5 flex items-center gap-2">
+          <span className="rounded-md border border-vault/40 bg-vault/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-vault">
+            {intent.destructive ? "Confirm action" : "Action"}
+          </span>
+          <span className="text-[12.5px] font-medium text-text">{intent.title}</span>
+        </div>
+        <div className="mb-2 text-[11.5px] leading-snug text-text-muted">
+          {intent.description}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onConfirm(intent)}
+            className="rounded-md bg-vault px-2.5 py-1 text-[12px] font-medium text-white hover:bg-vault/90"
+          >
+            {intent.destructive ? "Open & review" : "Open"}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-2 py-1 text-[11.5px] text-text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+          <span className="ml-auto text-[10.5px] text-text-muted">
+            AI proposes — you confirm.
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
 
 function KeyChip({
   children,
