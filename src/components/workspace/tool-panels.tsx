@@ -197,6 +197,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <PrivilegeReviewPanel ctx={ctx} />;
     case "workflow-builder":
       return <WorkflowBuilderPanel ctx={ctx} />;
+    case "citation-hyperlinker":
+      return <CitationHyperlinkerPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
