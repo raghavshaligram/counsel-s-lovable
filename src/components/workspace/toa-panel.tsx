@@ -53,7 +53,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   const [rows, setRows] = useState<EditableEntry[]>([]);
   const [scanning, setScanning] = useState(false);
-  const [working, setWorking] = useState<null | "insert" | "download">(null);
+  const [working, setWorking] = useState<null | "insert" | "download" | "download-toa">(null);
   const [progress, setProgress] = useState("");
   const [scannedFor, setScannedFor] = useState("");
   const draftDisplay = useRef<Map<string, string>>(new Map());
@@ -179,37 +179,75 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [file, rows, replaceFile, requirePro]);
 
-  const downloadStandalone = useCallback(async () => {
+  const triggerDownload = useCallback(
+    (bytes: Uint8Array, filename: string) => {
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    [],
+  );
+
+  /**
+   * Primary download: ONE combined PDF (TOA + brief). Page references
+   * inside the TOA are internal go-to-page jumps to the shifted page
+   * numbers — same rendering path as "Insert at front", just written to
+   * disk instead of replacing the active tab.
+   */
+  const downloadCombined = useCallback(async () => {
     if (!file || rows.length === 0) return;
     if (!requirePro("Table of Authorities")) return;
     setWorking("download");
+    try {
+      const { prependToaToPdf } = await importChunk(
+        () => import("@/lib/citations/toa"),
+      );
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const out = await prependToaToPdf(bytes, rows);
+      const base = file.name.replace(/\.pdf$/i, "");
+      triggerDownload(new Uint8Array(out), `${base} - with TOA.pdf`);
+      toast.success("Combined PDF downloaded (TOA + brief).");
+    } catch (err) {
+      console.error("[toa] combined download failed", err);
+      toast.error("Could not build combined PDF", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setWorking(null);
+    }
+  }, [file, rows, requirePro, triggerDownload]);
+
+  /**
+   * Secondary: TOA pages only, no brief attached. Useful when the user
+   * wants to paste the TOA into a separately-formatted brief.
+   */
+  const downloadToaOnly = useCallback(async () => {
+    if (!file || rows.length === 0) return;
+    if (!requirePro("Table of Authorities")) return;
+    setWorking("download-toa");
     try {
       const { buildToaPdfBytes } = await importChunk(
         () => import("@/lib/citations/toa"),
       );
       const out = await buildToaPdfBytes(rows);
-      const blob = new Blob([new Uint8Array(out)], {
-        type: "application/pdf",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const base = file.name.replace(/\.pdf$/i, "");
-      a.download = `${base} - Table of Authorities.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast.success("TOA downloaded.");
+      triggerDownload(new Uint8Array(out), `${base} - Table of Authorities.pdf`);
+      toast.success("TOA-only PDF downloaded.");
     } catch (err) {
-      console.error("[toa] download failed", err);
+      console.error("[toa] toa-only download failed", err);
       toast.error("Could not download TOA", {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
       setWorking(null);
     }
-  }, [file, rows, requirePro]);
+  }, [file, rows, requirePro, triggerDownload]);
 
   const copyAsText = useCallback(async () => {
     if (rows.length === 0) return;
