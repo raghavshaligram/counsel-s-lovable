@@ -181,7 +181,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   const triggerDownload = useCallback(
     (bytes: Uint8Array, filename: string) => {
-      const blob = new Blob([bytes], { type: "application/pdf" });
+      const blob = new Blob([bytes.slice().buffer], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
