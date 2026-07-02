@@ -249,7 +249,7 @@ export async function buildToaPdfBytes(
 
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.TimesRoman);
-  const bold = await doc.embedFont(StandardFonts.TimesBold);
+  const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
 
   let page = doc.addPage([W, H]);
   let y = H - margin;

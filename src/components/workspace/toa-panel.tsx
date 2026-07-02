@@ -61,7 +61,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const fileKey = file ? `${file.name}:${file.size}:${file.lastModified}` : "";
   const stale = scannedFor !== "" && scannedFor !== fileKey;
 
-  const grouped = useMemo(() => groupToa(rows), [rows]);
+  const grouped = useMemo(() => groupToa(rows) as Record<ToaSection, EditableEntry[]>, [rows]);
   const totalEntries = rows.length;
 
   const runScan = useCallback(async () => {
