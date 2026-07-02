@@ -1575,8 +1575,97 @@ function StatusDot({ status }: { status: StepStatus }) {
 
 
 /* -------------------------------------------------------------------- */
+/* Condition editor — makes a step conditional                          */
+/* -------------------------------------------------------------------- */
+
+function ConditionEditor({
+  condition,
+  onChange,
+}: {
+  condition: StepCondition | undefined;
+  onChange: (c: StepCondition | undefined) => void;
+}) {
+  const enabled = !!condition && condition.kind !== "always";
+  const kind: ConditionKind = condition?.kind ?? "always";
+  const threshold = condition?.thresholdMb ?? 5;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-1/60 p-2.5">
+      <label className="flex items-center gap-2 text-[11.5px] text-text">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) =>
+            onChange(
+              e.target.checked
+                ? { kind: "if-scanned" }
+                : undefined,
+            )
+          }
+        />
+        <span className="font-medium">Run only if…</span>
+        <span className="ml-auto rounded-sm border border-border px-1 text-[9px] uppercase tracking-wide text-text-muted">
+          Conditional
+        </span>
+      </label>
+      {enabled && (
+        <>
+          <Select
+            value={kind}
+            onValueChange={(v) => {
+              const nextKind = v as ConditionKind;
+              if (nextKind === "always") return onChange(undefined);
+              onChange({
+                kind: nextKind,
+                thresholdMb: nextKind === "if-size-over-mb" ? threshold : undefined,
+              });
+            }}
+          >
+            <SelectTrigger className="h-7 text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="if-scanned">{CONDITION_LABELS["if-scanned"]}</SelectItem>
+              <SelectItem value="if-has-text">{CONDITION_LABELS["if-has-text"]}</SelectItem>
+              <SelectItem value="if-has-sensitive">{CONDITION_LABELS["if-has-sensitive"]}</SelectItem>
+              <SelectItem value="if-has-privilege">{CONDITION_LABELS["if-has-privilege"]}</SelectItem>
+              <SelectItem value="if-size-over-mb">{CONDITION_LABELS["if-size-over-mb"]}</SelectItem>
+            </SelectContent>
+          </Select>
+          {kind === "if-size-over-mb" && (
+            <div className="flex items-center gap-2 text-[11.5px] text-text">
+              <span className="text-text-muted">Threshold:</span>
+              <Input
+                type="number"
+                min={0}
+                step={0.5}
+                value={threshold}
+                onChange={(e) =>
+                  onChange({
+                    kind: "if-size-over-mb",
+                    thresholdMb: Math.max(0, Number(e.target.value) || 0),
+                  })
+                }
+                className="h-7 w-20 text-[12px]"
+              />
+              <span className="text-text-muted">MB</span>
+            </div>
+          )}
+          <p className="text-[10.5px] leading-snug text-text-muted">
+            Evaluated per file — in a batch, each document is checked
+            independently. Skipped steps show as "skipped".
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+/* -------------------------------------------------------------------- */
 /* Params editor                                                        */
 /* -------------------------------------------------------------------- */
+
 
 function StepParamsEditor({
   step,
