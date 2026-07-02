@@ -24,7 +24,7 @@ import { sanitizePdfBytes } from "@/lib/pdf/sanitize";
 import { applyTextWatermark, type WatermarkOptions } from "@/lib/pdf/watermark";
 import { rotatePdf, type RotateOptions } from "@/lib/pdf/rotate";
 import { extractPages } from "@/lib/pdf/extract-pages";
-import { toPdfA } from "@/lib/pdf/to-pdfa";
+import { toPdfA, verifyPdfAStructuralAsync } from "@/lib/pdf/to-pdfa";
 import { unlockPdf } from "@/lib/pdf/unlock";
 import { protectPdf, DEFAULT_PROTECT_PERMS, type ProtectOptions } from "@/lib/pdf/protect";
 
@@ -70,7 +70,23 @@ const extract: RegisteredOp<{ ranges: string }> = async (bytes, params) => {
   return blobToBytes(res.blob);
 };
 
-const pdfA: RegisteredOp<void> = (bytes) => toPdfA(bytes);
+/**
+ * Convert to PDF/A-2b — ALWAYS produces PDF/A, independent of any workspace
+ * UI (the export-format dropdown). This step is self-contained: it calls the
+ * validated conformer and then re-runs the structural verifier; if any
+ * PDF/A-2b requirement is missing it throws so the runner marks the step
+ * failed instead of silently emitting a plain PDF.
+ */
+const pdfA: RegisteredOp<void> = async (bytes) => {
+  const out = await toPdfA(bytes);
+  const report = await verifyPdfAStructuralAsync(out);
+  if (!report.ok) {
+    throw new Error(
+      `PDF/A-2b verification failed — missing: ${report.missing.join("; ")}`,
+    );
+  }
+  return out;
+};
 
 const unlock: RegisteredOp<{ password?: string }> = async (bytes, params) => {
   const res = await unlockPdf(bytesToFile(bytes), params?.password);

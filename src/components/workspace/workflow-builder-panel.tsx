@@ -263,9 +263,9 @@ const PALETTE_GROUPS: PaletteGroup[] = [
       },
       {
         op: "to-pdfa",
-        label: "PDF/A export",
+        label: "Convert to PDF/A-2b",
         icon: FileCheck2,
-        blurb: "Convert to PDF/A archival format.",
+        blurb: "Always outputs PDF/A-2b archival format (independent of the workspace export dropdown). Place as the last step.",
         defaults: {},
       },
       {
