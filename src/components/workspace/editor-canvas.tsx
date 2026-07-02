@@ -415,6 +415,20 @@ export function EditorCanvas({
             matchedFont.fontStyle ?? (italic ? "italic" : "normal"),
             scale * dpr,
           );
+          if (it.str && it.str.length >= 2) {
+            console.log("[bold-diag] extract", {
+              str: it.str.slice(0, 40),
+              rawPdfFontName: it.fontName,
+              pdfCssFamily: styleEntry?.fontFamily,
+              pdfjsStyleFontWeight: styleWeight,
+              weightIsBold,
+              nameIsBold,
+              detectedBold: bold,
+              matcherFontFamily: matchedFont.fontFamily,
+              matcherFontWeight: matchedFont.fontWeight,
+              storedFontWeight: fontWeight,
+            });
+          }
           return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, fontWeight, lineHeight: 1.15, letterSpacing, color, bg }];
         });
 
