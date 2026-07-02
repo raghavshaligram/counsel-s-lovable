@@ -1082,6 +1082,8 @@ export function EditorCanvas({
       text: it.str,
       fontSize: it.h,
       bg: sampled.bg,
+      bgSampled,
+
       family,
       fontKey,
       fontFamilyOverride,
