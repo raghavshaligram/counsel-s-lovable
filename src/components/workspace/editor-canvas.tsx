@@ -828,8 +828,20 @@ export function EditorCanvas({
         // text) keeps the transparent skin so it blends with surrounding glyphs.
         const showEditChrome = isEditing && a.kind === "text";
         const textColor = rgbCss(a.color, a.opacity);
+        // Sizing rules (single-line clipping fix):
+        //  • height auto + minHeight 100% — box grows with content, never
+        //    shorter than the wrapper's one-line box.
+        //  • overflow visible — descenders/ascenders that spill past the
+        //    original PDF glyph bounds must NOT be trimmed.
+        //  • lineHeight >= 1.3 — 1.0/fontSize alone clips descenders on
+        //    Arial/Times; 1.15 is still tight for many faces.
+        //  • +1px vertical padding so the very top/bottom pixel of glyphs
+        //    isn't shaved off by the wrapper.
+        const safeLineHeight = Math.max(1.3, a.lineHeight ?? 1.3);
         const textStyle: React.CSSProperties = {
-          width: "100%", height: "100%",
+          width: "100%",
+          height: "auto",
+          minHeight: "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
           color: textColor,
           WebkitTextFillColor: textColor,
@@ -839,16 +851,16 @@ export function EditorCanvas({
           fontStyle: isItalic ? "italic" : "normal",
           textDecoration: isUnderline ? "underline" : "none",
           textAlign: align,
-          lineHeight: a.lineHeight ?? 1.15,
+          lineHeight: safeLineHeight,
           letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
-          overflow: "hidden",
+          overflow: "visible",
           padding: 0,
-          paddingTop: padTop,
+          paddingTop: padTop + 1,
           paddingLeft: padLeft,
           paddingRight: padRight,
-          paddingBottom: padBottom,
+          paddingBottom: padBottom + 1,
           boxSizing: "border-box",
           margin: 0,
           border: showEditChrome ? "1.5px solid var(--vault)" : "none",
