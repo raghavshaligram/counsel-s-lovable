@@ -374,19 +374,25 @@ export function EditorCanvas({
         const baseVp = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
         if (cancelled) return;
-        const styles = (content as unknown as { styles: Record<string, { fontFamily?: string }> }).styles ?? {};
+        const styles = (content as unknown as { styles: Record<string, { fontFamily?: string; fontWeight?: number | string }> }).styles ?? {};
         type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
         const items: TextItem[] = (content.items as Raw[]).flatMap((it) => {
           if (!it.str || !it.str.trim()) return [];
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
-          const ff = (it.fontName && styles[it.fontName]?.fontFamily) || it.fontName || "";
+          const styleEntry = it.fontName ? styles[it.fontName] : undefined;
+          const ff = (styleEntry?.fontFamily) || it.fontName || "";
           const ffl = `${(it.fontName ?? "").toLowerCase()} ${ff.toLowerCase()}`;
+          const styleWeight = styleEntry?.fontWeight;
+          const weightIsBold =
+            (typeof styleWeight === "number" && styleWeight >= 600) ||
+            (typeof styleWeight === "string" && (/bold/i.test(styleWeight) || Number.parseInt(styleWeight, 10) >= 600));
+          const nameIsBold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold|medi|\bmd\b|\bsb\b|\bbd\b|600|700|800|900/.test(ffl);
+          const bold = weightIsBold || nameIsBold;
           const family: "sans" | "serif" | "mono" =
             /mono|courier|consol|typewriter/.test(ffl) ? "mono" :
             /serif|times|roman|garamond|georgia|cambria|book|caslon|didot|bodoni|minion|baskerville/.test(ffl) ? "serif" :
             "sans";
-          const bold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold|800|900/.test(ffl);
           const italic = /italic|oblique/.test(ffl);
           const det = detectFontKey(it.fontName ?? ff, family, ff);
           const matchedFont = matchPdfFont(it.fontName || ff || "");
