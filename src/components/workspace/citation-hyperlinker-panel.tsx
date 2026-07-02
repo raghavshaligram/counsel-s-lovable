@@ -163,6 +163,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
           url: r.lookupUrl.trim(),
           text: r.text,
         })),
+        linkStyle,
       );
       const blobPart = new Uint8Array(out);
       const next = new File([blobPart], file.name, { type: "application/pdf" });
