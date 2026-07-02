@@ -865,54 +865,59 @@ export function EditorCanvas({
         };
         const onTextChange = (text: string) =>
           dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text } as Partial<Anno> });
-        inner = isEditing ? (
+        const commitText = (finalText: string) => {
+          if (finalText !== a.text) {
+            dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
+          }
+          if (!finalText.trim() && a.kind === "text") {
+            dispatch({ type: "DELETE_ANNO", id: a.id });
+          }
+          setEditingId(null);
+        };
+        inner = isEditing && a.kind === "text-edit" ? (
+          <div
+            role="textbox"
+            tabIndex={0}
+            contentEditable="plaintext-only"
+            suppressContentEditableWarning
+            autoFocus
+            data-text-edit-id={a.id}
+            data-raw-pdf-font={a.source?.fontName ?? ""}
+            onBlur={(e) => {
+              const next = e.relatedTarget as HTMLElement | null;
+              if (next && next.closest('[data-text-toolbar="1"]')) return;
+              commitText(e.currentTarget.textContent ?? "");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") (e.currentTarget as HTMLDivElement).blur();
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.currentTarget as HTMLDivElement).blur();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPaste={(e) => {
+              e.preventDefault();
+              document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+            }}
+            style={{
+              ...textStyle,
+              background: "transparent",
+              overflow: "visible",
+              userSelect: "text",
+            }}
+          >{a.text}</div>
+        ) : isEditing ? (
           <textarea
             autoFocus
             value={a.text}
-            placeholder={a.kind === "text" ? "Type here…" : ""}
+            placeholder="Type here…"
             onChange={(e) => onTextChange(e.target.value)}
-            onBlur={(e) => {
-              // If focus is moving to the floating mini-toolbar (or anything
-              // inside the same page wrapper), keep editing alive — the user
-              // is just nudging a control. Only collapse / auto-delete when
-              // focus truly leaves the text box context.
-              const next = e.relatedTarget as HTMLElement | null;
-              if (next && next.closest('[data-text-toolbar="1"]')) return;
-              // Read the textarea's value directly to avoid a stale closure on
-              // `a.text` when blur fires before React flushes the last keystroke.
-              const finalText = e.currentTarget.value;
-              const taRect = e.currentTarget.getBoundingClientRect();
-              console.log("[text-edit-commit]", {
-                annotationId: a.id,
-                editId: editingId,
-                phase: "blur",
-                originalString: a.kind === "text-edit" ? a.source?.originalString ?? "" : "",
-                committedText: finalText,
-                changed: finalText !== (a.kind === "text-edit" ? a.source?.originalString ?? "" : ""),
-                extractedWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
-                coverWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
-                textareaWidthPt: taRect.width / scale,
-                textTargetWidthPt: a.kind === "text-edit" ? a.w : null,
-                willDelete: !finalText.trim() && a.kind === "text",
-              });
-              if (finalText !== a.text) {
-                dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
-              }
-              if (!finalText.trim() && a.kind === "text") {
-                dispatch({ type: "DELETE_ANNO", id: a.id });
-              }
-              setEditingId(null);
-            }}
+            onBlur={(e) => commitText(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur();
             }}
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            data-text-edit-id={a.id}
-            data-raw-pdf-font={a.kind === "text-edit" ? a.source?.fontName ?? "" : ""}
-            wrap={a.kind === "text-edit" ? "off" : undefined}
-            className={a.kind === "text-edit" ? "no-scrollbar" : undefined}
             style={textStyle}
           />
         ) : (
