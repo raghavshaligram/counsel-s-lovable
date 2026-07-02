@@ -726,7 +726,7 @@ function WorkflowBuilderModal({
     setResultBytes(null);
     setSteps((cur) => cur.map((s) => ({ ...s, status: "idle", message: undefined })));
 
-    const pipeline: Pipeline = steps.map(({ op, params, label }) => ({ op, params, label }));
+    const pipeline: Pipeline = steps.map(({ op, params, label, condition }) => ({ op, params, label, condition }));
     const bytes = new Uint8Array(await activeFile.arrayBuffer());
 
     try {
@@ -747,6 +747,14 @@ function WorkflowBuilderModal({
           } else if (ev.type === "step-progress") {
             setSteps((cur) =>
               cur.map((s, i) => (i === ev.index ? { ...s, status: "running", message: ev.message ?? s.message } : s)),
+            );
+          } else if (ev.type === "step-skipped") {
+            setSteps((cur) =>
+              cur.map((s, i) =>
+                i === ev.index
+                  ? { ...s, status: "skipped", message: `skipped — ${ev.reason}` }
+                  : s,
+              ),
             );
           } else if (ev.type === "step-error") {
             setSteps((cur) =>
