@@ -1953,12 +1953,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           <Inspector
             open={inspectorOpen}
             activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
-            onClose={() => patchActive({ inspectorOpen: false })}
+            onClose={() => patchActive({ inspectorOpen: false, activeToolId: null })}
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
             editorDispatch={editorDispatch}
             editorState={editorState}
-            closeInspector={() => patchActive({ inspectorOpen: false })}
+            closeInspector={() => patchActive({ inspectorOpen: false, activeToolId: null })}
             otherTabs={tabs
               .filter((t) => t.id !== active.id && t.file)
               .map((t) => ({ id: t.id, name: t.file!.name, file: t.file! }))}
