@@ -186,26 +186,36 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } else if (!(await ensureModel())) return;
     setQuerying(true);
     try {
-      const cleaned = focusQuery(query.trim());
-      const results = await queryIndex(docKey, cleaned, 20);
-      // Semantic-only ranking: require a meaningful cosine score and stay
-      // within a reasonable gap from the top match. MiniLM cosines run
-      // 0.2–0.6 for "kind of related" and 0.4+ for genuinely relevant.
-      const MIN_ABS = 0.35;
-      const REL_GAP = 0.75;
+      // Embed the FULL original query — stopword stripping loses phrasal
+      // context ("who are the attorneys" → "attorneys" tanks recall).
+      // Embeddings handle common words natively; we only need thresholds
+      // to keep unrelated chunks out.
+      const q = query.trim();
+      const results = await queryIndex(docKey, q, 20);
+      // Pure cosine ranking on MiniLM (L2-normalised → dot product).
+      // MiniLM cosines: ~0.15 unrelated, 0.25–0.35 loosely related,
+      // 0.35+ clearly relevant. Keep an absolute floor to filter noise
+      // and a relative gap so weak tail results don't survive when the
+      // top match is strong.
+      const MIN_ABS = 0.22;
+      const REL_GAP = 0.55;
       const top = results[0]?.score ?? 0;
-      const filtered = results
-        .filter((r) => r.score >= MIN_ABS && r.score >= top * REL_GAP)
-        .slice(0, 8);
+      const floor = Math.max(MIN_ABS, top * REL_GAP);
+      const filtered = results.filter((r) => r.score >= floor).slice(0, 8);
       console.log(
         "[pre-discovery] query",
-        query,
+        JSON.stringify(q),
+        "ranking=cosine(MiniLM)",
         "top",
         top.toFixed(3),
+        "floor",
+        floor.toFixed(3),
         "kept",
         filtered.length,
         "of",
         results.length,
+        "sampleScores",
+        results.slice(0, 5).map((r) => r.score.toFixed(3)),
       );
       setHits(filtered);
       setLastQuery(query.trim());
