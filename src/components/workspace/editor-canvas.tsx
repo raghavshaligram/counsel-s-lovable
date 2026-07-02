@@ -845,7 +845,10 @@ export function EditorCanvas({
           whiteSpace: a.kind === "text-edit" ? "pre" : "pre-wrap",
           wordBreak: a.kind === "text-edit" ? "normal" : "break-word",
           overflowWrap: a.kind === "text-edit" ? "normal" : undefined,
-          overflow: a.kind === "text-edit" ? "visible" : "hidden",
+          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "hidden",
+          scrollbarWidth: "none",
           padding: 0,
           paddingTop: padTop,
           paddingLeft: padLeft,
@@ -909,6 +912,7 @@ export function EditorCanvas({
             data-text-edit-id={a.id}
             data-raw-pdf-font={a.kind === "text-edit" ? a.source?.fontName ?? "" : ""}
             wrap={a.kind === "text-edit" ? "off" : undefined}
+            className={a.kind === "text-edit" ? "no-scrollbar" : undefined}
             style={textStyle}
           />
         ) : (
@@ -1415,7 +1419,7 @@ export function EditorCanvas({
           const cover = a.source?.bounds ?? a.cover;
           const tl = toScreen(cover.x, cover.y);
           const br = toScreen(cover.x + cover.w, cover.y + cover.h);
-          const bgCss = rgbCss(a.bg);
+          const bgCss = isEditing ? "transparent" : rgbCss(a.bg);
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
