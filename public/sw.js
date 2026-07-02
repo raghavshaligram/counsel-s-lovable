@@ -24,6 +24,28 @@ const NAV_CACHE = `${VERSION}-nav`;
 const OFFLINE_URL = "/offline.html";
 const SHELL_URLS = ["/", "/manifest.webmanifest", OFFLINE_URL];
 
+// Local assets that on-device pipelines fetch at runtime (fonts for
+// certificate/PDF-A embed, qpdf WASM for unlock/repair). Pre-caching
+// them guarantees Sanitize / Redact / Export / Bates / Compress all
+// work even if the user goes offline before ever exercising the tool.
+const PRECACHE_ASSETS = [
+  "/fonts/liberation/LiberationSans-Regular.ttf",
+  "/fonts/liberation/LiberationSans-Bold.ttf",
+  "/fonts/liberation/LiberationSans-Italic.ttf",
+  "/fonts/liberation/LiberationSans-BoldItalic.ttf",
+  "/fonts/liberation/LiberationSerif-Regular.ttf",
+  "/fonts/liberation/LiberationSerif-Bold.ttf",
+  "/fonts/liberation/LiberationSerif-Italic.ttf",
+  "/fonts/liberation/LiberationSerif-BoldItalic.ttf",
+  "/fonts/liberation/LiberationMono-Regular.ttf",
+  "/fonts/liberation/LiberationMono-Bold.ttf",
+  "/fonts/liberation/LiberationMono-Italic.ttf",
+  "/fonts/liberation/LiberationMono-BoldItalic.ttf",
+  "/wasm/qpdf/qpdf.js",
+  "/wasm/qpdf/qpdf.wasm",
+  "/wasm/qpdf/browser.js",
+];
+
 
 const THIRD_PARTY_HOSTS = new Set([
   "unpkg.com",
@@ -36,10 +58,17 @@ const THIRD_PARTY_HOSTS = new Set([
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(SHELL_CACHE)
-      .then((c) => c.addAll(SHELL_URLS))
-      .catch(() => {}),
+    (async () => {
+      const shell = await caches.open(SHELL_CACHE);
+      await shell.addAll(SHELL_URLS).catch(() => {});
+      const assets = await caches.open(ASSET_CACHE);
+      // Best-effort: don't fail install if a font/wasm 404s in dev.
+      await Promise.all(
+        PRECACHE_ASSETS.map((u) =>
+          assets.add(u).catch(() => {}),
+        ),
+      );
+    })(),
   );
   self.skipWaiting();
 });
