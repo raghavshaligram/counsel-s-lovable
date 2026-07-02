@@ -20,6 +20,7 @@ import {
   PDFNull,
   PDFNumber,
   PDFRef,
+  PDFString,
   StandardFonts,
   rgb,
 } from "pdf-lib";
