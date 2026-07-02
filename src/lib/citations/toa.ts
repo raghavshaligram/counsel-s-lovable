@@ -34,7 +34,7 @@ import {
 export const TOA_PAGE_MARKER = "__VPDF_TOA_PAGE__";
 
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { PATTERNS, type CitationKind } from "./detect";
+import { PATTERNS, buildLookupUrl, type CitationKind } from "./detect";
 
 export type ToaSection = "cases" | "statutes" | "rules" | "other";
 
