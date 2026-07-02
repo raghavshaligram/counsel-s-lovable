@@ -107,6 +107,7 @@ import { FirmTemplatesMenu } from "./firm-templates-menu";
 import { CourtReadinessSection } from "./court-readiness";
 import { PrivilegeReviewPanel } from "./privilege-review-panel";
 import { WorkflowBuilderPanel } from "./workflow-builder-panel";
+import { CitationHyperlinkerPanel } from "./citation-hyperlinker-panel";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
