@@ -71,34 +71,16 @@ export const PATTERNS: Pattern[] = [
   },
 ];
 
-/**
- * Build a public LOOKUP URL for a citation. We deliberately use SEARCH
- * URLs, not deep links: reporter/statute deep-link formats vary widely
- * across providers (Cornell LII, GovInfo, CourtListener) and guessing
- * one produces 404s. A search that lands on results is strictly better
- * than a deep link that breaks.
- *
- *   - Cases  → CourtListener case-law search (`/?q=<citation>`).
- *   - U.S.C. → Google search (Cornell's site search endpoint 404s and
- *              its deep-link paths differ per title). Google reliably
- *              surfaces the canonical Cornell / GovInfo / House.gov page
- *              at the top of results for any well-formed USC cite.
- *   - Empty / unrecognized → Google search fallback (never an empty q).
- */
 export function buildLookupUrl(kind: CitationKind, text: string): string {
-  const raw = (text ?? "").trim();
-  if (!raw) {
-    // Never emit an empty-query URL — degrade to a harmless Google home.
-    return "https://www.google.com/";
-  }
-  const q = encodeURIComponent(raw);
+  const q = encodeURIComponent(text.trim());
   if (kind === "us-code") {
-    return `https://www.google.com/search?q=${q}`;
+    // Cornell LII maintains stable public USC pages; a search there is a
+    // reliable landing point.
+    return `https://www.law.cornell.edu/search/site/${q}`;
   }
-  // Cases: CourtListener opinion search, ranked by relevance.
+  // CourtListener case-law search — free public case-text source.
   return `https://www.courtlistener.com/?q=${q}&type=o&order_by=score+desc`;
 }
-
 
 let idCounter = 0;
 function nextId(): string {
