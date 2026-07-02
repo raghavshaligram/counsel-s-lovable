@@ -138,6 +138,7 @@ ctx.onmessage = async (e: MessageEvent) => {
         return;
       }
       await getExtractor();
+      console.log("[discovery-worker] indexing", chunks.length, "chunks for", docKey);
       const BATCH = 8;
       let dim = 0;
       let vectors: Float32Array | null = null;
@@ -148,6 +149,15 @@ ctx.onmessage = async (e: MessageEvent) => {
         if (!vectors) {
           dim = vecs[0].length;
           vectors = new Float32Array(dim * chunks.length);
+          // Log first chunk vector shape + norm to prove embeddings ran.
+          let sq = 0;
+          for (let k = 0; k < dim; k++) sq += vecs[0][k] * vecs[0][k];
+          console.log(
+            "[discovery-worker] ✓ first chunk embedded — dim=", dim,
+            " ||v||=", Math.sqrt(sq).toFixed(4),
+            " page=", batch[0].page,
+            " textHead=", JSON.stringify(batch[0].text.slice(0, 60)),
+          );
         }
         for (let j = 0; j < vecs.length; j++) {
           vectors.set(vecs[j], (i + j) * dim);
@@ -155,6 +165,7 @@ ctx.onmessage = async (e: MessageEvent) => {
         done += batch.length;
         post({ kind: "index-progress", id, done, total: chunks.length });
       }
+      console.log("[discovery-worker] ✓ indexed", chunks.length, "chunks, dim=", dim);
       cache.set(docKey, { dim, vectors: vectors!, chunks });
       post({ kind: "indexed", id, count: chunks.length });
       return;
@@ -163,10 +174,17 @@ ctx.onmessage = async (e: MessageEvent) => {
       const { id, docKey, text, topK } = msg;
       const entry = cache.get(docKey);
       if (!entry || entry.chunks.length === 0) {
+        console.warn("[discovery-worker] query with no index for", docKey);
         post({ kind: "results", id, hits: [] });
         return;
       }
       const [qv] = await embed([text]);
+      let qsq = 0;
+      for (let k = 0; k < qv.length; k++) qsq += qv[k] * qv[k];
+      console.log(
+        "[discovery-worker] ✓ query embedded", JSON.stringify(text),
+        " dim=", qv.length, " ||q||=", Math.sqrt(qsq).toFixed(4),
+      );
       const { dim, vectors, chunks } = entry;
       const scores = new Array<{ i: number; s: number }>(chunks.length);
       for (let i = 0; i < chunks.length; i++) {
@@ -178,6 +196,15 @@ ctx.onmessage = async (e: MessageEvent) => {
         page: chunks[i].page,
         score: s,
       }));
+      console.log(
+        "[discovery-worker] ✓ cosine ranked",
+        chunks.length, "chunks — top5:",
+        scores.slice(0, 5).map((x) => ({
+          page: chunks[x.i].page,
+          score: +x.s.toFixed(3),
+          head: chunks[x.i].text.slice(0, 50),
+        })),
+      );
       post({ kind: "results", id, hits: top });
       return;
     }
