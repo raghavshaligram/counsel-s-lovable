@@ -387,6 +387,13 @@ export function EditorCanvas({
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
           const ff = (it.fontName && styles[it.fontName]?.fontFamily) || it.fontName || "";
+          // If pdf.js resolved this to an embedded font (synthetic family
+          // like `g_d0_f5`), record it so the toolbar knows it can offer
+          // the original — perfect visual match, no download.
+          if (looksEmbedded(ff) && it.fontName) {
+            const stripped = it.fontName.replace(/^[A-Z]{6}\+/, "");
+            registerEmbeddedFont(ff, stripped);
+          }
           const ffl = `${(it.fontName ?? "").toLowerCase()} ${ff.toLowerCase()}`;
           const family: "sans" | "serif" | "mono" =
             /mono|courier|consol|typewriter/.test(ffl) ? "mono" :
