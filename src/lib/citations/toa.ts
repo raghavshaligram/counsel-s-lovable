@@ -614,32 +614,18 @@ export async function buildToaPdfBytes(
 async function stripExistingToaPages(
   sourceBytes: Uint8Array,
 ): Promise<Uint8Array> {
-  const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: sourceBytes.slice() }).promise;
-  const toaPageIdxs: number[] = [];
-  try {
-    for (let p = 1; p <= doc.numPages; p++) {
-      const page = await doc.getPage(p);
-      const content = await page.getTextContent();
-      const joined = (content.items as Array<{ str?: string }>)
-        .map((it) => it.str ?? "")
-        .join(" ");
-      if (joined.includes(TOA_PAGE_MARKER)) toaPageIdxs.push(p - 1);
-    }
-  } finally {
-    try {
-      (doc as unknown as { destroy?: () => Promise<void> }).destroy?.();
-    } catch {
-      /* ignore */
-    }
-  }
-  if (toaPageIdxs.length === 0) return sourceBytes;
-
   const pdfDoc = await PDFDocument.load(sourceBytes, {
     ignoreEncryption: true,
   });
+  const keyName = PDFName.of(TOA_PAGE_NODE_KEY);
+  const toaPageIdxs: number[] = [];
+  const pages = pdfDoc.getPages();
+  for (let i = 0; i < pages.length; i++) {
+    if (pages[i].node.get(keyName)) toaPageIdxs.push(i);
+  }
+  if (toaPageIdxs.length === 0) return sourceBytes;
   for (const idx of toaPageIdxs.slice().sort((a, b) => b - a)) {
-    if (idx >= 0 && idx < pdfDoc.getPageCount()) pdfDoc.removePage(idx);
+    pdfDoc.removePage(idx);
   }
   return pdfDoc.save();
 }
