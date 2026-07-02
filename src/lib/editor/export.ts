@@ -113,7 +113,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
 
     const { width: pw, height: ph } = outPage.getSize();
     const annos = doc.annotations.filter((a) => a.page === i);
-    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
+    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts, uploadedFonts);
 
     // Embed OCR sidecar tokens as invisible text (rendering mode 3 via
     // opacity:0). Tied to source page so reorder/rotate respects them.
