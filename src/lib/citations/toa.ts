@@ -287,9 +287,29 @@ export async function renderToa(
   const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
   const links: ToaLinkRect[] = [];
 
+  /**
+   * Draw an invisible marker on every TOA page so downstream tools can
+   * recognize it as a generated TOA (see `TOA_PAGE_MARKER`). White text
+   * at 1pt on white paper — extractable via pdf.js text layer, not
+   * visually present. This is how Citation Hyperlinker excludes TOA
+   * pages: without the marker, the TOA's own entries would get
+   * external URI links, which is wrong for a court-style TOA whose
+   * page numbers must remain internal jumps.
+   */
+  const stampMarker = (p: ReturnType<typeof doc.addPage>) => {
+    p.drawText(TOA_PAGE_MARKER, {
+      x: 2,
+      y: 2,
+      font,
+      size: 1,
+      color: rgb(1, 1, 1),
+    });
+  };
+
   let page = doc.addPage([W, H]);
   let pageIdx = 0;
   let y = H - margin;
+  stampMarker(page);
 
   const titleSize = 14;
   const titleW = bold.widthOfTextAtSize(title, titleSize);
@@ -309,6 +329,7 @@ export async function renderToa(
       page = doc.addPage([W, H]);
       pageIdx += 1;
       y = H - margin;
+      stampMarker(page);
     }
   };
 
