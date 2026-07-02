@@ -587,6 +587,9 @@ export async function buildToaPdfBytes(
     for (const rect of el.rects) {
       const ref = buildUriLinkAnnot(ctx, rect, el.url, el.text);
       pushAnnot(ctx, page.node, ref);
+    }
+  }
+  return doc.save();
 }
 
 /**
@@ -595,7 +598,9 @@ export async function buildToaPdfBytes(
  * stamped on every TOA page). Returns the bytes unchanged when no TOA
  * pages are present. This is the single guard against duplicate TOA
  * insertion — "Insert at front" followed by "Download combined PDF"
- * would otherwise stack a new TOA in front of the old one.
+ * would otherwise stack a new TOA in front of the old one, and internal
+ * /Dest links on the newer TOA would target pages inside the old TOA
+ * instead of the brief.
  */
 async function stripExistingToaPages(
   sourceBytes: Uint8Array,
@@ -624,14 +629,10 @@ async function stripExistingToaPages(
   const pdfDoc = await PDFDocument.load(sourceBytes, {
     ignoreEncryption: true,
   });
-  // Remove highest-index first so preceding indices stay valid.
   for (const idx of toaPageIdxs.slice().sort((a, b) => b - a)) {
     if (idx >= 0 && idx < pdfDoc.getPageCount()) pdfDoc.removePage(idx);
   }
   return pdfDoc.save();
-}
-  }
-  return doc.save();
 }
 
 /**
