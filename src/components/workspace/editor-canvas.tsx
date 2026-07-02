@@ -611,7 +611,9 @@ export function EditorCanvas({
   const renderAnno = (a: Anno) => {
     const selected = state.selectedAnnoId === a.id;
     const displayRect = a.kind === "text-edit" && a.cover
-      ? { x: a.cover.x, y: a.cover.y, w: a.cover.w, h: Math.max(a.cover.h, a.boxH ?? 0) }
+      ? { x: a.cover.x, y: a.cover.y,
+          w: Math.max(a.cover.w, a.boxW ?? 0),
+          h: Math.max(a.cover.h, a.boxH ?? 0) }
       : { x: a.x, y: a.y, w: a.w, h: a.h };
     const pts = [
       toScreen(displayRect.x, displayRect.y), toScreen(displayRect.x + displayRect.w, displayRect.y),
@@ -828,8 +830,8 @@ export function EditorCanvas({
           textAlign: align,
           lineHeight: a.lineHeight ?? 1.15,
           letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
+          whiteSpace: a.kind === "text-edit" && !a.text.includes("\n") ? "pre" : "pre-wrap",
+          wordBreak: a.kind === "text-edit" && !a.text.includes("\n") ? "normal" : "break-word",
           overflow: "hidden",
           padding: 0,
           paddingTop: padTop,
@@ -1078,6 +1080,7 @@ export function EditorCanvas({
       // Box height must be >= fontSize * lineHeight or the textarea clips
       // the bottom ~15% of every glyph. Keep fontSize separate from box h.
       w: it.w, h: it.h * (it.lineHeight ?? 1.15),
+      boxW: it.w + coverPadX * 2,
       boxH: (it.h * (it.lineHeight ?? 1.15)) + coverPadTop + coverPadBottom,
       color: sampled.color, opacity: 1,
       text: it.str,
@@ -1323,13 +1326,13 @@ export function EditorCanvas({
     // Keep the model locked to the original glyph rect for export/alignment.
     // The visual wrapper uses `cover` in renderAnno; padding insets the live
     // textarea glyphs back onto this original rect.
-    const lockedW = a.kind === "text-edit" ? a.w : null;
-    const newW = lockedW ?? Math.max(minW, measuredW);
+    const newW = Math.max(minW, measuredW);
     const newH = Math.max(minH, measuredH);
     if (a.kind === "text-edit") {
+      const grownW = Math.max(a.cover?.w ?? 0, newW);
       const grownH = Math.max(a.cover?.h ?? 0, newH);
-      if (Math.abs(grownH - (a.boxH ?? 0)) > 0.5) {
-        dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { boxH: grownH } as Partial<Anno> });
+      if (Math.abs(grownW - (a.boxW ?? 0)) > 0.5 || Math.abs(grownH - (a.boxH ?? 0)) > 0.5) {
+        dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { boxW: grownW, boxH: grownH } as Partial<Anno> });
       }
     } else if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
       dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
