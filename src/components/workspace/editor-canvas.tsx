@@ -409,7 +409,7 @@ export function EditorCanvas({
             matchedFont.fontStyle ?? (italic ? "italic" : "normal"),
             scale * dpr,
           );
-          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, fontWeight, lineHeight: 1, letterSpacing, color, bg }];
+          return [{ x, y, w: it.width, h: fh, str: it.str, family, bold, italic, transform: it.transform, fontName: it.fontName, cssFamily: ff, fontKey, fontApprox, fontWeight, lineHeight: 1.15, letterSpacing, color, bg }];
         });
 
         // Merge sidecar OCR tokens for this SOURCE page (top-left PDF
