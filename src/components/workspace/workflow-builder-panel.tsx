@@ -1482,14 +1482,31 @@ function StepCard({
         <Icon className="h-3.5 w-3.5" />
       </span>
       <span className="flex flex-1 flex-col overflow-hidden">
-        <span className="truncate text-[12.5px] text-text">
-          {index + 1}. {def?.label ?? step.op}
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[12.5px] text-text">
+            {index + 1}. {def?.label ?? step.op}
+          </span>
+          {step.condition && step.condition.kind !== "always" && (
+            <span
+              className="shrink-0 rounded-sm border border-vault/50 bg-vault/10 px-1 text-[9px] uppercase tracking-wide text-vault"
+              title={CONDITION_LABELS[step.condition.kind]}
+            >
+              {CONDITION_SHORT[step.condition.kind]}
+              {step.condition.kind === "if-size-over-mb" && step.condition.thresholdMb
+                ? ` ${step.condition.thresholdMb}MB`
+                : ""}
+            </span>
+          )}
         </span>
         {step.message && (
           <span
             className={cn(
               "truncate text-[10.5px]",
-              step.status === "error" ? "text-red-400" : "text-text-muted",
+              step.status === "error"
+                ? "text-red-400"
+                : step.status === "skipped"
+                  ? "text-text-muted italic"
+                  : "text-text-muted",
             )}
           >
             {step.message}
