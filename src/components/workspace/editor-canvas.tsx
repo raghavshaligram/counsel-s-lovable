@@ -1001,9 +1001,11 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
+      const bgRes = samplePageBg(ctx, sx, sy, sw, sh);
       return {
         color: sampleTextColor(ctx, sx, sy, sw, sh),
-        bg: samplePageBg(ctx, sx, sy, sw, sh),
+        bg: bgRes.color,
+        bgConfidence: bgRes.confidence,
       };
     })();
     // Workspace native: place a text-edit overlay pre-filled with the original
