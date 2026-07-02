@@ -211,6 +211,10 @@ export interface TextEditAnno extends BaseAnno {
   // so the underlying text always stays hidden even when the replacement
   // shrinks below the original size.
   cover?: { x: number; y: number; w: number; h: number };
+  // Grown box height for the editable textarea, independent of cover/mask;
+  // falls back to cover.h. The mask (cover) must stay pinned to the original
+  // glyph rect; only the wrapper/textarea grows to fit multi-line content.
+  boxH?: number;
   source?: TextSource;
   // Manual CSS font-family override picked from the toolbar dropdown.
   // When set, takes precedence over `fontKey`/`family` for on-screen rendering.
