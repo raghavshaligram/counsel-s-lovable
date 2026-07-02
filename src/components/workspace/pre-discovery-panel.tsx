@@ -188,8 +188,8 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       // 0.35+ clearly relevant. Keep an absolute floor to filter noise
       // and a relative gap so weak tail results don't survive when the
       // top match is strong.
-      const MIN_ABS = 0.22;
-      const REL_GAP = 0.55;
+      const MIN_ABS = 0.3;
+      const REL_GAP = 0.75;
       const top = results[0]?.score ?? 0;
       const floor = Math.max(MIN_ABS, top * REL_GAP);
       const filtered = results.filter((r) => r.score >= floor).slice(0, 8);
