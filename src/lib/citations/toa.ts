@@ -143,6 +143,14 @@ export async function buildToa(
         .replace(/\s+/g, " ")
         .trim();
 
+      // Skip existing TOA pages so re-scanning a doc that already has a
+      // generated TOA doesn't cascade its own entries back in.
+      if (raw.includes(TOA_PAGE_MARKER)) {
+        onProgress?.({ page: p, totalPages });
+        continue;
+      }
+
+
       for (const { kind, re } of PATTERNS) {
         // PATTERNS use the /g flag — reset lastIndex per page.
         re.lastIndex = 0;
