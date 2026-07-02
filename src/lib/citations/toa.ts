@@ -517,23 +517,83 @@ export async function renderToa(
 }
 
 /**
- * Standalone TOA PDF (no internal links — target document is unknown).
- * Kept for the "Download TOA alone" affordance.
+ * Append a link annotation to `pageNode`, preserving existing /Annots.
+ */
+function pushAnnot(
+  ctx: ReturnType<PDFDocument["context"]["obj"]> extends never
+    ? never
+    : PDFDocument["context"],
+  pageNode: PDFDict,
+  ref: PDFRef,
+): void {
+  const existing = pageNode.get(PDFName.of("Annots"));
+  if (existing instanceof PDFArray) {
+    existing.push(ref);
+  } else {
+    pageNode.set(PDFName.of("Annots"), ctx.obj([ref]));
+  }
+}
+
+function buildUriLinkAnnot(
+  ctx: PDFDocument["context"],
+  rect: [number, number, number, number],
+  url: string,
+  text: string,
+): PDFRef {
+  const annot = ctx.obj({}) as PDFDict;
+  annot.set(PDFName.of("Type"), PDFName.of("Annot"));
+  annot.set(PDFName.of("Subtype"), PDFName.of("Link"));
+  annot.set(
+    PDFName.of("Rect"),
+    ctx.obj(rect.map((n) => PDFNumber.of(n))),
+  );
+  annot.set(
+    PDFName.of("Border"),
+    ctx.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+  );
+  annot.set(PDFName.of("H"), PDFName.of("I"));
+  if (text) annot.set(PDFName.of("Contents"), PDFString.of(text));
+  const action = ctx.obj({}) as PDFDict;
+  action.set(PDFName.of("Type"), PDFName.of("Action"));
+  action.set(PDFName.of("S"), PDFName.of("URI"));
+  action.set(PDFName.of("URI"), PDFString.of(url));
+  annot.set(PDFName.of("A"), action);
+  return ctx.register(annot);
+}
+
+/**
+ * Standalone TOA PDF. Includes external URI /Link annotations on every
+ * case name / citation (CourtListener / Cornell lookups) so the TOA is
+ * self-contained even without a source brief to prepend to. Internal
+ * page-number GoTo links are omitted here because there is no target
+ * document.
  */
 export async function buildToaPdfBytes(
   entries: ToaEntry[],
   opts: RenderOpts = {},
 ): Promise<Uint8Array> {
-  const { bytes } = await renderToa(entries, { ...opts, shift: 0 });
-  return bytes;
+  const render = await renderToa(entries, { ...opts, shift: 0 });
+  const doc = await PDFDocument.load(render.bytes);
+  const ctx = doc.context;
+  for (const el of render.entryLinks) {
+    if (el.toaPageIndex < 0 || el.toaPageIndex >= doc.getPageCount()) continue;
+    const page = doc.getPage(el.toaPageIndex);
+    for (const rect of el.rects) {
+      const ref = buildUriLinkAnnot(ctx, rect, el.url, el.text);
+      pushAnnot(ctx, page.node, ref);
+    }
+  }
+  return doc.save();
 }
 
 /**
  * Prepend a TOA to `sourceBytes` producing ONE combined PDF: TOA pages
- * + original brief. Page references in the TOA reflect the FINAL
- * (post-insertion) page numbers, and each page-number token is wrapped
- * in an internal /Link GoTo annotation that jumps to the referenced
- * page inside the combined document.
+ * + original brief. TOA is fully self-contained: every page-number
+ * reference is an internal /GoTo jump to the (shifted) target page, and
+ * every case name / citation is an external URI /Link (CourtListener /
+ * Cornell lookup) built via the same `buildLookupUrl` the Citation
+ * Hyperlinker uses. The user gets both link types from this single
+ * action — Citation Hyperlinker does NOT need to have been run first.
  *
  * Iterates the render a few times to stabilize the TOA page count
  * (adding a shift can change wrap → change page count → change shift).
@@ -543,8 +603,6 @@ export async function prependToaToPdf(
   entries: ToaEntry[],
   opts: RenderOpts = {},
 ): Promise<Uint8Array> {
-  // Estimate the TOA page count. Start with 1, re-render until stable
-  // (bounded so a pathological input can't loop forever).
   let shift = 1;
   let render = await renderToa(entries, { ...opts, shift });
   for (let i = 0; i < 4 && render.pageCount !== shift; i++) {
@@ -561,14 +619,14 @@ export async function prependToaToPdf(
     target.insertPage(i, copied[i]);
   }
 
-  // Attach internal GoTo annotations for every page-number token.
-  // Preserves any existing annotations on the copied pages (there are
-  // none from a fresh render, but this stays safe if that ever changes)
-  // and never touches the original brief's annotations — including
-  // Citation Hyperlinker /Link URI annotations, which live on later
-  // pages and go through untouched.
+  // Preserves any existing annotations on the copied pages and never
+  // touches the original brief's annotations — including any inline
+  // Citation Hyperlinker /Link URI annotations already present on
+  // later pages, which go through untouched.
   const ctx = target.context;
   const totalPages = target.getPageCount();
+
+  // Internal GoTo annotations for every page-number token.
   for (const l of render.links) {
     const finalIdx = shift + l.targetOriginalPage - 1;
     if (finalIdx < 0 || finalIdx >= totalPages) continue;
@@ -599,15 +657,20 @@ export async function prependToaToPdf(
     annot.set(PDFName.of("H"), PDFName.of("I"));
     annot.set(PDFName.of("Dest"), dest);
     const ref: PDFRef = ctx.register(annot);
+    pushAnnot(ctx, toaPage.node, ref);
+  }
 
-    const existing = toaPage.node.get(PDFName.of("Annots"));
-    if (existing instanceof PDFArray) {
-      existing.push(ref);
-    } else {
-      toaPage.node.set(PDFName.of("Annots"), ctx.obj([ref]));
+  // External URI annotations on every case name / citation.
+  for (const el of render.entryLinks) {
+    if (el.toaPageIndex < 0 || el.toaPageIndex >= shift) continue;
+    const toaPage = target.getPage(el.toaPageIndex);
+    for (const rect of el.rects) {
+      const ref = buildUriLinkAnnot(ctx, rect, el.url, el.text);
+      pushAnnot(ctx, toaPage.node, ref);
     }
   }
 
   return target.save();
 }
+
 
