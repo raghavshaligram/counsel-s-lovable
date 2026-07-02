@@ -179,7 +179,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setApplying(false);
     }
-  }, [file, rows, replaceFile, requirePro]);
+  }, [file, rows, replaceFile, requirePro, linkStyle]);
 
   /* ---------- render ---------- */
 
