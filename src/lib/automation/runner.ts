@@ -9,6 +9,7 @@
 
 import type { Pipeline, PipelineStep, ProgressEvent, RunResult } from "./types";
 import { getMainOp, isMainThreadOp } from "./main-registry";
+import { evaluateCondition, makeConditionContext, type ConditionContext } from "./conditions";
 
 let cachedWorker: Worker | null = null;
 function getWorker(): Worker {
@@ -111,10 +112,35 @@ export async function runPipeline(
   const stepStats: Array<{ op: string; outputBytes: number; elapsedMs: number }> = [];
   const t0 = performance.now();
   let cur = bytes;
+  // Per-run condition cache — the pdf.js text scan is heavy; do it once
+  // per distinct input buffer. Reset whenever `cur` changes.
+  let condCtx: ConditionContext = makeConditionContext(cur);
+  let condCtxFor = cur;
 
   for (let i = 0; i < pipeline.length; i++) {
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const step = pipeline[i];
+
+    // Refresh condition cache when the byte buffer changed (previous op
+    // rewrote the doc, so any text-layer check must be re-run).
+    if (cur !== condCtxFor) {
+      condCtx = makeConditionContext(cur);
+      condCtxFor = cur;
+    }
+
+    if (step.condition && step.condition.kind !== "always") {
+      const res = await evaluateCondition(step.condition, condCtx);
+      if (!res.passed) {
+        opts.onProgress?.({
+          type: "step-skipped",
+          index: i,
+          total,
+          op: step.op,
+          reason: res.reason,
+        });
+        continue;
+      }
+    }
 
     if (isMainThreadOp(step.op)) {
       // Emit step-start manually — worker emits its own; here we do it.

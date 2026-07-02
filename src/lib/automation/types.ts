@@ -6,6 +6,8 @@
  * becomes step N+1's input. No DOM, no UI here.
  */
 
+import type { StepCondition } from "./conditions";
+
 export interface PipelineStep<P = unknown> {
   /** Registered op name, e.g. "compress" | "watermark" | "rotate". */
   op: string;
@@ -13,6 +15,10 @@ export interface PipelineStep<P = unknown> {
   params: P;
   /** Optional human label for progress reporting. */
   label?: string;
+  /** Optional gate: when present, evaluated per-input before the step
+   *  runs. If the predicate is false, the runner emits `step-skipped`
+   *  and passes bytes through unchanged. */
+  condition?: StepCondition;
 }
 
 export type Pipeline = PipelineStep[];
@@ -42,6 +48,14 @@ export type ProgressEvent =
       /** Output bytes length after this step. */
       outputBytes: number;
       elapsedMs: number;
+    }
+  | {
+      type: "step-skipped";
+      index: number;
+      total: number;
+      op: string;
+      /** Human-readable explanation of the condition result. */
+      reason: string;
     }
   | {
       type: "step-error";

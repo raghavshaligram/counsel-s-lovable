@@ -22,10 +22,25 @@ const jsonSchema: z.ZodType<Json> = z.lazy(() =>
   ]),
 );
 
+const conditionSchema = z
+  .object({
+    kind: z.enum([
+      "always",
+      "if-scanned",
+      "if-has-text",
+      "if-has-sensitive",
+      "if-has-privilege",
+      "if-size-over-mb",
+    ]),
+    thresholdMb: z.number().nonnegative().optional(),
+  })
+  .optional();
+
 const stepSchema = z.object({
   op: z.string().min(1).max(64),
   params: jsonSchema,
   label: z.string().max(120).optional(),
+  condition: conditionSchema,
 });
 
 export type SavedWorkflowStep = z.infer<typeof stepSchema>;

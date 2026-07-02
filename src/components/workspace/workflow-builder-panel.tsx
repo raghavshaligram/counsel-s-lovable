@@ -67,6 +67,12 @@ import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import type { Pipeline, PipelineStep, ProgressEvent } from "@/lib/automation/types";
 import { runPipeline, downloadBytes } from "@/lib/automation";
 import {
+  CONDITION_LABELS,
+  CONDITION_SHORT,
+  type ConditionKind,
+  type StepCondition,
+} from "@/lib/automation/conditions";
+import {
   listWorkflows,
   saveWorkflow as saveWorkflowFn,
   renameWorkflow as renameWorkflowFn,
@@ -335,7 +341,7 @@ function paletteFor(op: string): OpDef | undefined {
 /* Types                                                                */
 /* -------------------------------------------------------------------- */
 
-type StepStatus = "idle" | "running" | "done" | "error";
+type StepStatus = "idle" | "running" | "done" | "error" | "skipped";
 
 type UiStep = PipelineStep & {
   uid: string;
@@ -601,6 +607,11 @@ function WorkflowBuilderModal({
       cur.map((s) => (s.uid === uid ? { ...s, params: { ...(s.params as object), ...patch } } : s)),
     );
   };
+  const updateCondition = (uid: string, condition: StepCondition | undefined) => {
+    setSteps((cur) =>
+      cur.map((s) => (s.uid === uid ? { ...s, condition } : s)),
+    );
+  };
 
   /* -------- Load (from saved or template) -------- */
   const loadSteps = useCallback((wfName: string, pipelineSteps: PipelineStep[], id: string | null) => {
@@ -612,6 +623,7 @@ function WorkflowBuilderModal({
       op: s.op,
       label: s.label,
       params: (s.params ?? {}) as Record<string, unknown>,
+      condition: s.condition,
       status: "idle",
     }));
     setSteps(ui);
@@ -645,10 +657,11 @@ function WorkflowBuilderModal({
       }
       setSavingNow(true);
       try {
-        const cleanSteps = steps.map(({ op, params, label }) => ({
+        const cleanSteps = steps.map(({ op, params, label, condition }) => ({
           op,
           params: (params ?? {}) as Record<string, unknown>,
           label,
+          condition,
         }));
         const res = await saveFn({
           data: { id: opts.asNew ? null : savedId, name: trimmed, steps: cleanSteps },
@@ -713,7 +726,7 @@ function WorkflowBuilderModal({
     setResultBytes(null);
     setSteps((cur) => cur.map((s) => ({ ...s, status: "idle", message: undefined })));
 
-    const pipeline: Pipeline = steps.map(({ op, params, label }) => ({ op, params, label }));
+    const pipeline: Pipeline = steps.map(({ op, params, label, condition }) => ({ op, params, label, condition }));
     const bytes = new Uint8Array(await activeFile.arrayBuffer());
 
     try {
@@ -734,6 +747,14 @@ function WorkflowBuilderModal({
           } else if (ev.type === "step-progress") {
             setSteps((cur) =>
               cur.map((s, i) => (i === ev.index ? { ...s, status: "running", message: ev.message ?? s.message } : s)),
+            );
+          } else if (ev.type === "step-skipped") {
+            setSteps((cur) =>
+              cur.map((s, i) =>
+                i === ev.index
+                  ? { ...s, status: "skipped", message: `skipped — ${ev.reason}` }
+                  : s,
+              ),
             );
           } else if (ev.type === "step-error") {
             setSteps((cur) =>
@@ -792,7 +813,7 @@ function WorkflowBuilderModal({
     setBatchRunning(true);
     batchAbortRef.current = { aborted: false };
 
-    const pipeline: Pipeline = steps.map(({ op, params, label }) => ({ op, params, label }));
+    const pipeline: Pipeline = steps.map(({ op, params, label, condition }) => ({ op, params, label, condition }));
 
     // Sequential — one file's bytes in memory at a time. When a file finishes,
     // its input Uint8Array goes out of scope and the browser can reclaim it.
@@ -803,12 +824,26 @@ function WorkflowBuilderModal({
       setBatchRows((cur) =>
         cur.map((r, idx) => (idx === i ? { ...r, status: "processing" } : r)),
       );
+      // Reset step statuses so conditional skip states reflect THIS file.
+      setSteps((cur) => cur.map((s) => ({ ...s, status: "idle", message: undefined })));
 
       const tStart = performance.now();
       try {
         // Read bytes lazily per-file so we never hold N inputs at once.
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const res = await runPipeline(bytes, pipeline);
+        const res = await runPipeline(bytes, pipeline, {
+          onProgress: (ev: ProgressEvent) => {
+            if (ev.type === "step-start") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "running", message: undefined } : s)));
+            } else if (ev.type === "step-done") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "done", message: `${Math.round(ev.elapsedMs)} ms` } : s)));
+            } else if (ev.type === "step-skipped") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "skipped", message: `skipped — ${ev.reason}` } : s)));
+            } else if (ev.type === "step-error") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "error", message: ev.error } : s)));
+            }
+          },
+        });
         const elapsed = performance.now() - tStart;
         setBatchRows((cur) =>
           cur.map((r, idx) =>
@@ -1384,10 +1419,18 @@ function WorkflowBuilderModal({
             </div>
             <div className="flex-1 overflow-y-auto p-3">
               {selected ? (
-                <StepParamsEditor
-                  step={selected}
-                  onChange={(patch) => updateParams(selected.uid, patch)}
-                />
+                <div className="flex flex-col gap-3">
+                  <ConditionEditor
+                    condition={selected.condition}
+                    onChange={(c) => updateCondition(selected.uid, c)}
+                  />
+                  <div className="border-t border-border pt-3">
+                    <StepParamsEditor
+                      step={selected}
+                      onChange={(patch) => updateParams(selected.uid, patch)}
+                    />
+                  </div>
+                </div>
               ) : (
                 <p className="px-1 text-[11.5px] leading-snug text-text-muted">
                   Select a step in the sequence to edit its parameters.
@@ -1447,14 +1490,31 @@ function StepCard({
         <Icon className="h-3.5 w-3.5" />
       </span>
       <span className="flex flex-1 flex-col overflow-hidden">
-        <span className="truncate text-[12.5px] text-text">
-          {index + 1}. {def?.label ?? step.op}
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[12.5px] text-text">
+            {index + 1}. {def?.label ?? step.op}
+          </span>
+          {step.condition && step.condition.kind !== "always" && (
+            <span
+              className="shrink-0 rounded-sm border border-vault/50 bg-vault/10 px-1 text-[9px] uppercase tracking-wide text-vault"
+              title={CONDITION_LABELS[step.condition.kind]}
+            >
+              {CONDITION_SHORT[step.condition.kind]}
+              {step.condition.kind === "if-size-over-mb" && step.condition.thresholdMb
+                ? ` ${step.condition.thresholdMb}MB`
+                : ""}
+            </span>
+          )}
         </span>
         {step.message && (
           <span
             className={cn(
               "truncate text-[10.5px]",
-              step.status === "error" ? "text-red-400" : "text-text-muted",
+              step.status === "error"
+                ? "text-red-400"
+                : step.status === "skipped"
+                  ? "text-text-muted italic"
+                  : "text-text-muted",
             )}
           >
             {step.message}
@@ -1486,7 +1546,9 @@ function StatusDot({ status }: { status: StepStatus }) {
         ? "Done"
         : status === "error"
           ? "Failed"
-          : "Pending";
+          : status === "skipped"
+            ? "Skipped (condition not met)"
+            : "Pending";
   const icon =
     status === "running" ? (
       <Loader2 className="h-3.5 w-3.5 animate-spin text-vault" />
@@ -1494,6 +1556,8 @@ function StatusDot({ status }: { status: StepStatus }) {
       <CheckCircle2 className="h-3.5 w-3.5 text-vault" />
     ) : status === "error" ? (
       <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+    ) : status === "skipped" ? (
+      <Ban className="h-3.5 w-3.5 text-text-muted/70" />
     ) : (
       <Circle className="h-3.5 w-3.5 text-text-muted/50" />
     );
@@ -1511,8 +1575,97 @@ function StatusDot({ status }: { status: StepStatus }) {
 
 
 /* -------------------------------------------------------------------- */
+/* Condition editor — makes a step conditional                          */
+/* -------------------------------------------------------------------- */
+
+function ConditionEditor({
+  condition,
+  onChange,
+}: {
+  condition: StepCondition | undefined;
+  onChange: (c: StepCondition | undefined) => void;
+}) {
+  const enabled = !!condition && condition.kind !== "always";
+  const kind: ConditionKind = condition?.kind ?? "always";
+  const threshold = condition?.thresholdMb ?? 5;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-1/60 p-2.5">
+      <label className="flex items-center gap-2 text-[11.5px] text-text">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) =>
+            onChange(
+              e.target.checked
+                ? { kind: "if-scanned" }
+                : undefined,
+            )
+          }
+        />
+        <span className="font-medium">Run only if…</span>
+        <span className="ml-auto rounded-sm border border-border px-1 text-[9px] uppercase tracking-wide text-text-muted">
+          Conditional
+        </span>
+      </label>
+      {enabled && (
+        <>
+          <Select
+            value={kind}
+            onValueChange={(v) => {
+              const nextKind = v as ConditionKind;
+              if (nextKind === "always") return onChange(undefined);
+              onChange({
+                kind: nextKind,
+                thresholdMb: nextKind === "if-size-over-mb" ? threshold : undefined,
+              });
+            }}
+          >
+            <SelectTrigger className="h-7 text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="if-scanned">{CONDITION_LABELS["if-scanned"]}</SelectItem>
+              <SelectItem value="if-has-text">{CONDITION_LABELS["if-has-text"]}</SelectItem>
+              <SelectItem value="if-has-sensitive">{CONDITION_LABELS["if-has-sensitive"]}</SelectItem>
+              <SelectItem value="if-has-privilege">{CONDITION_LABELS["if-has-privilege"]}</SelectItem>
+              <SelectItem value="if-size-over-mb">{CONDITION_LABELS["if-size-over-mb"]}</SelectItem>
+            </SelectContent>
+          </Select>
+          {kind === "if-size-over-mb" && (
+            <div className="flex items-center gap-2 text-[11.5px] text-text">
+              <span className="text-text-muted">Threshold:</span>
+              <Input
+                type="number"
+                min={0}
+                step={0.5}
+                value={threshold}
+                onChange={(e) =>
+                  onChange({
+                    kind: "if-size-over-mb",
+                    thresholdMb: Math.max(0, Number(e.target.value) || 0),
+                  })
+                }
+                className="h-7 w-20 text-[12px]"
+              />
+              <span className="text-text-muted">MB</span>
+            </div>
+          )}
+          <p className="text-[10.5px] leading-snug text-text-muted">
+            Evaluated per file — in a batch, each document is checked
+            independently. Skipped steps show as "skipped".
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+/* -------------------------------------------------------------------- */
 /* Params editor                                                        */
 /* -------------------------------------------------------------------- */
+
 
 function StepParamsEditor({
   step,
