@@ -40,7 +40,7 @@ export const TOA_PAGE_MARKER = "__VPDF_TOA_PAGE__";
 const TOA_PAGE_NODE_KEY = "VPDFToaPage";
 
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { PATTERNS, detectCitations, type CitationKind } from "./detect";
+import { PATTERNS, detectCitations, buildLookupUrl, type CitationKind } from "./detect";
 import { applyCitationLinks } from "./apply";
 
 export type ToaSection = "cases" | "statutes" | "rules" | "other";
