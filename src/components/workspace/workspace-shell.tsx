@@ -1987,27 +1987,52 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               )}
             </div>
 
-            {/* AI command bar */}
-            <div className="flex h-[56px] shrink-0 items-center justify-center px-3">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  submitAi();
-                }}
-                className="flex w-full max-w-[520px] items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
-                style={{ boxShadow: "var(--shadow-float)" }}
-              >
-                <Sparkles className="h-4 w-4 text-vault shrink-0" />
-                <input
-                  ref={aiRef}
-                  value={aiText}
-                  onChange={(e) => setAiText(e.target.value)}
-                  placeholder='Tell CounselPDF what to do — "redact every phone number"'
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-                />
-                <KeyChip>⌘K</KeyChip>
-              </form>
+            {/* AI command bar — unified intent router. Action/ambiguous
+                intents pause here with a confirmation popover; questions
+                and searches open the Pre-Discovery panel with the query
+                prefilled and auto-executed. Destructive ops NEVER run
+                without explicit confirm. */}
+            <div className="relative flex h-[56px] shrink-0 items-center justify-center px-3">
+              <div className="relative w-full max-w-[520px]">
+                {pendingIntent && (
+                  <CommandConfirmPopover
+                    intent={pendingIntent}
+                    onCancel={() => setPendingIntent(null)}
+                    onConfirm={(next) => {
+                      executeIntent(next);
+                      setAiText("");
+                    }}
+                  />
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitAi();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
+                  style={{ boxShadow: "var(--shadow-float)" }}
+                >
+                  <Sparkles className="h-4 w-4 text-vault shrink-0" />
+                  <input
+                    ref={aiRef}
+                    value={aiText}
+                    onChange={(e) => {
+                      setAiText(e.target.value);
+                      if (pendingIntent) setPendingIntent(null);
+                    }}
+                    placeholder='Ask, search, or run — "summarize this", "find SSNs", "redact phone numbers"'
+                    className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                  {lastIntentLabel && !pendingIntent && (
+                    <span className="hidden sm:inline-flex items-center rounded-md border border-border bg-surface-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-text-muted">
+                      {lastIntentLabel}
+                    </span>
+                  )}
+                  <KeyChip>⌘K</KeyChip>
+                </form>
+              </div>
             </div>
+
           </main>
 
           {/* INSPECTOR slide-over */}
