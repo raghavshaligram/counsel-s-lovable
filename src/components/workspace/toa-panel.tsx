@@ -457,13 +457,13 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </Button>
             <Button
               size="sm"
-              variant="outline"
               className="h-7"
-              onClick={downloadStandalone}
+              onClick={downloadCombined}
               disabled={working !== null || scanning}
+              title="Download one combined PDF: TOA prepended to the original brief, with clickable page references"
             >
               <Download className="mr-1 h-3.5 w-3.5" />
-              {working === "download" ? "…" : "Download TOA PDF"}
+              {working === "download" ? "Building…" : "Download combined PDF"}
             </Button>
             <Button
               size="sm"
@@ -475,6 +475,18 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
               <Copy className="mr-1 h-3.5 w-3.5" />
               Copy as text
             </Button>
+          </div>
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={downloadToaOnly}
+              disabled={working !== null || scanning}
+              className="text-[10.5px] text-text-subtle underline-offset-2 hover:text-text hover:underline disabled:opacity-50"
+            >
+              {working === "download-toa"
+                ? "Preparing TOA-only PDF…"
+                : "Download TOA pages only (secondary)"}
+            </button>
           </div>
           <p className="text-[10.5px] leading-snug text-text-subtle">
             Insert produces one combined PDF (TOA + brief). Page numbers in the TOA
