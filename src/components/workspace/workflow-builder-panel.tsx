@@ -657,7 +657,7 @@ function WorkflowBuilderModal({
       }
       setSavingNow(true);
       try {
-        const cleanSteps = steps.map(({ op, params, label }) => ({
+        const cleanSteps = steps.map(({ op, params, label, condition }) => ({
           op,
           params: (params ?? {}) as Record<string, unknown>,
           label,
