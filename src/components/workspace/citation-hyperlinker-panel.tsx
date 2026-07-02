@@ -31,6 +31,7 @@ import { importChunk } from "@/lib/chunk-import";
 import type { ToolPanelCtx } from "./tool-panels";
 import type { CitationHit } from "@/lib/citations/detect";
 import { CITATION_KIND_LABEL } from "@/lib/citations/detect";
+import type { CitationLinkStyle } from "@/lib/citations/apply";
 
 interface Row extends CitationHit {
   enabled: boolean;
@@ -47,6 +48,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [applying, setApplying] = useState(false);
   const [progress, setProgress] = useState<string>("");
   const [scannedFor, setScannedFor] = useState<string>("");
+  const [linkStyle, setLinkStyle] = useState<CitationLinkStyle>("underline");
   const draftUrls = useRef<Map<string, string>>(new Map());
 
   const fileKey = file ? `${file.name}:${file.size}:${file.lastModified}` : "";
@@ -161,6 +163,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
           url: r.lookupUrl.trim(),
           text: r.text,
         })),
+        linkStyle,
       );
       const blobPart = new Uint8Array(out);
       const next = new File([blobPart], file.name, { type: "application/pdf" });
@@ -176,7 +179,7 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setApplying(false);
     }
-  }, [file, rows, replaceFile, requirePro]);
+  }, [file, rows, replaceFile, requirePro, linkStyle]);
 
   /* ---------- render ---------- */
 
@@ -349,6 +352,37 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
                 );
               })}
             </ul>
+          </div>
+
+          <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5">
+            <div className="text-[10.5px] font-medium uppercase tracking-wide text-text-subtle">
+              Link appearance
+            </div>
+            <div className="flex gap-1">
+              {(
+                [
+                  { id: "underline", label: "Underline" },
+                  { id: "underline-tint", label: "Underline + tint" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setLinkStyle(opt.id)}
+                  className={cn(
+                    "flex-1 rounded border px-2 py-1 text-[11px] transition-colors",
+                    linkStyle === opt.id
+                      ? "border-vault bg-vault/10 text-text"
+                      : "border-border bg-surface text-text-muted hover:text-text",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] leading-snug text-text-subtle">
+              Legal-brief blue underline is baked into the exported PDF so citations read as links in any viewer.
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
