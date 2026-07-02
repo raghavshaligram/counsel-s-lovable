@@ -1089,6 +1089,7 @@ export function EditorCanvas({
       text: it.str,
       fontSize: it.h,
       bg: sampled.bg,
+      bgConfidence: sampled.bgConfidence,
       family,
       fontKey,
       fontFamilyOverride,
@@ -1404,12 +1405,18 @@ export function EditorCanvas({
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
           const bgCss = rgbCss(a.bg);
+          // Low-confidence sample => busy/tinted/gradient background. Painting
+          // an opaque bar there produces a visibly wrong-colored block; a
+          // missing mask (original glyph faintly showing) is strictly better.
+          const conf = a.bgConfidence ?? 1;
+          const maskBg = conf < 0.5 ? "transparent" : bgCss;
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
-              background: bgCss,
+              background: maskBg,
               sampledBg: a.bg,
+              bgConfidence: conf,
               coverPdf: a.cover,
               coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
             });
@@ -1423,7 +1430,7 @@ export function EditorCanvas({
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: bgCss,
+                background: maskBg,
                 pointerEvents: "none",
                 zIndex: 1,
               }}
