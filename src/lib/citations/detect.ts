@@ -45,7 +45,7 @@ interface Pattern {
   re: RegExp;
 }
 
-const PATTERNS: Pattern[] = [
+export const PATTERNS: Pattern[] = [
   // 384 U.S. 436  |  384 U. S. 436
   { kind: "us-supreme", re: /\b\d{1,4}\s+U\.\s?S\.\s+\d{1,5}\b/g },
   // 42 U.S.C. § 1983  |  42 U.S.C. 1983  |  42 U.S.C. §§ 1981-1988
