@@ -276,11 +276,28 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] leading-snug text-text-muted">
-        Open a brief to generate a Table of Authorities — Cases, Statutes, Rules & Regulations, Other Authorities — with page references and dot leaders.
-      </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-1.5 text-[13px] font-medium text-text">
+          <BookMarked className="h-3.5 w-3.5 text-vault" />
+          Table of Authorities
+          {!isPro && <LockBadge title="Pro — Table of Authorities" />}
+        </div>
+        <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] leading-snug text-text-muted">
+          Open a brief to generate a Table of Authorities — Cases, Statutes, Rules &amp; Regulations, Other Authorities — with page references and dot leaders.
+        </p>
+        {!isPro && (
+          <Button
+            size="sm"
+            className="h-8 bg-vault text-white hover:bg-vault/90"
+            onClick={() => requirePro("Table of Authorities")}
+          >
+            Unlock with Pro
+          </Button>
+        )}
+      </div>
     );
   }
+
 
   return (
     <div className="flex flex-col gap-3">
