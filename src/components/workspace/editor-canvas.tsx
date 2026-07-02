@@ -54,13 +54,68 @@ function cssFontFamilyName(stack: string | undefined): string {
 }
 
 function numericFontWeight(weight: number | string | undefined, bold: boolean): number {
+  // When we have a positive bold signal, it wins over a matcher's default
+  // regular face. Fonts like Times New Roman resolve `fontWeight: "400"` from
+  // the matcher even when the run is clearly bold — that silent demotion is
+  // the exact bug the caller is guarding against.
+  if (bold) {
+    if (typeof weight === "number" && weight >= 600) return weight;
+    if (typeof weight === "string") {
+      const n = Number.parseInt(weight, 10);
+      if (Number.isFinite(n) && n >= 600) return n;
+      if (/bold/i.test(weight)) return 700;
+    }
+    return 700;
+  }
   if (typeof weight === "number") return weight;
   if (typeof weight === "string") {
     const n = Number.parseInt(weight, 10);
     if (Number.isFinite(n)) return n;
     if (/bold/i.test(weight)) return 700;
   }
-  return bold ? 700 : 400;
+  return 400;
+}
+
+// pdf.js masks embedded / Standard-14 fonts as opaque ids like "g_d0_f1" in
+// `it.fontName`. Those must never leak into a CSS font-family or into the
+// matcher (which would produce `"g_d0_f1", sans-serif` — unloadable).
+const OPAQUE_PDFJS_FONT_ID = /^g_d\d+_f\d+$/;
+function isOpaquePdfjsFontId(name: string | undefined): boolean {
+  return !!name && OPAQUE_PDFJS_FONT_ID.test(name);
+}
+
+// Ask pdf.js for the real Font descriptor for every font id referenced by a
+// page's text content. Uses the callback form of commonObjs.get, which fires
+// as soon as the descriptor is available — descriptors are populated during
+// render, so this resolves quickly after `render().promise` has settled.
+async function resolvePdfFontInfo(
+  page: { commonObjs: { get: (id: string, cb: (font: unknown) => void) => void } },
+  ids: Iterable<string>,
+): Promise<Map<string, { bold: boolean; italic: boolean; realName: string }>> {
+  const out = new Map<string, { bold: boolean; italic: boolean; realName: string }>();
+  await Promise.all([...new Set(ids)].map((id) => new Promise<void>((resolve) => {
+    let done = false;
+    const finish = (f: unknown) => {
+      if (done) return; done = true;
+      const fo = f as { bold?: boolean; black?: boolean; italic?: boolean; name?: string; loadedName?: string } | null;
+      if (fo) {
+        out.set(id, {
+          bold: !!(fo.bold || fo.black),
+          italic: !!fo.italic,
+          realName: String(fo.name ?? fo.loadedName ?? id),
+        });
+      }
+      resolve();
+    };
+    // Safety net: never block page render on a stuck descriptor.
+    const t = setTimeout(() => finish(null), 750);
+    try {
+      page.commonObjs.get(id, (f) => { clearTimeout(t); finish(f); });
+    } catch {
+      clearTimeout(t); resolve();
+    }
+  })));
+  return out;
 }
 
 function resolveTextFontFamily(a: Anno & { kind: "text" | "text-edit" }): string {
