@@ -27,6 +27,11 @@ function pushDebug(line: string) {
   debugListeners.forEach((listener) => listener(snapshot));
 }
 
+export function addDiscoveryDebug(line: string, data?: unknown) {
+  const suffix = data === undefined ? "" : ` ${JSON.stringify(data)}`;
+  pushDebug(`[pre-discovery] ${line}${suffix}`);
+}
+
 export function getDiscoveryDebugLines(): string[] {
   return [...debugLines];
 }
