@@ -1010,6 +1010,7 @@ export function EditorCanvas({
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
     const canvas = canvasRef.current;
+    let bgSampled = false;
     const sampled = (() => {
       if (!canvas) return { color: it.color, bg: it.bg };
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1022,11 +1023,13 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
+      bgSampled = true;
       return {
         color: sampleTextColor(ctx, sx, sy, sw, sh),
         bg: samplePageBg(ctx, sx, sy, sw, sh),
       };
     })();
+
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
     // Cover bbox: keep it EXACTLY at the original glyph bounds so the
@@ -1079,6 +1082,8 @@ export function EditorCanvas({
       text: it.str,
       fontSize: it.h,
       bg: sampled.bg,
+      bgSampled,
+
       family,
       fontKey,
       fontFamilyOverride,
@@ -1127,24 +1132,11 @@ export function EditorCanvas({
     if (!el) return;
     const a = activeText;
     if (a.kind === "text-edit") {
-      const originalW = a.source?.bounds?.w ?? a.w;
-      const slots = Math.max(0, (a.text || "").length - 1);
-      if (originalW > 0 && slots > 0 && !a.text.includes("\n")) {
-        el.style.fontSize = `${a.fontSize * scale}px`;
-        el.style.fontFamily = resolveTextFontFamily(a);
-        el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
-        el.style.fontStyle = a.italic ? "italic" : "normal";
-        el.style.lineHeight = `${a.lineHeight ?? 1}`;
-        el.style.letterSpacing = "0px";
-        el.style.whiteSpace = "pre";
-        el.textContent = a.text || " ";
-        const untrackedW = el.offsetWidth / scale;
-        const fittedTracking = Math.max(-a.fontSize * 0.25, Math.min(a.fontSize * 0.6, (originalW - untrackedW) / slots));
-        if (Number.isFinite(fittedTracking) && Math.abs(fittedTracking - (a.letterSpacing ?? 0)) > 0.02) {
-          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: fittedTracking } as Partial<Anno> });
-          return;
-        }
-      }
+      // Auto-fit letter-spacing removed: it dispatched negative tracking on
+      // every keystroke, visibly compressing the edited text. Let it render
+      // at natural spacing; if longer than the original bounds, it extends
+      // naturally instead of being squeezed.
+
       const original = a.source?.bounds;
       if (original) {
         let patch: Partial<Anno> = {};
@@ -1240,7 +1232,10 @@ export function EditorCanvas({
           const cover = a.source?.bounds ?? a.cover;
           const tl = toScreen(cover.x, cover.y);
           const br = toScreen(cover.x + cover.w, cover.y + cover.h);
-          const bgCss = rgbCss(a.bg);
+          // Only paint the cover once bg has been sampled from real page
+          // pixels — otherwise we'd flash the default white over the glyphs.
+          const bgCss = a.bgSampled ? rgbCss(a.bg) : "transparent";
+
           return (
             <div
               key={`cover-${a.id}`}
