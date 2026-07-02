@@ -1707,27 +1707,57 @@ function TextMiniToolbar({
         fontFamily: "Helvetica, Arial, sans-serif",
       }}
     >
-      {showHint && (
+      {a.kind === "text-edit" && (
         <div
           style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "6px 10px",
             fontSize: 11, lineHeight: 1.3,
-            color: "rgba(255,255,255,0.72)",
-            background: "rgba(245,158,11,0.08)",
+            color: "rgba(255,255,255,0.78)",
+            background: showHint ? "rgba(245,158,11,0.08)" : "rgba(255,255,255,0.03)",
             borderBottom: "1px solid rgba(255,255,255,0.06)",
             borderTopLeftRadius: 8, borderTopRightRadius: 8,
           }}
         >
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--vault)", flex: "0 0 auto" }} />
-          <span style={{ flex: 1 }}>Original font couldn't be matched exactly — pick the closest in the font menu.</span>
+          <span
+            style={{
+              width: 6, height: 6, borderRadius: 999, flex: "0 0 auto",
+              background:
+                fontSource === "embedded" ? "#22c55e"
+                : fontSource === "upload" ? "var(--vault)"
+                : fontSource === "matched" ? "#60a5fa"
+                : "#f59e0b",
+            }}
+          />
+          <span style={{ flex: 1 }}>
+            {fontSource === "embedded" && <>Using embedded font <strong>{detectedPdfName || overrideInfo?.displayName}</strong> from the PDF.</>}
+            {fontSource === "upload" && <>Using uploaded font <strong>{overrideInfo?.displayName}</strong>.</>}
+            {fontSource === "matched" && <>Detected <strong>{detectedPdfName || "font"}</strong> — using closest available match.</>}
+            {fontSource === "approximate" && <>Font <strong>{detectedPdfName || "unknown"}</strong> isn't embedded or available — edited text may not match exactly.</>}
+          </span>
           <button
             type="button"
             onMouseDown={keepFocus}
-            onClick={() => setHintDismissed(true)}
-            title="Dismiss"
-            style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}
-          >×</button>
+            onClick={() => uploadInputRef.current?.click()}
+            title="Upload a .ttf or .otf file for an exact match"
+            style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.18)", color: "#fff", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "3px 8px", borderRadius: 4 }}
+          >Upload font…</button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept=".ttf,.otf,font/ttf,font/otf,application/font-sfnt,application/vnd.ms-opentype"
+            style={{ display: "none" }}
+            onChange={(e) => { onUploadFont(e.target.files?.[0]); e.currentTarget.value = ""; }}
+          />
+          {showHint && (
+            <button
+              type="button"
+              onMouseDown={keepFocus}
+              onClick={() => setHintDismissed(true)}
+              title="Dismiss"
+              style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}
+            >×</button>
+          )}
         </div>
       )}
       <div style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
@@ -1742,7 +1772,7 @@ function TextMiniToolbar({
           update({ fontKey: key, family: kind, fontApproximate: false, fontFamilyOverride: undefined } as Partial<Anno>);
           setHintDismissed(true);
         }}
-        title={isApprox ? "Approximate match — pick the closest font" : "Font"}
+        title={fontSource === "approximate" ? "Approximate match — pick the closest font or upload the real one" : "Font"}
         onMouseDown={stop}
         style={{
           ...btn,
