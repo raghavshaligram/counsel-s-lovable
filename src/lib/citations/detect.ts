@@ -11,6 +11,7 @@
  * the target URL is a PUBLIC LOOKUP (search) for the citation string.
  */
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { TOA_PAGE_MARKER } from "./toa";
 
 export type CitationKind =
   | "us-supreme"
@@ -117,6 +118,17 @@ export async function detectCitations(
     for (let p = 1; p <= totalPages; p++) {
       const page = await doc.getPage(p);
       const content = await page.getTextContent();
+      // Skip generated Table of Authorities pages. TOA page numbers are
+      // internal go-to-page jumps; re-linking them to external lookups
+      // would wrongly point "Miranda v. Arizona ... 4" to CourtListener.
+      // The invisible marker is stamped by `renderToa`.
+      const joined = (content.items as Array<{ str?: string }>)
+        .map((it) => it.str ?? "")
+        .join(" ");
+      if (joined.includes(TOA_PAGE_MARKER)) {
+        onProgress?.({ page: p, totalPages });
+        continue;
+      }
       const pageHits: CitationHit[] = [];
       for (const item of content.items as Array<{
         str: string;
