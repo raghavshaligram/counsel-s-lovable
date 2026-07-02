@@ -109,6 +109,7 @@ import { PrivilegeReviewPanel } from "./privilege-review-panel";
 import { WorkflowBuilderPanel } from "./workflow-builder-panel";
 import { CitationHyperlinkerPanel } from "./citation-hyperlinker-panel";
 import { TableOfAuthoritiesPanel } from "./toa-panel";
+import { DocumentHashPanel } from "./document-hash-panel";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -202,6 +203,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <CitationHyperlinkerPanel ctx={ctx} />;
     case "toa":
       return <TableOfAuthoritiesPanel ctx={ctx} />;
+    case "document-hash":
+      return <DocumentHashPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
