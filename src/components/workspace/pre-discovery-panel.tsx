@@ -114,13 +114,25 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const { extractPdfChunks } = await import("@/lib/chat/pdf-extract");
       const raw = await extractPdfChunks(file, 900, 120);
-      const chunks = raw.map((c, i) => ({ ...c, id: `${c.page}:${i}` }));
+      // extractPdfChunks emits 1-based pages; the editor uses 0-based.
+      // Normalise to 0-based here so jumpTo and the "Page N" label both
+      // agree with the actual page the passage came from.
+      const chunks = raw.map((c, i) => ({
+        ...c,
+        page: c.page - 1,
+        id: `${c.page - 1}:${i}`,
+      }));
       if (chunks.length === 0) {
         toast.error("No extractable text — run Make Searchable (OCR) first.");
         setIndexing(false);
         setIndexProgress(null);
         return false;
       }
+      const sample = [chunks[0], chunks[Math.floor(chunks.length / 2)], chunks[chunks.length - 1]];
+      console.log(
+        "[pre-discovery] chunk/page sample",
+        sample.map((c) => ({ page0: c.page, page1: c.page + 1, textHead: c.text.slice(0, 60) })),
+      );
       setIndexProgress({ done: 0, total: chunks.length });
       await indexDocument(docKey, chunks, (done, total) =>
         setIndexProgress({ done, total }),
@@ -149,8 +161,27 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } else if (!(await ensureModel())) return;
     setQuerying(true);
     try {
-      const results = await queryIndex(docKey, query.trim(), 8);
-      setHits(results.filter((r) => r.score > 0.15));
+      const results = await queryIndex(docKey, query.trim(), 20);
+      // Semantic-only ranking: require a meaningful cosine score and stay
+      // within a reasonable gap from the top match. MiniLM cosines run
+      // 0.2–0.6 for "kind of related" and 0.4+ for genuinely relevant.
+      const MIN_ABS = 0.35;
+      const REL_GAP = 0.75;
+      const top = results[0]?.score ?? 0;
+      const filtered = results
+        .filter((r) => r.score >= MIN_ABS && r.score >= top * REL_GAP)
+        .slice(0, 8);
+      console.log(
+        "[pre-discovery] query",
+        query,
+        "top",
+        top.toFixed(3),
+        "kept",
+        filtered.length,
+        "of",
+        results.length,
+      );
+      setHits(filtered);
       setLastQuery(query.trim());
     } catch (err) {
       console.error("[pre-discovery] query failed", err);
@@ -163,7 +194,11 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
   }, [file, query, docKey, indexed, buildIndex, ensureModel, requirePro]);
 
   const jumpTo = useCallback(
-    (page: number) => editorDispatch({ type: "SET_PAGE", n: page }),
+    (page: number) => {
+      // page is 0-based (see buildIndex). SET_PAGE expects 0-based.
+      editorDispatch({ type: "SELECT_ANNO", id: null });
+      editorDispatch({ type: "SET_PAGE", n: page });
+    },
     [editorDispatch],
   );
 
