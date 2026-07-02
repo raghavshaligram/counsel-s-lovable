@@ -946,6 +946,10 @@ export function EditorCanvas({
           fontFamily: fam,
           fontWeight,
           fontStyle: isItalic ? "italic" : "normal",
+          // If the resolved family only has a regular face loaded, let the
+          // browser synthesize the bold weight rather than silently rendering
+          // a bold run in regular. Only meaningful for text-edit overlays.
+          fontSynthesis: a.kind === "text-edit" ? "weight style" : undefined,
           textDecoration: isUnderline ? "underline" : "none",
           textAlign: align,
           lineHeight: a.lineHeight ?? 1.15,
