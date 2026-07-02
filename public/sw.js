@@ -15,7 +15,7 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "counselpdf-v4-offline";
+const VERSION = "counselpdf-v5-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;
