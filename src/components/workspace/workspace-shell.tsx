@@ -3980,6 +3980,100 @@ function ZoomModeSelect({
 
 
 
+/**
+ * Confirmation / clarification popover anchored above the command bar.
+ *  - action + destructive → "Preview / Confirm / Cancel"
+ *  - ambiguous            → two chips ("Redact them" / "Just find them")
+ * Never auto-executes; the user always makes the final call.
+ */
+function CommandConfirmPopover({
+  intent,
+  onConfirm,
+  onCancel,
+}: {
+  intent: Intent;
+  onConfirm: (next: Intent) => void;
+  onCancel: () => void;
+}) {
+  if (intent.kind === "ambiguous") {
+    return (
+      <div
+        className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-border bg-surface-2 p-3 text-[12.5px] shadow-lg"
+        style={{ boxShadow: "var(--shadow-float)" }}
+        role="dialog"
+        aria-label="Clarify command"
+      >
+        <div className="mb-2 text-text">{intent.reason}</div>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => onConfirm(intent.options[0])}
+            className="rounded-md border border-border bg-surface-1 px-2.5 py-1 text-[12px] text-text hover:bg-vault/10 hover:text-vault"
+          >
+            {intent.options[0].kind === "action"
+              ? intent.options[0].title
+              : "Redact them"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(intent.options[1])}
+            className="rounded-md border border-border bg-surface-1 px-2.5 py-1 text-[12px] text-text hover:bg-vault/10 hover:text-vault"
+          >
+            Just find them
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="ml-auto rounded-md px-2 py-1 text-[11.5px] text-text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (intent.kind === "action") {
+    return (
+      <div
+        className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-border bg-surface-2 p-3 shadow-lg"
+        style={{ boxShadow: "var(--shadow-float)" }}
+        role="dialog"
+        aria-label="Confirm action"
+      >
+        <div className="mb-0.5 flex items-center gap-2">
+          <span className="rounded-md border border-vault/40 bg-vault/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-vault">
+            {intent.destructive ? "Confirm action" : "Action"}
+          </span>
+          <span className="text-[12.5px] font-medium text-text">{intent.title}</span>
+        </div>
+        <div className="mb-2 text-[11.5px] leading-snug text-text-muted">
+          {intent.description}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onConfirm(intent)}
+            className="rounded-md bg-vault px-2.5 py-1 text-[12px] font-medium text-white hover:bg-vault/90"
+          >
+            {intent.destructive ? "Open & review" : "Open"}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-2 py-1 text-[11.5px] text-text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+          <span className="ml-auto text-[10.5px] text-text-muted">
+            AI proposes — you confirm.
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 function KeyChip({
   children,
   inline,
