@@ -12,7 +12,16 @@
  * Deterministic, on-device, single pdf.js pass. No re-parse of pdf-lib
  * on scan.
  */
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFNull,
+  PDFNumber,
+  PDFRef,
+  StandardFonts,
+} from "pdf-lib";
 
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { PATTERNS, type CitationKind } from "./detect";
@@ -230,28 +239,56 @@ interface RenderOpts {
   margin?: number;
   bodySize?: number;
   title?: string;
+  /**
+   * How many pages to add to every page reference before rendering.
+   * Used by `prependToaToPdf` so the TOA prints the FINAL page numbers
+   * (post-insertion) rather than the source's original numbers. Standalone
+   * renders leave this at 0.
+   */
+  shift?: number;
 }
 
 /**
- * Render a standalone TOA PDF using Standard 14 Times (no external font
- * dependency). Layout: centered title, section headings in bold, entries
- * as "Name .......... 3, 7" with a real dot leader.
+ * Per-page-number rect captured during rendering. `toaPageIndex` is the
+ * index within the produced TOA document; `targetOriginalPage` is the
+ * unshifted page number from the source brief (1-based), so the caller
+ * can compute the final destination index as `shift + targetOriginalPage - 1`.
  */
-export async function buildToaPdfBytes(
+export interface ToaLinkRect {
+  toaPageIndex: number;
+  rect: [number, number, number, number];
+  targetOriginalPage: number;
+}
+
+export interface ToaRender {
+  bytes: Uint8Array;
+  pageCount: number;
+  links: ToaLinkRect[];
+}
+
+/**
+ * Render TOA pages. Returns bytes plus per-page-number link rects so a
+ * caller can attach internal /Link GoTo annotations pointing into the
+ * combined document.
+ */
+export async function renderToa(
   entries: ToaEntry[],
   opts: RenderOpts = {},
-): Promise<Uint8Array> {
+): Promise<ToaRender> {
   const [W, H] = opts.pageSize ?? [612, 792];
   const margin = opts.margin ?? 72;
   const bodySize = opts.bodySize ?? 11;
   const title = opts.title ?? "TABLE OF AUTHORITIES";
+  const shift = opts.shift ?? 0;
   const contentW = W - margin * 2;
 
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.TimesRoman);
   const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const links: ToaLinkRect[] = [];
 
   let page = doc.addPage([W, H]);
+  let pageIdx = 0;
   let y = H - margin;
 
   const titleSize = 14;
@@ -270,9 +307,13 @@ export async function buildToaPdfBytes(
   const ensureRoom = (needed: number) => {
     if (y - needed < margin) {
       page = doc.addPage([W, H]);
+      pageIdx += 1;
       y = H - margin;
     }
   };
+
+  const shiftedList = (pages: number[]) =>
+    pages.map((p) => p + shift);
 
   const groups = groupToa(entries);
   for (const key of SECTION_ORDER) {
@@ -288,10 +329,11 @@ export async function buildToaPdfBytes(
     y -= lineHeight + 3;
 
     for (const entry of arr) {
-      const pagesStr = formatPageList(entry.pages);
+      const shownPages = shiftedList(entry.pages);
+      const pagesStr = shownPages.join(", ");
       const pagesW = font.widthOfTextAtSize(pagesStr, bodySize);
       const gutter = 6;
-      const nameMaxW = contentW - pagesW - gutter - 24; // leave room for dots
+      const nameMaxW = contentW - pagesW - gutter - 24;
 
       // Wrap the display name if it exceeds the available width.
       const words = entry.display.split(" ");
@@ -308,7 +350,6 @@ export async function buildToaPdfBytes(
       }
       if (line) wrapped.push(line);
 
-      // Continuation lines: indent, no dots, no page number.
       for (let i = 0; i < wrapped.length - 1; i++) {
         ensureRoom(lineHeight);
         page.drawText(wrapped[i], {
@@ -320,7 +361,6 @@ export async function buildToaPdfBytes(
         y -= lineHeight;
       }
 
-      // Final line: dot leader + page numbers, right-aligned.
       const last = wrapped[wrapped.length - 1];
       ensureRoom(lineHeight);
       page.drawText(last, { x: margin, y, font, size: bodySize });
@@ -328,13 +368,11 @@ export async function buildToaPdfBytes(
       const dotStart = margin + lastW + gutter;
       const pagesX = margin + contentW - pagesW;
       const dotEnd = pagesX - gutter;
-      // Build dot string that fits the gap.
       const dotUnitW = font.widthOfTextAtSize(". ", bodySize);
       if (dotEnd > dotStart && dotUnitW > 0) {
         const count = Math.floor((dotEnd - dotStart) / dotUnitW);
         if (count > 0) {
-          const dots = ". ".repeat(count);
-          page.drawText(dots, {
+          page.drawText(". ".repeat(count), {
             x: dotStart,
             y,
             font,
@@ -342,33 +380,133 @@ export async function buildToaPdfBytes(
           });
         }
       }
-      page.drawText(pagesStr, { x: pagesX, y, font, size: bodySize });
+
+      // Draw each page number as its own token so we can capture per-
+      // number rects for the internal GoTo link annotations.
+      let cx = pagesX;
+      const sep = ", ";
+      const sepW = font.widthOfTextAtSize(sep, bodySize);
+      for (let i = 0; i < shownPages.length; i++) {
+        const shownStr = String(shownPages[i]);
+        const numW = font.widthOfTextAtSize(shownStr, bodySize);
+        page.drawText(shownStr, { x: cx, y, font, size: bodySize });
+        links.push({
+          toaPageIndex: pageIdx,
+          rect: [
+            cx - 1,
+            y - 2,
+            cx + numW + 1,
+            y + bodySize + 1,
+          ],
+          targetOriginalPage: entry.pages[i],
+        });
+        cx += numW;
+        if (i < shownPages.length - 1) {
+          page.drawText(sep, { x: cx, y, font, size: bodySize });
+          cx += sepW;
+        }
+      }
       y -= lineHeight;
     }
     y -= sectionGap;
   }
 
-  return doc.save();
+  const bytes = await doc.save();
+  return { bytes, pageCount: doc.getPageCount(), links };
 }
 
 /**
- * Prepend a rendered TOA (one or more pages) to an existing PDF. Non-
- * destructive of the source's annotations / outline — copyPages carries
- * the TOA in as fresh pages inserted at index 0.
+ * Standalone TOA PDF (no internal links — target document is unknown).
+ * Kept for the "Download TOA alone" affordance.
+ */
+export async function buildToaPdfBytes(
+  entries: ToaEntry[],
+  opts: RenderOpts = {},
+): Promise<Uint8Array> {
+  const { bytes } = await renderToa(entries, { ...opts, shift: 0 });
+  return bytes;
+}
+
+/**
+ * Prepend a TOA to `sourceBytes` producing ONE combined PDF: TOA pages
+ * + original brief. Page references in the TOA reflect the FINAL
+ * (post-insertion) page numbers, and each page-number token is wrapped
+ * in an internal /Link GoTo annotation that jumps to the referenced
+ * page inside the combined document.
+ *
+ * Iterates the render a few times to stabilize the TOA page count
+ * (adding a shift can change wrap → change page count → change shift).
  */
 export async function prependToaToPdf(
   sourceBytes: Uint8Array,
   entries: ToaEntry[],
   opts: RenderOpts = {},
 ): Promise<Uint8Array> {
-  const toaBytes = await buildToaPdfBytes(entries, opts);
+  // Estimate the TOA page count. Start with 1, re-render until stable
+  // (bounded so a pathological input can't loop forever).
+  let shift = 1;
+  let render = await renderToa(entries, { ...opts, shift });
+  for (let i = 0; i < 4 && render.pageCount !== shift; i++) {
+    shift = render.pageCount;
+    render = await renderToa(entries, { ...opts, shift });
+  }
+
   const target = await PDFDocument.load(sourceBytes, {
     ignoreEncryption: true,
   });
-  const toaDoc = await PDFDocument.load(toaBytes);
+  const toaDoc = await PDFDocument.load(render.bytes);
   const copied = await target.copyPages(toaDoc, toaDoc.getPageIndices());
   for (let i = 0; i < copied.length; i++) {
     target.insertPage(i, copied[i]);
   }
+
+  // Attach internal GoTo annotations for every page-number token.
+  // Preserves any existing annotations on the copied pages (there are
+  // none from a fresh render, but this stays safe if that ever changes)
+  // and never touches the original brief's annotations — including
+  // Citation Hyperlinker /Link URI annotations, which live on later
+  // pages and go through untouched.
+  const ctx = target.context;
+  const totalPages = target.getPageCount();
+  for (const l of render.links) {
+    const finalIdx = shift + l.targetOriginalPage - 1;
+    if (finalIdx < 0 || finalIdx >= totalPages) continue;
+    if (l.toaPageIndex < 0 || l.toaPageIndex >= shift) continue;
+
+    const toaPage = target.getPage(l.toaPageIndex);
+    const targetPage = target.getPage(finalIdx);
+
+    const dest = ctx.obj([
+      targetPage.ref,
+      PDFName.of("XYZ"),
+      PDFNull,
+      PDFNull,
+      PDFNull,
+    ]);
+
+    const annot = ctx.obj({}) as PDFDict;
+    annot.set(PDFName.of("Type"), PDFName.of("Annot"));
+    annot.set(PDFName.of("Subtype"), PDFName.of("Link"));
+    annot.set(
+      PDFName.of("Rect"),
+      ctx.obj(l.rect.map((n) => PDFNumber.of(n))),
+    );
+    annot.set(
+      PDFName.of("Border"),
+      ctx.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
+    );
+    annot.set(PDFName.of("H"), PDFName.of("I"));
+    annot.set(PDFName.of("Dest"), dest);
+    const ref: PDFRef = ctx.register(annot);
+
+    const existing = toaPage.node.get(PDFName.of("Annots"));
+    if (existing instanceof PDFArray) {
+      existing.push(ref);
+    } else {
+      toaPage.node.set(PDFName.of("Annots"), ctx.obj([ref]));
+    }
+  }
+
   return target.save();
 }
+
