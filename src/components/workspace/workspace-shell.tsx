@@ -162,6 +162,7 @@ const TOOLS: RailTool[] = [
   { id: "exhibit-binder", label: "Exhibit Binder", icon: BookOpen, group: "legal", groupLabel: "Legal" },
   { id: "court-readiness", label: "Court Readiness", icon: Gavel, group: "legal", groupLabel: "Legal" },
   { id: "workflow-builder", label: "Workflow Builder", icon: WorkflowIcon, group: "legal", groupLabel: "Legal" },
+  { id: "citation-hyperlinker", label: "Citation Hyperlinker", icon: Link2, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
 
   // Assemble
