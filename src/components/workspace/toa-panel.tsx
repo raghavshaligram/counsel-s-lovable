@@ -156,7 +156,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   /**
    * ONE combined action: hyperlink inline body citations (external
-   * CourtListener/Cornell URIs) AND prepend a Table of Authorities whose
+   * Google Scholar URIs) AND prepend a Table of Authorities whose
    * entries are navigational (internal /Dest jumps only). Replaces the
    * open document with the combined output.
    */
