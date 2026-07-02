@@ -254,7 +254,6 @@ export async function verifyCitationsLegible(
     }
   } finally {
     await pdf.cleanup();
-    await pdf.destroy();
   }
   return failures;
 }
