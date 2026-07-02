@@ -91,7 +91,7 @@ async function getTextScan(ctx: ConditionContext): Promise<TextScan | null> {
           chunks.push(pageText);
           page.cleanup();
         }
-        await doc.destroy();
+        try { await (doc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* noop */ }
         return {
           totalTextChars: total,
           pagesScanned: maxPages,
