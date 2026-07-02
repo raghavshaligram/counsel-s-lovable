@@ -1035,9 +1035,6 @@ export function EditorCanvas({
     // extending above/below into the surrounding page. Tiny anti-aliased
     // glyph edges outside these bounds are acceptable — they blend against
     // the page and are cleaned up at export via text-rewrite.
-    const coverPadX = 0;
-    const coverPadTop = 0;
-    const coverPadBottom = 0;
     const cover = {
       x: it.x,
       y: it.y,
