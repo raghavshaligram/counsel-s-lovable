@@ -361,37 +361,13 @@ export function WorkflowBuilderPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const requirePro = useRequirePro();
   const [open, setOpen] = useState(false);
 
-  if (!isPro) {
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="rounded-md border border-vault/30 bg-vault/5 p-4 text-[12px] leading-snug text-text">
-          <div className="mb-2 flex items-center gap-2 text-vault">
-            <Lock className="h-4 w-4" />
-            <span className="font-medium">Workflow Builder — Pro</span>
-          </div>
-          <p className="text-text-muted">
-            Chain OCR, Bates, sanitize, watermark, compress and more into a
-            reusable, on-device pipeline. Every workflow uses the same
-            verified export path as manual tools.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          className="bg-vault text-white hover:bg-vault/90"
-          onClick={() => requirePro("Workflows & automation")}
-        >
-          Unlock Workflow Builder
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-md border border-border bg-surface-2 p-3 text-[12px] leading-snug text-text">
         <div className="mb-2 flex items-center gap-2 text-vault">
           <WorkflowIcon className="h-4 w-4" />
           <span className="font-medium">Workflow Builder</span>
+          {!isPro && <LockBadge className="ml-1" title="Pro — Workflow Builder" />}
         </div>
         <p className="text-text-muted">
           Compose OCR, Bates, sanitize, watermark, compress and more into a
@@ -399,14 +375,27 @@ export function WorkflowBuilderPanel({ ctx }: { ctx: ToolPanelCtx }) {
           palette, sequence canvas, and step inspector.
         </p>
       </div>
+
       <Button
         size="sm"
         className="bg-vault text-white hover:bg-vault/90"
         onClick={() => setOpen(true)}
       >
         <WorkflowIcon className="mr-1 h-3.5 w-3.5" />
-        Open Workflow Builder
+        {isPro ? "Open Workflow Builder" : "Preview Workflow Builder"}
       </Button>
+
+      {!isPro && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-vault/40 text-vault hover:bg-vault/10"
+          onClick={() => requirePro("Workflows & automation")}
+        >
+          <Lock className="mr-1 h-3.5 w-3.5" />
+          Unlock with Pro
+        </Button>
+      )}
 
       <WorkflowBuilderModal open={open} onOpenChange={setOpen} ctx={ctx} />
     </div>
