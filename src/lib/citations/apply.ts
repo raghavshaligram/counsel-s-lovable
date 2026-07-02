@@ -5,6 +5,12 @@
  * touching the page content stream and without stripping any existing
  * annotations (unlike `src/lib/outline/write.ts::exportPdf`, which rebuilds
  * outlines and replaces every /Link).
+ *
+ * In addition to the invisible /Link annotation, we bake a visible link
+ * affordance directly into the page content stream so the citation reads
+ * as a hyperlink in any PDF viewer — a legal-brief-blue underline under
+ * the citation rect and, when the "tinted" style is selected, a subtle
+ * translucent blue wash over the text.
  */
 import {
   PDFArray,
@@ -14,8 +20,11 @@ import {
   PDFNumber,
   PDFRef,
   PDFString,
+  rgb,
   type PDFContext,
 } from "pdf-lib";
+
+export type CitationLinkStyle = "underline" | "underline-tint";
 
 export interface CitationLinkInput {
   page: number;
@@ -24,6 +33,9 @@ export interface CitationLinkInput {
   /** Human-readable citation text — stored as /Contents for accessibility. */
   text?: string;
 }
+
+/** Legal-brief link blue — matches Bluebook / Word default hyperlink hue. */
+const LINK_BLUE = rgb(6 / 255, 69 / 255, 173 / 255); // #0645AD
 
 function buildLinkAnnot(
   ctx: PDFContext,
@@ -53,13 +65,13 @@ function buildLinkAnnot(
 }
 
 /**
- * Load `sourceBytes`, append URI link annotations for each entry, save.
- * Non-destructive: existing annotations (highlights, form widgets, other
- * links) are preserved.
+ * Load `sourceBytes`, append URI link annotations for each entry (plus the
+ * visible underline / tint), save. Non-destructive to existing annotations.
  */
 export async function applyCitationLinks(
   sourceBytes: Uint8Array,
   links: CitationLinkInput[],
+  style: CitationLinkStyle = "underline",
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
   const ctx = doc.context;
@@ -75,6 +87,41 @@ export async function applyCitationLinks(
 
   for (const [pageIdx, pageLinks] of byPage.entries()) {
     const page = pages[pageIdx];
+
+    // ---- visible affordance (drawn UNDER new annotations) ----------------
+    for (const l of pageLinks) {
+      const [llx, lly, urx, ury] = l.rect;
+      const width = Math.max(0, urx - llx);
+      const height = Math.max(0, ury - lly);
+      if (width <= 0 || height <= 0) continue;
+
+      // Subtle blue wash behind the glyphs (tinted style only). Drawn first
+      // so the underline sits on top, and low opacity keeps text legible.
+      if (style === "underline-tint") {
+        page.drawRectangle({
+          x: llx,
+          y: lly,
+          width,
+          height,
+          color: LINK_BLUE,
+          opacity: 0.12,
+          borderWidth: 0,
+        });
+      }
+
+      // Underline: 1-glyph-thick line just below the baseline of the rect.
+      const thickness = Math.max(0.6, Math.min(1.2, height * 0.05));
+      const underlineY = lly + Math.max(0.5, height * 0.04);
+      page.drawLine({
+        start: { x: llx, y: underlineY },
+        end: { x: urx, y: underlineY },
+        thickness,
+        color: LINK_BLUE,
+        opacity: 0.9,
+      });
+    }
+
+    // ---- invisible URI /Link annotations ---------------------------------
     const refs = pageLinks.map((l) => buildLinkAnnot(ctx, l));
     const existing = page.node.get(PDFName.of("Annots"));
     if (existing instanceof PDFArray) {
