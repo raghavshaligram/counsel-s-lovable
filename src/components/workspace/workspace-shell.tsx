@@ -1009,12 +1009,56 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [onFiles],
   );
 
+  /**
+   * Route a classified intent to the right panel. ACTION intents that are
+   * destructive stop at the popover — the user has to confirm first.
+   * QUESTION and SEARCH open the Pre-Discovery panel (the workspace's
+   * on-device AI Assist / semantic search surface) with the query
+   * prefilled and auto-executed via a window event the panel listens for.
+   */
+  const executeIntent = useCallback(
+    (intent: Intent) => {
+      setLastIntentLabel(intentLabel(intent));
+      if (intent.kind === "action") {
+        openTool(intent.toolId);
+        toast.info(intent.title, { description: intent.description });
+        setPendingIntent(null);
+        return;
+      }
+      if (intent.kind === "question" || intent.kind === "search") {
+        openTool("pre-discovery");
+        // Panel listens for this and runs the query on the current file.
+        // Timeout lets the panel mount before it receives the event.
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("commandbar:query", {
+              detail: { query: intent.query, mode: intent.kind },
+            }),
+          );
+        }, 60);
+        setPendingIntent(null);
+        return;
+      }
+    },
+    [openTool],
+  );
+
   const submitAi = useCallback(() => {
-    if (!aiText.trim()) return;
-    // eslint-disable-next-line no-console
-    console.log("[workspace] routeCommand", aiText);
+    const raw = aiText.trim();
+    if (!raw) return;
+    const intent = classifyCommand(raw);
+    setLastIntentLabel(intentLabel(intent));
+    // Destructive actions and ambiguous prompts pause for confirmation.
+    if (
+      (intent.kind === "action" && intent.destructive) ||
+      intent.kind === "ambiguous"
+    ) {
+      setPendingIntent(intent);
+      return;
+    }
+    executeIntent(intent);
     setAiText("");
-  }, [aiText]);
+  }, [aiText, executeIntent]);
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
