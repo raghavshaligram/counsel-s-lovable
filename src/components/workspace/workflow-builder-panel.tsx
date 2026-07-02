@@ -638,6 +638,7 @@ function WorkflowBuilderModal({
   /* -------- Save (cloud, per-user via RLS) -------- */
   const doSave = useCallback(
     async (opts: { asNew?: boolean } = {}) => {
+      if (!isPro && !requirePro("Workflows & automation")) return;
       const trimmed = name.trim();
       if (!trimmed) {
         toast.error("Give the workflow a name before saving.");
