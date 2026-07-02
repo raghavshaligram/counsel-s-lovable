@@ -804,7 +804,9 @@ export function EditorCanvas({
         const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
         const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
         const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
-        const padTop = padTopPt * scale;
+        const lh = a.lineHeight ?? 1.15;
+        const leadingComp = a.kind === "text-edit" ? ((lh - 1) / 2) * a.fontSize * scale : 0;
+        const padTop = padTopPt * scale - leadingComp;
         const padLeft = padLeftPt * scale;
         const padRight = padRightPt * scale;
         const padBottom = padBottomPt * scale;
