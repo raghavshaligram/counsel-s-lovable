@@ -46,6 +46,31 @@ function highlight(text: string, query: string) {
   );
 }
 
+// Light stopword filter — strip common English function words so short
+// queries like "who are the attorneys" embed as "attorneys" rather than
+// being dominated by "the/are". Falls back to the original query if the
+// filter would remove everything.
+const STOPWORDS = new Set([
+  "a","an","and","or","the","of","in","on","at","to","for","by","with",
+  "is","are","was","were","be","been","being","am",
+  "i","you","he","she","it","we","they","them","us","me","my","your","our","their",
+  "this","that","these","those",
+  "who","whom","whose","what","which","when","where","why","how",
+  "do","does","did","done","have","has","had","having",
+  "will","would","should","could","can","may","might","must",
+  "any","all","some","every","no","not","nor","so","than","then","if",
+  "about","from","as","into","over","under","between","within","without",
+  "list","find","show","mention","mentions","tell","give",
+]);
+function focusQuery(q: string): string {
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const kept = tokens.filter((t) => {
+    const s = t.toLowerCase().replace(/[^a-z0-9']/g, "");
+    return s.length > 0 && !STOPWORDS.has(s);
+  });
+  return kept.length ? kept.join(" ") : q;
+}
+
 export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file, editorDispatch } = ctx;
   const isPro = useIsPro();
