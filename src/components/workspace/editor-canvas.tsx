@@ -1110,7 +1110,7 @@ export function EditorCanvas({
       id,
       originalGlyphPdf: originalGlyph,
       coverPdf: cover,
-      annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
+      annoPdf: { x: it.x, y: it.y, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
       sampledBg: sampled.bg,
       intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
