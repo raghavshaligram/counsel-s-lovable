@@ -22,7 +22,9 @@ import {
   Search,
   StickyNote,
   Sparkles,
+  Lock,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import { getPdfjs } from "@/lib/pdf/worker";
 import { importChunk } from "@/lib/chunk-import";
