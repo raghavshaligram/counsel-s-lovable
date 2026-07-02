@@ -765,7 +765,7 @@ function WorkflowBuilderModal({
     } finally {
       setRunning(false);
     }
-  }, [activeFile, steps]);
+  }, [activeFile, steps, isPro, requirePro]);
 
   const downloadResult = () => {
     if (!resultBytes) return;
