@@ -167,6 +167,7 @@ const TOOLS: RailTool[] = [
   { id: "workflow-builder", label: "Workflow Builder", icon: WorkflowIcon, group: "legal", groupLabel: "Legal" },
   { id: "citation-hyperlinker", label: "Citation Hyperlinker", icon: Link2, group: "legal", groupLabel: "Legal" },
   { id: "toa", label: "Table of Authorities", icon: BookMarked, group: "legal", groupLabel: "Legal" },
+  { id: "pre-discovery", label: "Pre-Discovery Review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
   { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
 
   // Assemble
