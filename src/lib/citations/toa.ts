@@ -405,6 +405,21 @@ export async function renderToa(
       }
       if (line) wrapped.push(line);
 
+      const entryRects: Array<[number, number, number, number]> = [];
+      const recordEntryRect = (
+        x: number,
+        yLine: number,
+        text: string,
+      ) => {
+        const w = font.widthOfTextAtSize(text, bodySize);
+        entryRects.push([
+          x - 0.5,
+          yLine - 1.5,
+          x + w + 0.5,
+          yLine + bodySize + 0.5,
+        ]);
+      };
+
       for (let i = 0; i < wrapped.length - 1; i++) {
         ensureRoom(lineHeight);
         page.drawText(wrapped[i], {
@@ -413,6 +428,7 @@ export async function renderToa(
           font,
           size: bodySize,
         });
+        recordEntryRect(margin, y, wrapped[i]);
         y -= lineHeight;
       }
 
@@ -420,6 +436,7 @@ export async function renderToa(
       ensureRoom(lineHeight);
       page.drawText(last, { x: margin, y, font, size: bodySize });
       const lastW = font.widthOfTextAtSize(last, bodySize);
+      recordEntryRect(margin, y, last);
       const dotStart = margin + lastW + gutter;
       const pagesX = margin + contentW - pagesW;
       const dotEnd = pagesX - gutter;
@@ -435,6 +452,19 @@ export async function renderToa(
           });
         }
       }
+
+      // Record the wrapped display-line rects as an external URI link.
+      // TOA generates its own case-name/citation lookups — no dependency
+      // on Citation Hyperlinker having been run.
+      if (entryRects.length > 0) {
+        entryLinks.push({
+          toaPageIndex: pageIdx,
+          rects: entryRects,
+          url: buildLookupUrl(entry.kind, entry.citation),
+          text: entry.display,
+        });
+      }
+
 
       // Draw each page number as its own token so we can capture per-
       // number rects for the internal GoTo link annotations.
