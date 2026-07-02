@@ -1010,6 +1010,7 @@ export function EditorCanvas({
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
     const canvas = canvasRef.current;
+    let bgSampled = false;
     const sampled = (() => {
       if (!canvas) return { color: it.color, bg: it.bg };
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1022,11 +1023,13 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
+      bgSampled = true;
       return {
         color: sampleTextColor(ctx, sx, sy, sw, sh),
         bg: samplePageBg(ctx, sx, sy, sw, sh),
       };
     })();
+
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
     // Cover bbox: keep it EXACTLY at the original glyph bounds so the
