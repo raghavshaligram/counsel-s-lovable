@@ -1061,7 +1061,12 @@ export function EditorCanvas({
     // PDF canvas glyph — a visible "notch up" when entering edit mode.
     // Empirically ascent ≈ 0.82·em for Helvetica/Times/Arial, so shift
     // the textarea DOWN by 0.18·fontSize to align baselines.
-    const baselineNudge = it.h * 0.18;
+    // Baseline alignment is handled via line-box centering (lineHeight on
+    // the textarea makes the glyph sit in the middle of the box height),
+    // so no additive top nudge is needed once the box height accounts
+    // for line-height. Adding a nudge on top of a short, clipped box
+    // pushed text into the clip region.
+    const baselineNudge = 0;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       // Anchor the editable box to the ORIGINAL glyph bounds so the
@@ -1070,7 +1075,9 @@ export function EditorCanvas({
       // separate masking layer that hides anti-aliased glyph edges and
       // descenders without affecting the visible edit chrome.
       x: it.x, y: it.y + baselineNudge,
-      w: it.w, h: it.h,
+      // Box height must be >= fontSize * lineHeight or the textarea clips
+      // the bottom ~15% of every glyph. Keep fontSize separate from box h.
+      w: it.w, h: it.h * (it.lineHeight ?? 1.15),
       color: sampled.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
@@ -1081,7 +1088,7 @@ export function EditorCanvas({
       fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
       fontWeight,
-      lineHeight: it.lineHeight ?? 1,
+      lineHeight: it.lineHeight ?? 1.15,
       letterSpacing: it.letterSpacing ?? 0,
       // Keep the data model at the original glyph bounds; renderAnno expands
       // the visible edit wrapper to the cover rect and adds matching padding.
