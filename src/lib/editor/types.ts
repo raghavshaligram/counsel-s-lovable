@@ -190,10 +190,6 @@ export interface TextEditAnno extends BaseAnno {
   letterSpacing?: number;
   // background fill colour painted over original glyphs
   bg: RGB;
-  // True once `bg` has been sampled from the actual page pixels. When false
-  // the cover rect is rendered transparent (avoids a default-white flash).
-  bgSampled?: boolean;
-
   family?: FontFamily;
   // Bundled metric-compatible open font: "carlito" | "arimo" | "tinos" | "caladea" | "cousine".
   // When present, overrides `family` for both on-screen overlay and PDF embed.
