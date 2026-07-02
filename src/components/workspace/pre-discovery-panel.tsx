@@ -271,6 +271,12 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [file, query, docKey, indexed, buildIndex, ensureModel, requirePro]);
 
+  // Keep the ref pointed at the current runQuery so the commandbar
+  // listener always invokes the latest closure (with current `query`).
+  useEffect(() => {
+    runQueryRef.current = runQuery;
+  }, [runQuery]);
+
   const jumpTo = useCallback(
     (page: number) => {
       // page is 0-based (see buildIndex). SET_PAGE expects 0-based.
