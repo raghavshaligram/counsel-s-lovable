@@ -107,6 +107,7 @@ import { FirmTemplatesMenu } from "./firm-templates-menu";
 import { CourtReadinessSection } from "./court-readiness";
 import { PrivilegeReviewPanel } from "./privilege-review-panel";
 import { WorkflowBuilderPanel } from "./workflow-builder-panel";
+import { CitationHyperlinkerPanel } from "./citation-hyperlinker-panel";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -196,6 +197,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <PrivilegeReviewPanel ctx={ctx} />;
     case "workflow-builder":
       return <WorkflowBuilderPanel ctx={ctx} />;
+    case "citation-hyperlinker":
+      return <CitationHyperlinkerPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
