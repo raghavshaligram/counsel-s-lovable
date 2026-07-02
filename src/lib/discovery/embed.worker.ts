@@ -20,6 +20,7 @@
  *     { kind: "index-progress", id, done, total }
  *     { kind: "indexed", id, count }
  *     { kind: "results", id, hits: [{ id, page, score }] }
+ *     { kind: "debug", line }
  *     { kind: "error", id?, message }
  */
 
@@ -43,16 +44,23 @@ function post(msg: object, transfer: Transferable[] = []) {
   ctx.postMessage(msg, transfer);
 }
 
+function debug(line: string, data?: unknown) {
+  const suffix = data === undefined ? "" : ` ${JSON.stringify(data)}`;
+  post({ kind: "debug", line: `[discovery-worker] ${line}${suffix}` });
+}
+
 async function getExtractor(): Promise<Extractor> {
   if (extractorPromise) return extractorPromise;
   extractorPromise = (async () => {
     console.log("[discovery-worker] loading @huggingface/transformers…");
+    debug("loading @huggingface/transformers…");
     post({ kind: "loading", stage: "importing" });
     let tf;
     try {
       tf = await import("@huggingface/transformers");
     } catch (err) {
       console.error("[discovery-worker] FAILED to import transformers", err);
+      debug("FAILED to import transformers", err instanceof Error ? err.message : String(err));
       throw err;
     }
     tf.env.allowLocalModels = false;
@@ -65,6 +73,7 @@ async function getExtractor(): Promise<Extractor> {
           progress_callback: (p: { status: string; progress?: number; file?: string }) => {
             if (p.status === "ready" || p.status === "done" || p.status === "initiate") {
               console.log("[discovery-worker] model load stage:", p.status, p.file ?? "");
+              debug("model load stage", { status: p.status, file: p.file ?? "" });
             }
             post({
               kind: "loading",
@@ -77,9 +86,11 @@ async function getExtractor(): Promise<Extractor> {
       );
     } catch (err) {
       console.error("[discovery-worker] FAILED to load MiniLM pipeline", err);
+      debug("FAILED to load MiniLM pipeline", err instanceof Error ? err.message : String(err));
       throw err;
     }
     console.log("[discovery-worker] ✓ MiniLM extractor ready (Xenova/all-MiniLM-L6-v2)");
+    debug("✓ MiniLM extractor ready", { model: "Xenova/all-MiniLM-L6-v2" });
     // Sanity probe: embed a fixed string and log dim + norm.
     try {
       const probe = await (pipe as unknown as Extractor)(["hello world"], { pooling: "mean", normalize: true });
@@ -87,8 +98,10 @@ async function getExtractor(): Promise<Extractor> {
       let sq = 0;
       for (let i = 0; i < dim; i++) sq += probe.data[i] * probe.data[i];
       console.log("[discovery-worker] ✓ probe embedding dim=", dim, " ||v||=", Math.sqrt(sq).toFixed(4));
+      debug("✓ probe embedding", { dim, norm: +Math.sqrt(sq).toFixed(4) });
     } catch (err) {
       console.error("[discovery-worker] probe embed failed", err);
+      debug("probe embed failed", err instanceof Error ? err.message : String(err));
     }
     post({ kind: "loaded" });
     return pipe as unknown as Extractor;
@@ -139,6 +152,7 @@ ctx.onmessage = async (e: MessageEvent) => {
       }
       await getExtractor();
       console.log("[discovery-worker] indexing", chunks.length, "chunks for", docKey);
+      debug("indexing chunks", { count: chunks.length, docKey });
       const BATCH = 8;
       let dim = 0;
       let vectors: Float32Array | null = null;
@@ -158,6 +172,13 @@ ctx.onmessage = async (e: MessageEvent) => {
             " page=", batch[0].page,
             " textHead=", JSON.stringify(batch[0].text.slice(0, 60)),
           );
+          debug("✓ first chunk embedded", {
+            dim,
+            norm: +Math.sqrt(sq).toFixed(4),
+            page0: batch[0].page,
+            page1: batch[0].page + 1,
+            textHead: batch[0].text.slice(0, 90),
+          });
         }
         for (let j = 0; j < vecs.length; j++) {
           vectors.set(vecs[j], (i + j) * dim);
@@ -166,6 +187,7 @@ ctx.onmessage = async (e: MessageEvent) => {
         post({ kind: "index-progress", id, done, total: chunks.length });
       }
       console.log("[discovery-worker] ✓ indexed", chunks.length, "chunks, dim=", dim);
+      debug("✓ indexed chunks", { count: chunks.length, dim });
       cache.set(docKey, { dim, vectors: vectors!, chunks });
       post({ kind: "indexed", id, count: chunks.length });
       return;
@@ -185,6 +207,12 @@ ctx.onmessage = async (e: MessageEvent) => {
         "[discovery-worker] ✓ query embedded", JSON.stringify(text),
         " dim=", qv.length, " ||q||=", Math.sqrt(qsq).toFixed(4),
       );
+      debug("✓ query embedded", {
+        query: text,
+        dim: qv.length,
+        norm: +Math.sqrt(qsq).toFixed(4),
+        ranking: "cosine(MiniLM embeddings)",
+      });
       const { dim, vectors, chunks } = entry;
       const scores = new Array<{ i: number; s: number }>(chunks.length);
       for (let i = 0; i < chunks.length; i++) {
@@ -205,6 +233,12 @@ ctx.onmessage = async (e: MessageEvent) => {
           head: chunks[x.i].text.slice(0, 50),
         })),
       );
+      debug("✓ cosine ranked top5", scores.slice(0, 5).map((x) => ({
+        page0: chunks[x.i].page,
+        page1: chunks[x.i].page + 1,
+        score: +x.s.toFixed(3),
+        textHead: chunks[x.i].text.slice(0, 120),
+      })));
       post({ kind: "results", id, hits: top });
       return;
     }
