@@ -926,6 +926,22 @@ function WorkflowBuilderModal({
           "[&>button:last-of-type]:hidden",
         )}
       >
+        {!isPro && (
+          <div className="flex items-center gap-3 border-b border-vault/30 bg-vault/10 px-4 py-2 text-[12px] text-text">
+            <Lock className="h-3.5 w-3.5 shrink-0 text-vault" />
+            <span className="min-w-0 flex-1">
+              <span className="font-medium text-vault">Preview mode</span>{" "}
+              — explore the builder, palette, and templates. Saving and running workflows require Pro.
+            </span>
+            <Button
+              size="sm"
+              className="h-7 shrink-0 bg-vault text-white hover:bg-vault/90"
+              onClick={() => requirePro("Workflows & automation")}
+            >
+              Unlock with Pro
+            </Button>
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border bg-surface-2 px-4 py-3">
           <WorkflowIcon className="h-4 w-4 shrink-0 text-vault" />
