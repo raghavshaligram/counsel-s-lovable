@@ -634,13 +634,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   const openTool = useCallback(
     (toolId: string, opts?: { bump?: boolean; focusSection?: string }) => {
-      // Whole-tool gating for paid-only tools (privilege review, private AI).
-      if (PAID_TOOL_IDS.has(toolId) && !isPro) {
-        const tool = toolById(toolId);
-        if (!requirePro(tool?.label, `/workspace?tool=${encodeURIComponent(toolId)}`)) return;
-      }
-      // Bates is now its own dedicated Legal-rail tool — fall through.
-
+      // Pro tools OPEN their panel for everyone — gating happens at the
+      // point-of-use INSIDE each panel (Run / Detect / Generate buttons
+      // render a lock + upgrade modal). Free/logged-out users get to
+      // explore the tool's UI so they understand what they'd be upgrading
+      // for. Subscribers use it normally.
       const tool = toolById(toolId);
       if (!tool) return;
       patchActive({ activeToolId: tool.id, inspectorOpen: true });
@@ -648,7 +646,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       setToolModalOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
-    [bumpUsage, patchActive, isPro, requirePro],
+    [bumpUsage, patchActive],
   );
 
   // ----------------- Tab operations -----------------------------------
