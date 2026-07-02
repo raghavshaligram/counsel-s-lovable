@@ -57,6 +57,8 @@ export interface ToaEntry {
   /** Raw reporter citation as extracted (for reference). */
   citation: string;
   kind: CitationKind;
+  /** Google Scholar lookup URL for the underlying citation. */
+  lookupUrl: string;
 }
 
 export const SECTION_TITLES: Record<ToaSection, string> = {
