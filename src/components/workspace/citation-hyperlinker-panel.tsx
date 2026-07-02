@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import { importChunk } from "@/lib/chunk-import";
-import type { ToolPanelCtx } from "./tool-panels-ctx";
+import type { ToolPanelCtx } from "./tool-panels";
 import type { CitationHit } from "@/lib/citations/detect";
 import { CITATION_KIND_LABEL } from "@/lib/citations/detect";
 
