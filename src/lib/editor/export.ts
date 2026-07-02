@@ -471,7 +471,11 @@ function drawAnno(
       const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
       const exportBold = a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600);
       const bundledKey = a.fontKey ? `${a.fontKey}|${exportBold ? 1 : 0}|${a.italic ? 1 : 0}` : "";
-      const useFont = (bundledKey && bundled?.get(bundledKey)) || pickFont(fonts, a.family ?? "sans", exportBold, a.italic);
+      // Priority: user-uploaded font → bundled metric-compatible → standard 14.
+      const uploadedFont = a.fontFamilyOverride ? uploaded?.get(a.fontFamilyOverride) : undefined;
+      const useFont = uploadedFont
+        || (bundledKey && bundled?.get(bundledKey))
+        || pickFont(fonts, a.family ?? "sans", exportBold, a.italic);
       const align = a.align ?? "left";
       const padX = Math.max(2, a.fontSize * 0.15);
       const innerW = Math.max(0, a.w - padX * 2);
