@@ -607,6 +607,11 @@ function WorkflowBuilderModal({
       cur.map((s) => (s.uid === uid ? { ...s, params: { ...(s.params as object), ...patch } } : s)),
     );
   };
+  const updateCondition = (uid: string, condition: StepCondition | undefined) => {
+    setSteps((cur) =>
+      cur.map((s) => (s.uid === uid ? { ...s, condition } : s)),
+    );
+  };
 
   /* -------- Load (from saved or template) -------- */
   const loadSteps = useCallback((wfName: string, pipelineSteps: PipelineStep[], id: string | null) => {
@@ -618,6 +623,7 @@ function WorkflowBuilderModal({
       op: s.op,
       label: s.label,
       params: (s.params ?? {}) as Record<string, unknown>,
+      condition: s.condition,
       status: "idle",
     }));
     setSteps(ui);
