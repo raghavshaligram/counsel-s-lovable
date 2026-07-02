@@ -292,7 +292,7 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             {!isPro && <LockBadge title="Pro — Table of Authorities" />}
           </div>
           <p className="mt-1 text-[11.5px] leading-snug text-text-muted">
-            Hyperlinks inline body citations to CourtListener / Cornell AND prepends a Table of Authorities with internal page-jump links — one action.{" "}
+            Hyperlinks inline body citations to Google Scholar AND prepends a Table of Authorities with internal page-jump links — one action.{" "}
             <span className="text-text-subtle">
               Automated parsing isn't perfect — review before inserting.
             </span>
