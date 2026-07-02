@@ -206,6 +206,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <TableOfAuthoritiesPanel ctx={ctx} />;
     case "document-hash":
       return <DocumentHashPanel ctx={ctx} />;
+    case "pre-discovery":
+      return <PreDiscoveryPanel ctx={ctx} />;
     default:
       return <ComingSoonPanel label={toolId} />;
   }
