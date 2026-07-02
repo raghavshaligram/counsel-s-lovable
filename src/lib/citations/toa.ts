@@ -520,13 +520,7 @@ export async function renderToa(
 /**
  * Append a link annotation to `pageNode`, preserving existing /Annots.
  */
-function pushAnnot(
-  ctx: ReturnType<PDFDocument["context"]["obj"]> extends never
-    ? never
-    : PDFDocument["context"],
-  pageNode: PDFDict,
-  ref: PDFRef,
-): void {
+function pushAnnot(ctx: PDFContext, pageNode: PDFDict, ref: PDFRef): void {
   const existing = pageNode.get(PDFName.of("Annots"));
   if (existing instanceof PDFArray) {
     existing.push(ref);
@@ -536,7 +530,7 @@ function pushAnnot(
 }
 
 function buildUriLinkAnnot(
-  ctx: PDFDocument["context"],
+  ctx: PDFContext,
   rect: [number, number, number, number],
   url: string,
   text: string,
