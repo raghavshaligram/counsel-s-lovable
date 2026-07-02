@@ -197,11 +197,28 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!file) {
     return (
-      <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] leading-snug text-text-muted">
-        Open a PDF to detect Bluebook-style US citations (U.S. Reports, F., F. Supp., U.S.C., regional reporters) and add clickable links to a public case-text lookup.
-      </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-1.5 text-[13px] font-medium text-text">
+          <LinkIcon className="h-3.5 w-3.5 text-vault" />
+          Citation Hyperlinker
+          {!isPro && <LockBadge title="Pro — Citation Hyperlinker" />}
+        </div>
+        <p className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11.5px] leading-snug text-text-muted">
+          Open a PDF to detect Bluebook-style US citations (U.S. Reports, F., F. Supp., U.S.C., regional reporters) and add clickable links to a Google Scholar lookup.
+        </p>
+        {!isPro && (
+          <Button
+            size="sm"
+            className="h-8 bg-vault text-white hover:bg-vault/90"
+            onClick={() => requirePro("Citation Hyperlinker")}
+          >
+            Unlock with Pro
+          </Button>
+        )}
+      </div>
     );
   }
+
 
   return (
     <div className="flex flex-col gap-3">
