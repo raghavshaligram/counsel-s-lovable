@@ -661,6 +661,7 @@ function WorkflowBuilderModal({
           op,
           params: (params ?? {}) as Record<string, unknown>,
           label,
+          condition,
         }));
         const res = await saveFn({
           data: { id: opts.asNew ? null : savedId, name: trimmed, steps: cleanSteps },
