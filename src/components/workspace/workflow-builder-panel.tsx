@@ -813,7 +813,7 @@ function WorkflowBuilderModal({
     setBatchRunning(true);
     batchAbortRef.current = { aborted: false };
 
-    const pipeline: Pipeline = steps.map(({ op, params, label }) => ({ op, params, label }));
+    const pipeline: Pipeline = steps.map(({ op, params, label, condition }) => ({ op, params, label, condition }));
 
     // Sequential — one file's bytes in memory at a time. When a file finishes,
     // its input Uint8Array goes out of scope and the browser can reclaim it.
@@ -824,12 +824,26 @@ function WorkflowBuilderModal({
       setBatchRows((cur) =>
         cur.map((r, idx) => (idx === i ? { ...r, status: "processing" } : r)),
       );
+      // Reset step statuses so conditional skip states reflect THIS file.
+      setSteps((cur) => cur.map((s) => ({ ...s, status: "idle", message: undefined })));
 
       const tStart = performance.now();
       try {
         // Read bytes lazily per-file so we never hold N inputs at once.
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const res = await runPipeline(bytes, pipeline);
+        const res = await runPipeline(bytes, pipeline, {
+          onProgress: (ev: ProgressEvent) => {
+            if (ev.type === "step-start") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "running", message: undefined } : s)));
+            } else if (ev.type === "step-done") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "done", message: `${Math.round(ev.elapsedMs)} ms` } : s)));
+            } else if (ev.type === "step-skipped") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "skipped", message: `skipped — ${ev.reason}` } : s)));
+            } else if (ev.type === "step-error") {
+              setSteps((cur) => cur.map((s, si) => (si === ev.index ? { ...s, status: "error", message: ev.error } : s)));
+            }
+          },
+        });
         const elapsed = performance.now() - tStart;
         setBatchRows((cur) =>
           cur.map((r, idx) =>
