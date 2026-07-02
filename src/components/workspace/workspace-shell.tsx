@@ -954,7 +954,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         aiRef.current?.focus();
       } else if (meta && e.key === "\\") {
         e.preventDefault();
-        patchActive({ inspectorOpen: !inspectorOpen });
+        patchActive(inspectorOpen ? { inspectorOpen: false, activeToolId: null } : { inspectorOpen: true });
       } else if (meta && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setNavOpen((v) => !v);
@@ -1518,7 +1518,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             onClick={() => {
               if (!file) return;
               if (activeToolId === "doc-settings" && inspectorOpen) {
-                patchActive({ inspectorOpen: false });
+                patchActive({ inspectorOpen: false, activeToolId: null });
               } else {
                 openTool("doc-settings");
               }
@@ -1953,12 +1953,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           <Inspector
             open={inspectorOpen}
             activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
-            onClose={() => patchActive({ inspectorOpen: false })}
+            onClose={() => patchActive({ inspectorOpen: false, activeToolId: null })}
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
             editorDispatch={editorDispatch}
             editorState={editorState}
-            closeInspector={() => patchActive({ inspectorOpen: false })}
+            closeInspector={() => patchActive({ inspectorOpen: false, activeToolId: null })}
             otherTabs={tabs
               .filter((t) => t.id !== active.id && t.file)
               .map((t) => ({ id: t.id, name: t.file!.name, file: t.file! }))}
