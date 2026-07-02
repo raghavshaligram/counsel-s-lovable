@@ -22,7 +22,9 @@ import {
   Search,
   StickyNote,
   Sparkles,
+  Lock,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import { getPdfjs } from "@/lib/pdf/worker";
 import { importChunk } from "@/lib/chunk-import";
@@ -647,6 +649,34 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
         or log before production. Runs on this device.
       </div>
 
+      {!isPro && (
+        <div className="rounded-md border border-vault/30 bg-vault/5 p-3 text-[12px] leading-snug text-text">
+          <div className="mb-1.5 flex items-center gap-1.5 font-medium text-vault">
+            <Lock className="h-3.5 w-3.5" />
+            What Privilege Review does
+          </div>
+          <p className="text-text-muted">
+            Scans your document for attorney–client privilege markers,
+            work-product language, counsel names, and confidential phrases —
+            flagging them for your review before disclosure. All on-device.
+          </p>
+          <ul className="mt-2 flex flex-col gap-0.5 text-[11.5px] text-text-muted">
+            <li>· Attorney–client &amp; work-product indicators</li>
+            <li>· Counsel names (deep on-device NER)</li>
+            <li>· Confidentiality legends &amp; law-firm correspondence</li>
+            <li>· One-click hand-off to Redact for marked terms</li>
+          </ul>
+          <Button
+            size="sm"
+            className="mt-2.5 bg-vault text-white hover:bg-vault/90"
+            onClick={() => requirePro("Privilege review", "/workspace?tool=privilege-scan")}
+          >
+            <Lock className="mr-1 h-3.5 w-3.5" />
+            Unlock with Pro
+          </Button>
+        </div>
+      )}
+
       {/* Disclaimer */}
       <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-[11.5px] text-text-2">
         <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
@@ -655,6 +685,7 @@ export function PrivilegeReviewPanel({ ctx }: { ctx: ToolPanelCtx }) {
           for your assessment, not auto-concluded.
         </span>
       </div>
+
 
       {/* Scan controls */}
       <div className="flex flex-col gap-2">

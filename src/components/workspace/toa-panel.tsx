@@ -300,6 +300,16 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       </div>
 
+      {!isPro && (
+        <Button
+          size="sm"
+          className="h-8 bg-vault text-white hover:bg-vault/90"
+          onClick={() => requirePro("Table of Authorities")}
+        >
+          Unlock with Pro
+        </Button>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"

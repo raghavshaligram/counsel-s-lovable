@@ -361,37 +361,13 @@ export function WorkflowBuilderPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const requirePro = useRequirePro();
   const [open, setOpen] = useState(false);
 
-  if (!isPro) {
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="rounded-md border border-vault/30 bg-vault/5 p-4 text-[12px] leading-snug text-text">
-          <div className="mb-2 flex items-center gap-2 text-vault">
-            <Lock className="h-4 w-4" />
-            <span className="font-medium">Workflow Builder — Pro</span>
-          </div>
-          <p className="text-text-muted">
-            Chain OCR, Bates, sanitize, watermark, compress and more into a
-            reusable, on-device pipeline. Every workflow uses the same
-            verified export path as manual tools.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          className="bg-vault text-white hover:bg-vault/90"
-          onClick={() => requirePro("Workflows & automation")}
-        >
-          Unlock Workflow Builder
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-md border border-border bg-surface-2 p-3 text-[12px] leading-snug text-text">
         <div className="mb-2 flex items-center gap-2 text-vault">
           <WorkflowIcon className="h-4 w-4" />
           <span className="font-medium">Workflow Builder</span>
+          {!isPro && <LockBadge className="ml-1" title="Pro — Workflow Builder" />}
         </div>
         <p className="text-text-muted">
           Compose OCR, Bates, sanitize, watermark, compress and more into a
@@ -399,14 +375,27 @@ export function WorkflowBuilderPanel({ ctx }: { ctx: ToolPanelCtx }) {
           palette, sequence canvas, and step inspector.
         </p>
       </div>
+
       <Button
         size="sm"
         className="bg-vault text-white hover:bg-vault/90"
         onClick={() => setOpen(true)}
       >
         <WorkflowIcon className="mr-1 h-3.5 w-3.5" />
-        Open Workflow Builder
+        {isPro ? "Open Workflow Builder" : "Preview Workflow Builder"}
       </Button>
+
+      {!isPro && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-vault/40 text-vault hover:bg-vault/10"
+          onClick={() => requirePro("Workflows & automation")}
+        >
+          <Lock className="mr-1 h-3.5 w-3.5" />
+          Unlock with Pro
+        </Button>
+      )}
 
       <WorkflowBuilderModal open={open} onOpenChange={setOpen} ctx={ctx} />
     </div>
@@ -427,6 +416,9 @@ function WorkflowBuilderModal({
   ctx: ToolPanelCtx;
 }) {
   const { file: currentFile } = ctx;
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+
 
   // Run mode: single file (current or picked) vs batch (many files, sequential).
   const [mode, setMode] = useState<"single" | "batch">("single");
@@ -646,6 +638,7 @@ function WorkflowBuilderModal({
   /* -------- Save (cloud, per-user via RLS) -------- */
   const doSave = useCallback(
     async (opts: { asNew?: boolean } = {}) => {
+      if (!isPro && !requirePro("Workflows & automation")) return;
       const trimmed = name.trim();
       if (!trimmed) {
         toast.error("Give the workflow a name before saving.");
@@ -676,7 +669,7 @@ function WorkflowBuilderModal({
         setSavingNow(false);
       }
     },
-    [name, steps, savedId, saveFn, refreshSaved],
+    [name, steps, savedId, saveFn, refreshSaved, isPro, requirePro],
   );
 
   const doRename = async (id: string, next: string) => {
@@ -714,6 +707,7 @@ function WorkflowBuilderModal({
 
   /* -------- Run -------- */
   const runWorkflow = useCallback(async () => {
+    if (!isPro && !requirePro("Workflows & automation")) return;
     if (!activeFile) {
       toast.error("Add a PDF to run this workflow on.");
       return;
@@ -771,7 +765,7 @@ function WorkflowBuilderModal({
     } finally {
       setRunning(false);
     }
-  }, [activeFile, steps]);
+  }, [activeFile, steps, isPro, requirePro]);
 
   const downloadResult = () => {
     if (!resultBytes) return;
@@ -791,6 +785,7 @@ function WorkflowBuilderModal({
   );
 
   const runBatch = useCallback(async () => {
+    if (!isPro && !requirePro("Workflows & automation")) return;
     if (batchFiles.length === 0) {
       toast.error("Add at least one PDF to the batch.");
       return;
@@ -873,7 +868,7 @@ function WorkflowBuilderModal({
     setBatchIndex(-1);
     setBatchRunning(false);
     toast.success("Batch complete.");
-  }, [batchFiles, steps, renameOutput]);
+  }, [batchFiles, steps, renameOutput, isPro, requirePro]);
 
   const cancelBatch = () => {
     batchAbortRef.current.aborted = true;
@@ -931,6 +926,22 @@ function WorkflowBuilderModal({
           "[&>button:last-of-type]:hidden",
         )}
       >
+        {!isPro && (
+          <div className="flex items-center gap-3 border-b border-vault/30 bg-vault/10 px-4 py-2 text-[12px] text-text">
+            <Lock className="h-3.5 w-3.5 shrink-0 text-vault" />
+            <span className="min-w-0 flex-1">
+              <span className="font-medium text-vault">Preview mode</span>{" "}
+              — explore the builder, palette, and templates. Saving and running workflows require Pro.
+            </span>
+            <Button
+              size="sm"
+              className="h-7 shrink-0 bg-vault text-white hover:bg-vault/90"
+              onClick={() => requirePro("Workflows & automation")}
+            >
+              Unlock with Pro
+            </Button>
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border bg-surface-2 px-4 py-3">
           <WorkflowIcon className="h-4 w-4 shrink-0 text-vault" />
