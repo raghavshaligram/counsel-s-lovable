@@ -151,20 +151,32 @@ export function CitationHyperlinkerPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
     setApplying(true);
     try {
-      const { applyCitationLinks } = await importChunk(
+      const { applyCitationLinks, verifyCitationsLegible } = await importChunk(
         () => import("@/lib/citations/apply"),
       );
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const out = await applyCitationLinks(
-        bytes,
-        selected.map((r) => ({
-          page: r.page,
-          rect: r.rect,
-          url: r.lookupUrl.trim(),
-          text: r.text,
-        })),
-        linkStyle,
-      );
+      const inputs = selected.map((r) => ({
+        page: r.page,
+        rect: r.rect,
+        url: r.lookupUrl.trim(),
+        text: r.text,
+      }));
+      const out = await applyCitationLinks(bytes, inputs, linkStyle);
+      // Inverse of the redaction gate: assert citation text is STILL VISIBLE
+      // after linking (guards the "opaque box over citation" bug class).
+      const failures = await verifyCitationsLegible(out, inputs);
+      if (failures.length > 0) {
+        console.error("[citations] legibility check failed", failures);
+        toast.error(
+          `Blocked: ${failures.length} citation region${failures.length === 1 ? "" : "s"} would be obscured — link not applied.`,
+          {
+            description:
+              failures[0].reason +
+              (failures[0].text ? ` (e.g. “${failures[0].text}”)` : ""),
+          },
+        );
+        return;
+      }
       const blobPart = new Uint8Array(out);
       const next = new File([blobPart], file.name, { type: "application/pdf" });
       replaceFile(next);
