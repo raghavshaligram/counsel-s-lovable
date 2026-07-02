@@ -51,6 +51,50 @@ interface TextItem {
 
 const DEFAULT_TEXT_COLOR: RGB = { r: 0, g: 0, b: 0 };
 const DEFAULT_PAGE_BG: RGB = { r: 1, g: 1, b: 1 };
+const TEXT_EDIT_LINE_HEIGHT = 1.3;
+const TEXT_EDIT_VERTICAL_PAD_PT = 2;
+
+type ScreenRect = { left: number; top: number; width: number; height: number };
+
+function textEditLineHeight(lineHeight?: number): number {
+  return Math.max(TEXT_EDIT_LINE_HEIGHT, lineHeight ?? TEXT_EDIT_LINE_HEIGHT);
+}
+
+function overlayRectStyle({
+  left,
+  top,
+  width,
+  height,
+}: ScreenRect, opts: {
+  fill?: string;
+  opacity?: number;
+  pointerEvents?: React.CSSProperties["pointerEvents"];
+  cursor?: React.CSSProperties["cursor"];
+  zIndex?: React.CSSProperties["zIndex"];
+  overflow?: React.CSSProperties["overflow"];
+} = {}): React.CSSProperties {
+  return {
+    position: "absolute",
+    left,
+    top,
+    width: Math.max(0, width),
+    height: Math.max(0, height),
+    background: opts.fill ?? "transparent",
+    opacity: opts.opacity ?? 1,
+    pointerEvents: opts.pointerEvents ?? "none",
+    cursor: opts.cursor,
+    zIndex: opts.zIndex,
+    overflow: opts.overflow ?? "visible",
+  };
+}
+
+function unionRects(rects: Array<{ x: number; y: number; w: number; h: number }>) {
+  const minX = Math.min(...rects.map((r) => r.x));
+  const minY = Math.min(...rects.map((r) => r.y));
+  const maxX = Math.max(...rects.map((r) => r.x + r.w));
+  const maxY = Math.max(...rects.map((r) => r.y + r.h));
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
 
 function cssFontFamilyName(stack: string | undefined): string {
   return (stack ?? "")
@@ -592,11 +636,23 @@ export function EditorCanvas({
       dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: state.tool, page: pageIndex, x: a.x, y: a.y, w, h, color: state.color, opacity: state.opacity, stroke: state.stroke, flipX } });
     } else if (state.tool === "redact") {
       const sources: TextSource[] = [];
+      const coveredTextRects: Array<{ x: number; y: number; w: number; h: number }> = [];
       for (const it of textItems) {
         const ix2 = it.x + it.w, iy2 = it.y + it.h;
         const ox = Math.max(0, Math.min(a.x + w, ix2) - Math.max(a.x, it.x));
         const oy = Math.max(0, Math.min(a.y + h, iy2) - Math.max(a.y, it.y));
         if (ox > 1 && oy > it.h * 0.35) {
+          // Expand redaction geometry to the full text line box so descenders
+          // (g/j/p/q/y) cannot leave a sliver below a too-tight drag box.
+          const redactPadX = Math.max(1, it.h * 0.08);
+          const redactPadTop = Math.max(1, it.h * 0.12);
+          const redactPadBottom = Math.max(2, it.h * 0.28);
+          coveredTextRects.push({
+            x: it.x - redactPadX,
+            y: it.y - redactPadTop,
+            w: it.w + redactPadX * 2,
+            h: it.h + redactPadTop + redactPadBottom,
+          });
           sources.push({
             originalString: it.str,
             redactText: it.str,
@@ -608,7 +664,10 @@ export function EditorCanvas({
           });
         }
       }
-      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: pageIndex, x: a.x, y: a.y, w, h, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });
+      const redactionRect = coveredTextRects.length
+        ? unionRects([{ x: a.x, y: a.y, w, h }, ...coveredTextRects])
+        : { x: a.x, y: a.y, w, h };
+      dispatch({ type: "ADD_ANNO", a: { id: uid(), kind: "redact", page: pageIndex, ...redactionRect, color: { r: 0, g: 0, b: 0 }, opacity: 1, sources: sources.length ? sources : undefined } });
     } else if (state.tool === "page-crop") {
       // Clamp to page bounds (PDF points, top-left origin).
       const cx = Math.max(0, Math.min(a.x, op.width));
@@ -697,7 +756,7 @@ export function EditorCanvas({
 
     const isLocked = a.kind === "text-edit";
     const baseStyle: React.CSSProperties = {
-      position: "absolute", left: minX, top: minY, width: w, height: h,
+      ...overlayRectStyle({ left: minX, top: minY, width: w, height: h }, { fill: "transparent", overflow: "visible" }),
       pointerEvents: interactive ? "auto" : "none",
       cursor: isEditingThis ? "text" : isLocked ? "text" : interactive ? "move" : "default",
       zIndex: a.kind === "text-edit" ? 2 : undefined,
@@ -762,9 +821,9 @@ export function EditorCanvas({
         inner = (
           <div
             style={{
+              ...overlayRectStyle({ left: 0, top: 0, width: w, height: h }, { fill: "rgba(0,0,0,0.88)", opacity: 1 }),
               width: "100%",
               height: "100%",
-              background: "rgba(0,0,0,0.82)",
               outline: "1.5px dashed rgba(220,38,38,0.95)",
               outlineOffset: -1,
             }}
@@ -813,8 +872,10 @@ export function EditorCanvas({
         const cover = a.kind === "text-edit" ? a.cover : undefined;
         const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
         const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
-        const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-        const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
+        const minVerticalPadPt = a.kind === "text-edit" ? TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001) : 0;
+        const padTopPt = cover ? Math.max(minVerticalPadPt, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+        const textEditPadBottom = a.kind === "text-edit" ? a.textPadBottom ?? 0 : 0;
+        const padBottomPt = cover ? Math.max(minVerticalPadPt, textEditPadBottom, cover.y + cover.h - (a.y + a.h)) : textEditPadBottom;
         const padTop = padTopPt * scale;
         const padLeft = padLeftPt * scale;
         const padRight = padRightPt * scale;
@@ -837,11 +898,13 @@ export function EditorCanvas({
         //    Arial/Times; 1.15 is still tight for many faces.
         //  • +1px vertical padding so the very top/bottom pixel of glyphs
         //    isn't shaved off by the wrapper.
-        const safeLineHeight = Math.max(1.3, a.lineHeight ?? 1.3);
+        const safeLineHeight = textEditLineHeight(a.lineHeight);
+        const minTextBoxHeight = Math.ceil(a.fontSize * scale * safeLineHeight + padTop + padBottom + TEXT_EDIT_VERTICAL_PAD_PT);
         const textStyle: React.CSSProperties = {
+          display: "block",
           width: "100%",
           height: "auto",
-          minHeight: "100%",
+          minHeight: a.kind === "text-edit" ? minTextBoxHeight : "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
           color: textColor,
           WebkitTextFillColor: textColor,
@@ -878,6 +941,11 @@ export function EditorCanvas({
             value={a.text}
             placeholder={a.kind === "text" ? "Type here…" : ""}
             onChange={(e) => onTextChange(e.target.value)}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              el.style.height = "auto";
+              el.style.height = `${el.scrollHeight}px`;
+            }}
             onBlur={(e) => {
               // If focus is moving to the floating mini-toolbar (or anything
               // inside the same page wrapper), keep editing alive — the user
@@ -1035,8 +1103,8 @@ export function EditorCanvas({
     // never leak through. Pad more vertically because pdf.js' glyph bbox
     // hugs cap-height; descenders ("y", "g") sit a few px below.
     const coverPadX = Math.max(2, it.h * (it.italic ? 0.28 : 0.18));
-    const coverPadTop = Math.max(2, it.h * (it.bold ? 0.30 : 0.22));
-    const coverPadBottom = Math.max(2, it.h * 0.40);
+    const coverPadTop = Math.max(2, it.h * (it.bold ? 0.38 : 0.32));
+    const coverPadBottom = Math.max(3, it.h * 0.55);
     const cover = {
       x: it.x - coverPadX,
       y: it.y - coverPadTop,
@@ -1090,7 +1158,9 @@ export function EditorCanvas({
     // PDF canvas glyph — a visible "notch up" when entering edit mode.
     // Empirically ascent ≈ 0.82·em for Helvetica/Times/Arial, so shift
     // the textarea DOWN by 0.18·fontSize to align baselines.
-    const baselineNudge = it.h * 0.18;
+    const fontAscent = it.h * 0.82;
+    const baselineNudge = it.h - fontAscent;
+    const editLineHeight = textEditLineHeight(it.lineHeight);
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
       // Anchor the editable box to the ORIGINAL glyph bounds so the
@@ -1099,7 +1169,7 @@ export function EditorCanvas({
       // separate masking layer that hides anti-aliased glyph edges and
       // descenders without affecting the visible edit chrome.
       x: it.x, y: it.y + baselineNudge,
-      w: it.w, h: it.h,
+      w: it.w, h: Math.max(it.h, it.h * editLineHeight + TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001)),
       color: sampled.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
@@ -1110,13 +1180,13 @@ export function EditorCanvas({
       fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
       fontWeight,
-      lineHeight: it.lineHeight ?? 1,
+      lineHeight: editLineHeight,
       letterSpacing: it.letterSpacing ?? 0,
       // Keep the data model at the original glyph bounds; renderAnno expands
       // the visible edit wrapper to the cover rect and adds matching padding.
       textOffsetX: 0,
       textOffsetY: 0,
-      textPadBottom: 0,
+      textPadBottom: Math.max(TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001), it.h * 0.16),
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
     } });
@@ -1301,15 +1371,18 @@ export function EditorCanvas({
     const a = activeText;
     const fam = resolveTextFontFamily(a);
     const cover = a.kind === "text-edit" ? a.cover : undefined;
+    const minVerticalPad = a.kind === "text-edit" ? TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001) : 0;
+    const textEditPadBottom = a.kind === "text-edit" ? a.textPadBottom ?? 0 : 0;
     const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
     const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;
-    const padTop = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
-    const padBottom = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
+    const padTop = cover ? Math.max(minVerticalPad, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+    const padBottom = cover ? Math.max(minVerticalPad, textEditPadBottom, cover.y + cover.h - (a.y + a.h)) : textEditPadBottom;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
-    el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
+    const safeLineHeight = textEditLineHeight(a.lineHeight);
+    el.style.lineHeight = `${safeLineHeight}`;
     if (a.kind === "text-edit" && !a.text.includes("\n")) {
       const targetTextW = a.source?.bounds?.w ?? a.w;
       const slots = Math.max(0, (a.text || "").length - 1);
@@ -1336,11 +1409,20 @@ export function EditorCanvas({
     el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
+    const liveEl = document.querySelector<HTMLElement>(`[data-text-edit-id="${a.id}"]`);
+    let liveContentH = 0;
+    if (liveEl instanceof HTMLTextAreaElement) {
+      liveEl.style.height = "auto";
+      liveEl.style.height = `${liveEl.scrollHeight}px`;
+      // scrollHeight includes padding. Remove the explicit overlay padding so
+      // annotation height tracks actual text content, not the cover mask.
+      liveContentH = Math.max(0, (liveEl.scrollHeight - (padTop + padBottom)) / scale);
+    }
     // Measure widest line + total height; convert px → PDF points.
     const measuredW = el.offsetWidth / scale + padLeft + padRight + 1;
-    const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
+    const measuredContentH = Math.max(el.offsetHeight / scale, liveContentH) + TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001);
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
-    const minH = a.fontSize * 1.15 + padTop + padBottom;
+    const minH = a.fontSize * safeLineHeight + TEXT_EDIT_VERTICAL_PAD_PT / Math.max(scale, 0.001);
     // Keep width locked to the original run so replacement text tracks the
     // original justified line. HEIGHT must be free to GROW — locking it to
     // the single-line original glyph box caused multi-line edits to clip at
@@ -1348,7 +1430,7 @@ export function EditorCanvas({
     // measured) so the box never shrinks below the source line either.
     const lockedW = a.kind === "text-edit" ? a.w : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
-    const newH = Math.max(minH, a.kind === "text-edit" ? Math.max(a.h, measuredH) : measuredH);
+    const newH = Math.max(minH, a.kind === "text-edit" ? Math.max(a.h, measuredContentH) : measuredContentH + padTop + padBottom);
     let patch: Partial<Anno> = {};
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
       patch = { w: newW, h: newH } as Partial<Anno>;
@@ -1446,14 +1528,10 @@ export function EditorCanvas({
               key={`cover-${a.id}`}
               data-vault-element="text-edit-cover"
               data-anno-id={a.id}
-              style={{
-                position: "absolute",
-                left: tl.x, top: tl.y,
-                width: br.x - tl.x, height: br.y - tl.y,
-                background: bgCss,
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
+              style={overlayRectStyle(
+                { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y },
+                { fill: bgCss, opacity: 1, pointerEvents: "none", zIndex: 1, overflow: "visible" },
+              )}
             />
           );
         })}
@@ -1467,7 +1545,7 @@ export function EditorCanvas({
               onClick={(e) => { e.stopPropagation(); onClickEditHit(it); }}
               title={it.str}
               style={{
-                position: "absolute", left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y,
+                ...overlayRectStyle({ left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y }, { fill: "rgba(0,128,255,0.08)", pointerEvents: "auto", cursor: "text", overflow: "visible" }),
                 background: "rgba(0,128,255,0.08)", border: "1px dashed rgba(0,128,255,0.5)",
                 cursor: "text", pointerEvents: "auto",
               }}
