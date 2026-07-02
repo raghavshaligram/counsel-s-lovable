@@ -55,10 +55,31 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       return undefined;
     }
   };
+  // Uploaded fonts (from the "Upload font…" affordance) are embedded via
+  // fontkit — cached by fontFamilyOverride so repeated annos share one font.
+  const uploadedFonts = new Map<string, import("pdf-lib").PDFFont>();
+  const ensureUploaded = async (family: string | undefined) => {
+    if (!family) return undefined;
+    const bytes = getUploadedFontBytes(family);
+    if (!bytes) return undefined;
+    let f = uploadedFonts.get(family);
+    if (f) return f;
+    try {
+      f = await out.embedFont(bytes, { subset: true });
+      uploadedFonts.set(family, f);
+      return f;
+    } catch (err) {
+      console.warn("[export] uploaded font embed failed", family, err);
+      return undefined;
+    }
+  };
   for (const a of doc.annotations) {
-    if (a.kind === "text-edit" && a.fontKey) {
-      const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
-      await ensureBundled(a.fontKey as FontKey, !!a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600), !!a.italic);
+    if (a.kind === "text-edit") {
+      if (a.fontKey) {
+        const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
+        await ensureBundled(a.fontKey as FontKey, !!a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600), !!a.italic);
+      }
+      if (a.fontFamilyOverride) await ensureUploaded(a.fontFamilyOverride);
     }
   }
 
