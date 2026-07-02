@@ -611,7 +611,7 @@ export function EditorCanvas({
   const renderAnno = (a: Anno) => {
     const selected = state.selectedAnnoId === a.id;
     const displayRect = a.kind === "text-edit" && a.cover
-      ? a.cover
+      ? { x: a.cover.x, y: a.cover.y, w: a.cover.w, h: Math.max(a.cover.h, a.boxH ?? 0) }
       : { x: a.x, y: a.y, w: a.w, h: a.h };
     const pts = [
       toScreen(displayRect.x, displayRect.y), toScreen(displayRect.x + displayRect.w, displayRect.y),
@@ -830,7 +830,7 @@ export function EditorCanvas({
           letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
-          overflow: a.kind === "text-edit" ? "visible" : "hidden",
+          overflow: "hidden",
           padding: 0,
           paddingTop: padTop,
           paddingLeft: padLeft,
@@ -1078,6 +1078,7 @@ export function EditorCanvas({
       // Box height must be >= fontSize * lineHeight or the textarea clips
       // the bottom ~15% of every glyph. Keep fontSize separate from box h.
       w: it.w, h: it.h * (it.lineHeight ?? 1.15),
+      boxH: (it.h * (it.lineHeight ?? 1.15)) + coverPadTop + coverPadBottom,
       color: sampled.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
@@ -1323,10 +1324,14 @@ export function EditorCanvas({
     // The visual wrapper uses `cover` in renderAnno; padding insets the live
     // textarea glyphs back onto this original rect.
     const lockedW = a.kind === "text-edit" ? a.w : null;
-    const lockedH = a.kind === "text-edit" ? a.h : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
-    const newH = lockedH ?? Math.max(minH, measuredH);
-    if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
+    const newH = Math.max(minH, measuredH);
+    if (a.kind === "text-edit") {
+      const grownH = Math.max(a.cover?.h ?? 0, newH);
+      if (Math.abs(grownH - (a.boxH ?? 0)) > 0.5) {
+        dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { boxH: grownH } as Partial<Anno> });
+      }
+    } else if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
       dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
     }
   }, [activeText, scale, dispatch]);
