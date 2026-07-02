@@ -1052,7 +1052,11 @@ export function EditorCanvas({
       matched = r;
       if (r.matched) break;
     }
-    const fontFamilyOverride = matched?.fontFamily;
+    // Priority: (1) embedded font pdf.js already registered as an
+    // @font-face — perfect match, no download; (2) matcher's stack for
+    // standard families (Arial → Helvetica, etc.); (3) raw PS name.
+    const embeddedFamily = looksEmbedded(it.cssFamily) ? it.cssFamily : "";
+    const fontFamilyOverride = embeddedFamily || matched?.fontFamily;
     const fontWeight = numericFontWeight(matched?.fontWeight, it.bold);
     console.log("[text-edit-font] extraction", {
       rawPdfFontName: it.fontName,
