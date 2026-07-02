@@ -95,4 +95,20 @@ describe("TOA — self-contained links", () => {
     // Internal /Dest for each page-number token: 3, 7, 5 → 3 links.
     expect(destCount).toBe(3);
   });
+
+  it("re-prepending on a file that already has a TOA strips the old one (no duplication)", async () => {
+    const src = await PDFDocument.create();
+    for (let i = 0; i < 10; i++) src.addPage([612, 792]);
+    const srcBytes = await src.save();
+
+    const once = await prependToaToPdf(srcBytes, ENTRIES);
+    const twice = await prependToaToPdf(once, ENTRIES);
+    const doc = await PDFDocument.load(twice);
+    // Should still be 1 TOA + 10 brief = 11, NOT 12.
+    expect(doc.getPageCount()).toBe(11);
+
+    const { uris, destCount } = await summarize(twice, 0);
+    expect(uris.length).toBeGreaterThanOrEqual(2);
+    expect(destCount).toBe(3);
+  });
 });
