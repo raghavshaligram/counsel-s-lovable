@@ -35,6 +35,10 @@ import {
  */
 export const TOA_PAGE_MARKER = "__VPDF_TOA_PAGE__";
 
+/** Page-node marker key (private key in the page dict). Same purpose as
+ * TOA_PAGE_MARKER but readable via pdf-lib without pdf.js. */
+const TOA_PAGE_NODE_KEY = "VPDFToaPage";
+
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { PATTERNS, buildLookupUrl, type CitationKind } from "./detect";
 
