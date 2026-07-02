@@ -140,16 +140,33 @@ export async function detectCitations(
           let m: RegExpExecArray | null;
           while ((m = re.exec(str)) !== null) {
             const text = m[0];
-            const startX = originX + m.index * charWidth;
-            const endX = originX + (m.index + text.length) * charWidth;
+            // Proportional slice. When the match covers the whole item run
+            // we anchor to the item's real bounds (item.width already
+            // reflects glyph metrics precisely). For a sub-range we fall
+            // back to the average char width but pad both edges so digits
+            // and glyphs wider than the average (§, wide numerals) are
+            // never clipped — the visible underline / clickable span must
+            // cover the FULL citation, especially trailing digits.
+            const startIdx = m.index;
+            const endIdx = m.index + text.length;
+            const isFullRun =
+              startIdx === 0 &&
+              endIdx === totalChars &&
+              str.trim().length === text.length;
+            const leftPad = isFullRun ? 0 : charWidth * 0.15;
+            const rightPad = isFullRun ? 0 : charWidth * 0.9;
+            const rawStartX = originX + startIdx * charWidth;
+            const rawEndX = isFullRun
+              ? originX + width
+              : originX + endIdx * charWidth;
+            const startX = Math.max(originX, rawStartX - leftPad);
+            const endX = Math.min(originX + width, rawEndX + rightPad);
             const rect: [number, number, number, number] = [
               startX,
               originY,
               endX,
               originY + height,
             ];
-            // Dedup: if we've already placed a hit that overlaps this rect
-            // on this page (usually from a broader pattern), skip.
             if (pageHits.some((h) => rectsOverlap(h.rect, rect))) continue;
             pageHits.push({
               id: nextId(),
@@ -158,8 +175,6 @@ export async function detectCitations(
               text,
               kind,
               lookupUrl: buildLookupUrl(kind, text),
-              // pdf.js reports height=0 for text produced by our OCR layer
-              // (invisible glyphs). Surface this so the UI can flag it.
               ocrOnly: (item.height ?? 0) === 0,
             });
           }

@@ -8,11 +8,19 @@
  *
  * In addition to the invisible /Link annotation, we bake a visible link
  * affordance directly into the page content stream so the citation reads
- * as a hyperlink in any PDF viewer — a legal-brief-blue underline under
- * the citation rect and, when the "tinted" style is selected, a subtle
- * translucent blue wash over the text.
+ * as a hyperlink in any PDF viewer:
+ *   - "underline": legal-brief-blue underline drawn under the rect.
+ *   - "underline-blue-text": same underline PLUS a Screen-blended blue
+ *     rectangle over the rect, which recolors the (dark) glyphs to blue
+ *     without adding any visible background box on white space —
+ *     equivalent to blue hyperlink text.
+ *
+ * No solid background fill is ever drawn: a filled rectangle behind text
+ * reads like a redaction / selection highlight, which is inappropriate for
+ * a filed brief. Hyperlink convention is blue text + underline only.
  */
 import {
+  BlendMode,
   PDFArray,
   PDFDict,
   PDFDocument,
@@ -24,7 +32,7 @@ import {
   type PDFContext,
 } from "pdf-lib";
 
-export type CitationLinkStyle = "underline" | "underline-tint";
+export type CitationLinkStyle = "underline" | "underline-blue-text";
 
 export interface CitationLinkInput {
   page: number;
@@ -34,7 +42,7 @@ export interface CitationLinkInput {
   text?: string;
 }
 
-/** Legal-brief link blue — matches Bluebook / Word default hyperlink hue. */
+/** Legal-brief link blue — matches Word / Bluebook default hyperlink hue. */
 const LINK_BLUE = rgb(6 / 255, 69 / 255, 173 / 255); // #0645AD
 
 function buildLinkAnnot(
@@ -66,7 +74,8 @@ function buildLinkAnnot(
 
 /**
  * Load `sourceBytes`, append URI link annotations for each entry (plus the
- * visible underline / tint), save. Non-destructive to existing annotations.
+ * visible underline / blue text), save. Non-destructive to existing
+ * annotations.
  */
 export async function applyCitationLinks(
   sourceBytes: Uint8Array,
@@ -88,40 +97,39 @@ export async function applyCitationLinks(
   for (const [pageIdx, pageLinks] of byPage.entries()) {
     const page = pages[pageIdx];
 
-    // ---- visible affordance (drawn UNDER new annotations) ----------------
     for (const l of pageLinks) {
       const [llx, lly, urx, ury] = l.rect;
       const width = Math.max(0, urx - llx);
       const height = Math.max(0, ury - lly);
       if (width <= 0 || height <= 0) continue;
 
-      // Subtle blue wash behind the glyphs (tinted style only). Drawn first
-      // so the underline sits on top, and low opacity keeps text legible.
-      if (style === "underline-tint") {
+      // Blue text: paint a blue rectangle over the citation using the
+      // Screen blend mode. Screen leaves white pixels untouched (1 ⊕ b = 1)
+      // but lifts dark glyph pixels toward the blend color — so the black
+      // citation text renders blue with NO visible background fill.
+      if (style === "underline-blue-text") {
         page.drawRectangle({
           x: llx,
           y: lly,
           width,
           height,
           color: LINK_BLUE,
-          opacity: 0.12,
           borderWidth: 0,
+          blendMode: BlendMode.Screen,
         });
       }
 
       // Underline: 1-glyph-thick line just below the baseline of the rect.
-      const thickness = Math.max(0.6, Math.min(1.2, height * 0.05));
+      const thickness = Math.max(0.6, Math.min(1.2, height * 0.06));
       const underlineY = lly + Math.max(0.5, height * 0.04);
       page.drawLine({
         start: { x: llx, y: underlineY },
         end: { x: urx, y: underlineY },
         thickness,
         color: LINK_BLUE,
-        opacity: 0.9,
       });
     }
 
-    // ---- invisible URI /Link annotations ---------------------------------
     const refs = pageLinks.map((l) => buildLinkAnnot(ctx, l));
     const existing = page.node.get(PDFName.of("Annots"));
     if (existing instanceof PDFArray) {
