@@ -830,7 +830,7 @@ export function EditorCanvas({
           letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
-          overflow: "hidden",
+          overflow: a.kind === "text-edit" ? "visible" : "hidden",
           padding: 0,
           paddingTop: padTop,
           paddingLeft: padLeft,
