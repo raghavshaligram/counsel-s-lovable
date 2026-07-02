@@ -439,10 +439,10 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </Button>
           </div>
           <p className="text-[10.5px] leading-snug text-text-subtle">
-            Insert prepends the TOA as new pages using Times Roman with dot
-            leaders. Page numbers reflect the source document's numbering at
-            the time of the scan — after insertion, the brief's body pages
-            shift by the TOA length.
+            Insert produces one combined PDF (TOA + brief). Page numbers in the TOA
+            reflect the final page numbers AFTER insertion, and each page number is
+            a clickable internal jump. Any external Citation Hyperlinker links
+            already on the brief pages are preserved.
           </p>
         </>
       )}
