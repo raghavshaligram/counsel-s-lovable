@@ -64,6 +64,8 @@ import {
   Gavel,
   Link2,
   BookMarked,
+  Trash2,
+
 } from "lucide-react";
 
 import { Link, useNavigate } from "@tanstack/react-router";
