@@ -2382,12 +2382,16 @@ function ToolbarBtn({
   kbd,
   active,
   onClick,
+  disabled,
+  variant,
 }: {
   children: React.ReactNode;
   label: string;
   kbd?: string;
   active?: boolean;
   onClick: () => void;
+  disabled?: boolean;
+  variant?: "redact";
 }) {
   return (
     <Tip label={label} kbd={kbd} placement="bottom">
@@ -2396,11 +2400,15 @@ function ToolbarBtn({
         onClick={onClick}
         aria-label={label}
         aria-pressed={active}
+        disabled={disabled}
         className={cn(
           "grid h-7 w-7 place-items-center rounded-md text-text-2 transition-colors",
           "hover:text-foreground hover:bg-surface-2",
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground",
+          "disabled:opacity-40 disabled:pointer-events-none",
+          variant === "redact" && !active && "text-red-500 ring-1 ring-red-500/40 hover:text-red-400 hover:bg-red-500/10",
+          variant === "redact" && active && "bg-red-600 text-white hover:bg-red-600 hover:text-white",
+          !variant && active && "bg-vault text-vault-foreground hover:bg-vault hover:text-vault-foreground",
         )}
       >
         {children}
@@ -2408,6 +2416,7 @@ function ToolbarBtn({
     </Tip>
   );
 }
+
 
 /* --------------------- Contextual properties bar -------------------- */
 
