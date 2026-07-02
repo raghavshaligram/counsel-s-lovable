@@ -71,16 +71,21 @@ export const PATTERNS: Pattern[] = [
   },
 ];
 
-export function buildLookupUrl(kind: CitationKind, text: string): string {
-  const q = encodeURIComponent(text.trim());
-  if (kind === "us-code") {
-    // Cornell LII maintains stable public USC pages; a search there is a
-    // reliable landing point.
-    return `https://www.law.cornell.edu/search/site/${q}`;
-  }
-  // CourtListener case-law search — free public case-text source.
-  return `https://www.courtlistener.com/?q=${q}&type=o&order_by=score+desc`;
+export function buildLookupUrl(_kind: CitationKind, text: string): string {
+  const cleaned = (text ?? "").trim();
+  // Guard: never emit a link with an empty query. Fall back to a harmless
+  // Google Scholar landing page so callers never produce a broken URL.
+  if (!cleaned) return "https://scholar.google.com/scholar";
+  const q = encodeURIComponent(cleaned);
+  // One reliable search endpoint for every citation type. Google Scholar's
+  // case-law search (`as_sdt=6`) resolves to a results page for any query —
+  // U.S. Reports, F./F. Supp., regional reporters, and U.S.C. sections
+  // alike — and never 404s the way direct-cite Cornell/CourtListener URLs
+  // can. This replaces the previous per-source URL construction that
+  // produced empty CourtListener searches and 404 Cornell paths.
+  return `https://scholar.google.com/scholar?q=${q}&hl=en&as_sdt=6`;
 }
+
 
 let idCounter = 0;
 function nextId(): string {
