@@ -17,12 +17,36 @@ export interface Hit {
   text: string;
 }
 
+const debugLines: string[] = [];
+const debugListeners = new Set<(lines: string[]) => void>();
+
+function pushDebug(line: string) {
+  debugLines.push(`${new Date().toISOString()} ${line}`);
+  if (debugLines.length > 160) debugLines.splice(0, debugLines.length - 160);
+  const snapshot = [...debugLines];
+  debugListeners.forEach((listener) => listener(snapshot));
+}
+
+export function getDiscoveryDebugLines(): string[] {
+  return [...debugLines];
+}
+
+export function subscribeDiscoveryDebug(listener: (lines: string[]) => void): () => void {
+  debugListeners.add(listener);
+  listener([...debugLines]);
+  return () => debugListeners.delete(listener);
+}
+
 let worker: Worker | null = null;
 function getWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(new URL("./embed.worker.ts", import.meta.url), {
     type: "module",
     name: "counselpdf-discovery",
+  });
+  worker.addEventListener("message", (e: MessageEvent) => {
+    const m = e.data;
+    if (m?.kind === "debug" && typeof m.line === "string") pushDebug(m.line);
   });
   return worker;
 }
