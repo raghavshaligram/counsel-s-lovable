@@ -609,6 +609,14 @@ export async function prependToaToPdf(
   entries: ToaEntry[],
   opts: RenderOpts = {},
 ): Promise<Uint8Array> {
+  // Strip ANY pre-existing TOA pages from the source first. Without this,
+  // running "Insert at front" and then "Download combined" (or re-generating
+  // after an earlier insert) would (a) prepend a second TOA — duplicating —
+  // and (b) leave the new /Dest links pointing into the old TOA pages instead
+  // of the brief. Detect via the invisible TOA_PAGE_MARKER stamped on every
+  // generated TOA page.
+  const cleanedBytes = await stripExistingToaPages(sourceBytes);
+
   let shift = 1;
   let render = await renderToa(entries, { ...opts, shift });
   for (let i = 0; i < 4 && render.pageCount !== shift; i++) {
@@ -616,7 +624,7 @@ export async function prependToaToPdf(
     render = await renderToa(entries, { ...opts, shift });
   }
 
-  const target = await PDFDocument.load(sourceBytes, {
+  const target = await PDFDocument.load(cleanedBytes, {
     ignoreEncryption: true,
   });
   const toaDoc = await PDFDocument.load(render.bytes);
@@ -624,6 +632,7 @@ export async function prependToaToPdf(
   for (let i = 0; i < copied.length; i++) {
     target.insertPage(i, copied[i]);
   }
+
 
   // Preserves any existing annotations on the copied pages and never
   // touches the original brief's annotations — including any inline
