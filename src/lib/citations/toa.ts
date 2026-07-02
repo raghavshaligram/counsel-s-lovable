@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
  * Table of Authorities (TOA) — Pro feature.
  *
  * Reuses the Citation Hyperlinker's PATTERNS (single source of truth for
