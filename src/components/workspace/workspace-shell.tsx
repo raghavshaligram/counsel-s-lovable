@@ -183,6 +183,7 @@ const TOOLS: RailTool[] = [
   { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
   { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Secure" },
+  { id: "document-hash", label: "Document Hash", icon: FileCheck2, group: "secure", groupLabel: "Secure" },
 
   // Navigate
   { id: "outline", label: "Outline & links", icon: ListTree, group: "navigate", groupLabel: "Navigate" },
