@@ -456,17 +456,17 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
               className="h-7"
               onClick={insertAtFront}
               disabled={working !== null || scanning}
-              title="Prepend the rendered TOA as new pages at the front of this document"
+              title="Link inline body citations externally AND prepend a Table of Authorities with internal page-jumps — in one action"
             >
               <FileInput className="mr-1 h-3.5 w-3.5" />
-              {working === "insert" ? "Inserting…" : "Insert at front"}
+              {working === "insert" ? "Building…" : "Link citations + insert TOA"}
             </Button>
             <Button
               size="sm"
               className="h-7"
               onClick={downloadCombined}
               disabled={working !== null || scanning}
-              title="Download one combined PDF: TOA prepended to the original brief, with clickable page references"
+              title="Download one combined PDF: body citations linked externally + TOA prepended with internal page-jumps"
             >
               <Download className="mr-1 h-3.5 w-3.5" />
               {working === "download" ? "Building…" : "Download combined PDF"}
