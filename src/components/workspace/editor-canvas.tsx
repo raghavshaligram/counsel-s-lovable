@@ -1312,15 +1312,31 @@ export function EditorCanvas({
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    // Keep the model locked to the original glyph rect for export/alignment.
-    // The visual wrapper uses `cover` in renderAnno; padding insets the live
-    // textarea glyphs back onto this original rect.
+    // Keep width locked to the original run so replacement text tracks the
+    // original justified line. HEIGHT must be free to GROW — locking it to
+    // the single-line original glyph box caused multi-line edits to clip at
+    // the bottom (classic one-line-height sizing bug). We take max(original,
+    // measured) so the box never shrinks below the source line either.
     const lockedW = a.kind === "text-edit" ? a.w : null;
-    const lockedH = a.kind === "text-edit" ? a.h : null;
     const newW = lockedW ?? Math.max(minW, measuredW);
-    const newH = lockedH ?? Math.max(minH, measuredH);
+    const newH = Math.max(minH, a.kind === "text-edit" ? Math.max(a.h, measuredH) : measuredH);
+    let patch: Partial<Anno> = {};
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
-      dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
+      patch = { w: newW, h: newH } as Partial<Anno>;
+    }
+    // Grow the cover mask to match, so the padded wrapper (which hides the
+    // underlying PDF glyphs) never clips the live textarea's extra lines.
+    if (a.kind === "text-edit" && a.cover) {
+      const needCoverH = newH + padTop + padBottom;
+      const needCoverW = newW + padLeft + padRight;
+      const nextCover = { ...a.cover };
+      let coverChanged = false;
+      if (needCoverH > a.cover.h + 0.5) { nextCover.h = needCoverH; coverChanged = true; }
+      if (needCoverW > a.cover.w + 0.5) { nextCover.w = needCoverW; coverChanged = true; }
+      if (coverChanged) patch = { ...patch, cover: nextCover } as Partial<Anno>;
+    }
+    if (Object.keys(patch).length) {
+      dispatch({ type: "UPDATE_ANNO", id: a.id, patch });
     }
   }, [activeText, scale, dispatch]);
 
