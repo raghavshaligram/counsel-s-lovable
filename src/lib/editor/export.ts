@@ -282,6 +282,7 @@ function drawAnno(
   imgs: Map<string, import("pdf-lib").PDFImage>,
   fonts: FontSet,
   bundled?: Map<string, import("pdf-lib").PDFFont>,
+  uploaded?: Map<string, import("pdf-lib").PDFFont>,
 ) {
   // Convert top-left bbox to bottom-left for pdf-lib
   const yFlip = (y: number, h: number) => ph - (y + h);
