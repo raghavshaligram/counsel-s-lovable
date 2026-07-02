@@ -420,6 +420,15 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
                                     </button>
                                   ))}
                                 </div>
+                                <a
+                                  href={row.lookupUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-0.5 block truncate text-[10.5px] text-vault hover:underline"
+                                  title={row.lookupUrl}
+                                >
+                                  {row.lookupUrl}
+                                </a>
                               </div>
                               <div className="flex shrink-0 items-center gap-0.5">
                                 <button
