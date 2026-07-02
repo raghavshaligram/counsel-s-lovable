@@ -889,6 +889,7 @@ export function EditorCanvas({
         // text) keeps the transparent skin so it blends with surrounding glyphs.
         const showEditChrome = isEditing && a.kind === "text";
         const textColor = rgbCss(a.color, a.opacity);
+        const singleLineTextEdit = a.kind === "text-edit" && !a.text.includes("\n");
         // Sizing rules (single-line clipping fix):
         //  • height auto + minHeight 100% — box grows with content, never
         //    shorter than the wrapper's one-line box.
@@ -916,8 +917,9 @@ export function EditorCanvas({
           textAlign: align,
           lineHeight: safeLineHeight,
           letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
+          whiteSpace: singleLineTextEdit ? "pre" : "pre-wrap",
+          wordBreak: singleLineTextEdit ? "normal" : "break-word",
+          overflowWrap: singleLineTextEdit ? "normal" : "break-word",
           overflow: "visible",
           padding: 0,
           paddingTop: padTop + 1,
@@ -940,6 +942,7 @@ export function EditorCanvas({
             autoFocus
             value={a.text}
             placeholder={a.kind === "text" ? "Type here…" : ""}
+            wrap={singleLineTextEdit ? "off" : "soft"}
             onChange={(e) => onTextChange(e.target.value)}
             onInput={(e) => {
               const el = e.currentTarget;
@@ -1428,8 +1431,10 @@ export function EditorCanvas({
     // the single-line original glyph box caused multi-line edits to clip at
     // the bottom (classic one-line-height sizing bug). We take max(original,
     // measured) so the box never shrinks below the source line either.
-    const lockedW = a.kind === "text-edit" ? a.w : null;
-    const newW = lockedW ?? Math.max(minW, measuredW);
+    const singleLineTextEdit = a.kind === "text-edit" && !a.text.includes("\n");
+    const liveScrollW = liveEl instanceof HTMLTextAreaElement ? liveEl.scrollWidth / scale + padLeft + padRight + 1 : 0;
+    const lockedW = a.kind === "text-edit" && !singleLineTextEdit ? a.w : null;
+    const newW = lockedW ?? Math.max(minW, measuredW, liveScrollW, a.kind === "text-edit" ? a.w : 0);
     const newH = Math.max(minH, a.kind === "text-edit" ? Math.max(a.h, measuredContentH) : measuredContentH + padTop + padBottom);
     let patch: Partial<Anno> = {};
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
