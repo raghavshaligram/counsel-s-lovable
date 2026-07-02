@@ -44,6 +44,18 @@ let originalXhrOpen: typeof XMLHttpRequest.prototype.open | null = null;
 function isSameOrigin(url: string): boolean {
   try {
     const u = new URL(url, location.href);
+    // Local-only schemes carry no network traffic — always allow so
+    // on-device pipelines (pdf-lib re-fetching a data-URL image, blob
+    // downloads, workers, filesystem: URLs) keep working offline.
+    if (
+      u.protocol === "blob:" ||
+      u.protocol === "data:" ||
+      u.protocol === "filesystem:" ||
+      u.protocol === "chrome-extension:" ||
+      u.protocol === "moz-extension:"
+    ) {
+      return true;
+    }
     return u.origin === location.origin;
   } catch {
     return true; // relative → same origin
