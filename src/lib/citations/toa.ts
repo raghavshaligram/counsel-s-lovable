@@ -23,6 +23,7 @@ import {
   PDFString,
   StandardFonts,
   rgb,
+  type PDFContext,
 } from "pdf-lib";
 
 /**
