@@ -669,7 +669,7 @@ function WorkflowBuilderModal({
         setSavingNow(false);
       }
     },
-    [name, steps, savedId, saveFn, refreshSaved],
+    [name, steps, savedId, saveFn, refreshSaved, isPro, requirePro],
   );
 
   const doRename = async (id: string, next: string) => {
