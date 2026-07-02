@@ -513,7 +513,7 @@ export async function renderToa(
   }
 
   const bytes = await doc.save();
-  return { bytes, pageCount: doc.getPageCount(), links };
+  return { bytes, pageCount: doc.getPageCount(), links, entryLinks };
 }
 
 /**
