@@ -199,6 +199,7 @@ export async function buildToa(
               pages: [p],
               citation: cite,
               kind,
+              lookupUrl: buildLookupUrl(kind, cite),
             });
           }
         }
