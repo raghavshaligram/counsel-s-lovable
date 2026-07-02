@@ -707,6 +707,7 @@ function WorkflowBuilderModal({
 
   /* -------- Run -------- */
   const runWorkflow = useCallback(async () => {
+    if (!isPro && !requirePro("Workflows & automation")) return;
     if (!activeFile) {
       toast.error("Add a PDF to run this workflow on.");
       return;
