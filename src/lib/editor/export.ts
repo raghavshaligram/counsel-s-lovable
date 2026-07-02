@@ -13,7 +13,6 @@ import fontkit from "@pdf-lib/fontkit";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
-import { getUploadedFontBytes } from "./embedded-fonts";
 import { importChunk } from "@/lib/chunk-import";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
@@ -55,31 +54,10 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       return undefined;
     }
   };
-  // Uploaded fonts (from the "Upload font…" affordance) are embedded via
-  // fontkit — cached by fontFamilyOverride so repeated annos share one font.
-  const uploadedFonts = new Map<string, import("pdf-lib").PDFFont>();
-  const ensureUploaded = async (family: string | undefined) => {
-    if (!family) return undefined;
-    const bytes = getUploadedFontBytes(family);
-    if (!bytes) return undefined;
-    let f = uploadedFonts.get(family);
-    if (f) return f;
-    try {
-      f = await out.embedFont(bytes, { subset: true });
-      uploadedFonts.set(family, f);
-      return f;
-    } catch (err) {
-      console.warn("[export] uploaded font embed failed", family, err);
-      return undefined;
-    }
-  };
   for (const a of doc.annotations) {
-    if (a.kind === "text-edit") {
-      if (a.fontKey) {
-        const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
-        await ensureBundled(a.fontKey as FontKey, !!a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600), !!a.italic);
-      }
-      if (a.fontFamilyOverride) await ensureUploaded(a.fontFamilyOverride);
+    if (a.kind === "text-edit" && a.fontKey) {
+      const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
+      await ensureBundled(a.fontKey as FontKey, !!a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600), !!a.italic);
     }
   }
 
@@ -113,7 +91,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
 
     const { width: pw, height: ph } = outPage.getSize();
     const annos = doc.annotations.filter((a) => a.page === i);
-    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts, uploadedFonts);
+    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
 
     // Embed OCR sidecar tokens as invisible text (rendering mode 3 via
     // opacity:0). Tied to source page so reorder/rotate respects them.
@@ -282,7 +260,6 @@ function drawAnno(
   imgs: Map<string, import("pdf-lib").PDFImage>,
   fonts: FontSet,
   bundled?: Map<string, import("pdf-lib").PDFFont>,
-  uploaded?: Map<string, import("pdf-lib").PDFFont>,
 ) {
   // Convert top-left bbox to bottom-left for pdf-lib
   const yFlip = (y: number, h: number) => ph - (y + h);
@@ -471,11 +448,7 @@ function drawAnno(
       const numericWeight = typeof a.fontWeight === "number" ? a.fontWeight : Number.parseInt(`${a.fontWeight ?? ""}`, 10);
       const exportBold = a.bold || (Number.isFinite(numericWeight) && numericWeight >= 600);
       const bundledKey = a.fontKey ? `${a.fontKey}|${exportBold ? 1 : 0}|${a.italic ? 1 : 0}` : "";
-      // Priority: user-uploaded font → bundled metric-compatible → standard 14.
-      const uploadedFont = a.fontFamilyOverride ? uploaded?.get(a.fontFamilyOverride) : undefined;
-      const useFont = uploadedFont
-        || (bundledKey && bundled?.get(bundledKey))
-        || pickFont(fonts, a.family ?? "sans", exportBold, a.italic);
+      const useFont = (bundledKey && bundled?.get(bundledKey)) || pickFont(fonts, a.family ?? "sans", exportBold, a.italic);
       const align = a.align ?? "left";
       const padX = Math.max(2, a.fontSize * 0.15);
       const innerW = Math.max(0, a.w - padX * 2);

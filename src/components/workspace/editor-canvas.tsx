@@ -19,12 +19,6 @@ import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
 import { matchPdfFont } from "@/lib/utils/fontMatcher";
-import {
-  registerEmbeddedFont,
-  registerUploadedFont,
-  looksEmbedded,
-  getFontInfo,
-} from "@/lib/editor/embedded-fonts";
 
 interface TextItem {
   x: number;
@@ -150,6 +144,7 @@ function samplePageBg(
   sw: number,
   sh: number,
 ): RGB {
+  console.count("samplePageBg");
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   const bx = Math.max(0, Math.floor(sx));
   const by = Math.max(0, Math.floor(sy));
@@ -386,13 +381,6 @@ export function EditorCanvas({
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
           const ff = (it.fontName && styles[it.fontName]?.fontFamily) || it.fontName || "";
-          // If pdf.js resolved this to an embedded font (synthetic family
-          // like `g_d0_f5`), record it so the toolbar knows it can offer
-          // the original — perfect visual match, no download.
-          if (looksEmbedded(ff) && it.fontName) {
-            const stripped = it.fontName.replace(/^[A-Z]{6}\+/, "");
-            registerEmbeddedFont(ff, stripped);
-          }
           const ffl = `${(it.fontName ?? "").toLowerCase()} ${ff.toLowerCase()}`;
           const family: "sans" | "serif" | "mono" =
             /mono|courier|consol|typewriter/.test(ffl) ? "mono" :
@@ -622,8 +610,8 @@ export function EditorCanvas({
 
   const renderAnno = (a: Anno) => {
     const selected = state.selectedAnnoId === a.id;
-    const displayRect = a.kind === "text-edit"
-      ? a.source?.bounds ?? a.cover ?? { x: a.x, y: a.y, w: a.w, h: a.h }
+    const displayRect = a.kind === "text-edit" && a.cover
+      ? a.cover
       : { x: a.x, y: a.y, w: a.w, h: a.h };
     const pts = [
       toScreen(displayRect.x, displayRect.y), toScreen(displayRect.x + displayRect.w, displayRect.y),
@@ -809,11 +797,11 @@ export function EditorCanvas({
         // changing the cover area.
         const bg = "transparent";
         const fam = resolveTextFontFamily(a);
-        const cover = a.kind === "text-edit" ? a.source?.bounds ?? a.cover : undefined;
-        const padLeftPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, a.x - cover.x) : 0;
-        const padRightPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
-        const padTopPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, a.y - cover.y) : 0;
-        const padBottomPt = a.kind === "text-edit" ? 0 : cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : 0;
+        const cover = a.kind === "text-edit" ? a.cover : undefined;
+        const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+        const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
+        const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+        const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
         const padTop = padTopPt * scale;
         const padLeft = padLeftPt * scale;
         const padRight = padRightPt * scale;
@@ -828,7 +816,6 @@ export function EditorCanvas({
         const showEditChrome = isEditing && a.kind === "text";
         const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
-          display: "block",
           width: "100%", height: "100%",
           background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
           color: textColor,
@@ -841,13 +828,9 @@ export function EditorCanvas({
           textAlign: align,
           lineHeight: a.lineHeight ?? 1.15,
           letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
-          whiteSpace: a.kind === "text-edit" ? "pre" : "pre-wrap",
-          wordBreak: a.kind === "text-edit" ? "normal" : "break-word",
-          overflowWrap: a.kind === "text-edit" ? "normal" : undefined,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
           overflow: "hidden",
-          overflowX: "hidden",
-          overflowY: "hidden",
-          scrollbarWidth: "none",
           padding: 0,
           paddingTop: padTop,
           paddingLeft: padLeft,
@@ -864,59 +847,52 @@ export function EditorCanvas({
         };
         const onTextChange = (text: string) =>
           dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text } as Partial<Anno> });
-        const commitText = (finalText: string) => {
-          if (finalText !== a.text) {
-            dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
-          }
-          if (!finalText.trim() && a.kind === "text") {
-            dispatch({ type: "DELETE_ANNO", id: a.id });
-          }
-          setEditingId(null);
-        };
-        inner = isEditing && a.kind === "text-edit" ? (
-          <div
-            role="textbox"
-            tabIndex={0}
-            contentEditable="plaintext-only"
-            suppressContentEditableWarning
-            autoFocus
-            data-text-edit-id={a.id}
-            data-raw-pdf-font={a.source?.fontName ?? ""}
-            onBlur={(e) => {
-              const next = e.relatedTarget as HTMLElement | null;
-              if (next && next.closest('[data-text-toolbar="1"]')) return;
-              commitText(e.currentTarget.textContent ?? "");
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") (e.currentTarget as HTMLDivElement).blur();
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.currentTarget as HTMLDivElement).blur();
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            onPaste={(e) => {
-              e.preventDefault();
-              document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
-            }}
-            style={{
-              ...textStyle,
-              background: "transparent",
-              overflow: "visible",
-              userSelect: "text",
-            }}
-          >{a.text}</div>
-        ) : isEditing ? (
+        inner = isEditing ? (
           <textarea
             autoFocus
             value={a.text}
-            placeholder="Type here…"
+            placeholder={a.kind === "text" ? "Type here…" : ""}
             onChange={(e) => onTextChange(e.target.value)}
-            onBlur={(e) => commitText(e.currentTarget.value)}
+            onBlur={(e) => {
+              // If focus is moving to the floating mini-toolbar (or anything
+              // inside the same page wrapper), keep editing alive — the user
+              // is just nudging a control. Only collapse / auto-delete when
+              // focus truly leaves the text box context.
+              const next = e.relatedTarget as HTMLElement | null;
+              if (next && next.closest('[data-text-toolbar="1"]')) return;
+              // Read the textarea's value directly to avoid a stale closure on
+              // `a.text` when blur fires before React flushes the last keystroke.
+              const finalText = e.currentTarget.value;
+              const taRect = e.currentTarget.getBoundingClientRect();
+              console.log("[text-edit-commit]", {
+                annotationId: a.id,
+                editId: editingId,
+                phase: "blur",
+                originalString: a.kind === "text-edit" ? a.source?.originalString ?? "" : "",
+                committedText: finalText,
+                changed: finalText !== (a.kind === "text-edit" ? a.source?.originalString ?? "" : ""),
+                extractedWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
+                coverWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
+                textareaWidthPt: taRect.width / scale,
+                textTargetWidthPt: a.kind === "text-edit" ? a.w : null,
+                willDelete: !finalText.trim() && a.kind === "text",
+              });
+              if (finalText !== a.text) {
+                dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
+              }
+              if (!finalText.trim() && a.kind === "text") {
+                dispatch({ type: "DELETE_ANNO", id: a.id });
+              }
+              setEditingId(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur();
             }}
             onMouseDown={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
+            data-text-edit-id={a.id}
+            data-raw-pdf-font={a.kind === "text-edit" ? a.source?.fontName ?? "" : ""}
             style={textStyle}
           />
         ) : (
@@ -1029,17 +1005,18 @@ export function EditorCanvas({
     })();
     // Workspace native: place a text-edit overlay pre-filled with the original
     // string. The user edits inline; double-click switches modes.
-    // Cover bbox: keep it EXACTLY at the original glyph bounds so the
-    // edit box matches the size of the text it's replacing — no over-hang
-    // onto adjacent text on the same line, no visible white rectangle
-    // extending above/below into the surrounding page. Tiny anti-aliased
-    // glyph edges outside these bounds are acceptable — they blend against
-    // the page and are cleaned up at export via text-rewrite.
+    // Cover bbox: expand generously around the captured glyph bounds so
+    // anti-aliased thick strokes, italic skew, and ascenders/descenders
+    // never leak through. Pad more vertically because pdf.js' glyph bbox
+    // hugs cap-height; descenders ("y", "g") sit a few px below.
+    const coverPadX = Math.max(2, it.h * (it.italic ? 0.28 : 0.18));
+    const coverPadTop = Math.max(2, it.h * (it.bold ? 0.30 : 0.22));
+    const coverPadBottom = Math.max(2, it.h * 0.40);
     const cover = {
-      x: it.x,
-      y: it.y,
-      w: it.w,
-      h: it.h,
+      x: it.x - coverPadX,
+      y: it.y - coverPadTop,
+      w: it.w + coverPadX * 2,
+      h: it.h + coverPadTop + coverPadBottom,
     };
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const id = uid();
@@ -1062,18 +1039,37 @@ export function EditorCanvas({
       matched = r;
       if (r.matched) break;
     }
-    // Priority: (1) embedded font pdf.js already registered as an
-    // @font-face — perfect match, no download; (2) matcher's stack for
-    // standard families (Arial → Helvetica, etc.); (3) raw PS name.
-    const embeddedFamily = looksEmbedded(it.cssFamily) ? it.cssFamily : "";
-    const fontFamilyOverride = embeddedFamily || matched?.fontFamily;
+    const fontFamilyOverride = matched?.fontFamily;
     const fontWeight = numericFontWeight(matched?.fontWeight, it.bold);
+    console.log("[text-edit-font] extraction", {
+      rawPdfFontName: it.fontName,
+      pdfCssFamily: it.cssFamily,
+      matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
+      fontFamilyOverride: fontFamilyOverride ?? "",
+      fontKey,
+      fontApproximate: !!it.fontApprox,
+      fontSize: it.h,
+      fontWeight,
+      lineHeight: it.lineHeight ?? 1,
+      letterSpacing: it.letterSpacing ?? 0,
+    });
+    // Baseline compensation. pdf.js gives the glyph BASELINE at m[5];
+    // we store `it.y = m[5] - fontSize` (top of em-box). A browser
+    // textarea with `font-size: fontSize` renders its glyph with the
+    // ascender near the em-box top, so anchoring the textarea at
+    // `it.y` makes the rendered glyph paint ~(em − ascent) above the
+    // PDF canvas glyph — a visible "notch up" when entering edit mode.
+    // Empirically ascent ≈ 0.82·em for Helvetica/Times/Arial, so shift
+    // the textarea DOWN by 0.18·fontSize to align baselines.
+    const baselineNudge = it.h * 0.18;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
-      // Anchor the editable box to the ORIGINAL glyph bounds. Do not apply
-      // a baseline nudge here: it turns into top padding inside a fixed-height
-      // text field and clips wrapped/descender pixels.
-      x: it.x, y: it.y,
+      // Anchor the editable box to the ORIGINAL glyph bounds so the
+      // textarea, caret, and selection ring sit exactly where the user
+      // sees the source text. The padded `cover` rectangle below is a
+      // separate masking layer that hides anti-aliased glyph edges and
+      // descenders without affecting the visible edit chrome.
+      x: it.x, y: it.y + baselineNudge,
       w: it.w, h: it.h,
       color: sampled.color, opacity: 1,
       text: it.str,
@@ -1095,6 +1091,15 @@ export function EditorCanvas({
       cover,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
     } });
+    console.log("[text-edit-bounds-init]", {
+      id,
+      originalGlyphPdf: originalGlyph,
+      coverPdf: cover,
+      annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
+      pads: { coverPadX, coverPadTop, coverPadBottom },
+      sampledBg: sampled.bg,
+      intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
+    });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
     setEditingId(id);
@@ -1119,6 +1124,145 @@ export function EditorCanvas({
       (a.kind === "text" || a.kind === "text-edit"),
   ) as (typeof annos[number] & { kind: "text" | "text-edit" }) | undefined;
 
+  useEffect(() => {
+    if (!activeText || activeText.kind !== "text-edit") return;
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-text-edit-id="${activeText.id}"]`);
+      if (!el) return;
+      const computed = window.getComputedStyle(el);
+      const override = activeText.fontFamilyOverride ?? "";
+      console.log("[text-edit-font] dom", {
+        rawPdfFontName: activeText.source?.fontName ?? "",
+        matchedFontName: override
+          ? cssFontFamilyName(override)
+          : activeText.fontKey && FONT_META[activeText.fontKey as FontKey]
+          ? FONT_META[activeText.fontKey as FontKey].label
+          : "",
+        fontFamilyOverride: override,
+        computedDomFontFamily: computed.fontFamily,
+        computedFontWeight: computed.fontWeight,
+        computedLineHeight: computed.lineHeight,
+        computedLetterSpacing: computed.letterSpacing,
+      });
+      // Layout audit: compare the original extracted text bbox (in PDF
+      // points, captured at click time) to the live textarea geometry
+      // (screen pixels, converted back to PDF points via `scale`).
+      const rect = el.getBoundingClientRect();
+      const wrap = overlayRef.current
+        ?? el.closest<HTMLElement>("[data-vault-element='page-wrap']")
+        ?? el.offsetParent as HTMLElement | null;
+      const wrapRect = wrap?.getBoundingClientRect();
+      const cover = activeText.cover;
+      console.log("[text-edit-layout]", {
+        id: activeText.id,
+        // Original extracted glyph bbox (PDF points)
+        extractedLeft: activeText.source?.bounds?.x ?? activeText.x,
+        extractedTop: activeText.source?.bounds?.y ?? activeText.y,
+        extractedWidth: activeText.source?.bounds?.w ?? activeText.w,
+        extractedHeight: activeText.source?.bounds?.h ?? activeText.h,
+        originalLeft: activeText.source?.bounds?.x ?? activeText.x,
+        originalTop: activeText.source?.bounds?.y ?? activeText.y,
+        originalWidth: activeText.source?.bounds?.w ?? activeText.w,
+        originalHeight: activeText.source?.bounds?.h ?? activeText.h,
+        // Padded cover bbox (PDF points) — deliberately larger than glyphs
+        coverLeft: cover?.x ?? null,
+        coverTop: cover?.y ?? null,
+        coverWidth: cover?.w ?? null,
+        coverHeight: cover?.h ?? null,
+        // Annotation box (PDF points) — what the textarea is anchored to
+        annoLeft: activeText.x,
+        annoTop: activeText.y,
+        annoWidth: activeText.w,
+        annoHeight: activeText.h,
+        // Live textarea (screen px and PDF-point equivalent)
+        textareaLeftPx: wrapRect ? rect.left - wrapRect.left : rect.left,
+        textareaTopPx: wrapRect ? rect.top - wrapRect.top : rect.top,
+        textareaWidthPx: rect.width,
+        textareaHeightPx: rect.height,
+        textareaLeftPt: (wrapRect ? rect.left - wrapRect.left : rect.left) / scale,
+        textareaTopPt: (wrapRect ? rect.top - wrapRect.top : rect.top) / scale,
+        textareaWidthPt: rect.width / scale,
+        textareaHeightPt: rect.height / scale,
+        scale,
+        text: activeText.text,
+      });
+      // Bounds audit — query the cover DOM and compare screen rects of
+      // original glyphs vs cover vs textarea. Also surface intended vs
+      // computed background so we can prove whether the transparent branch
+      // ran and whether another rule overrides it.
+      const coverEl = document.querySelector<HTMLElement>(
+        `[data-vault-element='text-edit-cover'][data-anno-id='${activeText.id}']`,
+      );
+      const coverRect = coverEl?.getBoundingClientRect();
+      const coverComputed = coverEl ? window.getComputedStyle(coverEl) : null;
+      const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
+      // Textarea visibility audit — computed paint properties that can hide
+      // glyphs (color match, opacity, -webkit-text-fill-color, visibility).
+      console.log("[text-edit-style]", {
+        id: activeText.id,
+        color: computed.color,
+        backgroundColor: computed.backgroundColor,
+        opacity: computed.opacity,
+        visibility: computed.visibility,
+        display: computed.display,
+        zIndex: computed.zIndex,
+        webkitTextFillColor: computed.getPropertyValue("-webkit-text-fill-color"),
+        caretColor: computed.getPropertyValue("caret-color"),
+        textareaInlineColor: (el as HTMLElement).style.color,
+        expectedTextColor: rgbCss(activeText.color, activeText.opacity),
+        originalString: activeText.source?.originalString ?? "",
+        currentText: activeText.text,
+      });
+      console.log("[text-edit-layers]", {
+        id: activeText.id,
+        coverZIndex: coverComputed?.zIndex ?? "(no cover)",
+        textareaZIndex: computed.zIndex,
+        // The cover is fixed below the editable annotation wrapper so it can
+        // hide the PDF canvas glyphs without covering the live textarea text.
+        coverDomIndex: coverEl
+          ? Array.from(coverEl.parentElement?.children ?? []).indexOf(coverEl)
+          : -1,
+        textareaWrapperDomIndex: (() => {
+          const wrapAnno = el.parentElement; // baseStyle wrapper for the anno
+          const parent = wrapAnno?.parentElement;
+          return parent && wrapAnno
+            ? Array.from(parent.children).indexOf(wrapAnno)
+            : -1;
+        })(),
+      });
+      console.log("[text-edit-width-explain]", {
+        id: activeText.id,
+        originalWidthPt: activeText.source?.bounds?.w ?? activeText.w,
+        extractedWidthPt: activeText.source?.bounds?.w ?? activeText.w,
+        coverWidthPt: activeText.cover?.w ?? null,
+        textareaWidthPt: rect.width / scale,
+        annoWidthPt: activeText.w,
+        deltaPt: (activeText.cover?.w ?? 0) - rect.width / scale,
+        coverPadXApproxPt:
+          ((activeText.cover?.w ?? 0) - activeText.w) / 2,
+        note:
+          "The textarea wrapper uses the padded cover rect so it cannot appear shorter; the text content is inset back onto the original glyph bounds.",
+      });
+      console.log("[text-edit-bounds]", {
+        id: activeText.id,
+        intendedBackground,
+        computedBackground: coverComputed?.backgroundColor ?? "(no cover element)",
+        coverInlineStyle: coverEl?.style.background ?? "(no cover element)",
+        coverScreen: coverRect && wrapRect
+          ? { x: coverRect.left - wrapRect.left, y: coverRect.top - wrapRect.top, w: coverRect.width, h: coverRect.height }
+          : null,
+        textareaScreen: wrapRect
+          ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
+          : null,
+        originalGlyphPdf: activeText.source?.bounds ?? null,
+        coverPdf: activeText.cover,
+        annoPdf: { x: activeText.x, y: activeText.y, w: activeText.w, h: activeText.h },
+        editing: editingId === activeText.id,
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeText, scale, editingId]);
+
   // Auto-grow the active text box to fit its content. Position stays locked
   // at (a.x, a.y); only width/height grow from the anchored origin.
   useEffect(() => {
@@ -1126,75 +1270,57 @@ export function EditorCanvas({
     const el = measureRef.current;
     if (!el) return;
     const a = activeText;
-    if (a.kind === "text-edit") {
-      const originalW = a.source?.bounds?.w ?? a.w;
-      const slots = Math.max(0, (a.text || "").length - 1);
-      if (originalW > 0 && slots > 0 && !a.text.includes("\n")) {
-        el.style.fontSize = `${a.fontSize * scale}px`;
-        el.style.fontFamily = resolveTextFontFamily(a);
-        el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
-        el.style.fontStyle = a.italic ? "italic" : "normal";
-        el.style.lineHeight = `${a.lineHeight ?? 1}`;
-        el.style.letterSpacing = "0px";
-        el.style.whiteSpace = "pre";
-        el.textContent = a.text || " ";
-        const untrackedW = el.offsetWidth / scale;
-        const fittedTracking = Math.max(-a.fontSize * 0.25, Math.min(a.fontSize * 0.6, (originalW - untrackedW) / slots));
-        if (Number.isFinite(fittedTracking) && Math.abs(fittedTracking - (a.letterSpacing ?? 0)) > 0.02) {
-          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: fittedTracking } as Partial<Anno> });
-          return;
-        }
-      }
-      const original = a.source?.bounds;
-      if (original) {
-        let patch: Partial<Anno> = {};
-        if (
-          Math.abs(a.x - original.x) > 0.5 ||
-          Math.abs(a.y - original.y) > 0.5 ||
-          Math.abs(a.w - original.w) > 0.5 ||
-          Math.abs(a.h - original.h) > 0.5
-        ) {
-          patch = { ...patch, x: original.x, y: original.y, w: original.w, h: original.h } as Partial<Anno>;
-        }
-        if (
-          !a.cover ||
-          Math.abs(a.cover.x - original.x) > 0.5 ||
-          Math.abs(a.cover.y - original.y) > 0.5 ||
-          Math.abs(a.cover.w - original.w) > 0.5 ||
-          Math.abs(a.cover.h - original.h) > 0.5
-        ) {
-          patch = { ...patch, cover: original } as Partial<Anno>;
-        }
-        if (Object.keys(patch).length) dispatch({ type: "UPDATE_ANNO", id: a.id, patch });
-      }
-      return;
-    }
     const fam = resolveTextFontFamily(a);
-    const padLeft = 0;
-    const padRight = 0;
-    const padTop = 0;
-    const padBottom = 0;
+    const cover = a.kind === "text-edit" ? a.cover : undefined;
+    const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
+    const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;
+    const padTop = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
+    const padBottom = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" ? (a.textPadBottom ?? Math.max(2, a.fontSize * 0.4)) : 0;
     el.style.fontSize = `${a.fontSize * scale}px`;
     el.style.fontFamily = fam;
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
     el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
+    if (a.kind === "text-edit" && !a.text.includes("\n")) {
+      const targetTextW = a.source?.bounds?.w ?? a.w;
+      const slots = Math.max(0, (a.text || "").length - 1);
+      if (targetTextW > 0 && slots > 0) {
+        el.style.letterSpacing = "0px";
+        el.style.whiteSpace = "pre";
+        el.textContent = a.text && a.text.length > 0 ? a.text : " ";
+        const untrackedTextW = el.offsetWidth / scale;
+        const desiredTracking = Math.max(0, Math.min(a.fontSize * 0.6, (targetTextW - untrackedTextW) / slots));
+        if (Number.isFinite(desiredTracking) && Math.abs(desiredTracking - (a.letterSpacing ?? 0)) > 0.02) {
+          console.log("[text-edit-fit]", {
+            id: a.id,
+            targetTextWidthPt: targetTextW,
+            untrackedTextWidthPt: untrackedTextW,
+            previousLetterSpacingPt: a.letterSpacing ?? 0,
+            nextLetterSpacingPt: desiredTracking,
+            slots,
+          });
+          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: desiredTracking } as Partial<Anno> });
+          return;
+        }
+      }
+    }
     el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
     el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
     // Measure widest line + total height; convert px → PDF points.
     const measuredW = el.offsetWidth / scale + padLeft + padRight + 1;
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
-    const minW = Math.max(40, a.fontSize * 2);
+    const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
     const minH = a.fontSize * 1.15 + padTop + padBottom;
-    const newW = Math.max(minW, measuredW);
-    const newH = Math.max(minH, measuredH);
-    let patch: Partial<Anno> = {};
+    // Keep the model locked to the original glyph rect for export/alignment.
+    // The visual wrapper uses `cover` in renderAnno; padding insets the live
+    // textarea glyphs back onto this original rect.
+    const lockedW = a.kind === "text-edit" ? a.w : null;
+    const lockedH = a.kind === "text-edit" ? a.h : null;
+    const newW = lockedW ?? Math.max(minW, measuredW);
+    const newH = lockedH ?? Math.max(minH, measuredH);
     if (Math.abs(newW - a.w) > 0.5 || Math.abs(newH - a.h) > 0.5) {
-      patch = { w: newW, h: newH } as Partial<Anno>;
-    }
-    if (Object.keys(patch).length) {
-      dispatch({ type: "UPDATE_ANNO", id: a.id, patch });
+      dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { w: newW, h: newH } as Partial<Anno> });
     }
   }, [activeText, scale, dispatch]);
 
@@ -1230,17 +1356,46 @@ export function EditorCanvas({
             they sit beneath the editable text box but always hide the
             original glyphs at their captured bounds (independent of the
             auto-grown text box size). */}
+        {(() => {
+          // Count rendered text-edit overlays per annotation id for the
+          // duplicate-text audit.
+          const textEditCounts = new Map<string, number>();
+          for (const a of annos) {
+            if (a.kind === "text-edit") {
+              textEditCounts.set(a.id, (textEditCounts.get(a.id) ?? 0) + 1);
+            }
+          }
+          for (const [id, n] of textEditCounts) {
+            console.log("[text-edit-render]", {
+              annotationId: id,
+              renderCount: n,
+              editingId,
+              expected: 1,
+            });
+          }
+          return null;
+        })()}
         {annos.map((a) => {
-          if (a.kind !== "text-edit" || !a.cover || editingId === a.id) return null;
+          if (a.kind !== "text-edit" || !a.cover) return null;
           // A text-edit annotation is a PERMANENT replacement of the
           // underlying PDF glyphs. The cover must always be painted —
           // even when the typed text still matches the original — or the
           // PDF canvas glyphs will show through and double up with the
           // overlay textarea on top, producing duplicate text.
-          const cover = a.source?.bounds ?? a.cover;
-          const tl = toScreen(cover.x, cover.y);
-          const br = toScreen(cover.x + cover.w, cover.y + cover.h);
+          const isEditing = editingId === a.id;
+          const tl = toScreen(a.cover.x, a.cover.y);
+          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
           const bgCss = rgbCss(a.bg);
+          if (isEditing) {
+            console.log("[text-edit-cover]", {
+              id: a.id,
+              editing: true,
+              background: bgCss,
+              sampledBg: a.bg,
+              coverPdf: a.cover,
+              coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
+            });
+          }
           return (
             <div
               key={`cover-${a.id}`}
@@ -1474,30 +1629,9 @@ function TextMiniToolbar({
   const keepFocus = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); };
 
   const isApprox = a.kind === "text-edit" && !!(a as { fontApproximate?: boolean }).fontApproximate;
-  // Detect font source: embedded from the PDF, user-uploaded, matched to a
-  // bundled/standard family, or unresolved (approximate substitute).
-  const overrideInfo = getFontInfo(manualFamily);
-  const detectedPdfName = a.kind === "text-edit" ? (a.source?.fontName ?? "").replace(/^[A-Z]{6}\+/, "") : "";
-  const fontSource: "embedded" | "upload" | "matched" | "approximate" =
-    overrideInfo?.source === "embedded" ? "embedded"
-    : overrideInfo?.source === "upload" ? "upload"
-    : isApprox ? "approximate"
-    : "matched";
   const [hintDismissed, setHintDismissed] = useState(false);
   useEffect(() => { setHintDismissed(false); }, [a.id]);
-  const showHint = fontSource === "approximate" && !hintDismissed;
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-  const onUploadFont = async (file: File | null | undefined) => {
-    if (!file) return;
-    try {
-      const { cssFamily, displayName } = await registerUploadedFont(file);
-      console.log("[text-edit-font] upload", { file: file.name, cssFamily, displayName });
-      update({ fontFamilyOverride: cssFamily, fontApproximate: false } as Partial<Anno>);
-      setHintDismissed(true);
-    } catch (err) {
-      console.error("[text-edit-font] upload failed", err);
-    }
-  };
+  const showHint = isApprox && !hintDismissed;
 
   return (
     <div
@@ -1519,57 +1653,27 @@ function TextMiniToolbar({
         fontFamily: "Helvetica, Arial, sans-serif",
       }}
     >
-      {a.kind === "text-edit" && (
+      {showHint && (
         <div
           style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "6px 10px",
             fontSize: 11, lineHeight: 1.3,
-            color: "rgba(255,255,255,0.78)",
-            background: showHint ? "rgba(245,158,11,0.08)" : "rgba(255,255,255,0.03)",
+            color: "rgba(255,255,255,0.72)",
+            background: "rgba(245,158,11,0.08)",
             borderBottom: "1px solid rgba(255,255,255,0.06)",
             borderTopLeftRadius: 8, borderTopRightRadius: 8,
           }}
         >
-          <span
-            style={{
-              width: 6, height: 6, borderRadius: 999, flex: "0 0 auto",
-              background:
-                fontSource === "embedded" ? "#22c55e"
-                : fontSource === "upload" ? "var(--vault)"
-                : fontSource === "matched" ? "#60a5fa"
-                : "#f59e0b",
-            }}
-          />
-          <span style={{ flex: 1 }}>
-            {fontSource === "embedded" && <>Using embedded font <strong>{detectedPdfName || overrideInfo?.displayName}</strong> from the PDF.</>}
-            {fontSource === "upload" && <>Using uploaded font <strong>{overrideInfo?.displayName}</strong>.</>}
-            {fontSource === "matched" && <>Detected <strong>{detectedPdfName || "font"}</strong> — using closest available match.</>}
-            {fontSource === "approximate" && <>Font <strong>{detectedPdfName || "unknown"}</strong> isn't embedded or available — edited text may not match exactly.</>}
-          </span>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--vault)", flex: "0 0 auto" }} />
+          <span style={{ flex: 1 }}>Original font couldn't be matched exactly — pick the closest in the font menu.</span>
           <button
             type="button"
             onMouseDown={keepFocus}
-            onClick={() => uploadInputRef.current?.click()}
-            title="Upload a .ttf or .otf file for an exact match"
-            style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.18)", color: "#fff", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: "3px 8px", borderRadius: 4 }}
-          >Upload font…</button>
-          <input
-            ref={uploadInputRef}
-            type="file"
-            accept=".ttf,.otf,font/ttf,font/otf,application/font-sfnt,application/vnd.ms-opentype"
-            style={{ display: "none" }}
-            onChange={(e) => { onUploadFont(e.target.files?.[0]); e.currentTarget.value = ""; }}
-          />
-          {showHint && (
-            <button
-              type="button"
-              onMouseDown={keepFocus}
-              onClick={() => setHintDismissed(true)}
-              title="Dismiss"
-              style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}
-            >×</button>
-          )}
+            onClick={() => setHintDismissed(true)}
+            title="Dismiss"
+            style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.55)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}
+          >×</button>
         </div>
       )}
       <div style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 2, padding: "0 8px" }}>
@@ -1584,7 +1688,7 @@ function TextMiniToolbar({
           update({ fontKey: key, family: kind, fontApproximate: false, fontFamilyOverride: undefined } as Partial<Anno>);
           setHintDismissed(true);
         }}
-        title={fontSource === "approximate" ? "Approximate match — pick the closest font or upload the real one" : "Font"}
+        title={isApprox ? "Approximate match — pick the closest font" : "Font"}
         onMouseDown={stop}
         style={{
           ...btn,
