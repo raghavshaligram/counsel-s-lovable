@@ -3140,11 +3140,12 @@ function PageCanvas({
 
 /* -------------------------- Empty start ------------------------------ */
 
-const TEMPLATES = [
-  { id: "invoice", label: "Invoice" },
-  { id: "resume", label: "Resume" },
-  { id: "letter", label: "Letter" },
-  { id: "blank", label: "Blank A4" },
+const TEMPLATES: { id: string; label: string; description: string }[] = [
+  { id: "demand-letter", label: "Demand Letter", description: "Facts, demand, deadline, consequences." },
+  { id: "engagement-letter", label: "Engagement Letter", description: "Retainer & scope of representation." },
+  { id: "legal-memo", label: "Legal Memo (IRAC)", description: "Question, Answer, Facts, Discussion." },
+  { id: "transmittal-letter", label: "Transmittal Letter", description: "Cover letter with enclosures list." },
+  { id: "fee-agreement", label: "Fee Agreement", description: "Hourly / flat / contingency options." },
 ];
 
 function EmptyStart({
