@@ -495,10 +495,11 @@ export function TableOfAuthoritiesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </button>
           </div>
           <p className="text-[10.5px] leading-snug text-text-subtle">
-            Insert produces one combined PDF (TOA + brief). Page numbers in the TOA
-            reflect the final page numbers AFTER insertion, and each page number is
-            a clickable internal jump. Any external Citation Hyperlinker links
-            already on the brief pages are preserved.
+            One action produces the combined PDF: inline body citations become external
+            lookup links (CourtListener / Cornell); a Table of Authorities is prepended
+            where authority names jump to the first cited page and page numbers jump to
+            each occurrence — all internal. Idempotent: re-running strips any prior TOA
+            page so you never stack duplicates.
           </p>
         </>
       )}
