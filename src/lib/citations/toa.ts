@@ -285,16 +285,19 @@ export interface ToaLinkRect {
 }
 
 /**
- * Per-entry external-lookup rect captured while drawing the display text
- * (case name / citation). One entry can produce multiple rects when its
- * display wraps across lines. Attached as URI /Link annotations pointing
- * at CourtListener / Cornell — same URL-building logic the Citation
- * Hyperlinker uses (`buildLookupUrl`).
+ * Per-entry rect captured while drawing the display text (case name /
+ * citation) on the TOA. One entry can produce multiple rects when its
+ * display wraps across lines. Attached as INTERNAL /Dest /Link
+ * annotations pointing at the FIRST page in the brief where that
+ * authority appears — the TOA is a navigational index, not a source of
+ * external lookups. External URI links live on the INLINE body citations
+ * (applied by the Citation Hyperlinker step of the combined action).
  */
 export interface ToaEntryLink {
   toaPageIndex: number;
   rects: Array<[number, number, number, number]>;
-  url: string;
+  /** 1-based page in the ORIGINAL brief (before shift). */
+  targetOriginalPage: number;
   text: string;
 }
 
