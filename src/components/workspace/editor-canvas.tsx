@@ -1232,7 +1232,10 @@ export function EditorCanvas({
           const cover = a.source?.bounds ?? a.cover;
           const tl = toScreen(cover.x, cover.y);
           const br = toScreen(cover.x + cover.w, cover.y + cover.h);
-          const bgCss = rgbCss(a.bg);
+          // Only paint the cover once bg has been sampled from real page
+          // pixels — otherwise we'd flash the default white over the glyphs.
+          const bgCss = a.bgSampled ? rgbCss(a.bg) : "transparent";
+
           return (
             <div
               key={`cover-${a.id}`}
