@@ -553,32 +553,6 @@ function pushAnnot(ctx: PDFContext, pageNode: PDFDict, ref: PDFRef): void {
   }
 }
 
-function buildUriLinkAnnot(
-  ctx: PDFContext,
-  rect: [number, number, number, number],
-  url: string,
-  text: string,
-): PDFRef {
-  const annot = ctx.obj({}) as PDFDict;
-  annot.set(PDFName.of("Type"), PDFName.of("Annot"));
-  annot.set(PDFName.of("Subtype"), PDFName.of("Link"));
-  annot.set(
-    PDFName.of("Rect"),
-    ctx.obj(rect.map((n) => PDFNumber.of(n))),
-  );
-  annot.set(
-    PDFName.of("Border"),
-    ctx.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]),
-  );
-  annot.set(PDFName.of("H"), PDFName.of("I"));
-  if (text) annot.set(PDFName.of("Contents"), PDFString.of(text));
-  const action = ctx.obj({}) as PDFDict;
-  action.set(PDFName.of("Type"), PDFName.of("Action"));
-  action.set(PDFName.of("S"), PDFName.of("URI"));
-  action.set(PDFName.of("URI"), PDFString.of(url));
-  annot.set(PDFName.of("A"), action);
-  return ctx.register(annot);
-}
 
 /**
  * Standalone TOA PDF (secondary export). No source brief means there is
