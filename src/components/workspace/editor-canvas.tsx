@@ -1282,6 +1282,24 @@ export function EditorCanvas({
     if (!el) return;
     const a = activeText;
     if (a.kind === "text-edit") {
+      const originalW = a.source?.bounds?.w ?? a.w;
+      const slots = Math.max(0, (a.text || "").length - 1);
+      if (originalW > 0 && slots > 0 && !a.text.includes("\n")) {
+        el.style.fontSize = `${a.fontSize * scale}px`;
+        el.style.fontFamily = resolveTextFontFamily(a);
+        el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
+        el.style.fontStyle = a.italic ? "italic" : "normal";
+        el.style.lineHeight = `${a.lineHeight ?? 1}`;
+        el.style.letterSpacing = "0px";
+        el.style.whiteSpace = "pre";
+        el.textContent = a.text || " ";
+        const untrackedW = el.offsetWidth / scale;
+        const fittedTracking = Math.max(-a.fontSize * 0.25, Math.min(a.fontSize * 0.6, (originalW - untrackedW) / slots));
+        if (Number.isFinite(fittedTracking) && Math.abs(fittedTracking - (a.letterSpacing ?? 0)) > 0.02) {
+          dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: fittedTracking } as Partial<Anno> });
+          return;
+        }
+      }
       const original = a.source?.bounds;
       if (original) {
         let patch: Partial<Anno> = {};
