@@ -24,7 +24,7 @@ import { sanitizePdfBytes } from "@/lib/pdf/sanitize";
 import { applyTextWatermark, type WatermarkOptions } from "@/lib/pdf/watermark";
 import { rotatePdf, type RotateOptions } from "@/lib/pdf/rotate";
 import { extractPages } from "@/lib/pdf/extract-pages";
-import { toPdfA } from "@/lib/pdf/to-pdfa";
+import { toPdfA, verifyPdfAStructuralAsync } from "@/lib/pdf/to-pdfa";
 import { unlockPdf } from "@/lib/pdf/unlock";
 import { protectPdf, DEFAULT_PROTECT_PERMS, type ProtectOptions } from "@/lib/pdf/protect";
 
