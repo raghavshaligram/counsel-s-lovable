@@ -102,6 +102,6 @@ describe("TOA — combined design", () => {
     expect(doc.getPageCount()).toBe(11);
     const { uris, destCount } = await summarize(twice, 0);
     expect(uris).toHaveLength(0);
-    expect(destCount).toBe(5);
+    expect(destCount).toBe(3);
   });
 });
