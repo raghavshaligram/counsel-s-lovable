@@ -32,6 +32,8 @@ import {
   targetToolForFlow,
   type AgentFlow,
 } from "@/lib/agent/flows";
+import { classifyAssistQuery } from "@/lib/assist/router";
+import type { AssistToolEntry } from "@/lib/assist/knowledge-base";
 import { useIsPro } from "@/lib/pro-gate";
 import { useUpgradeModal } from "@/components/upgrade-modal";
 
@@ -109,11 +111,29 @@ function proGateFor(
   }
 }
 
+function proGateForEntry(entry: AssistToolEntry): { featureName: string; body: string } | null {
+  if (entry.availability !== "pro") return null;
+  return {
+    featureName: entry.proFeatureName ?? entry.displayName,
+    body:
+      entry.upgradeCopy ??
+      `${entry.displayName} is a Pro feature. You can still ask what it does, but running it requires Pro.`,
+  };
+}
+
+function answerForEntry(entry: AssistToolEntry): string {
+  if (entry.availability === "mixed" && entry.freeModes?.length) {
+    return `${entry.answer} Free modes: ${entry.freeModes.join(", ")}.`;
+  }
+  return entry.answer;
+}
+
 
 export interface AgentPanelProps {
   open: boolean;
   onClose: () => void;
   flow: AgentFlow | null;
+  query: { id: number; text: string } | null;
   file: File | null;
   totalPages: number;
   openTool: (id: string, opts?: { focusSection?: string }) => void;
@@ -149,6 +169,7 @@ export function AgentPanel({
   open,
   onClose,
   flow,
+  query,
   file,
   totalPages,
   openTool,
@@ -160,6 +181,7 @@ export function AgentPanel({
   const cachedFindingsRef = useRef<Detection[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortedRef = useRef(false);
+  const querySeqRef = useRef(0);
   const isPro = useIsPro();
   const openUpgradeModal = useUpgradeModal((s) => s.openModal);
 
@@ -175,6 +197,134 @@ export function AgentPanel({
   }, []);
 
   /* ---------------- flow runners ---------------- */
+
+  const showEntryHelp = useCallback(
+    (entry: AssistToolEntry, mode: "help" | "open" | "use", seedSteps: Step[]) => {
+      const gate = proGateForEntry(entry);
+      const isProEntryForFreeUser = !!gate && !isPro;
+      const actions: Action[] = [];
+
+      if (!isProEntryForFreeUser) {
+        actions.push({
+          label: mode === "help" ? `Open ${entry.displayName}` : "Open tool",
+          tone: "primary",
+          onClick: () => {
+            openTool(entry.toolId, entry.focusSection ? { focusSection: entry.focusSection } : undefined);
+            onClose();
+          },
+        });
+      }
+      actions.push({ label: "Close", tone: "ghost", onClick: () => onClose() });
+
+      const nextSteps: Step[] = [
+        ...seedSteps,
+        {
+          kind: "result",
+          id: nextId(),
+          title: entry.displayName,
+          body: answerForEntry(entry),
+          caveat:
+            entry.availability === "mixed"
+              ? entry.upgradeCopy
+              : entry.availability === "pro"
+                ? "This tool is a Pro feature. You can ask about what it does on any plan."
+                : undefined,
+          actions,
+        },
+      ];
+
+      if (isProEntryForFreeUser && gate) {
+        nextSteps.push({
+          kind: "pro-gate",
+          id: nextId(),
+          featureName: gate.featureName,
+          body: gate.body,
+          onUpgrade: () => openUpgradeModal({ featureName: gate.featureName }),
+        });
+      }
+
+      setSteps(nextSteps);
+      cachedFindingsRef.current = [];
+      lastFlowRef.current = null;
+      setCurrentFlow(null);
+    },
+    [isPro, onClose, openTool, openUpgradeModal],
+  );
+
+  const runAssistQuery = useCallback(
+    async (raw: string) => {
+      const text = raw.trim();
+      if (!text) return;
+      const seq = ++querySeqRef.current;
+      const echo: Step = { kind: "note", id: nextId(), body: `You: ${text}` };
+      const runId = nextId();
+
+      setInput("");
+      setSteps([
+        echo,
+        {
+          kind: "running",
+          id: runId,
+          label: "Understanding tool request…",
+          progress: "Setting up AI appears only if the one-time model cache is missing.",
+        },
+      ]);
+      cachedFindingsRef.current = [];
+      lastFlowRef.current = null;
+      setCurrentFlow(null);
+      abortedRef.current = false;
+
+      try {
+        const classified = await classifyAssistQuery(text);
+        if (seq !== querySeqRef.current || abortedRef.current) return;
+
+        if (classified.kind === "clarify") {
+          setSteps([
+            echo,
+            {
+              kind: "propose",
+              id: runId,
+              title: "Which tool did you mean?",
+              body: classified.reason,
+              actions: [
+                ...classified.options.map<Action>((entry) => ({
+                  label: entry.displayName,
+                  tone: "primary",
+                  onClick: () => showEntryHelp(entry, "help", [echo]),
+                })),
+                { label: "Cancel", tone: "ghost", onClick: () => onClose() },
+              ],
+            },
+          ]);
+          return;
+        }
+
+        const { entry, mode } = classified;
+        const gate = proGateForEntry(entry);
+        const blocked = !!gate && !isPro;
+
+        if (!blocked && mode !== "help") {
+          openTool(entry.toolId, entry.focusSection ? { focusSection: entry.focusSection } : undefined);
+          onClose();
+          return;
+        }
+
+        showEntryHelp(entry, mode, [echo]);
+      } catch (err) {
+        if (seq !== querySeqRef.current || abortedRef.current) return;
+        setSteps([
+          echo,
+          {
+            kind: "error",
+            id: runId,
+            title: "Assistant error",
+            body: err instanceof Error ? err.message : String(err),
+          },
+        ]);
+      }
+    },
+    [isPro, onClose, openTool, showEntryHelp],
+  );
 
   const runDetectRedact = useCallback(
     async (f: AgentFlow & { kind: "detect-redact" }) => {
@@ -542,6 +692,7 @@ export function AgentPanel({
   // re-renders — those would otherwise re-fire the effect and loop
   // the same flow repeatedly).
   const lastFlowRef = useRef<AgentFlow | null>(null);
+  const lastQueryRef = useRef<number | null>(null);
   const runFlowRef = useRef(runFlow);
   runFlowRef.current = runFlow;
   useEffect(() => {
@@ -566,9 +717,17 @@ export function AgentPanel({
   }, [flow, pushStep]);
 
   useEffect(() => {
+    if (!open || !query) return;
+    if (lastQueryRef.current === query.id) return;
+    lastQueryRef.current = query.id;
+    void runAssistQuery(query.text);
+  }, [open, query, runAssistQuery]);
+
+  useEffect(() => {
     if (open) return;
     // Clean up any in-flight scan when the panel closes.
     abortedRef.current = true;
+    querySeqRef.current += 1;
   }, [open]);
 
   // Auto-scroll transcript.
@@ -671,49 +830,11 @@ export function AgentPanel({
         return;
       }
 
-      // Try a fresh intent match FIRST — a new verb ("split it", "sanitize",
-      // "make searchable") must start a clean new flow instead of being
-      // reinterpreted as a re-scope of the previous one.
-      const next = detectAgentFlow(text);
-      if (next) {
-        safeRunFlow(next, [echo]);
-        return;
-      }
-
-      // No new intent — if we're still inside a detect-redact flow and the
-      // user typed a page/category re-scope, apply it.
-      if (currentFlow?.kind === "detect-redact") {
-        const pages = parsePageScope(text);
-        const extraCats = extractAdditionalCategories(text);
-        if (pages || extraCats) {
-          const nextFlow: AgentFlow = {
-            kind: "detect-redact",
-            categories: extraCats
-              ? [...(currentFlow.categories ?? []), ...extraCats]
-              : currentFlow.categories,
-            pages: pages ?? currentFlow.pages,
-            raw: text,
-          };
-          safeRunFlow(nextFlow, [echo]);
-          return;
-        }
-      }
-
-      // Nothing matched — clear the prior response and show a fresh hint
-      // so the panel never keeps a stale card next to an unrelated query.
-      cachedFindingsRef.current = [];
-      lastFlowRef.current = null;
-      setCurrentFlow(null);
-      setSteps([
-        echo,
-        {
-          kind: "note",
-          id: nextId(),
-          body: "I didn't recognize that as a tool request. Try 'find SSNs', 'redact all emails', 'sanitize', 'add bates', 'make searchable', or ask a question.",
-        },
-      ]);
+      // Try semantic tool-help routing FIRST. A new query always starts a
+      // clean request so stale Pro cards or late model responses cannot leak.
+      void runAssistQuery(text);
     },
-    [currentFlow, safeRunFlow],
+    [runAssistQuery],
   );
 
 
@@ -727,12 +848,8 @@ export function AgentPanel({
   if (!open) return null;
 
   return (
-    <div
-      className="pointer-events-auto fixed right-4 z-40 flex w-[360px] flex-col rounded-xl border border-border bg-surface-2 shadow-[var(--shadow-float)]"
-      style={{
-        top: 96,
-        maxHeight: "calc(100vh - 170px)",
-      }}
+    <aside
+      className="relative z-20 flex h-full w-[380px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface-1"
       role="dialog"
       aria-label="AI assistant"
       onKeyDown={(e) => {
@@ -780,9 +897,8 @@ export function AgentPanel({
         ))}
         {steps.length === 0 && (
           <div className="rounded-lg border border-border/60 bg-surface-1 p-3 text-[11.5px] text-text-muted">
-            Ready. Ask the assistant to find, redact, sanitize, add Bates, OCR
-            or repair — nothing state-changing runs without an explicit
-            confirm.
+            Ready. Ask about any tool, or tell the assistant what to open.
+            Tool questions work on every plan; Pro actions show upgrade options.
           </div>
         )}
       </div>
@@ -809,7 +925,7 @@ export function AgentPanel({
           <Send className="h-3.5 w-3.5" />
         </button>
       </form>
-    </div>
+    </aside>
   );
 }
 

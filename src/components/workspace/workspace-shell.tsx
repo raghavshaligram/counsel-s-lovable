@@ -118,10 +118,9 @@ import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
-import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
-import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
+import { intentLabel, type Intent } from "@/lib/command/intent";
 import { AgentPanel } from "@/components/workspace/agent-panel";
-import { detectAgentFlow, type AgentFlow } from "@/lib/agent/flows";
+import type { AgentFlow } from "@/lib/agent/flows";
 
 
 type ToolId =
@@ -429,6 +428,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [pendingIntent, setPendingIntent] = useState<Intent | null>(null);
   const [lastIntentLabel, setLastIntentLabel] = useState<string | null>(null);
   const [agentFlow, setAgentFlow] = useState<AgentFlow | null>(null);
+  const [agentQuery, setAgentQuery] = useState<{ id: number; text: string } | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
@@ -979,7 +979,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         aiRef.current?.focus();
       } else if (meta && e.key === "\\") {
         e.preventDefault();
-        patchActive(inspectorOpen ? { inspectorOpen: false, activeToolId: null } : { inspectorOpen: true });
+        const nextInspectorOpen = !inspectorOpen;
+        if (nextInspectorOpen) setAgentOpen(false);
+        patchActive(nextInspectorOpen ? { inspectorOpen: true } : { inspectorOpen: false, activeToolId: null });
       } else if (meta && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setNavOpen((v) => !v);
@@ -1078,45 +1080,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
-    // Agent-flow first pass: if the input clearly asks for a guided
-    // multi-step operation, open the assistant panel with that flow.
-    // Falls through to the semantic router otherwise.
-    const flow = detectAgentFlow(raw);
-    if (flow) {
-      // Mutual exclusivity: opening the assistant closes any tool inspector.
-      patchActive({ inspectorOpen: false, activeToolId: null });
-      setAgentFlow(flow);
-      setAgentOpen(true);
-      setLastIntentLabel("Assistant");
-      setAiText("");
-      return;
-    }
-    // Try semantic classification (MiniLM). If the model isn't loaded
-    // yet, kick off the load in the background and use the sync
-    // fallback for this first submission so the bar never blocks.
-    let intent: Intent;
-    if (isDiscoveryModelLoaded()) {
-      try {
-        intent = await classifyCommandSemantic(raw);
-      } catch (err) {
-        console.warn("[intent] semantic classify failed, falling back", err);
-        intent = classifyCommand(raw);
-      }
-    } else {
-      void loadDiscoveryModel(undefined, "command-bar:submit").catch(() => {/* surfaced elsewhere */});
-      intent = classifyCommand(raw);
-    }
-    setLastIntentLabel(intentLabel(intent));
-    if (
-      (intent.kind === "action" && intent.destructive) ||
-      intent.kind === "ambiguous"
-    ) {
-      setPendingIntent(intent);
-      return;
-    }
-    executeIntent(intent);
+    patchActive({ inspectorOpen: false, activeToolId: null });
+    setPendingIntent(null);
+    setAgentFlow(null);
+    setAgentQuery({ id: Date.now(), text: raw });
+    setAgentOpen(true);
+    setLastIntentLabel("Assistant");
     setAiText("");
-  }, [aiText, executeIntent]);
+  }, [aiText, patchActive]);
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
@@ -2078,6 +2049,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                       setAiText(e.target.value);
                       if (pendingIntent) setPendingIntent(null);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+                      e.preventDefault();
+                      void submitAi();
+                    }}
                     onFocus={() => {
                       // Intentionally do NOT preload the MiniLM model on
                       // focus. Models are downloaded only on first
@@ -2125,6 +2101,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             }}
             focusSection={focusSection}
             clearFocusSection={() => setFocusSection(null)}
+          />
+          <AgentPanel
+            open={agentOpen}
+            onClose={() => setAgentOpen(false)}
+            flow={agentFlow}
+            query={agentQuery}
+            file={active.file}
+            totalPages={editorState.doc?.pages.length ?? 0}
+            openTool={(id, opts) => openTool(id, opts)}
+            onAnswerQuery={(query) => {
+              openTool("pre-discovery");
+              setTimeout(() => {
+                window.dispatchEvent(
+                  new CustomEvent("commandbar:query", {
+                    detail: { query, mode: "question" },
+                  }),
+                );
+              }, 60);
+            }}
           />
         </div>
       </div>
@@ -2230,24 +2225,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       />
       <WelcomeModal forceOpen={welcomeNonce > 0 ? true : undefined} key={welcomeNonce} />
 
-      <AgentPanel
-        open={agentOpen}
-        onClose={() => setAgentOpen(false)}
-        flow={agentFlow}
-        file={active.file}
-        totalPages={editorState.doc?.pages.length ?? 0}
-        openTool={(id, opts) => openTool(id, opts)}
-        onAnswerQuery={(query) => {
-          openTool("pre-discovery");
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent("commandbar:query", {
-                detail: { query, mode: "question" },
-              }),
-            );
-          }, 60);
-        }}
-      />
     </div>
   );
 }
