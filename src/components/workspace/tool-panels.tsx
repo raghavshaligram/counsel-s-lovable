@@ -6003,6 +6003,27 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
   const [flOn, setFlOn] = useState(false);
+  const pnRef = useRef<HTMLDivElement | null>(null);
+  const hfRef = useRef<HTMLDivElement | null>(null);
+  const flRef = useRef<HTMLDivElement | null>(null);
+
+  // Deep-link from the command bar: "add page numbers" opens Doc Settings
+  // scrolled to (and with) the Page Numbers section expanded.
+  useEffect(() => {
+    const focus = ctx.focusSection;
+    if (!focus) return;
+    if (focus === "page-numbers") {
+      setPnOn(true);
+      requestAnimationFrame(() => pnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } else if (focus === "header-footer") {
+      setHfOn(true);
+      requestAnimationFrame(() => hfRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } else if (focus === "flatten") {
+      setFlOn(true);
+      requestAnimationFrame(() => flRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+    ctx.clearFocusSection?.();
+  }, [ctx.focusSection]);
 
   return (
     <div className="flex flex-col gap-4">
