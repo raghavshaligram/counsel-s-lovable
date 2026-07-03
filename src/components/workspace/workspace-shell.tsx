@@ -1025,6 +1025,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     (intent: Intent) => {
       setLastIntentLabel(intentLabel(intent));
       if (intent.kind === "action") {
+        // Free user hitting a Pro-only tool: give them CONTEXT before
+        // the upgrade modal appears. Silent modal-pop with no message
+        // reads as a broken paywall.
+        if (PAID_TOOL_IDS.has(intent.toolId) && !isPro) {
+          toast.info(`${intent.title.replace(/^Open\s+/, "")} is a Pro feature`, {
+            description: intent.description,
+          });
+          requirePro(intent.title.replace(/^Open\s+/, ""));
+          setPendingIntent(null);
+          return;
+        }
         openTool(intent.toolId, { focusSection: intent.focusSection });
         toast.info(intent.title, { description: intent.description });
         setPendingIntent(null);
@@ -1045,8 +1056,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         return;
       }
     },
-    [openTool],
+    [openTool, isPro, requirePro],
   );
+
 
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();
