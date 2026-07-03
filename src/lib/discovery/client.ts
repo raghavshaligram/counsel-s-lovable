@@ -91,24 +91,32 @@ export function loadModel(
     "color:#4C7FB8;font-weight:bold",
   );
   addDiscoveryDebug(`MiniLM download triggered by: ${trigger}`);
-  const w = getWorker();
-  modelLoading = new Promise<void>((resolve, reject) => {
-    const handler = (e: MessageEvent) => {
-      const m = e.data;
-      if (m?.kind === "loading") onProgress?.(m);
-      else if (m?.kind === "loaded") {
-        modelLoaded = true;
-        console.info(`[ai-model] MiniLM ready (trigger: ${trigger})`);
-        w.removeEventListener("message", handler);
-        resolve();
-      } else if (m?.kind === "error" && !m.id) {
-        w.removeEventListener("message", handler);
-        reject(new Error(m.message));
-      }
-    };
-    w.addEventListener("message", handler);
-    w.postMessage({ kind: "load" });
-  });
+  modelLoading = (async () => {
+    const { notifyModelDownload } = await import("@/lib/ai/model-download-ui");
+    return notifyModelDownload("AI (MiniLM)", "45 MB", (h) =>
+      new Promise<void>((resolve, reject) => {
+        const w = getWorker();
+        const handler = (e: MessageEvent) => {
+          const m = e.data;
+          if (m?.kind === "loading") {
+            onProgress?.(m);
+            if (typeof m.progress === "number") h.report(m.progress);
+          } else if (m?.kind === "loaded") {
+            modelLoaded = true;
+            console.info(`[ai-model] MiniLM ready (trigger: ${trigger})`);
+            h.report(100);
+            w.removeEventListener("message", handler);
+            resolve();
+          } else if (m?.kind === "error" && !m.id) {
+            w.removeEventListener("message", handler);
+            reject(new Error(m.message));
+          }
+        };
+        w.addEventListener("message", handler);
+        w.postMessage({ kind: "load" });
+      }),
+    );
+  })();
   return modelLoading;
 }
 
