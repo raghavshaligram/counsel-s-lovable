@@ -735,6 +735,12 @@ export function AgentPanel({
       }}
       role="dialog"
       aria-label="AI assistant"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
     >
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
         <div className="grid h-6 w-6 place-items-center rounded-md bg-vault/15 text-vault">
