@@ -2982,6 +2982,21 @@ function SmartSplitSection({
     }
   }, [file, modes, everyN, pattern, patternKind, caseSensitive, requirePro]);
 
+  // Auto re-detect (debounced) whenever any setting changes so the preview
+  // always reflects the current parameters — no need to click Detect again.
+  useEffect(() => {
+    if (!isPro) return;
+    if (!file || pageCount === 0 || modes.size === 0) return;
+    // Skip pattern mode while the pattern is empty (would produce no breaks).
+    if (modes.has("pattern") && modes.size === 1 && pattern.trim() === "") return;
+    const t = window.setTimeout(() => {
+      void runDetect();
+    }, 300);
+    return () => window.clearTimeout(t);
+    // runDetect is intentionally omitted; its deps are already listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPro, file, pageCount, modes, everyN, pattern, patternKind, caseSensitive]);
+
   const parts = useMemo<PartPreview[]>(() => {
     if (!pageCount) return [];
     const breakPages = Array.from(breakSet).sort((a, b) => a - b);
