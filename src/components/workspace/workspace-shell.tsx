@@ -1049,36 +1049,152 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [openTool],
   );
 
-  // Route a classified intent → Counsel message. Kept small on purpose:
-  // this shell uses canned placeholder replies; real routing (retrieval,
-  // LLM, source extraction) replaces `draftPlaceholderReply` next.
+  // Route a classified intent → Counsel message. DOC_QA runs retrieval
+  // over the open document and returns a grounded card with page-chip
+  // sources; SEARCH hands off to Pre-Discovery with the query prefilled;
+  // ACTION never executes — it opens the tool pre-configured with a
+  // review card the user has to click through.
   const respondToIntent = useCallback(
-    (raw: string, intent: Intent) => {
-      let reply: CounselMessage;
+    async (raw: string, intent: Intent) => {
+      const mkId = () => `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      const stripThinking = (ms: CounselMessage[]) =>
+        ms.filter((m) => !(m.role === "assistant" && m.kind === "thinking"));
+
       if (intent.kind === "action") {
-        reply = draftPlaceholderReply(raw, {
-          hasFile: !!file,
-          toolIdForAction: intent.toolId,
-          toolLabelForAction: toolById(intent.toolId)?.label ?? intent.toolId,
-          destructive: intent.destructive,
-        });
-      } else if (intent.kind === "ambiguous") {
-        reply = {
-          id: `a_${Date.now().toString(36)}`,
-          role: "assistant",
-          kind: "clarify",
-          question: intent.reason,
-          options: [
-            { id: "opt-0", label: intent.options[0].kind === "action" ? intent.options[0].title.replace(/^Open\s+/, "") : "Redact them" },
-            { id: "opt-1", label: intent.options[1].kind === "action" ? intent.options[1].title.replace(/^Open\s+/, "") : "Just find them" },
-          ],
-        };
-      } else {
-        reply = draftPlaceholderReply(raw, { hasFile: !!file });
+        const label = toolById(intent.toolId)?.label ?? intent.toolId;
+        const summary = intent.destructive
+          ? `I can prepare “${raw}” in ${label}. Nothing is applied yet — you'll review each match first.`
+          : `Ready to run “${raw}” in ${label}.`;
+        setCounselMessages((ms) => [
+          ...stripThinking(ms),
+          {
+            id: mkId(),
+            role: "assistant",
+            kind: "action",
+            summary,
+            toolId: intent.toolId,
+            toolLabel: label,
+            destructive: intent.destructive,
+          },
+        ]);
+        return;
       }
-      setCounselMessages((ms) => [...ms.filter((m) => m.role !== "assistant" || m.kind !== "thinking"), reply]);
+
+      if (intent.kind === "ambiguous") {
+        setCounselMessages((ms) => [
+          ...stripThinking(ms),
+          {
+            id: mkId(),
+            role: "assistant",
+            kind: "clarify",
+            question: intent.reason,
+            options: [
+              {
+                id: "opt-0",
+                label:
+                  intent.options[0].kind === "action"
+                    ? intent.options[0].title.replace(/^Open\s+/, "")
+                    : intent.options[0].kind === "question"
+                    ? "Get a written answer"
+                    : "Search the document",
+              },
+              {
+                id: "opt-1",
+                label:
+                  intent.options[1].kind === "action"
+                    ? intent.options[1].title.replace(/^Open\s+/, "")
+                    : intent.options[1].kind === "question"
+                    ? "Get a written answer"
+                    : "Search the document",
+              },
+            ],
+          },
+        ]);
+        return;
+      }
+
+      if (intent.kind === "search") {
+        // Hand off to Pre-Discovery with the query prefilled + auto-run.
+        openTool("pre-discovery");
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("commandbar:query", {
+              detail: { query: intent.query, mode: "search" },
+            }),
+          );
+        }, 60);
+        setCounselMessages((ms) => [
+          ...stripThinking(ms),
+          {
+            id: mkId(),
+            role: "assistant",
+            kind: "help",
+            answer: `Searching Pre-Discovery for “${intent.query}”. Ranked passages appear in the Pre-Discovery panel — tap any hit to jump to the page.`,
+            toolId: "pre-discovery",
+            toolLabel: "Pre-Discovery",
+          },
+        ]);
+        return;
+      }
+
+      // DOC_QA — grounded answer over the open document.
+      if (!file) {
+        setCounselMessages((ms) => [
+          ...stripThinking(ms),
+          {
+            id: mkId(),
+            role: "assistant",
+            kind: "help",
+            answer: "Open a PDF first — Counsel answers are grounded in the document you're viewing.",
+          },
+        ]);
+        return;
+      }
+      try {
+        const { answerFromDocument } = await import("@/lib/assist/doc-qa");
+        const reply = await answerFromDocument(file, intent.query);
+        if (reply) {
+          setCounselMessages((ms) => [
+            ...stripThinking(ms),
+            {
+              id: mkId(),
+              role: "assistant",
+              kind: "grounded",
+              answer: reply.answer,
+              sources: reply.sources,
+            },
+          ]);
+        } else {
+          setCounselMessages((ms) => [
+            ...stripThinking(ms),
+            {
+              id: mkId(),
+              role: "assistant",
+              kind: "help",
+              answer:
+                "I couldn't find passages in this document that clearly answer that. Try rephrasing, or open Pre-Discovery to browse ranked passages yourself.",
+              toolId: "pre-discovery",
+              toolLabel: "Pre-Discovery",
+            },
+          ]);
+        }
+      } catch (err) {
+        console.warn("[counsel] doc-qa failed", err);
+        setCounselMessages((ms) => [
+          ...stripThinking(ms),
+          {
+            id: mkId(),
+            role: "assistant",
+            kind: "help",
+            answer:
+              "Something went wrong answering that from the document. Try Pre-Discovery to search the passages directly.",
+            toolId: "pre-discovery",
+            toolLabel: "Pre-Discovery",
+          },
+        ]);
+      }
     },
-    [file],
+    [file, openTool],
   );
 
   // Topic tags of the most recent assistant answer — used as a small

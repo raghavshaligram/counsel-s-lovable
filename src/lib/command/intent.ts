@@ -421,6 +421,13 @@ function dot(q: Float32Array, matrix: Float32Array, offset: number, dim: number)
 const MIN_ABS = 0.42;
 /** Top-1 within this margin of top-2 (different intent) → clarify. */
 const GAP = 0.04;
+/**
+ * Destructive actions (redact, sanitize) require a stronger match before
+ * we route to the tool. Between MIN_ABS and DESTR_MIN we still clarify
+ * with the top-2 options rather than guess — a wrong destructive route
+ * costs the user real work.
+ */
+const DESTR_MIN = 0.55;
 
 function makeIntent(def: IntentDef, raw: string): Intent {
   const r = def.route;
@@ -494,6 +501,20 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
     };
   }
   if (differentRoute && top.s - runner.s < GAP) {
+    return {
+      kind: "ambiguous",
+      raw,
+      reason: `Did you want to ${describeRoute(topIntent)} or ${describeRoute(runnerIntent)}?`,
+      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
+    };
+  }
+  // Destructive action but not confidently the top → clarify instead of
+  // silently opening a destructive tool the user didn't mean.
+  if (
+    topIntent.route.kind === "action" &&
+    topIntent.route.destructive &&
+    top.s < DESTR_MIN
+  ) {
     return {
       kind: "ambiguous",
       raw,
