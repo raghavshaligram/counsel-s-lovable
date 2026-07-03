@@ -18,6 +18,10 @@ export type FlowKind =
   | "bates"
   | "ocr"
   | "repair"
+  | "search"
+  | "split"
+  | "exhibit-binder"
+  | "ambiguous"
   | "answer";
 
 export type AgentFlow =
@@ -34,6 +38,17 @@ export type AgentFlow =
   | { kind: "bates"; raw: string }
   | { kind: "ocr"; raw: string }
   | { kind: "repair"; raw: string }
+  | { kind: "search"; term: string; raw: string }
+  | { kind: "split"; raw: string }
+  | { kind: "exhibit-binder"; raw: string }
+  | {
+      kind: "ambiguous";
+      raw: string;
+      /** Human prompt for the disambiguation card. */
+      prompt: string;
+      /** Candidate flows to offer as buttons. */
+      choices: AgentFlow[];
+    }
   | { kind: "answer"; query: string; raw: string };
 
 /* ---------- category vocabulary ---------- */
