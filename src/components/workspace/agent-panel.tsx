@@ -378,12 +378,33 @@ export function AgentPanel({
 
   /* ---------------- flow lifecycle ---------------- */
 
+  // Only re-run when the flow prop's identity changes (not when
+  // callback deps like `openTool`/`onAnswerQuery` change on parent
+  // re-renders — those would otherwise re-fire the effect and loop
+  // the same flow repeatedly).
+  const lastFlowRef = useRef<AgentFlow | null>(null);
+  const runFlowRef = useRef(runFlow);
+  runFlowRef.current = runFlow;
   useEffect(() => {
     if (!flow) return;
+    if (lastFlowRef.current === flow) return;
+    lastFlowRef.current = flow;
+    console.info("[agent] new flow", { kind: flow.kind });
     setSteps([]);
+    cachedFindingsRef.current = [];
     abortedRef.current = false;
-    runFlow(flow);
-  }, [flow, runFlow]);
+    try {
+      runFlowRef.current(flow);
+    } catch (err) {
+      console.error("[agent] flow crashed", err);
+      pushStep({
+        kind: "error",
+        id: nextId(),
+        title: "Assistant error",
+        body: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, [flow, pushStep]);
 
   useEffect(() => {
     if (open) return;
@@ -439,11 +460,38 @@ export function AgentPanel({
 
   /* ---------------- mid-flow input ---------------- */
 
+  const safeRunFlow = useCallback(
+    (f: AgentFlow) => {
+      console.info("[agent] dispatch flow", { kind: f.kind });
+      // Full reset before each new flow so state from the previous
+      // flow can never re-trigger or leak into the new one.
+      setSteps([]);
+      cachedFindingsRef.current = [];
+      abortedRef.current = false;
+      lastFlowRef.current = f;
+      try {
+        runFlowRef.current(f);
+      } catch (err) {
+        console.error("[agent] flow crashed", err);
+        pushStep({
+          kind: "error",
+          id: nextId(),
+          title: "Assistant error",
+          body:
+            (err instanceof Error ? err.message : String(err)) +
+            " — try again or start a new request.",
+        });
+      }
+    },
+    [pushStep],
+  );
+
   const submitFollowUp = useCallback(
     (raw: string) => {
       const text = raw.trim();
       if (!text) return;
       setInput("");
+      console.info("[agent] follow-up query", text);
       pushStep({ kind: "note", id: nextId(), body: `You: ${text}` });
 
       if (isCancel(text)) {
@@ -468,8 +516,8 @@ export function AgentPanel({
             pages: pages ?? currentFlow.pages,
             raw: text,
           };
-          setSteps([]);
-          runFlow(nextFlow);
+          setCurrentFlow(nextFlow);
+          safeRunFlow(nextFlow);
           return;
         }
       }
@@ -477,8 +525,8 @@ export function AgentPanel({
       // Otherwise: treat as a new flow request.
       const next = detectAgentFlow(text);
       if (next) {
-        setSteps([]);
-        runFlow(next);
+        setCurrentFlow(next);
+        safeRunFlow(next);
       } else {
         pushStep({
           kind: "note",
@@ -487,7 +535,7 @@ export function AgentPanel({
         });
       }
     },
-    [currentFlow, pushStep, runFlow],
+    [currentFlow, pushStep, safeRunFlow],
   );
 
   const scopeNote = useMemo(() => {
