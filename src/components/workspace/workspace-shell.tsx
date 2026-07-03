@@ -1182,8 +1182,33 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
 
   const onCounselOptionPick = useCallback(
-    (optionId: string) => {
-      // Treat option pick as a new user turn with clear intent phrasing.
+    async (optionId: string) => {
+      // KB clarify option → answer directly from that entry.
+      if (optionId.startsWith("kb:")) {
+        const entryId = optionId.slice(3);
+        const { KB } = await import("@/lib/assist/knowledge-base");
+        const entry = KB.find((e) => e.id === entryId);
+        if (entry) {
+          const answer = entry.steps && entry.steps.length
+            ? `${entry.answer}\n\nSteps:\n${entry.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+            : entry.answer;
+          setCounselMessages((ms) => [
+            ...ms,
+            { id: `u_${Date.now().toString(36)}`, role: "user", text: entry.toolLabel ?? entry.id },
+            {
+              id: `a_${Date.now().toString(36)}`,
+              role: "assistant",
+              kind: "help",
+              answer,
+              toolId: entry.tool,
+              toolLabel: entry.toolLabel ?? (entry.tool ? toolById(entry.tool)?.label : undefined),
+            },
+          ]);
+          counselRecentTopicRef.current = entry.topic;
+          return;
+        }
+      }
+      // Legacy generic options.
       const label = optionId === "opt-0" ? "yes, that one" : "the other one";
       setCounselMessages((ms) => [
         ...ms,
@@ -1192,7 +1217,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           id: `a_${Date.now().toString(36)}`,
           role: "assistant",
           kind: "help",
-          answer: "Got it — routing that in the next step. This shell captures the choice so real handling can wire in.",
+          answer: "Got it — routing that in the next step.",
         },
       ]);
     },
