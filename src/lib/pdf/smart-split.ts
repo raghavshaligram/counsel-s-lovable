@@ -194,7 +194,7 @@ export async function detectSmartBreaks(
     const pdfDoc = await PDFDocument.load(await file.arrayBuffer(), {
       ignoreEncryption: true,
     });
-    return { total: pdfDoc.getPageCount(), breaks: [] };
+    return { total: pdfDoc.getPageCount(), breaks: [], blankPages: [] };
   }
 
   const needsText = modes.has("blank") || modes.has("pattern");
@@ -218,22 +218,31 @@ export async function detectSmartBreaks(
     if (cur) {
       if (!cur.sources.includes(source)) cur.sources.push(source);
       if (!cur.suggestedName && name) cur.suggestedName = name;
-      cur.reason = cur.reason + " · " + reason;
+      if (!cur.reason.includes(reason)) cur.reason = cur.reason + " · " + reason;
     } else {
       map.set(page, { page, sources: [source], reason, suggestedName: name });
     }
   };
 
-  // blank/separator pages: split AFTER a blank so the next non-blank starts a new doc
+  // Blank/separator pages: blanks DELIMIT documents. For every run of one
+  // or more blank pages, the first content page after the run starts a
+  // new document. The blanks themselves are dropped from output.
+  const blankPages: number[] = [];
   if (modes.has("blank") && texts.length) {
     for (let i = 0; i < texts.length; i++) {
-      if (!isBlankPageText(texts[i])) continue;
-      // Find the next non-blank page → that's the break
-      for (let j = i + 1; j < texts.length; j++) {
-        if (!isBlankPageText(texts[j])) {
-          addBreak(j + 1, "blank", "blank separator");
-          break;
-        }
+      if (isBlankPageText(texts[i])) blankPages.push(i + 1);
+    }
+    // Walk once and mark the first non-blank AFTER each blank run.
+    let i = 0;
+    while (i < texts.length) {
+      if (!isBlankPageText(texts[i])) {
+        i++;
+        continue;
+      }
+      // Skip the whole blank run
+      while (i < texts.length && isBlankPageText(texts[i])) i++;
+      if (i < texts.length) {
+        addBreak(i + 1, "blank", "after blank separator");
       }
     }
   }
