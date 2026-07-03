@@ -1956,6 +1956,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
         toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+        try {
+          window.dispatchEvent(new CustomEvent("agent:redact-complete", {
+            detail: { ok: true, removed: result.removed, total: result.total, leaks: 0 },
+          }));
+        } catch { /* ignore */ }
 
         // Offer the formal Redaction Certificate as a free-signup value gate.
         // Only fires when verification PASSED — never claim unverified compliance.
