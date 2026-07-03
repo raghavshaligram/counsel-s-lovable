@@ -396,8 +396,7 @@ export async function splitByParts(
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
     opts.onProgress?.({ part: i + 1, total: parts.length });
-    const indices: number[] = [];
-    for (let p = part.startPage; p <= part.endPage; p++) indices.push(p - 1);
+    const indices: number[] = part.pages.map((p) => p - 1);
     totalPages += indices.length;
     const out = await PDFDocument.create();
     const copied = await out.copyPages(src, indices);
