@@ -2023,6 +2023,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } catch (err) {
       console.error("[redact] export failed", err);
       toast.error("Redaction export failed", { id: tid, description: (err as Error).message });
+      try {
+        window.dispatchEvent(new CustomEvent("agent:redact-complete", {
+          detail: { ok: false, error: (err as Error).message },
+        }));
+      } catch { /* ignore */ }
     } finally {
       setBusy(false);
     }
