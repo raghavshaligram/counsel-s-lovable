@@ -2934,6 +2934,7 @@ function SmartSplitSection({
     // Any change invalidates the previous detection.
     setDetected(null);
     setBreakSet(new Set());
+    setBlankPages([]);
   };
 
   const runDetect = useCallback(async () => {
