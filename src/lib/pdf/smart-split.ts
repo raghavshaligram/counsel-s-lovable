@@ -172,16 +172,25 @@ function pageHead(text: string): string {
 
 /** Normalize a matched heading to an identifier key so continuation pages
  *  ("EXHIBIT A (continued)", "Exhibit A — cont.") collapse to the SAME
- *  key as their opener ("EXHIBIT A"). */
+ *  key as their opener ("EXHIBIT A"). Only the leading UPPERCASE / short
+ *  identifier tokens are kept; the first mixed-case body word ends the
+ *  identifier. */
 export function normalizePatternKey(hit: string): string {
-  let s = hit.toLowerCase();
-  // Strip common continuation markers.
-  s = s.replace(/\(\s*cont(?:inued|\.)?\s*\)/g, " ");
-  s = s.replace(/\b(?:continued|cont\.?)\b/g, " ");
-  // Strip trailing punctuation / whitespace noise.
-  s = s.replace(/[^\p{L}\p{N}\s]+/gu, " ");
-  s = s.replace(/\s+/g, " ").trim();
-  return s;
+  // Strip continuation markers first so the identifier tokens are adjacent.
+  let s = hit.replace(/\(\s*cont(?:inued|\.)?\s*\)/gi, " ");
+  s = s.replace(/\b(?:continued|cont\.?)\b/gi, " ");
+  const tokens = s.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const kept: string[] = [];
+  for (const tok of tokens) {
+    const isUpper = tok === tok.toUpperCase(); // ALL-CAPS or digits
+    const isDigit = /^\d+$/.test(tok);
+    if (isUpper || isDigit) {
+      kept.push(tok.toLowerCase());
+    } else {
+      break; // first body word ends the identifier
+    }
+  }
+  return kept.join(" ").trim();
 }
 
 function buildMatcher(opts: SmartDetectOptions): ((text: string) => string | null) | null {
