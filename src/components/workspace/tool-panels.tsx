@@ -6031,7 +6031,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
         These settings are saved with the document and applied automatically whenever you export. Nothing is stamped until you export.
       </p>
 
-      <div className="flex flex-col gap-2">
+      <div ref={pnRef} className="flex flex-col gap-2 scroll-mt-2">
         <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
           # Page Numbers
         </div>
