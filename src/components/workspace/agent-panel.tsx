@@ -884,6 +884,37 @@ function StepCard({ step, onDismiss }: { step: Step; onDismiss: () => void }) {
           </div>
         </div>
       );
+    case "pro-gate":
+      return (
+        <div className="rounded-lg border border-vault/50 bg-vault/[0.08] p-2.5">
+          <div className="flex items-start gap-2">
+            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-vault" />
+            <div className="flex-1">
+              <div className="text-[12px] font-medium text-foreground">
+                {step.featureName} is a Pro feature
+              </div>
+              <div className="mt-0.5 text-[11.5px] text-text-2">{step.body}</div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={step.onUpgrade}
+                  className="rounded-md border border-vault/60 bg-vault/20 px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-vault/30"
+                >
+                  Upgrade to Pro
+                </button>
+                <button
+                  type="button"
+                  onClick={onDismiss}
+                  className="rounded-md border border-border bg-transparent px-2 py-1 text-[11px] font-medium text-text-2 transition-colors hover:bg-surface-1"
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
     case "error":
       return (
         <div className="rounded-lg border border-red-500/40 bg-red-500/[0.06] p-2.5">
