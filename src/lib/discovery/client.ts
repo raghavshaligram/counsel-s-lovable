@@ -92,8 +92,12 @@ export function loadModel(
   );
   addDiscoveryDebug(`MiniLM download triggered by: ${trigger}`);
   modelLoading = (async () => {
-    const { notifyModelDownload } = await import("@/lib/ai/model-download-ui");
-    return notifyModelDownload("AI (MiniLM)", "45 MB", (h) =>
+    const { notifyModelDownload, getAiCacheStatus } = await import("@/lib/ai/model-download-ui");
+    // Skip the download toast entirely when the MiniLM asset is already in
+    // Cache Storage — warm loads only re-initialize the ONNX runtime and
+    // should never look like a fresh download to the user.
+    const { minilmCached } = await getAiCacheStatus();
+    const run = (h: { report: (n: number) => void }) =>
       new Promise<void>((resolve, reject) => {
         const w = getWorker();
         const handler = (e: MessageEvent) => {
@@ -103,7 +107,7 @@ export function loadModel(
             if (typeof m.progress === "number") h.report(m.progress);
           } else if (m?.kind === "loaded") {
             modelLoaded = true;
-            console.info(`[ai-model] MiniLM ready (trigger: ${trigger})`);
+            console.info(`[ai-model] MiniLM ready (trigger: ${trigger}, cached: ${minilmCached})`);
             h.report(100);
             w.removeEventListener("message", handler);
             resolve();
@@ -114,8 +118,12 @@ export function loadModel(
         };
         w.addEventListener("message", handler);
         w.postMessage({ kind: "load" });
-      }),
-    );
+      });
+    if (minilmCached) {
+      // No toast, no progress UI — cached warm-start.
+      return run({ report: () => {} });
+    }
+    return notifyModelDownload("AI (MiniLM)", "45 MB", run);
   })();
   return modelLoading;
 }
