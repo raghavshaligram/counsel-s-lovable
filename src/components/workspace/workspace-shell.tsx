@@ -1021,7 +1021,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     (intent: Intent) => {
       setLastIntentLabel(intentLabel(intent));
       if (intent.kind === "action") {
-        openTool(intent.toolId);
+        openTool(intent.toolId, { focusSection: intent.focusSection });
         toast.info(intent.title, { description: intent.description });
         setPendingIntent(null);
         return;
