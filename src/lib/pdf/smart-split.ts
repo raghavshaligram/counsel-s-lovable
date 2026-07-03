@@ -313,30 +313,40 @@ export async function detectSmartBreaks(
 export interface BuildPreviewInput {
   total: number;
   breakPages: number[];                        // 1-based, > 1
+  /** Pages to DROP from output (e.g. blank separator pages). */
+  excludePages?: number[];
   names?: Record<number, string | undefined>;  // startPage → suggested name
   reasons?: Record<number, string | undefined>;
   baseName: string;
 }
 
 export function buildPreview(input: BuildPreviewInput): PartPreview[] {
+  const exclude = new Set(input.excludePages ?? []);
   const groups = groupsFromBreaks(input.total, input.breakPages);
   const parts: PartPreview[] = [];
-  for (let i = 0; i < groups.length; i++) {
-    const g = groups[i];
-    const startPage = g[0];
-    const endPage = g[g.length - 1];
-    const suggested = input.names?.[startPage];
+  let visibleIndex = 0;
+  for (const g of groups) {
+    const pages = g.filter((p) => !exclude.has(p));
+    if (pages.length === 0) continue; // whole group was separators
+    const startPage = pages[0];
+    // Look up the suggested name using the ORIGINAL group start (the break
+    // page) so pattern/outline detections still attach even if that page
+    // itself was skipped as a separator.
+    const suggested = input.names?.[g[0]] ?? input.names?.[startPage];
+    const totalParts = groups.length; // upper bound for padding width
     const name = suggested
-      ? `${input.baseName}-${padIndex(i + 1, groups.length)}-${suggested}`
-      : `${input.baseName}-part${padIndex(i + 1, groups.length)}`;
+      ? `${input.baseName}-${padIndex(visibleIndex + 1, totalParts)}-${suggested}`
+      : `${input.baseName}-part${padIndex(visibleIndex + 1, totalParts)}`;
     parts.push({
-      index: i,
+      index: visibleIndex,
+      pages,
       startPage,
-      endPage,
-      pageCount: g.length,
+      endPage: pages[pages.length - 1],
+      pageCount: pages.length,
       name,
-      reason: input.reasons?.[startPage],
+      reason: input.reasons?.[g[0]] ?? input.reasons?.[startPage],
     });
+    visibleIndex++;
   }
   return parts;
 }
