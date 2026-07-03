@@ -452,16 +452,64 @@ function dot(q: Float32Array, matrix: Float32Array, offset: number, dim: number)
 /* ------------------------- semantic classify ------------------------- */
 
 /** Cosine below this → nothing is meaningfully close → clarify. */
-const MIN_ABS = 0.42;
+const MIN_ABS = 0.38;
 /** Top-1 within this margin of top-2 (different intent) → clarify. */
-const GAP = 0.04;
+const GAP = 0.03;
 /**
  * Destructive actions (redact, sanitize) require a stronger match before
  * we route to the tool. Between MIN_ABS and DESTR_MIN we still clarify
  * with the top-2 options rather than guess — a wrong destructive route
  * costs the user real work.
  */
-const DESTR_MIN = 0.55;
+const DESTR_MIN = 0.5;
+/**
+ * When offering clarify options, an alternative must be at least this
+ * close to the top score to be shown — otherwise it's not a real
+ * alternative, just the next item in a sparse ranking, and showing it
+ * (e.g. "Document Hash" for "find ssn") makes the assistant look broken.
+ */
+const CLARIFY_REL = 0.85;
+const CLARIFY_MIN = 0.3;
+
+/* --------------------- fast conversational shortcut --------------------- */
+
+/**
+ * Chitchat is trivially detectable and semantic matching against
+ * tool-focused anchors mis-routes it every time. Match a short whitelist
+ * of greetings / small-talk / meta questions before we run embeddings.
+ */
+const CHITCHAT_PATTERNS: Array<{ re: RegExp; reply: string }> = [
+  {
+    re: /^(hi|hey|hello|yo|howdy|hiya|sup)\b[!.\s]*$/i,
+    reply:
+      "Hi! I can help you search this document, run tasks like redaction or Bates numbering, or answer questions about how the tools work. What do you need?",
+  },
+  {
+    re: /^(good\s+(morning|afternoon|evening))\b[!.\s]*$/i,
+    reply:
+      "Hello! Ask me to find something in this document, run an action like redaction or Bates, or explain a tool — I'll take it from there.",
+  },
+  {
+    re: /^(thanks|thank you|thx|ty|cheers)\b[!.\s]*$/i,
+    reply: "You're welcome — ping me any time.",
+  },
+  {
+    re: /^(bye|goodbye|see ya|later)\b[!.\s]*$/i,
+    reply: "Talk soon.",
+  },
+  {
+    re: /^(what can you do|help|who are you|what are you|what do you do)\b[?!.\s]*$/i,
+    reply:
+      "I'm Counsel — the AI assistant for this workspace. I can (1) search or answer questions about the open PDF, (2) set up actions like Redact, Bates, Watermark, OCR or Sanitize for you to review, and (3) explain how any tool works. Just tell me what you'd like to do.",
+  },
+];
+
+function tryChitchat(raw: string): Intent | null {
+  for (const { re, reply } of CHITCHAT_PATTERNS) {
+    if (re.test(raw)) return { kind: "chitchat", raw, reply };
+  }
+  return null;
+}
 
 function makeIntent(def: IntentDef, raw: string): Intent {
   const r = def.route;
@@ -481,19 +529,18 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
   const raw = input.trim();
   if (!raw) return { kind: "search", query: "", raw };
 
+  const chit = tryChitchat(raw);
+  if (chit) return chit;
+
   const [qVec] = await embedTexts([raw]);
   const { dim, matrix, ownerIntentIdx } = await buildAnchors();
 
   // Best score PER INTENT (max over its example anchors).
   const perIntent = new Array<number>(INTENTS.length).fill(-Infinity);
-  const perIntentBestExample = new Array<number>(INTENTS.length).fill(-1);
   for (let i = 0; i < ownerIntentIdx.length; i++) {
     const s = dot(qVec, matrix, i * dim, dim);
     const idx = ownerIntentIdx[i];
-    if (s > perIntent[idx]) {
-      perIntent[idx] = s;
-      perIntentBestExample[idx] = i;
-    }
+    if (s > perIntent[idx]) perIntent[idx] = s;
   }
 
   const ranked = perIntent
@@ -516,45 +563,51 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
   const topIntent = INTENTS[top.idx];
   const runnerIntent = INTENTS[runner.idx];
 
-  // Ambiguous if nothing crossed the floor OR the top-2 are effectively tied
-  // AND route to different destinations.
   const differentRoute =
     topIntent.route.kind !== runnerIntent.route.kind ||
     (topIntent.route.kind === "action" &&
       runnerIntent.route.kind === "action" &&
       topIntent.route.toolId !== runnerIntent.route.toolId);
 
+  // Pick clarify options only from candidates close enough to the top to
+  // be a plausible alternative. Otherwise a sparse ranking dumps
+  // unrelated tools (e.g. "Document Hash") into the clarify UI.
+  const relevantAlts = ranked
+    .slice(1)
+    .filter((r) => r.s >= CLARIFY_MIN && r.s >= top.s * CLARIFY_REL)
+    .map((r) => INTENTS[r.idx]);
+
+  const clarify = (reason: string): Intent => {
+    const options: Intent[] = [makeIntent(topIntent, raw)];
+    if (relevantAlts[0]) options.push(makeIntent(relevantAlts[0], raw));
+    return { kind: "ambiguous", raw, options, reason };
+  };
+
   if (top.s < MIN_ABS) {
-    // Genuinely off-topic — ask user to clarify with the two best guesses.
-    return {
-      kind: "ambiguous",
-      raw,
-      reason:
-        "I'm not sure what you're asking. Did you mean one of these?",
-      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
-    };
+    // Nothing meaningfully close. If there isn't even one relevant
+    // alternative to offer, just route to search — the safest fallback.
+    if (relevantAlts.length === 0) {
+      return { kind: "search", query: raw, raw };
+    }
+    return clarify("I'm not sure what you're asking. Did you mean one of these?");
   }
-  if (differentRoute && top.s - runner.s < GAP) {
-    return {
-      kind: "ambiguous",
-      raw,
-      reason: `Did you want to ${describeRoute(topIntent)} or ${describeRoute(runnerIntent)}?`,
-      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
-    };
+  if (
+    differentRoute &&
+    top.s - runner.s < GAP &&
+    runner.s >= top.s * CLARIFY_REL
+  ) {
+    return clarify(
+      `Did you want to ${describeRoute(topIntent)} or ${describeRoute(runnerIntent)}?`,
+    );
   }
-  // Destructive action but not confidently the top → clarify instead of
-  // silently opening a destructive tool the user didn't mean.
   if (
     topIntent.route.kind === "action" &&
     topIntent.route.destructive &&
     top.s < DESTR_MIN
   ) {
-    return {
-      kind: "ambiguous",
-      raw,
-      reason: `Did you want to ${describeRoute(topIntent)} or ${describeRoute(runnerIntent)}?`,
-      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
-    };
+    // For a low-confidence destructive match, prefer routing to search
+    // (surface hits) over silently opening the destructive tool.
+    return { kind: "search", query: raw, raw };
   }
   return makeIntent(topIntent, raw);
 }
@@ -569,12 +622,14 @@ function describeRoute(def: IntentDef): string {
 
 /**
  * Instant, keyword-free fallback used before the MiniLM model has
- * warmed up. Deliberately minimal — punts to "search" (the safest
- * non-destructive route) rather than guessing an action.
+ * warmed up. Handles chitchat inline and otherwise punts to "search"
+ * (the safest non-destructive route) rather than guessing an action.
  */
 export function classifyCommand(input: string): Intent {
   const raw = input.trim();
   if (!raw) return { kind: "search", query: "", raw };
+  const chit = tryChitchat(raw);
+  if (chit) return chit;
   if (raw.endsWith("?")) return { kind: "question", query: raw, raw };
   return { kind: "search", query: raw, raw };
 }
@@ -588,7 +643,10 @@ export function intentLabel(intent: Intent): string {
       return "Answer";
     case "search":
       return "Search";
+    case "chitchat":
+      return "Chat";
     case "ambiguous":
       return "Clarify";
   }
 }
+
