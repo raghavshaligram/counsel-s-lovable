@@ -132,6 +132,7 @@ ctx.onmessage = async (e: MessageEvent) => {
     | { kind: "load" }
     | { kind: "index"; id: string; docKey: string; chunks: ChunkIn[] }
     | { kind: "query"; id: string; docKey: string; text: string; topK: number }
+    | { kind: "embed"; id: string; texts: string[] }
     | { kind: "drop"; docKey: string };
 
   try {
@@ -141,6 +142,19 @@ ctx.onmessage = async (e: MessageEvent) => {
     }
     if (msg.kind === "drop") {
       cache.delete(msg.docKey);
+      return;
+    }
+    if (msg.kind === "embed") {
+      const { id, texts } = msg;
+      if (texts.length === 0) {
+        post({ kind: "embedded", id, dim: 0, buffer: new Float32Array(0).buffer });
+        return;
+      }
+      const vecs = await embed(texts);
+      const dim = vecs[0].length;
+      const out = new Float32Array(dim * texts.length);
+      for (let i = 0; i < vecs.length; i++) out.set(vecs[i], i * dim);
+      post({ kind: "embedded", id, dim, buffer: out.buffer }, [out.buffer]);
       return;
     }
     if (msg.kind === "index") {
