@@ -120,6 +120,8 @@ import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
 import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
 import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
+import { AgentPanel } from "@/components/workspace/agent-panel";
+import { detectAgentFlow, type AgentFlow } from "@/lib/agent/flows";
 
 
 type ToolId =
@@ -426,6 +428,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   /** Popover above the command bar: confirmation (action) or clarify (ambiguous). */
   const [pendingIntent, setPendingIntent] = useState<Intent | null>(null);
   const [lastIntentLabel, setLastIntentLabel] = useState<string | null>(null);
+  const [agentFlow, setAgentFlow] = useState<AgentFlow | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
@@ -1047,6 +1051,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
+    // Agent-flow first pass: if the input clearly asks for a guided
+    // multi-step operation, open the assistant panel with that flow.
+    // Falls through to the semantic router otherwise.
+    const flow = detectAgentFlow(raw);
+    if (flow) {
+      setAgentFlow(flow);
+      setAgentOpen(true);
+      setLastIntentLabel("Assistant");
+      setAiText("");
+      return;
+    }
     // Try semantic classification (MiniLM). If the model isn't loaded
     // yet, kick off the load in the background and use the sync
     // fallback for this first submission so the bar never blocks.
@@ -2186,6 +2201,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         file={active.file ?? null}
       />
       <WelcomeModal forceOpen={welcomeNonce > 0 ? true : undefined} key={welcomeNonce} />
+
+      <AgentPanel
+        open={agentOpen}
+        onClose={() => setAgentOpen(false)}
+        flow={agentFlow}
+        file={active.file}
+        totalPages={editorState.doc?.pages.length ?? 0}
+        openTool={(id, opts) => openTool(id, opts)}
+        onAnswerQuery={(query) => {
+          openTool("pre-discovery");
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("commandbar:query", {
+                detail: { query, mode: "question" },
+              }),
+            );
+          }, 60);
+        }}
+      />
     </div>
   );
 }

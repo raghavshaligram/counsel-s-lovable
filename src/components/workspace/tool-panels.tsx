@@ -1100,6 +1100,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
 
+  // Agent hand-off: the assistant panel can seed us with findings it
+  // already scanned so the user isn't paying for a second detect pass.
+  // We only hydrate state — never trigger the destructive burn.
+  useEffect(() => {
+    const onSeed = async (e: Event) => {
+      const ce = e as CustomEvent<{ findings: Det[]; autoSelect?: boolean }>;
+      const payload = ce.detail;
+      if (!payload || !Array.isArray(payload.findings)) return;
+      try {
+        const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
+        setMeta(mod.CATEGORY_META);
+      } catch { /* ignore */ }
+      setFindings(payload.findings);
+      if (payload.autoSelect) {
+        setSelected(new Set(payload.findings.map((d) => d.id)));
+      }
+    };
+    window.addEventListener("agent:redact-seed", onSeed as EventListener);
+    return () => window.removeEventListener("agent:redact-seed", onSeed as EventListener);
+  }, []);
+
   // Skip duplicates against existing redact annotations to avoid re-adding
   // the same box on a second scan.
   const existingRedactKeys = useMemo(() => {
@@ -1935,6 +1956,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
           : "";
         toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+        try {
+          window.dispatchEvent(new CustomEvent("agent:redact-complete", {
+            detail: { ok: true, removed: result.removed, total: result.total, leaks: 0 },
+          }));
+        } catch { /* ignore */ }
 
         // Offer the formal Redaction Certificate as a free-signup value gate.
         // Only fires when verification PASSED — never claim unverified compliance.
@@ -1997,6 +2023,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } catch (err) {
       console.error("[redact] export failed", err);
       toast.error("Redaction export failed", { id: tid, description: (err as Error).message });
+      try {
+        window.dispatchEvent(new CustomEvent("agent:redact-complete", {
+          detail: { ok: false, error: (err as Error).message },
+        }));
+      } catch { /* ignore */ }
     } finally {
       setBusy(false);
     }
