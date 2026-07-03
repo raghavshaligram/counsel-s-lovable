@@ -5,6 +5,13 @@ export interface PdfChunk {
   text: string;
 }
 
+export type PdfJsLikeDocument = {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<{
+    getTextContent: () => Promise<{ items: unknown[] }>;
+  }>;
+};
+
 // Extract text per page, then break each page into ~chunkChars-sized
 // passages on sentence/paragraph boundaries. Page number is preserved
 // for citation.
@@ -70,6 +77,15 @@ export async function extractPdfParagraphChunks(
   const pdfjs = await loadPdfjs();
   const buf = await file.arrayBuffer();
   const doc = await pdfjs.getDocument({ data: buf }).promise;
+  return extractPdfParagraphChunksFromDocument(doc as PdfJsLikeDocument, targetChars, minChars, onProgress);
+}
+
+export async function extractPdfParagraphChunksFromDocument(
+  doc: PdfJsLikeDocument,
+  targetChars = 300,
+  minChars = 120,
+  onProgress?: (page: number, totalPages: number) => void,
+): Promise<PdfChunk[]> {
   const chunks: PdfChunk[] = [];
 
   for (let p = 1; p <= doc.numPages; p++) {
@@ -87,9 +103,10 @@ export async function extractPdfParagraphChunks(
       buffer = "";
     };
     let prevEOL = false;
-    for (const it of content.items as any[]) {
-      const str = "str" in it ? it.str : "";
-      const eol = !!it.hasEOL;
+    for (const it of content.items) {
+      const item = it as { str?: unknown; hasEOL?: unknown };
+      const str = typeof item.str === "string" ? item.str : "";
+      const eol = !!item.hasEOL;
       if (str) buffer += str;
       if (eol) {
         if (prevEOL || /\.\s*$/.test(buffer)) {
