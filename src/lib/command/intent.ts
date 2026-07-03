@@ -37,7 +37,8 @@ export type ActionToolId =
   | "repair"
   | "document-hash"
   | "compare"
-  | "organize";
+  | "organize"
+  | "workflow-builder";
 
 export type Intent =
   | {
@@ -50,10 +51,11 @@ export type Intent =
     }
   | { kind: "question"; query: string; raw: string }
   | { kind: "search"; query: string; raw: string }
+  | { kind: "chitchat"; raw: string; reply: string }
   | {
       kind: "ambiguous";
       raw: string;
-      options: [Intent, Intent];
+      options: Intent[];
       reason: string;
     };
 
