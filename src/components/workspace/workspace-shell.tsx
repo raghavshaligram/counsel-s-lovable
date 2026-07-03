@@ -656,6 +656,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       patchActive({ activeToolId: tool.id, inspectorOpen: true });
       if (opts?.focusSection) setFocusSection(opts.focusSection);
       setToolModalOpen(false);
+      // Mutual exclusivity: assistant and any tool inspector are never
+      // open at the same time. Opening a tool closes the assistant.
+      setAgentOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
     [bumpUsage, patchActive],
