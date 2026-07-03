@@ -53,15 +53,21 @@ export interface DetectedBreak {
 export interface SmartDetectResult {
   total: number;
   breaks: DetectedBreak[];
+  /** 1-based page numbers detected as blank/separator (only populated when
+   *  the "blank" mode ran). Consumers typically exclude these from output. */
+  blankPages: number[];
   /** First-doc suggested name (before the first break). */
   firstName?: string;
 }
 
 export interface PartPreview {
   index: number;         // 0-based
-  startPage: number;     // 1-based inclusive
-  endPage: number;       // 1-based inclusive
-  pageCount: number;
+  /** 1-based page numbers included in this document, in order. Excludes
+   *  any dropped separator pages, so the array IS the final content. */
+  pages: number[];
+  startPage: number;     // 1-based inclusive (= pages[0])
+  endPage: number;       // 1-based inclusive (= pages[pages.length-1])
+  pageCount: number;     // = pages.length
   name: string;          // suggested filename (no extension)
   reason?: string;       // why the split BEFORE startPage
 }
