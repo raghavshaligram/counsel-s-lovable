@@ -64,7 +64,51 @@ type Step =
     }
   | { kind: "handoff"; id: string; title: string; body: string }
   | { kind: "success"; id: string; title: string; body: string }
+  | {
+      kind: "pro-gate";
+      id: string;
+      featureName: string;
+      body: string;
+      onUpgrade: () => void;
+    }
   | { kind: "error"; id: string; title: string; body: string };
+
+/** Flow → Pro feature descriptor. Free flows return null. */
+function proGateFor(
+  f: AgentFlow,
+): { featureName: string; body: string } | null {
+  switch (f.kind) {
+    case "detect-redact":
+      return {
+        featureName: "AI sensitive-data detection",
+        body: "Automatically scans your document on-device to find every SSN, email, phone number, financial account, and other sensitive value — then lets you review and redact any or all of them with the verified burn. Nothing uploads.",
+      };
+    case "pattern-redact":
+      return {
+        featureName: "Pattern & bulk redaction",
+        body: "Finds every occurrence of a word, phrase, or regex across the whole document and lets you redact them all in one pass with the verified burn. Runs entirely in your browser.",
+      };
+    case "exhibit-binder":
+      return {
+        featureName: "Exhibit Binder",
+        body: "Assembles multiple PDFs into a court-ready binder with a cover page, tabbed exhibits, and an index — all built on-device.",
+      };
+    case "split":
+      return {
+        featureName: "Smart Document Splitter",
+        body: "Splits a long PDF into separate documents at blank pages, every N pages, or a text pattern — with a live preview before anything is written.",
+      };
+    case "search":
+    case "answer":
+      return {
+        featureName: "Private AI assist & search",
+        body: "Asks questions of your document and finds passages by meaning (not just keywords), using on-device embeddings. Your document never leaves this browser.",
+      };
+    default:
+      return null;
+  }
+}
+
 
 export interface AgentPanelProps {
   open: boolean;
