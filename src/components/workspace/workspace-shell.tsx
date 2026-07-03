@@ -1080,6 +1080,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         return;
       }
 
+      if (intent.kind === "chitchat") {
+        setCounselMessages((ms) => [
+          ...stripThinking(ms),
+          {
+            id: mkId(),
+            role: "assistant",
+            kind: "help",
+            answer: intent.reply,
+          },
+        ]);
+        return;
+      }
+
       if (intent.kind === "ambiguous") {
         setCounselMessages((ms) => [
           ...stripThinking(ms),
@@ -1088,26 +1101,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             role: "assistant",
             kind: "clarify",
             question: intent.reason,
-            options: [
-              {
-                id: "opt-0",
-                label:
-                  intent.options[0].kind === "action"
-                    ? intent.options[0].title.replace(/^Open\s+/, "")
-                    : intent.options[0].kind === "question"
-                    ? "Get a written answer"
-                    : "Search the document",
-              },
-              {
-                id: "opt-1",
-                label:
-                  intent.options[1].kind === "action"
-                    ? intent.options[1].title.replace(/^Open\s+/, "")
-                    : intent.options[1].kind === "question"
-                    ? "Get a written answer"
-                    : "Search the document",
-              },
-            ],
+            options: intent.options.map((opt, i) => ({
+              id: `opt-${i}`,
+              label:
+                opt.kind === "action"
+                  ? opt.title.replace(/^Open\s+/, "")
+                  : opt.kind === "question"
+                  ? "Get a written answer"
+                  : opt.kind === "search"
+                  ? "Search the document"
+                  : "Chat",
+            })),
           },
         ]);
         return;
