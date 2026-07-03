@@ -2884,6 +2884,360 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
 }
 
+/* --------------------- Smart Document Splitter ---------------------- */
+
+function SmartSplitSection({
+  file,
+  pageCount,
+}: {
+  file: File;
+  pageCount: number;
+}) {
+  const [modes, setModes] = useState<Set<DetectionMode>>(new Set(["blank"]));
+  const [everyN, setEveryN] = useState(10);
+  const [pattern, setPattern] = useState("");
+  const [patternKind, setPatternKind] = useState<PatternKind>("literal");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [progress, setProgress] = useState<{ page: number; total: number; stage: string } | null>(
+    null,
+  );
+  const [detected, setDetected] = useState<DetectedBreak[] | null>(null);
+  const [breakSet, setBreakSet] = useState<Set<number>>(new Set());
+  const [names, setNames] = useState<Record<number, string | undefined>>({});
+  const [reasons, setReasons] = useState<Record<number, string | undefined>>({});
+  const [manualPage, setManualPage] = useState<string>("");
+  const [splitting, setSplitting] = useState(false);
+  const [splitProgress, setSplitProgress] = useState<{ part: number; total: number } | null>(null);
+
+  const baseName = useMemo(() => file.name.replace(/\.pdf$/i, ""), [file.name]);
+
+  const toggleMode = (m: DetectionMode) => {
+    setModes((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m);
+      else next.add(m);
+      return next;
+    });
+    // Any change invalidates the previous detection.
+    setDetected(null);
+    setBreakSet(new Set());
+  };
+
+  const runDetect = useCallback(async () => {
+    if (!file || modes.size === 0) return;
+    setDetecting(true);
+    setProgress(null);
+    try {
+      const result = await detectSmartBreaks(file, {
+        modes: Array.from(modes),
+        everyN,
+        pattern,
+        patternKind,
+        patternCaseSensitive: caseSensitive,
+        patternAnchorStart: true,
+        onProgress: (page, total, stage) => setProgress({ page, total, stage }),
+      });
+      setDetected(result.breaks);
+      setBreakSet(new Set(result.breaks.map((b) => b.page)));
+      const n: Record<number, string | undefined> = {};
+      const r: Record<number, string | undefined> = {};
+      for (const b of result.breaks) {
+        n[b.page] = b.suggestedName;
+        r[b.page] = b.reason;
+      }
+      setNames(n);
+      setReasons(r);
+      if (result.breaks.length === 0) {
+        toast.message("No split points detected", {
+          description: "Try a different detection mode or lower N.",
+        });
+      } else {
+        toast.success(`Detected ${result.breaks.length} split point${result.breaks.length === 1 ? "" : "s"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Detection failed", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setDetecting(false);
+      setProgress(null);
+    }
+  }, [file, modes, everyN, pattern, patternKind, caseSensitive]);
+
+  const parts = useMemo<PartPreview[]>(() => {
+    if (!pageCount) return [];
+    const breakPages = Array.from(breakSet).sort((a, b) => a - b);
+    return buildPreview({
+      total: pageCount,
+      breakPages,
+      names,
+      reasons,
+      baseName,
+    });
+  }, [pageCount, breakSet, names, reasons, baseName]);
+
+  const removeBreak = (page: number) => {
+    setBreakSet((prev) => {
+      const next = new Set(prev);
+      next.delete(page);
+      return next;
+    });
+  };
+
+  const addManualBreak = () => {
+    const n = parseInt(manualPage.trim(), 10);
+    if (!Number.isFinite(n)) {
+      toast.error("Enter a page number");
+      return;
+    }
+    if (n < 2 || n > pageCount) {
+      toast.error(`Page must be between 2 and ${pageCount}`);
+      return;
+    }
+    setBreakSet((prev) => new Set(prev).add(n));
+    setReasons((prev) => ({ ...prev, [n]: prev[n] ?? "manual" }));
+    setManualPage("");
+  };
+
+  const renamePart = (startPage: number, name: string) => {
+    setNames((prev) => ({ ...prev, [startPage]: name }));
+  };
+
+  const runSplit = useCallback(async () => {
+    if (parts.length === 0) return;
+    setSplitting(true);
+    setSplitProgress(null);
+    try {
+      // Apply user-edited part filenames back into the preview list.
+      const finalParts = parts.map((p) => ({
+        ...p,
+        name: p.name, // buildPreview already used the current names map
+      }));
+      const result = await splitByParts(file, finalParts, {
+        zipName: `${baseName}-smart-split.zip`,
+        onProgress: (p) => setSplitProgress(p),
+      });
+      await triggerDownload(result.blob, result.filename);
+      toast.success(`Saved ${result.fileCount} files in zip`, {
+        description: `${result.pageCount} pages · ${result.filename} · nothing was uploaded.`,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Split failed", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setSplitting(false);
+      setSplitProgress(null);
+    }
+  }, [file, parts, baseName]);
+
+  const modeChip = (m: DetectionMode, label: string) => {
+    const active = modes.has(m);
+    return (
+      <button
+        type="button"
+        onClick={() => toggleMode(m)}
+        className={cn(
+          "rounded-md border px-2 py-1 text-[11px] transition-colors",
+          active
+            ? "border-vault/60 bg-accent-soft text-foreground"
+            : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+        )}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <>
+      <Section title="Detect breaks by" icon={<Sparkles className="h-3 w-3" />}>
+        <div className="flex flex-wrap gap-1.5">
+          {modeChip("blank", "Blank pages")}
+          {modeChip("everyN", "Every N")}
+          {modeChip("outline", "Bookmarks")}
+          {modeChip("pattern", "Text pattern")}
+        </div>
+
+        {modes.has("everyN") && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[11px] text-text-2">every</span>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(1, pageCount)}
+              value={everyN}
+              onChange={(e) => setEveryN(Math.max(1, parseInt(e.target.value || "1", 10)))}
+              className="w-16 rounded-md border border-border bg-surface-1 px-2 py-1 font-mono text-[11.5px]"
+            />
+            <span className="text-[11px] text-text-2">pages</span>
+          </div>
+        )}
+
+        {modes.has("pattern") && (
+          <div className="mt-2 space-y-1.5">
+            <input
+              value={pattern}
+              onChange={(e) => setPattern(e.target.value)}
+              placeholder={
+                patternKind === "regex" ? "^(EXHIBIT|INVOICE)\\b" : "EXHIBIT"
+              }
+              spellCheck={false}
+              className="w-full rounded-md border border-border bg-surface-1 px-2 py-1.5 font-mono text-[11.5px]"
+            />
+            <div className="flex items-center gap-2 text-[10.5px] text-text-2">
+              <label className="inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={patternKind === "literal"}
+                  onChange={() => setPatternKind("literal")}
+                />
+                Literal
+              </label>
+              <label className="inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={patternKind === "regex"}
+                  onChange={() => setPatternKind("regex")}
+                />
+                Regex
+              </label>
+              <label className="ml-auto inline-flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={caseSensitive}
+                  onChange={(e) => setCaseSensitive(e.target.checked)}
+                />
+                Case
+              </label>
+            </div>
+            <p className="text-[10px] leading-snug text-text-muted">
+              Matches the top of each page (e.g. section titles, Bates prefixes).
+            </p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={runDetect}
+          disabled={detecting || modes.size === 0 || pageCount === 0}
+          className={cn(
+            "mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/60 bg-accent-soft px-3 py-1.5 text-[11.5px] font-medium text-foreground transition-opacity",
+            detecting || modes.size === 0 ? "cursor-not-allowed opacity-50" : "hover:opacity-90",
+          )}
+        >
+          {detecting ? (
+            <>
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              {progress
+                ? `${progress.stage} ${progress.page}/${progress.total}`
+                : "Detecting…"}
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-3 w-3" /> Detect split points
+            </>
+          )}
+        </button>
+      </Section>
+
+      {detected !== null && (
+        <Section title={`Preview (${parts.length} document${parts.length === 1 ? "" : "s"})`}>
+          <div className="max-h-[280px] space-y-1.5 overflow-y-auto pr-1">
+            {parts.map((part) => {
+              const isBreak = part.startPage > 1;
+              return (
+                <div
+                  key={part.index}
+                  className="rounded-md border border-border bg-surface-2 px-2 py-1.5"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="rounded bg-surface-1 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">
+                      p{part.startPage}
+                      {part.endPage !== part.startPage ? `–${part.endPage}` : ""}
+                    </span>
+                    <span className="text-[10.5px] text-text-muted tabular-nums">
+                      {part.pageCount}p
+                    </span>
+                    {isBreak && (
+                      <button
+                        type="button"
+                        onClick={() => removeBreak(part.startPage)}
+                        title="Merge with previous"
+                        className="ml-auto rounded p-0.5 text-text-muted hover:text-foreground"
+                      >
+                        <XIcon className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    value={names[part.startPage] ?? part.name}
+                    onChange={(e) => renamePart(part.startPage, e.target.value)}
+                    className="mt-1 w-full rounded border border-border bg-surface-1 px-1.5 py-1 font-mono text-[10.5px] text-foreground"
+                  />
+                  {part.reason && (
+                    <div className="mt-0.5 truncate text-[9.5px] text-text-muted" title={part.reason}>
+                      {part.reason}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-2 flex items-center gap-1.5">
+            <input
+              value={manualPage}
+              onChange={(e) => setManualPage(e.target.value)}
+              placeholder="Add split before page…"
+              className="flex-1 rounded-md border border-border bg-surface-1 px-2 py-1 font-mono text-[11px]"
+            />
+            <button
+              type="button"
+              onClick={addManualBreak}
+              className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[11px] text-text-2 hover:text-foreground"
+            >
+              Add
+            </button>
+          </div>
+        </Section>
+      )}
+
+      <button
+        type="button"
+        onClick={runSplit}
+        disabled={splitting || parts.length === 0 || detected === null}
+        className={cn(
+          "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+          splitting || parts.length === 0 || detected === null
+            ? "cursor-not-allowed opacity-50"
+            : "hover:opacity-90",
+        )}
+      >
+        {splitting ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            {splitProgress
+              ? `Writing ${splitProgress.part}/${splitProgress.total}…`
+              : "Splitting…"}
+          </>
+        ) : (
+          <>
+            <Scissors className="h-3.5 w-3.5" /> Split into {parts.length || "?"} files
+          </>
+        )}
+      </button>
+
+      <div className="text-center text-[10px] text-text-muted">
+        On-device · nothing leaves your browser
+      </div>
+    </>
+  );
+}
+
 /* ----------------------------- Generic ------------------------------ */
 
 
