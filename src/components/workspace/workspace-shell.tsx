@@ -2049,6 +2049,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                       setAiText(e.target.value);
                       if (pendingIntent) setPendingIntent(null);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+                      e.preventDefault();
+                      void submitAi();
+                    }}
                     onFocus={() => {
                       // Intentionally do NOT preload the MiniLM model on
                       // focus. Models are downloaded only on first
