@@ -18,7 +18,7 @@
  * Counsel proposes and prepares; it never executes destructive ops.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Sparkles, ArrowRight, HelpCircle, FileText, Lock, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
