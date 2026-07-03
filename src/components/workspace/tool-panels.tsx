@@ -6048,7 +6048,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
       )}
 
 
-      <div className="flex flex-col gap-2">
+      <div ref={hfRef} className="flex flex-col gap-2 scroll-mt-2">
         <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
           ⓘ Header &amp; Footer
         </div>
