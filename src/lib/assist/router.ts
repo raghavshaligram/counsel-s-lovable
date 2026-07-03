@@ -99,8 +99,44 @@ function fallbackOptions(ranked: Array<{ idx: number; score: number }>): AssistT
 const MIN_SCORE = 0.42;
 const CLARIFY_GAP = 0.035;
 
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function exactToolMatch(raw: string): AssistToolEntry | null {
+  const normalized = ` ${normalizeText(raw)} `;
+  if (!normalized.trim()) return null;
+
+  let best: { entry: AssistToolEntry; length: number } | null = null;
+  for (const entry of ASSIST_KNOWLEDGE_BASE) {
+    const anchors = [entry.displayName, entry.id, entry.toolId, ...entry.aliases];
+    for (const anchor of anchors) {
+      const needle = normalizeText(anchor);
+      if (!needle || needle.length < 3) continue;
+      if (!normalized.includes(` ${needle} `)) continue;
+      if (!best || needle.length > best.length) best = { entry, length: needle.length };
+    }
+  }
+  return best?.entry ?? null;
+}
+
 export async function classifyAssistQuery(input: string): Promise<AssistClassification> {
   const raw = input.trim();
+  const exact = exactToolMatch(raw);
+  if (exact) {
+    console.info("[ai-assist] lexical route", { query: raw, id: exact.id });
+    return {
+      kind: "tool",
+      entry: exact,
+      mode: inferMode(raw),
+      score: 1,
+    };
+  }
+
   const [queryVec] = await embedTexts([raw], "ai-assist:submit-query");
   const { dim, matrix, owners } = await buildAnchors();
 
