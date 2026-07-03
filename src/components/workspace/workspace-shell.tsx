@@ -428,6 +428,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   /** Popover above the command bar: confirmation (action) or clarify (ambiguous). */
   const [pendingIntent, setPendingIntent] = useState<Intent | null>(null);
   const [lastIntentLabel, setLastIntentLabel] = useState<string | null>(null);
+  const [agentFlow, setAgentFlow] = useState<AgentFlow | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
