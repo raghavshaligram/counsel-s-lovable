@@ -2154,6 +2154,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             focusSection={focusSection}
             clearFocusSection={() => setFocusSection(null)}
           />
+
+          {/* COUNSEL — right-docked conversation panel. Sibling of <main>
+              and <Inspector> so the canvas reflows instead of being covered. */}
+          <CounselPanel
+            open={counselOpen}
+            width={counselWidth}
+            setWidth={setCounselWidth}
+            messages={counselMessages}
+            onClose={() => setCounselOpen(false)}
+            onNewConversation={() => setCounselMessages([])}
+            onOpenTool={(toolId) => openTool(toolId)}
+            onJumpToPage={onCounselJumpToPage}
+            onOptionPick={onCounselOptionPick}
+          />
         </div>
       </div>
 
