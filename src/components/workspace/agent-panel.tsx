@@ -194,7 +194,10 @@ export function AgentPanel({
               {
                 label: "Open Redact tool for manual review",
                 tone: "primary",
-                onClick: () => openTool("redact"),
+                onClick: () => {
+                  openTool("redact");
+                  onClose();
+                },
               },
             ],
           });
