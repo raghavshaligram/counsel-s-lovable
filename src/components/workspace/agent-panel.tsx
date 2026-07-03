@@ -348,8 +348,9 @@ export function AgentPanel({
         title: "Asking AI Assist",
         body: `Routed "${f.query}" to the on-device AI Assist panel. The answer will appear there — nothing about your document leaves this browser.`,
       });
+      onClose();
     },
-    [onAnswerQuery, pushStep],
+    [onAnswerQuery, pushStep, onClose],
   );
 
   const runSearch = useCallback(
@@ -361,9 +362,11 @@ export function AgentPanel({
         title: `Searching for "${f.term}"`,
         body: `Routed to the on-device Pre-Discovery search — results appear in that panel. Nothing about the document leaves this browser.`,
       });
+      onClose();
     },
-    [onAnswerQuery, pushStep],
+    [onAnswerQuery, pushStep, onClose],
   );
+
 
   const runFlow = useCallback(
     (f: AgentFlow) => {
