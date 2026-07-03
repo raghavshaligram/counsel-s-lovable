@@ -422,7 +422,24 @@ export function AgentPanel({
     (f: AgentFlow) => {
       abortedRef.current = false;
       setCurrentFlow(f);
+      // Pro gate: intercept before any work is done. Show a Pro action
+      // card in the assistant with the feature description + Upgrade /
+      // Not now. The gated action never runs and no success is claimed.
+      const gate = proGateFor(f);
+      if (gate && !isPro) {
+        pushStep({
+          kind: "pro-gate",
+          id: nextId(),
+          featureName: gate.featureName,
+          body: gate.body,
+          onUpgrade: () => {
+            openUpgradeModal({ featureName: gate.featureName });
+          },
+        });
+        return;
+      }
       switch (f.kind) {
+
         case "detect-redact":
           void runDetectRedact(f);
           break;
