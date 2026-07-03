@@ -121,6 +121,7 @@ import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gat
 import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
 import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
 import { CounselPanel, useCounselWidth, type CounselMessage } from "./counsel-panel";
+import type { PdfJsLikeDocument } from "@/lib/chat/pdf-extract";
 
 
 type ToolId =
@@ -1153,7 +1154,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       try {
         const { answerFromDocument } = await import("@/lib/assist/doc-qa");
         const reply = await answerFromDocument(file, intent.query, {
-          pdfDoc: pdfDocsRef.current.get(activeIdRef.current),
+          pdfDoc: pdfDocsRef.current.get(activeIdRef.current) as PdfJsLikeDocument | undefined,
         });
         if (reply) {
           setCounselMessages((ms) => [
