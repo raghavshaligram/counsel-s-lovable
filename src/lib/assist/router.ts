@@ -66,14 +66,18 @@ function dot(q: Float32Array, matrix: Float32Array, offset: number, dim: number)
   return score;
 }
 
-const HELP_RE = /\b(what|how|why|explain|describe|tell\s+me|help|does|can\s+i|what\s+is|what's)\b/i;
-const OPEN_RE = /\b(open|show|go\s+to|take\s+me\s+to|start|launch)\b/i;
+const HELP_RE = /\b(what|whats|what's|how|why|explain|describe|tell\s+me|help|does|do\s+i|can\s+i|when\s+(?:should|to)|which|difference|meaning|define|definition|purpose)\b/i;
+const OPEN_RE = /^\s*(open|show|go\s+to|take\s+me\s+to|launch)\b/i;
 const USE_RE = /\b(add|apply|run|scan|detect|find|search|ask|summari[sz]e|redact|black\s*out|stamp|split|merge|combine|sanitize|scrub|ocr|repair|protect|unlock|sign|fill|convert|hash|compute|generate|build|assemble|create|watermark|number)\b/i;
 
 function inferMode(raw: string): AssistMode {
+  // Help intent wins over verb-noun mentions: "what is redact" is a question,
+  // not a command to run redact. Only classify as "use" when there is a clear
+  // action verb AND no explanatory framing.
+  if (HELP_RE.test(raw)) return "help";
   if (OPEN_RE.test(raw)) return "open";
-  if (HELP_RE.test(raw) && !USE_RE.test(raw)) return "help";
-  return "use";
+  if (USE_RE.test(raw)) return "use";
+  return "help";
 }
 
 function fallbackOptions(ranked: Array<{ idx: number; score: number }>): AssistToolEntry[] {
