@@ -32,6 +32,9 @@ import {
   targetToolForFlow,
   type AgentFlow,
 } from "@/lib/agent/flows";
+import { useIsPro } from "@/lib/pro-gate";
+import { useUpgradeModal } from "@/components/upgrade-modal";
+
 
 type Action = {
   label: string;
