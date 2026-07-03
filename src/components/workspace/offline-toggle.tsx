@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { WifiOff, X, ShieldOff, Loader2, ArrowRight } from "lucide-react";
+import { WifiOff, X, ShieldOff, Loader2, ArrowRight, Download, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -9,6 +9,9 @@ import {
   verifyOfflineReadiness,
   type OfflineGuardState,
 } from "@/lib/trust/offline-guard";
+import { getAiCacheStatus, type AiCacheStatus } from "@/lib/ai/model-download-ui";
+import { loadModel } from "@/lib/discovery/client";
+import { prewarmNer } from "@/lib/pdf/ner";
 
 const OFFLINE_KEY = "counselpdf:work-offline";
 
