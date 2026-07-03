@@ -1103,7 +1103,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         intent = classifyCommand(raw);
       }
     } else {
-      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
+      void loadDiscoveryModel(undefined, "command-bar:submit").catch(() => {/* surfaced elsewhere */});
       intent = classifyCommand(raw);
     }
     setLastIntentLabel(intentLabel(intent));
