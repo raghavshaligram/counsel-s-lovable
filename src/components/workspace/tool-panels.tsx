@@ -2720,18 +2720,27 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
       (mode === "everyN" && Math.floor(everyN) >= 1) ||
       (mode === "splitPoints" && parsedPoints.points.length > 0 && !parsedPoints.error));
 
-  const modeBtn = (id: SplitUiMode, label: string) => (
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+
+  const modeBtn = (id: SplitUiMode, label: string, opts?: { pro?: boolean }) => (
     <button
       type="button"
-      onClick={() => setMode(id)}
+      onClick={() => {
+        if (opts?.pro && !isPro) {
+          if (!requirePro("Smart Document Splitter")) return;
+        }
+        setMode(id);
+      }}
       className={cn(
-        "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+        "inline-flex items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
         mode === id
           ? "border-vault/60 bg-accent-soft text-foreground"
           : "border-border bg-surface-2 text-text-2 hover:text-foreground",
       )}
     >
-      {label}
+      <span>{label}</span>
+      {opts?.pro && !isPro && <LockBadge title="Pro — Smart Document Splitter" />}
     </button>
   );
 
@@ -2760,7 +2769,7 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
               {modeBtn("each", "Every page")}
               {modeBtn("everyN", "Every N pages")}
               {modeBtn("splitPoints", "At split points")}
-              {modeBtn("smart", "Smart (detect)")}
+              {modeBtn("smart", "Smart (detect)", { pro: true })}
             </div>
           </Section>
 
@@ -2893,6 +2902,7 @@ function SmartSplitSection({
   file: File;
   pageCount: number;
 }) {
+  const requirePro = useRequirePro();
   const [modes, setModes] = useState<Set<DetectionMode>>(new Set(["blank"]));
   const [everyN, setEveryN] = useState(10);
   const [pattern, setPattern] = useState("");
@@ -2925,6 +2935,7 @@ function SmartSplitSection({
   };
 
   const runDetect = useCallback(async () => {
+    if (!requirePro("Smart Document Splitter")) return;
     if (!file || modes.size === 0) return;
     setDetecting(true);
     setProgress(null);
@@ -2964,7 +2975,7 @@ function SmartSplitSection({
       setDetecting(false);
       setProgress(null);
     }
-  }, [file, modes, everyN, pattern, patternKind, caseSensitive]);
+  }, [file, modes, everyN, pattern, patternKind, caseSensitive, requirePro]);
 
   const parts = useMemo<PartPreview[]>(() => {
     if (!pageCount) return [];
@@ -3006,6 +3017,7 @@ function SmartSplitSection({
   };
 
   const runSplit = useCallback(async () => {
+    if (!requirePro("Smart Document Splitter")) return;
     if (parts.length === 0) return;
     setSplitting(true);
     setSplitProgress(null);
@@ -3032,7 +3044,7 @@ function SmartSplitSection({
       setSplitting(false);
       setSplitProgress(null);
     }
-  }, [file, parts, baseName]);
+  }, [file, parts, baseName, requirePro]);
 
   const modeChip = (m: DetectionMode, label: string) => {
     const active = modes.has(m);
