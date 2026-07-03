@@ -2914,6 +2914,8 @@ function SmartSplitSection({
   );
   const [detected, setDetected] = useState<DetectedBreak[] | null>(null);
   const [breakSet, setBreakSet] = useState<Set<number>>(new Set());
+  const [blankPages, setBlankPages] = useState<number[]>([]);
+  const [removeSeparators, setRemoveSeparators] = useState(true);
   const [names, setNames] = useState<Record<number, string | undefined>>({});
   const [reasons, setReasons] = useState<Record<number, string | undefined>>({});
   const [manualPage, setManualPage] = useState<string>("");
