@@ -427,6 +427,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   /** Popover above the command bar: confirmation (action) or clarify (ambiguous). */
   const [pendingIntent, setPendingIntent] = useState<Intent | null>(null);
   const [lastIntentLabel, setLastIntentLabel] = useState<string | null>(null);
+  // Counsel — unified AI Assist right-docked conversation panel.
+  const [counselOpen, setCounselOpen] = useState(false);
+  const [counselMessages, setCounselMessages] = useState<CounselMessage[]>([]);
+  const [counselWidth, setCounselWidth] = useCounselWidth();
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
