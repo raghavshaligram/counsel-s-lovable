@@ -108,6 +108,17 @@ const INTENTS: IntentDef[] = [
       "where does the document discuss damages",
       "locate every reference to the contract",
       "show me passages about indemnification",
+      // Bare content-noun queries — no verb, just what to look for.
+      // These are the exact class of queries that were mis-routing to
+      // Page Numbers / Header-Footer before ("dollar amounts",
+      // "key dates"). Keep them tight and concrete.
+      "dollar amounts",
+      "money figures and prices",
+      "key dates and deadlines",
+      "financial figures in the document",
+      "names of the parties",
+      "addresses mentioned in the text",
+      "any references to payment",
     ],
   },
   {
