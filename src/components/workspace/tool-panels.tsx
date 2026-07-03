@@ -91,7 +91,7 @@ import {
   type DetectedBreak,
   type PatternKind,
 } from "@/lib/pdf/smart-split";
-import { Sparkles, Plus, X as XIcon } from "lucide-react";
+import { X as XIcon } from "lucide-react";
 import { Scissors, RotateCw, RotateCcw, LayoutGrid } from "lucide-react";
 import {
   getRotatePageCount,
