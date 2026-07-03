@@ -120,7 +120,8 @@ import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
 import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
 import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
-import { CounselPanel, useCounselWidth, draftPlaceholderReply, type CounselMessage } from "./counsel-panel";
+import { CounselPanel, useCounselWidth, type CounselMessage } from "./counsel-panel";
+import type { PdfJsLikeDocument } from "@/lib/chat/pdf-extract";
 
 
 type ToolId =
@@ -1152,7 +1153,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       }
       try {
         const { answerFromDocument } = await import("@/lib/assist/doc-qa");
-        const reply = await answerFromDocument(file, intent.query);
+        const reply = await answerFromDocument(file, intent.query, {
+          pdfDoc: pdfDocsRef.current.get(activeIdRef.current) as PdfJsLikeDocument | undefined,
+        });
         if (reply) {
           setCounselMessages((ms) => [
             ...stripThinking(ms),
@@ -1220,13 +1223,22 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setCounselOpen(true);
     setAiText("");
 
-    // 1) KB retrieval — how-to / product questions get a HELP answer with
-    //    an "Open [tool]" button. Requires the MiniLM model; kick it off
-    //    in the background and, if it's not ready, fall through to intent.
-    if (!isDiscoveryModelLoaded()) {
-      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
+    // 1) Warm the shared MiniLM worker on first use, then use it for both
+    //    KB help and semantic intent routing. This avoids the old first-turn
+    //    fallback that treated natural questions as generic searches.
+    let semanticReady = isDiscoveryModelLoaded();
+    if (!semanticReady) {
+      try {
+        await loadDiscoveryModel();
+        semanticReady = true;
+      } catch (err) {
+        console.warn("[counsel] MiniLM load failed, using safe fallback", err);
+      }
     }
-    if (isDiscoveryModelLoaded()) {
+
+    // 2) KB retrieval — how-to / product questions get a HELP answer with
+    //    an "Open [tool]" button.
+    if (semanticReady) {
       try {
         const { matchKB, KB_HIGH, KB_FLOOR } = await import("@/lib/assist/kb-match");
         const match = await matchKB(raw, { recentTopic: counselRecentTopicRef.current });
@@ -1279,9 +1291,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       }
     }
 
-    // 2) Fall back to intent classification (actions, doc Q&A, search).
+    // 3) Fall back to intent classification (actions, doc Q&A, search).
     let intent: Intent;
-    if (isDiscoveryModelLoaded()) {
+    if (semanticReady) {
       try {
         intent = await classifyCommandSemantic(raw);
       } catch (err) {

@@ -5,9 +5,9 @@
  * the command bar. The PDF reflows next to it — this aside is a sibling
  * of <main>, so the canvas resizes rather than being covered.
  *
- * This file is the SHELL: response-card components + panel layout +
- * placeholder canned responses. Real answering (embedding routing, LLM
- * calls, source extraction) is wired next.
+ * This file is the SHELL: response-card components + panel layout.
+ * Routing, document answers, source extraction, and action handoffs are
+ * handled by workspace-shell and the assist modules.
  *
  * Response types (see spec):
  *  - ACTION CARD    : summary + primary "Open [tool]" button.
@@ -385,83 +385,3 @@ function ClarifyCard({
   );
 }
 
-/* ------------------------- placeholder responder ------------------------- */
-
-/**
- * Canned placeholder response generator. Wired to the command bar so the
- * shell is fully testable. Real routing/answering (embeddings, LLM,
- * source extraction) replaces this in the next step — the message shapes
- * and card components above are the stable contract.
- */
-export function draftPlaceholderReply(
-  userText: string,
-  opts: { hasFile: boolean; toolIdForAction?: string; toolLabelForAction?: string; destructive?: boolean },
-): CounselMessage {
-  const id = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-  const text = userText.trim().toLowerCase();
-
-  // HELP — meta questions about the tools themselves.
-  if (/^(how (do|to|can|does)|what does .* do|where is|help with)/.test(text)) {
-    return {
-      id,
-      role: "assistant",
-      kind: "help",
-      answer:
-        "Open the Redact panel from the left rail. Turn on the categories you want auto-detected (PII, phone, SSN), review each hit, then apply. Nothing is redacted until you confirm.",
-      toolId: "redact",
-      toolLabel: "Redact",
-    };
-  }
-
-  // CLARIFY — vague / ambiguous destructive-sounding phrasing.
-  if (/^(remove|delete|strip)\b/.test(text) && !/(metadata|page|watermark|password)/.test(text)) {
-    return {
-      id,
-      role: "assistant",
-      kind: "clarify",
-      question:
-        "Do you want to redact those out of the document, or just find and highlight them for review?",
-      options: [
-        { id: "redact", label: "Redact them" },
-        { id: "find", label: "Just find them" },
-      ],
-    };
-  }
-
-  // ACTION — the caller already classified this as a tool action.
-  if (opts.toolIdForAction && opts.toolLabelForAction) {
-    return {
-      id,
-      role: "assistant",
-      kind: "action",
-      summary: opts.destructive
-        ? `I can prepare "${userText.trim()}" in ${opts.toolLabelForAction}. Nothing is applied yet — you'll review each match first.`
-        : `Ready to run "${userText.trim()}" in ${opts.toolLabelForAction}.`,
-      toolId: opts.toolIdForAction,
-      toolLabel: opts.toolLabelForAction,
-      destructive: opts.destructive,
-    };
-  }
-
-  // GROUNDED — document Q&A / search fallback.
-  if (!opts.hasFile) {
-    return {
-      id,
-      role: "assistant",
-      kind: "help",
-      answer:
-        "Open a PDF first — Counsel answers are grounded in the document you're viewing.",
-    };
-  }
-  return {
-    id,
-    role: "assistant",
-    kind: "grounded",
-    answer:
-      "Placeholder answer: the two named parties appear alongside the settlement discussion and again in the signature block. Real routing and source extraction are wired in the next step.",
-    sources: [
-      { page: 1, quote: "Preview passage from page 1" },
-      { page: 3, quote: "Preview passage from page 3" },
-    ],
-  };
-}

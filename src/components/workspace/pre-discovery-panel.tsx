@@ -96,7 +96,7 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
    * at call time, not at bind time — the panel would otherwise fire an
    * empty search.
    */
-  const runQueryRef = useRef<() => Promise<void>>(async () => {});
+  const runQueryRef = useRef<(overrideQuery?: string) => Promise<void>>(async () => {});
   useEffect(() => {
     const onCmd = (ev: Event) => {
       const detail = (ev as CustomEvent<{ query?: string }>).detail;
@@ -104,7 +104,7 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       if (!q) return;
       setQuery(q);
       // Give React a tick to flush the query state, then invoke.
-      setTimeout(() => void runQueryRef.current(), 30);
+      setTimeout(() => void runQueryRef.current(q), 30);
     };
     window.addEventListener("commandbar:query", onCmd as EventListener);
     return () => window.removeEventListener("commandbar:query", onCmd as EventListener);
@@ -190,8 +190,9 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [file, docKey, ensureModel, requirePro]);
 
-  const runQuery = useCallback(async () => {
-    if (!file || !query.trim()) return;
+  const runQuery = useCallback(async (overrideQuery?: string) => {
+    const q = (overrideQuery ?? query).trim();
+    if (!file || !q) return;
     if (!requirePro("Pre-Discovery Review")) return;
     if (!indexed) {
       const ok = await buildIndex();
@@ -203,7 +204,6 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       // context ("who are the attorneys" → "attorneys" tanks recall).
       // Embeddings handle common words natively; we only need thresholds
       // to keep unrelated chunks out.
-      const q = query.trim();
       const results = await queryIndex(docKey, q, 20);
       // Pure cosine ranking on MiniLM (L2-normalised → dot product).
       // MiniLM scores are absolute-low for short queries (2-word queries
@@ -260,7 +260,7 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
         })),
       });
       setHits(filtered);
-      setLastQuery(query.trim());
+      setLastQuery(q);
     } catch (err) {
       console.error("[pre-discovery] query failed", err);
       toast.error("Search failed", {
