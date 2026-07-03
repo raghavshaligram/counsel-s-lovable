@@ -305,7 +305,7 @@ export async function detectSmartBreaks(
     }
   }
 
-  return { total, breaks, firstName };
+  return { total, breaks, blankPages, firstName };
 }
 
 // ---------- Public: preview -----------------------------------------
