@@ -2079,11 +2079,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                       if (pendingIntent) setPendingIntent(null);
                     }}
                     onFocus={() => {
-                      // Warm the MiniLM model on first focus so semantic
-                      // intent routing is ready by the time the user hits ↵.
-                      if (!isDiscoveryModelLoaded()) {
-                        void loadDiscoveryModel().catch(() => {/* ignore */});
-                      }
+                      // Intentionally do NOT preload the MiniLM model on
+                      // focus. Models are downloaded only on first
+                      // command-bar submit, keeping app-open and
+                      // non-AI work model-free.
                     }}
                     placeholder='Tell CounselPDF what to do — try "redact all SSNs" or "add page numbers"'
                     className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
