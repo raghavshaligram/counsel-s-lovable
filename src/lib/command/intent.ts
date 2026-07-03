@@ -1,21 +1,28 @@
 /**
  * Command-bar intent router — semantic (MiniLM embeddings, on-device).
  *
- * Each intent is defined by a small set of example phrases. The user's
- * input is embedded with the same MiniLM model already loaded for
- * Pre-Discovery, then matched to the closest intent by cosine similarity
- * against the example anchors. No keyword lists, no LLM calls — meaning
- * comes from the embedding space (e.g. "looks like pdf is corrupted"
- * matches REPAIR without any regex hit on "repair").
+ * Each intent maps to a *destination* in the workspace: either a
+ * top-level tool panel, or a sub-feature inside a panel (via a
+ * `focusSection` deep-link). We define each intent with a small set of
+ * example phrases; the user's input is embedded with the same MiniLM
+ * model already loaded for Pre-Discovery, then matched to the closest
+ * intent by cosine similarity against those anchors.
  *
- * Confidence guard: if the top score is below MIN_ABS OR too close to
- * the runner-up (GAP), we return `ambiguous` with the top-2 options so
- * the user disambiguates. Destructive intents (redact/sanitize) never
+ * Design rules for anchors:
+ *   - Each anchor MUST contain the intent's defining concept. Generic
+ *     verbs ("add", "apply", "remove", "clean") appear in many intents
+ *     and are the classic source of mis-routing — the Bates / page-
+ *     numbers bug came from a single generic "legal page numbering"
+ *     line dragging every "add page numbers" query into Bates.
+ *   - Similar-but-different intents (page-numbers vs bates, watermark
+ *     vs header/footer, redact vs highlight, sanitize vs redact) are
+ *     given anchors that push them apart in embedding space: distinct
+ *     nouns and concrete outcomes, no shared filler.
+ *   - 3–5 tight examples per intent. More is not better.
+ *
+ * Confidence guard: below MIN_ABS → clarify; top-1 within GAP of a
+ * different-route runner-up → clarify. Destructive actions never
  * auto-execute — the router only proposes; the popover confirms.
- *
- * A synchronous keyword fallback (`classifyCommand`) is kept for the
- * moment before the model finishes loading, so the bar never feels
- * broken. Once the model is warm, `classifyCommandSemantic` is used.
  */
 
 import { embedTexts } from "@/lib/discovery/client";
@@ -37,12 +44,26 @@ export type ActionToolId =
   | "repair"
   | "document-hash"
   | "compare"
-  | "organize";
+  | "organize"
+  | "doc-settings"
+  | "comments"
+  | "outline"
+  | "privilege-scan"
+  | "exhibit-binder"
+  | "court-readiness"
+  | "toa"
+  | "citation-hyperlinker"
+  | "mail-merge"
+  | "page-crop"
+  | "convert"
+  | "image-convert";
 
 export type Intent =
   | {
       kind: "action";
       toolId: ActionToolId;
+      /** Optional sub-section inside the tool panel to auto-open. */
+      focusSection?: string;
       title: string;
       description: string;
       destructive: boolean;
@@ -60,7 +81,14 @@ export type Intent =
 /* --------------------------- semantic anchors --------------------------- */
 
 type Route =
-  | { kind: "action"; toolId: ActionToolId; destructive: boolean; title: string; description: string }
+  | {
+      kind: "action";
+      toolId: ActionToolId;
+      focusSection?: string;
+      destructive: boolean;
+      title: string;
+      description: string;
+    }
   | { kind: "question" }
   | { kind: "search" };
 
@@ -70,12 +98,8 @@ interface IntentDef {
   examples: string[];
 }
 
-/**
- * Anchor phrases per intent. Keep these SHORT and NATURAL — the model
- * matches on meaning, not on keyword overlap. 3–6 examples per intent
- * spread across the semantic neighborhood is plenty for MiniLM.
- */
 const INTENTS: IntentDef[] = [
+  /* ------------------------------- Q&A / search ------------------------------- */
   {
     id: "search",
     route: { kind: "search" },
@@ -83,8 +107,7 @@ const INTENTS: IntentDef[] = [
       "find mentions of the parties",
       "where does the document discuss damages",
       "locate every reference to the contract",
-      "show me passages about liability",
-      "look for anything related to indemnification",
+      "show me passages about indemnification",
     ],
   },
   {
@@ -94,12 +117,12 @@ const INTENTS: IntentDef[] = [
       "summarize this document",
       "what are the key points",
       "explain the main arguments",
-      "what is this file about",
       "give me an overview of the case",
       "who are the parties involved",
-      "what are the important dates",
     ],
   },
+
+  /* ------------------------------- Destructive ------------------------------- */
   {
     id: "redact",
     route: {
@@ -111,11 +134,10 @@ const INTENTS: IntentDef[] = [
         "Open the Redact panel to auto-detect matches. You'll review and apply from there — nothing is redacted yet.",
     },
     examples: [
-      "redact all social security numbers",
-      "black out phone numbers",
-      "mask personal information",
-      "hide client names",
-      "remove sensitive data from this pdf",
+      "redact social security numbers permanently",
+      "black out and remove phone numbers",
+      "permanently delete sensitive text from the pdf",
+      "burn out client names so they cannot be recovered",
     ],
   },
   {
@@ -125,111 +147,91 @@ const INTENTS: IntentDef[] = [
       toolId: "sanitize",
       destructive: true,
       title: "Open Sanitize",
-      description: "Open Sanitize to strip metadata, hidden layers, comments and revisions. You'll confirm before it applies.",
+      description:
+        "Open Sanitize to strip metadata, hidden layers, comments and revisions. You'll confirm before it applies.",
     },
     examples: [
-      "remove metadata from this file",
-      "strip hidden information",
-      "clean up tracked changes and comments",
-      "scrub author and revision history",
+      "strip metadata author and revision history from this file",
+      "scrub hidden layers and tracked changes",
+      "remove document properties before sharing externally",
+    ],
+  },
+
+  /* ------------------------------- Highlight (annotate, not destructive) ------------------------------- */
+  {
+    id: "highlight",
+    route: {
+      kind: "action",
+      toolId: "comments",
+      focusSection: "highlight",
+      destructive: false,
+      title: "Open annotation tools",
+      description:
+        "Use the Highlight / Underline tools in the floating toolbar to mark passages without removing anything.",
+    },
+    examples: [
+      "highlight important passages in yellow",
+      "underline the key sentences",
+      "mark up quotes without deleting anything",
+    ],
+  },
+
+  /* ------------------------------- Document Settings sub-features ------------------------------- */
+  {
+    id: "page-numbers",
+    route: {
+      kind: "action",
+      toolId: "doc-settings",
+      focusSection: "page-numbers",
+      destructive: false,
+      title: "Open Page Numbers",
+      description:
+        "Opens Document Settings → Page Numbers. Not the same as Bates numbering — page numbers restart per document and are just for reading.",
+    },
+    examples: [
+      "add page numbers to the pdf",
+      "number the pages 1 2 3",
+      "put page numbers at the bottom of each page",
+      "show page x of y at the footer",
     ],
   },
   {
-    id: "repair",
+    id: "header-footer",
     route: {
       kind: "action",
-      toolId: "repair",
+      toolId: "doc-settings",
+      focusSection: "header-footer",
       destructive: false,
-      title: "Open Repair PDF",
-      description: "Open Repair to attempt fixing structural issues in a broken or corrupted PDF.",
+      title: "Open Header / Footer",
+      description:
+        "Opens Document Settings → Header & Footer. For running headers or footers on every page (filename, date, custom text).",
     },
     examples: [
-      "this pdf looks corrupted",
-      "the file will not open properly",
-      "fix a broken document",
-      "repair a damaged pdf",
-      "something is wrong with this file",
+      "add a running header with the filename",
+      "put a footer with the date on every page",
+      "stamp a header and footer on every page",
+      "add a top-of-page title on all pages",
     ],
   },
   {
-    id: "compress",
+    id: "flatten-settings",
     route: {
       kind: "action",
-      toolId: "compress",
+      toolId: "doc-settings",
+      focusSection: "flatten",
       destructive: false,
-      title: "Open Compress",
-      description: "Open Compress to reduce the PDF's file size.",
+      title: "Open Flatten setting",
+      description:
+        "Opens Document Settings → Flatten. Bakes form fields and annotations into the page so they can't be edited.",
     },
     examples: [
-      "make this file smaller",
-      "shrink the pdf",
-      "reduce the size of this document",
-      "compress the file for email",
+      "flatten the form fields into the page",
+      "bake annotations so they cannot be edited",
+      "merge annotations into the pdf permanently",
     ],
   },
-  {
-    id: "ocr",
-    route: {
-      kind: "action",
-      toolId: "ocr",
-      destructive: false,
-      title: "Open Make Searchable (OCR)",
-      description: "Open OCR to convert scanned pages into searchable, selectable text.",
-    },
-    examples: [
-      "make this scanned document searchable",
-      "recognize the text in this pdf",
-      "convert scanned pages to text",
-      "extract text from scanned images",
-    ],
-  },
-  {
-    id: "sign",
-    route: {
-      kind: "action",
-      toolId: "sign",
-      destructive: false,
-      title: "Open Sign & Fill",
-      description: "Open Sign & Fill to place a signature or fill form fields.",
-    },
-    examples: [
-      "add my signature to this document",
-      "sign this pdf",
-      "fill out the form fields",
-      "place my initials on each page",
-    ],
-  },
-  {
-    id: "protect",
-    route: {
-      kind: "action",
-      toolId: "protect",
-      destructive: false,
-      title: "Open Protect",
-      description: "Open Protect to encrypt the PDF with a password.",
-    },
-    examples: [
-      "password protect this pdf",
-      "encrypt the document",
-      "lock this file with a password",
-      "add a password to open",
-    ],
-  },
-  {
-    id: "unlock",
-    route: {
-      kind: "action",
-      toolId: "unlock",
-      destructive: false,
-      title: "Open Unlock",
-      description: "Open Unlock to remove password protection.",
-    },
-    examples: [
-      "remove the password from this pdf",
-      "unlock this encrypted file",
-      "decrypt this document",
-    ],
-  },
+
+  /* ------------------------------- Bates (kept tight) ------------------------------- */
   {
     id: "bates",
     route: {
@@ -237,17 +239,18 @@ const INTENTS: IntentDef[] = [
       toolId: "bates",
       destructive: false,
       title: "Open Bates Numbering",
-      description: "Open the Bates panel to configure prefix, start number and placement, then apply.",
+      description:
+        "Opens the Bates panel. Bates stamps are unique production identifiers for discovery (e.g. ABC000123) — different from ordinary page numbers.",
     },
     examples: [
-      "add bates numbers to these pages",
-      "stamp bates numbering across the document",
-      "apply a bates prefix like ABC00001",
-      "bates label these exhibits",
-      "add bates stamps for production",
+      "add bates numbering for discovery production",
+      "stamp bates numbers with prefix ABC",
+      "apply bates labels to these exhibits",
+      "bates stamp the production set",
     ],
   },
 
+  /* ------------------------------- Watermark (distinct from header/footer) ------------------------------- */
   {
     id: "watermark",
     route: {
@@ -255,14 +258,17 @@ const INTENTS: IntentDef[] = [
       toolId: "watermark",
       destructive: false,
       title: "Open Watermark",
-      description: "Open Watermark to add a text or image mark across pages.",
+      description:
+        "Opens the Watermark tool. For a diagonal or centered mark like CONFIDENTIAL or DRAFT — not for headers or footers.",
     },
     examples: [
-      "add a confidential watermark",
-      "stamp draft across every page",
-      "put a watermark on this pdf",
+      "add a diagonal confidential watermark across the page",
+      "stamp draft as a big overlay on every page",
+      "put a translucent watermark behind the text",
     ],
   },
+
+  /* ------------------------------- Assembly ------------------------------- */
   {
     id: "merge",
     route: {
@@ -270,12 +276,12 @@ const INTENTS: IntentDef[] = [
       toolId: "merge",
       destructive: false,
       title: "Open Merge",
-      description: "Open Merge to combine multiple PDFs into one.",
+      description: "Opens Merge to combine multiple PDFs into one.",
     },
     examples: [
       "combine these pdfs into one file",
       "merge two documents together",
-      "join multiple pdfs",
+      "join multiple pdfs end to end",
     ],
   },
   {
@@ -285,43 +291,12 @@ const INTENTS: IntentDef[] = [
       toolId: "split",
       destructive: false,
       title: "Open Split",
-      description: "Open Split to break the PDF into parts.",
+      description: "Opens Split to break the PDF into parts.",
     },
     examples: [
       "split this pdf into separate files",
-      "break this document into pages",
-      "separate every chapter into its own pdf",
-    ],
-  },
-  {
-    id: "rotate",
-    route: {
-      kind: "action",
-      toolId: "rotate",
-      destructive: false,
-      title: "Open Rotate",
-      description: "Open Rotate to change page orientation.",
-    },
-    examples: [
-      "rotate these pages",
-      "turn the sideways pages upright",
-      "fix the page orientation",
-    ],
-  },
-  {
-    id: "organize",
-    route: {
-      kind: "action",
-      toolId: "organize",
-      destructive: false,
-      title: "Open Organize Pages",
-      description: "Open Organize to reorder or delete pages (change is previewed).",
-    },
-    examples: [
-      "reorder the pages",
-      "delete a page from this pdf",
-      "move page three to the end",
-      "rearrange the document",
+      "break this document at every chapter",
+      "separate each page into its own pdf",
     ],
   },
   {
@@ -331,14 +306,189 @@ const INTENTS: IntentDef[] = [
       toolId: "extract",
       destructive: false,
       title: "Open Extract",
-      description: "Open Extract to pull pages, tables or images out.",
+      description: "Opens Extract to pull pages, tables or images out.",
     },
     examples: [
-      "pull out a range of pages",
-      "extract the tables from this document",
-      "save specific pages as a new pdf",
+      "pull out pages 5 through 10 as a new pdf",
+      "extract the tables in this document",
+      "save specific pages to a separate file",
     ],
   },
+  {
+    id: "organize",
+    route: {
+      kind: "action",
+      toolId: "organize",
+      destructive: false,
+      title: "Open Organize Pages",
+      description: "Opens Organize to reorder or delete pages.",
+    },
+    examples: [
+      "reorder the pages of this pdf",
+      "delete page 3 from the document",
+      "move the last page to the front",
+      "rearrange the page order",
+    ],
+  },
+  {
+    id: "rotate",
+    route: {
+      kind: "action",
+      toolId: "rotate",
+      destructive: false,
+      title: "Open Rotate",
+      description: "Opens Rotate to change page orientation.",
+    },
+    examples: [
+      "rotate a sideways page upright",
+      "turn this page 90 degrees",
+      "fix upside-down pages",
+    ],
+  },
+  {
+    id: "page-crop",
+    route: {
+      kind: "action",
+      toolId: "page-crop",
+      destructive: false,
+      title: "Open Page Crop",
+      description: "Opens Page Crop to trim page margins.",
+    },
+    examples: [
+      "crop the white margins off the pages",
+      "trim the edges of each page",
+      "cut off the borders",
+    ],
+  },
+
+  /* ------------------------------- Convert / compress ------------------------------- */
+  {
+    id: "compress",
+    route: {
+      kind: "action",
+      toolId: "compress",
+      destructive: false,
+      title: "Open Compress",
+      description: "Opens Compress to reduce the PDF's file size.",
+    },
+    examples: [
+      "make this file smaller for email",
+      "reduce the pdf file size",
+      "shrink the document to under 10 mb",
+    ],
+  },
+  {
+    id: "convert",
+    route: {
+      kind: "action",
+      toolId: "convert",
+      destructive: false,
+      title: "Open Convert",
+      description: "Opens Convert for Word / Excel / PDF-A output.",
+    },
+    examples: [
+      "convert this pdf to word",
+      "export the document as docx",
+      "save the pdf as excel or pdf-a",
+    ],
+  },
+  {
+    id: "image-convert",
+    route: {
+      kind: "action",
+      toolId: "image-convert",
+      destructive: false,
+      title: "Open Image Convert",
+      description: "Opens Image Convert to swap between PDF and image formats.",
+    },
+    examples: [
+      "turn each page into a png image",
+      "convert this pdf to jpg images",
+      "make a pdf from these photos",
+    ],
+  },
+
+  /* ------------------------------- OCR ------------------------------- */
+  {
+    id: "ocr",
+    route: {
+      kind: "action",
+      toolId: "ocr",
+      destructive: false,
+      title: "Open Make Searchable (OCR)",
+      description: "Opens OCR to convert scanned pages into searchable, selectable text.",
+    },
+    examples: [
+      "make this scanned document searchable",
+      "recognize text in a scanned pdf",
+      "run ocr on image-only pages",
+    ],
+  },
+
+  /* ------------------------------- Signing / security ------------------------------- */
+  {
+    id: "sign",
+    route: {
+      kind: "action",
+      toolId: "sign",
+      destructive: false,
+      title: "Open Sign & Fill",
+      description: "Opens Sign & Fill to place a signature or fill form fields.",
+    },
+    examples: [
+      "add my signature to this document",
+      "sign this pdf on the last page",
+      "fill in the form fields",
+    ],
+  },
+  {
+    id: "protect",
+    route: {
+      kind: "action",
+      toolId: "protect",
+      destructive: false,
+      title: "Open Protect",
+      description: "Opens Protect to encrypt the PDF with a password.",
+    },
+    examples: [
+      "password protect this pdf",
+      "encrypt the document with a passphrase",
+      "require a password to open this file",
+    ],
+  },
+  {
+    id: "unlock",
+    route: {
+      kind: "action",
+      toolId: "unlock",
+      destructive: false,
+      title: "Open Unlock",
+      description: "Opens Unlock to remove password protection.",
+    },
+    examples: [
+      "remove the password from this pdf",
+      "unlock an encrypted document i own",
+      "decrypt this file so it opens without a password",
+    ],
+  },
+  {
+    id: "repair",
+    route: {
+      kind: "action",
+      toolId: "repair",
+      destructive: false,
+      title: "Open Repair PDF",
+      description: "Opens Repair to attempt fixing structural issues in a broken PDF.",
+    },
+    examples: [
+      "this pdf looks corrupted",
+      "the file will not open properly",
+      "fix a broken damaged document",
+      "something is wrong with this pdf structure",
+    ],
+  },
+
+  /* ------------------------------- Compare / hash ------------------------------- */
   {
     id: "document-hash",
     route: {
@@ -346,12 +496,12 @@ const INTENTS: IntentDef[] = [
       toolId: "document-hash",
       destructive: false,
       title: "Open Document Hash",
-      description: "Open Document Hash to compute a SHA-256 for this file.",
+      description: "Opens Document Hash to compute a SHA-256 for this file.",
     },
     examples: [
-      "compute a hash of this document",
-      "generate a sha 256 checksum",
-      "fingerprint this pdf",
+      "compute the sha-256 hash of this document",
+      "generate a checksum for the file",
+      "fingerprint the pdf for chain of custody",
     ],
   },
   {
@@ -361,23 +511,142 @@ const INTENTS: IntentDef[] = [
       toolId: "compare",
       destructive: false,
       title: "Open Compare",
-      description: "Open Compare to see what changed between two PDFs.",
+      description: "Opens Compare to see what changed between two PDFs.",
     },
     examples: [
-      "compare these two documents",
-      "show me what changed between versions",
-      "diff two pdfs",
+      "compare these two versions of a contract",
+      "show what changed between drafts",
+      "diff two pdfs side by side",
+    ],
+  },
+
+  /* ------------------------------- Legal sub-tools ------------------------------- */
+  {
+    id: "privilege-scan",
+    route: {
+      kind: "action",
+      toolId: "privilege-scan",
+      destructive: false,
+      title: "Open Privilege Review",
+      description: "Opens Privilege Review to flag attorney-client and work-product passages.",
+    },
+    examples: [
+      "flag privileged attorney-client content",
+      "scan for attorney work product",
+      "find passages that might be privileged",
+    ],
+  },
+  {
+    id: "exhibit-binder",
+    route: {
+      kind: "action",
+      toolId: "exhibit-binder",
+      destructive: false,
+      title: "Open Exhibit Binder",
+      description: "Opens Exhibit Binder to assemble numbered exhibits.",
+    },
+    examples: [
+      "assemble an exhibit binder for trial",
+      "build a numbered exhibit set",
+      "combine files into exhibits A B C",
+    ],
+  },
+  {
+    id: "court-readiness",
+    route: {
+      kind: "action",
+      toolId: "court-readiness",
+      destructive: false,
+      title: "Open Court Readiness",
+      description: "Opens Court Readiness checks (fonts, bookmarks, PDF/A).",
+    },
+    examples: [
+      "check if this filing is court ready",
+      "verify the pdf meets ecf filing rules",
+      "run a court readiness check",
+    ],
+  },
+  {
+    id: "toa",
+    route: {
+      kind: "action",
+      toolId: "toa",
+      destructive: false,
+      title: "Open Table of Authorities",
+      description: "Opens Table of Authorities to detect and list cited cases.",
+    },
+    examples: [
+      "build a table of authorities from the citations",
+      "list every case cited in the brief",
+      "generate a toa for this filing",
+    ],
+  },
+  {
+    id: "citation-hyperlinker",
+    route: {
+      kind: "action",
+      toolId: "citation-hyperlinker",
+      destructive: false,
+      title: "Open Citation Hyperlinker",
+      description: "Opens Citation Hyperlinker to link case citations to sources.",
+    },
+    examples: [
+      "hyperlink the case citations",
+      "make cited cases clickable",
+      "link citations to the source cases",
+    ],
+  },
+
+  /* ------------------------------- Other tools ------------------------------- */
+  {
+    id: "outline",
+    route: {
+      kind: "action",
+      toolId: "outline",
+      destructive: false,
+      title: "Open Outline & Links",
+      description: "Opens the Outline panel to edit bookmarks and internal links.",
+    },
+    examples: [
+      "edit the bookmarks and table of contents",
+      "add outline entries for each section",
+      "manage internal links and bookmarks",
+    ],
+  },
+  {
+    id: "comments",
+    route: {
+      kind: "action",
+      toolId: "comments",
+      destructive: false,
+      title: "Open Comments",
+      description: "Opens the Comments panel to review notes and replies.",
+    },
+    examples: [
+      "show all the comments on this pdf",
+      "review the sticky notes",
+      "list every annotation and reply",
+    ],
+  },
+  {
+    id: "mail-merge",
+    route: {
+      kind: "action",
+      toolId: "mail-merge",
+      destructive: false,
+      title: "Open Mail Merge",
+      description: "Opens Mail Merge to generate personalized PDFs from a CSV.",
+    },
+    examples: [
+      "mail merge a template with a csv of recipients",
+      "generate one pdf per row from a spreadsheet",
+      "bulk fill this form from a csv",
     ],
   },
 ];
 
 /* --------------------------- embedding cache --------------------------- */
 
-/**
- * Lazily-computed anchor matrix: flat Float32Array of every example
- * vector concatenated, plus a parallel index → intent map. Built once
- * on first semantic classify call; reused for every subsequent one.
- */
 let anchorsPromise: Promise<{
   dim: number;
   matrix: Float32Array;
@@ -421,9 +690,9 @@ function dot(q: Float32Array, matrix: Float32Array, offset: number, dim: number)
 /* ------------------------- semantic classify ------------------------- */
 
 /** Cosine below this → nothing is meaningfully close → clarify. */
-const MIN_ABS = 0.42;
-/** Top-1 within this margin of top-2 (different intent) → clarify. */
-const GAP = 0.04;
+const MIN_ABS = 0.45;
+/** Top-1 within this margin of top-2 (different route) → clarify. */
+const GAP = 0.05;
 
 function makeIntent(def: IntentDef, raw: string): Intent {
   const r = def.route;
@@ -432,11 +701,18 @@ function makeIntent(def: IntentDef, raw: string): Intent {
   return {
     kind: "action",
     toolId: r.toolId,
+    focusSection: r.focusSection,
     destructive: r.destructive,
     title: r.title,
     description: r.description,
     raw,
   };
+}
+
+function routeKey(def: IntentDef): string {
+  const r = def.route;
+  if (r.kind === "action") return `action:${r.toolId}:${r.focusSection ?? ""}`;
+  return r.kind;
 }
 
 export async function classifyCommandSemantic(input: string): Promise<Intent> {
@@ -446,16 +722,11 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
   const [qVec] = await embedTexts([raw]);
   const { dim, matrix, ownerIntentIdx } = await buildAnchors();
 
-  // Best score PER INTENT (max over its example anchors).
   const perIntent = new Array<number>(INTENTS.length).fill(-Infinity);
-  const perIntentBestExample = new Array<number>(INTENTS.length).fill(-1);
   for (let i = 0; i < ownerIntentIdx.length; i++) {
     const s = dot(qVec, matrix, i * dim, dim);
     const idx = ownerIntentIdx[i];
-    if (s > perIntent[idx]) {
-      perIntent[idx] = s;
-      perIntentBestExample[idx] = i;
-    }
+    if (s > perIntent[idx]) perIntent[idx] = s;
   }
 
   const ranked = perIntent
@@ -478,21 +749,13 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
   const topIntent = INTENTS[top.idx];
   const runnerIntent = INTENTS[runner.idx];
 
-  // Ambiguous if nothing crossed the floor OR the top-2 are effectively tied
-  // AND route to different destinations.
-  const differentRoute =
-    topIntent.route.kind !== runnerIntent.route.kind ||
-    (topIntent.route.kind === "action" &&
-      runnerIntent.route.kind === "action" &&
-      topIntent.route.toolId !== runnerIntent.route.toolId);
+  const differentRoute = routeKey(topIntent) !== routeKey(runnerIntent);
 
   if (top.s < MIN_ABS) {
-    // Genuinely off-topic — ask user to clarify with the two best guesses.
     return {
       kind: "ambiguous",
       raw,
-      reason:
-        "I'm not sure what you're asking. Did you mean one of these?",
+      reason: "I'm not sure what you're asking. Did you mean one of these?",
       options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
     };
   }
@@ -517,8 +780,8 @@ function describeRoute(def: IntentDef): string {
 
 /**
  * Instant, keyword-free fallback used before the MiniLM model has
- * warmed up. Deliberately minimal — punts to "search" (the safest
- * non-destructive route) rather than guessing an action.
+ * warmed up. Punts to "search" (safest non-destructive route) rather
+ * than guessing an action.
  */
 export function classifyCommand(input: string): Intent {
   const raw = input.trim();
@@ -527,7 +790,6 @@ export function classifyCommand(input: string): Intent {
   return { kind: "search", query: raw, raw };
 }
 
-/** Short badge label for the interpreted mode. */
 export function intentLabel(intent: Intent): string {
   switch (intent.kind) {
     case "action":
