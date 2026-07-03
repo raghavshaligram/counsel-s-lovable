@@ -2201,6 +2201,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         file={active.file ?? null}
       />
       <WelcomeModal forceOpen={welcomeNonce > 0 ? true : undefined} key={welcomeNonce} />
+
+      <AgentPanel
+        open={agentOpen}
+        onClose={() => setAgentOpen(false)}
+        flow={agentFlow}
+        file={active.file}
+        totalPages={editorState.doc?.pages.length ?? 0}
+        openTool={(id, opts) => openTool(id, opts)}
+        onAnswerQuery={(query) => {
+          openTool("pre-discovery");
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("commandbar:query", {
+                detail: { query, mode: "question" },
+              }),
+            );
+          }, 60);
+        }}
+      />
     </div>
   );
 }
