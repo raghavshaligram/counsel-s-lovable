@@ -620,14 +620,17 @@ export function AgentPanel({
   /* ---------------- mid-flow input ---------------- */
 
   const safeRunFlow = useCallback(
-    (f: AgentFlow) => {
+    (f: AgentFlow, seedSteps: Step[] = []) => {
       console.info("[agent] dispatch flow", { kind: f.kind });
       // Full reset before each new flow so state from the previous
-      // flow can never re-trigger or leak into the new one.
-      setSteps([]);
+      // flow can never re-trigger or leak into the new one. seedSteps
+      // (e.g. the "You: …" echo of the incoming query) is preserved
+      // so the transcript still shows what was asked.
+      setSteps(seedSteps);
       cachedFindingsRef.current = [];
       abortedRef.current = false;
       lastFlowRef.current = f;
+      setCurrentFlow(f);
       try {
         runFlowRef.current(f);
       } catch (err) {
@@ -651,18 +654,34 @@ export function AgentPanel({
       if (!text) return;
       setInput("");
       console.info("[agent] follow-up query", text);
-      pushStep({ kind: "note", id: nextId(), body: `You: ${text}` });
+      const echo: Step = { kind: "note", id: nextId(), body: `You: ${text}` };
 
       if (isCancel(text)) {
-        pushStep({
-          kind: "note",
-          id: nextId(),
-          body: "OK — cancelled. Nothing was changed.",
-        });
+        setSteps([
+          echo,
+          {
+            kind: "note",
+            id: nextId(),
+            body: "OK — cancelled. Nothing was changed.",
+          },
+        ]);
+        cachedFindingsRef.current = [];
+        lastFlowRef.current = null;
+        setCurrentFlow(null);
         return;
       }
 
-      // Mid-flow: re-scope current detect-redact by page or add categories.
+      // Try a fresh intent match FIRST — a new verb ("split it", "sanitize",
+      // "make searchable") must start a clean new flow instead of being
+      // reinterpreted as a re-scope of the previous one.
+      const next = detectAgentFlow(text);
+      if (next) {
+        safeRunFlow(next, [echo]);
+        return;
+      }
+
+      // No new intent — if we're still inside a detect-redact flow and the
+      // user typed a page/category re-scope, apply it.
       if (currentFlow?.kind === "detect-redact") {
         const pages = parsePageScope(text);
         const extraCats = extractAdditionalCategories(text);
@@ -675,27 +694,28 @@ export function AgentPanel({
             pages: pages ?? currentFlow.pages,
             raw: text,
           };
-          setCurrentFlow(nextFlow);
-          safeRunFlow(nextFlow);
+          safeRunFlow(nextFlow, [echo]);
           return;
         }
       }
 
-      // Otherwise: treat as a new flow request.
-      const next = detectAgentFlow(text);
-      if (next) {
-        setCurrentFlow(next);
-        safeRunFlow(next);
-      } else {
-        pushStep({
+      // Nothing matched — clear the prior response and show a fresh hint
+      // so the panel never keeps a stale card next to an unrelated query.
+      cachedFindingsRef.current = [];
+      lastFlowRef.current = null;
+      setCurrentFlow(null);
+      setSteps([
+        echo,
+        {
           kind: "note",
           id: nextId(),
           body: "I didn't recognize that as a tool request. Try 'find SSNs', 'redact all emails', 'sanitize', 'add bates', 'make searchable', or ask a question.",
-        });
-      }
+        },
+      ]);
     },
-    [currentFlow, pushStep, safeRunFlow],
+    [currentFlow, safeRunFlow],
   );
+
 
   const scopeNote = useMemo(() => {
     if (currentFlow?.kind === "detect-redact" && currentFlow.pages) {
