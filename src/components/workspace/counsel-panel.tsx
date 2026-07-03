@@ -73,11 +73,7 @@ const DEFAULT = 400;
 const KEY = "vaultpdf:counselWidth";
 
 export function useCounselWidth() {
-  const [width, setWidth] = (function () {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [w, set] = (require("react") as typeof import("react")).useState<number>(DEFAULT);
-    return [w, set] as const;
-  })();
+  const [width, setWidth] = useState<number>(DEFAULT);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KEY);
@@ -86,7 +82,6 @@ export function useCounselWidth() {
         if (Number.isFinite(n)) setWidth(Math.min(MAX, Math.max(MIN, n)));
       }
     } catch { /* noop */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const persist = (w: number) => {
     const clamped = Math.min(MAX, Math.max(MIN, Math.round(w)));
