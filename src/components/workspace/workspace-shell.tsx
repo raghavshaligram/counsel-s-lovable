@@ -120,6 +120,8 @@ import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
 import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
 import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
+import { AgentPanel } from "@/components/workspace/agent-panel";
+import { detectAgentFlow, type AgentFlow } from "@/lib/agent/flows";
 
 
 type ToolId =
