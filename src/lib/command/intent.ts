@@ -242,9 +242,12 @@ const INTENTS: IntentDef[] = [
     examples: [
       "add bates numbers to these pages",
       "stamp bates numbering across the document",
-      "apply legal page numbering",
+      "apply a bates prefix like ABC00001",
+      "bates label these exhibits",
+      "add bates stamps for production",
     ],
   },
+
   {
     id: "watermark",
     route: {
