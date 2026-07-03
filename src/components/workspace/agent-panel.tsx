@@ -535,7 +535,7 @@ export function AgentPanel({
         });
       }
     },
-    [currentFlow, pushStep, runFlow],
+    [currentFlow, pushStep, safeRunFlow],
   );
 
   const scopeNote = useMemo(() => {
