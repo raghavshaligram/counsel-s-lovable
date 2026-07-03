@@ -2720,18 +2720,27 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
       (mode === "everyN" && Math.floor(everyN) >= 1) ||
       (mode === "splitPoints" && parsedPoints.points.length > 0 && !parsedPoints.error));
 
-  const modeBtn = (id: SplitUiMode, label: string) => (
+  const isPro = useIsPro();
+  const requirePro = useRequirePro();
+
+  const modeBtn = (id: SplitUiMode, label: string, opts?: { pro?: boolean }) => (
     <button
       type="button"
-      onClick={() => setMode(id)}
+      onClick={() => {
+        if (opts?.pro && !isPro) {
+          if (!requirePro("Smart Document Splitter")) return;
+        }
+        setMode(id);
+      }}
       className={cn(
-        "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+        "inline-flex items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
         mode === id
           ? "border-vault/60 bg-accent-soft text-foreground"
           : "border-border bg-surface-2 text-text-2 hover:text-foreground",
       )}
     >
-      {label}
+      <span>{label}</span>
+      {opts?.pro && !isPro && <LockBadge title="Pro — Smart Document Splitter" />}
     </button>
   );
 
