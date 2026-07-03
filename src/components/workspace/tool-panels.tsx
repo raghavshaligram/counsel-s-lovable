@@ -2903,7 +2903,8 @@ function SmartSplitSection({
   pageCount: number;
 }) {
   const requirePro = useRequirePro();
-  const [modes, setModes] = useState<Set<DetectionMode>>(new Set(["blank"]));
+  const isPro = useIsPro();
+  const [mode, setMode] = useState<DetectionMode>("blank");
   const [everyN, setEveryN] = useState(10);
   const [pattern, setPattern] = useState("");
   const [patternKind, setPatternKind] = useState<PatternKind>("literal");
@@ -2924,27 +2925,21 @@ function SmartSplitSection({
 
   const baseName = useMemo(() => file.name.replace(/\.pdf$/i, ""), [file.name]);
 
-  const toggleMode = (m: DetectionMode) => {
-    setModes((prev) => {
-      const next = new Set(prev);
-      if (next.has(m)) next.delete(m);
-      else next.add(m);
-      return next;
-    });
-    // Any change invalidates the previous detection.
-    setDetected(null);
-    setBreakSet(new Set());
-    setBlankPages([]);
-  };
-
   const runDetect = useCallback(async () => {
-    if (!requirePro("Smart Document Splitter")) return;
-    if (!file || modes.size === 0) return;
+    if (!file) return;
+    if (mode === "pattern" && !pattern.trim()) {
+      setDetected(null);
+      setBreakSet(new Set());
+      setBlankPages([]);
+      setNames({});
+      setReasons({});
+      return;
+    }
     setDetecting(true);
     setProgress(null);
     try {
       const result = await detectSmartBreaks(file, {
-        modes: Array.from(modes),
+        modes: [mode],
         everyN,
         pattern,
         patternKind,
@@ -2954,7 +2949,7 @@ function SmartSplitSection({
       });
       setDetected(result.breaks);
       setBreakSet(new Set(result.breaks.map((b) => b.page)));
-      setBlankPages(result.blankPages);
+      setBlankPages(mode === "blank" ? result.blankPages : []);
       const n: Record<number, string | undefined> = {};
       const r: Record<number, string | undefined> = {};
       for (const b of result.breaks) {
@@ -2963,13 +2958,6 @@ function SmartSplitSection({
       }
       setNames(n);
       setReasons(r);
-      if (result.breaks.length === 0) {
-        toast.message("No split points detected", {
-          description: "Try a different detection mode or lower N.",
-        });
-      } else {
-        toast.success(`Detected ${result.breaks.length} split point${result.breaks.length === 1 ? "" : "s"}`);
-      }
     } catch (err) {
       console.error(err);
       toast.error("Detection failed", {
@@ -2979,7 +2967,17 @@ function SmartSplitSection({
       setDetecting(false);
       setProgress(null);
     }
-  }, [file, modes, everyN, pattern, patternKind, caseSensitive, requirePro]);
+  }, [file, mode, everyN, pattern, patternKind, caseSensitive]);
+
+  // Auto-run detection when the mode or its parameters change. Debounced so
+  // typing in the pattern / N field doesn't fire mid-keystroke.
+  useEffect(() => {
+    if (!isPro || !file || pageCount === 0) return;
+    const t = window.setTimeout(() => {
+      void runDetect();
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [isPro, file, pageCount, mode, everyN, pattern, patternKind, caseSensitive, runDetect]);
 
   const parts = useMemo<PartPreview[]>(() => {
     if (!pageCount) return [];
