@@ -49,7 +49,30 @@ export function OfflineToggle({
     blocked: 0,
     allowed: 0,
   });
+  const [aiCache, setAiCache] = useState<AiCacheStatus>({ minilmCached: false, nerCached: false });
+  const [prewarming, setPrewarming] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const refreshAiCache = useCallback(() => {
+    void getAiCacheStatus().then(setAiCache).catch(() => {/* ignore */});
+  }, []);
+  useEffect(() => { if (open) refreshAiCache(); }, [open, refreshAiCache]);
+
+  const prewarmModels = useCallback(async () => {
+    setPrewarming(true);
+    try {
+      await Promise.allSettled([
+        loadModel(undefined, "offline-toggle:pre-download"),
+        prewarmNer("offline-toggle:pre-download"),
+      ]);
+      refreshAiCache();
+      toast.success("AI models cached", {
+        description: "MiniLM and NER are stored on this device. AI features work offline now.",
+      });
+    } finally {
+      setPrewarming(false);
+    }
+  }, [refreshAiCache]);
 
   // Keep the actual network guard in sync with the persisted pref on mount
   // and when the pref changes elsewhere.
