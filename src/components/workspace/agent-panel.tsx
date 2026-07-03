@@ -532,7 +532,7 @@ export function AgentPanel({
         }
       }
     },
-    [runDetectRedact, runPatternRedact, runSimpleHandoff, runAnswer, runSearch, pushStep, onClose],
+    [runDetectRedact, runPatternRedact, runSimpleHandoff, runAnswer, runSearch, pushStep, onClose, isPro, openUpgradeModal],
   );
 
   /* ---------------- flow lifecycle ---------------- */
