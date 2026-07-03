@@ -120,7 +120,6 @@ import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
 import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
 import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
-import { CounselPanel, useCounselWidth, draftPlaceholderReply, type CounselMessage } from "./counsel-panel";
 
 
 type ToolId =
@@ -427,10 +426,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   /** Popover above the command bar: confirmation (action) or clarify (ambiguous). */
   const [pendingIntent, setPendingIntent] = useState<Intent | null>(null);
   const [lastIntentLabel, setLastIntentLabel] = useState<string | null>(null);
-  // Counsel — unified AI Assist right-docked conversation panel.
-  const [counselOpen, setCounselOpen] = useState(false);
-  const [counselMessages, setCounselMessages] = useState<CounselMessage[]>([]);
-  const [counselWidth, setCounselWidth] = useCounselWidth();
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
@@ -1049,241 +1044,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [openTool],
   );
 
-  // Route a classified intent → Counsel message. DOC_QA runs retrieval
-  // over the open document and returns a grounded card with page-chip
-  // sources; SEARCH hands off to Pre-Discovery with the query prefilled;
-  // ACTION never executes — it opens the tool pre-configured with a
-  // review card the user has to click through.
-  const respondToIntent = useCallback(
-    async (raw: string, intent: Intent) => {
-      const mkId = () => `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-      const stripThinking = (ms: CounselMessage[]) =>
-        ms.filter((m) => !(m.role === "assistant" && m.kind === "thinking"));
-
-      if (intent.kind === "action") {
-        const label = toolById(intent.toolId)?.label ?? intent.toolId;
-        const summary = intent.destructive
-          ? `I can prepare “${raw}” in ${label}. Nothing is applied yet — you'll review each match first.`
-          : `Ready to run “${raw}” in ${label}.`;
-        setCounselMessages((ms) => [
-          ...stripThinking(ms),
-          {
-            id: mkId(),
-            role: "assistant",
-            kind: "action",
-            summary,
-            toolId: intent.toolId,
-            toolLabel: label,
-            destructive: intent.destructive,
-          },
-        ]);
-        return;
-      }
-
-      if (intent.kind === "chitchat") {
-        setCounselMessages((ms) => [
-          ...stripThinking(ms),
-          {
-            id: mkId(),
-            role: "assistant",
-            kind: "help",
-            answer: intent.reply,
-          },
-        ]);
-        return;
-      }
-
-      if (intent.kind === "ambiguous") {
-        setCounselMessages((ms) => [
-          ...stripThinking(ms),
-          {
-            id: mkId(),
-            role: "assistant",
-            kind: "clarify",
-            question: intent.reason,
-            options: intent.options.map((opt, i) => ({
-              id: `opt-${i}`,
-              label:
-                opt.kind === "action"
-                  ? opt.title.replace(/^Open\s+/, "")
-                  : opt.kind === "question"
-                  ? "Get a written answer"
-                  : opt.kind === "search"
-                  ? "Search the document"
-                  : "Chat",
-            })),
-          },
-        ]);
-        return;
-      }
-
-      if (intent.kind === "search") {
-        // Hand off to Pre-Discovery with the query prefilled + auto-run.
-        openTool("pre-discovery");
-        setTimeout(() => {
-          window.dispatchEvent(
-            new CustomEvent("commandbar:query", {
-              detail: { query: intent.query, mode: "search" },
-            }),
-          );
-        }, 60);
-        setCounselMessages((ms) => [
-          ...stripThinking(ms),
-          {
-            id: mkId(),
-            role: "assistant",
-            kind: "help",
-            answer: `Searching Pre-Discovery for “${intent.query}”. Ranked passages appear in the Pre-Discovery panel — tap any hit to jump to the page.`,
-            toolId: "pre-discovery",
-            toolLabel: "Pre-Discovery",
-          },
-        ]);
-        return;
-      }
-
-      // DOC_QA — grounded answer over the open document.
-      if (!file) {
-        setCounselMessages((ms) => [
-          ...stripThinking(ms),
-          {
-            id: mkId(),
-            role: "assistant",
-            kind: "help",
-            answer: "Open a PDF first — Counsel answers are grounded in the document you're viewing.",
-          },
-        ]);
-        return;
-      }
-      try {
-        const { answerFromDocument } = await import("@/lib/assist/doc-qa");
-        const reply = await answerFromDocument(file, intent.query);
-        if (reply) {
-          setCounselMessages((ms) => [
-            ...stripThinking(ms),
-            {
-              id: mkId(),
-              role: "assistant",
-              kind: "grounded",
-              answer: reply.answer,
-              sources: reply.sources,
-            },
-          ]);
-        } else {
-          setCounselMessages((ms) => [
-            ...stripThinking(ms),
-            {
-              id: mkId(),
-              role: "assistant",
-              kind: "help",
-              answer:
-                "I couldn't find passages in this document that clearly answer that. Try rephrasing, or open Pre-Discovery to browse ranked passages yourself.",
-              toolId: "pre-discovery",
-              toolLabel: "Pre-Discovery",
-            },
-          ]);
-        }
-      } catch (err) {
-        console.warn("[counsel] doc-qa failed", err);
-        setCounselMessages((ms) => [
-          ...stripThinking(ms),
-          {
-            id: mkId(),
-            role: "assistant",
-            kind: "help",
-            answer:
-              "Something went wrong answering that from the document. Try Pre-Discovery to search the passages directly.",
-            toolId: "pre-discovery",
-            toolLabel: "Pre-Discovery",
-          },
-        ]);
-      }
-    },
-    [file, openTool],
-  );
-
-  // Topic tags of the most recent assistant answer — used as a small
-  // follow-up bias so "and the exemption codes?" after a Redact turn
-  // still lands in the Redact entry.
-  const counselRecentTopicRef = useRef<string[] | undefined>(undefined);
-
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
-    // Push user message + thinking placeholder, open the panel.
-    const userMsg: CounselMessage = {
-      id: `u_${Date.now().toString(36)}`,
-      role: "user",
-      text: raw,
-    };
-    const thinking: CounselMessage = {
-      id: `t_${Date.now().toString(36)}`,
-      role: "assistant",
-      kind: "thinking",
-    };
-    setCounselMessages((ms) => [...ms, userMsg, thinking]);
-    setCounselOpen(true);
-    setAiText("");
-
-    // 1) KB retrieval — how-to / product questions get a HELP answer with
-    //    an "Open [tool]" button. Requires the MiniLM model; kick it off
-    //    in the background and, if it's not ready, fall through to intent.
-    if (!isDiscoveryModelLoaded()) {
-      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
-    }
-    if (isDiscoveryModelLoaded()) {
-      try {
-        const { matchKB, KB_HIGH, KB_FLOOR } = await import("@/lib/assist/kb-match");
-        const match = await matchKB(raw, { recentTopic: counselRecentTopicRef.current });
-        if (match && match.score >= KB_HIGH) {
-          const answer = match.entry.steps && match.entry.steps.length
-            ? `${match.entry.answer}\n\nSteps:\n${match.entry.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
-            : match.entry.answer;
-          setCounselMessages((ms) => [
-            ...ms.filter((m) => !(m.role === "assistant" && m.kind === "thinking")),
-            {
-              id: `a_${Date.now().toString(36)}`,
-              role: "assistant",
-              kind: "help",
-              answer,
-              toolId: match.entry.tool,
-              toolLabel: match.entry.toolLabel ?? (match.entry.tool ? toolById(match.entry.tool)?.label : undefined),
-            },
-          ]);
-          counselRecentTopicRef.current = match.entry.topic;
-          setLastIntentLabel("Answer");
-          return;
-        }
-        // Borderline: two entries roughly tied above the floor → clarify.
-        const runner = match?.runnerEntry ?? null;
-        if (
-          match &&
-          runner &&
-          match.score >= KB_FLOOR &&
-          match.runnerScore >= KB_FLOOR &&
-          match.score - match.runnerScore < 0.05
-        ) {
-          setCounselMessages((ms) => [
-            ...ms.filter((m) => !(m.role === "assistant" && m.kind === "thinking")),
-            {
-              id: `a_${Date.now().toString(36)}`,
-              role: "assistant",
-              kind: "clarify",
-              question: "A couple of things could match — which did you mean?",
-              options: [
-                { id: `kb:${match.entry.id}`, label: match.entry.toolLabel ?? match.entry.id },
-                { id: `kb:${runner.id}`, label: runner.toolLabel ?? runner.id },
-              ],
-            },
-          ]);
-          setLastIntentLabel("Clarify");
-          return;
-        }
-      } catch (err) {
-        console.warn("[kb] match failed, falling back to intent", err);
-      }
-    }
-
-    // 2) Fall back to intent classification (actions, doc Q&A, search).
+    // Try semantic classification (MiniLM). If the model isn't loaded
+    // yet, kick off the load in the background and use the sync
+    // fallback for this first submission so the bar never blocks.
     let intent: Intent;
     if (isDiscoveryModelLoaded()) {
       try {
@@ -1293,67 +1059,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         intent = classifyCommand(raw);
       }
     } else {
+      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
       intent = classifyCommand(raw);
     }
     setLastIntentLabel(intentLabel(intent));
-    respondToIntent(raw, intent);
-    counselRecentTopicRef.current = undefined;
-  }, [aiText, respondToIntent]);
-
-
-  const onCounselOptionPick = useCallback(
-    async (optionId: string) => {
-      // KB clarify option → answer directly from that entry.
-      if (optionId.startsWith("kb:")) {
-        const entryId = optionId.slice(3);
-        const { KB } = await import("@/lib/assist/knowledge-base");
-        const entry = KB.find((e) => e.id === entryId);
-        if (entry) {
-          const answer = entry.steps && entry.steps.length
-            ? `${entry.answer}\n\nSteps:\n${entry.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
-            : entry.answer;
-          setCounselMessages((ms) => [
-            ...ms,
-            { id: `u_${Date.now().toString(36)}`, role: "user", text: entry.toolLabel ?? entry.id },
-            {
-              id: `a_${Date.now().toString(36)}`,
-              role: "assistant",
-              kind: "help",
-              answer,
-              toolId: entry.tool,
-              toolLabel: entry.toolLabel ?? (entry.tool ? toolById(entry.tool)?.label : undefined),
-            },
-          ]);
-          counselRecentTopicRef.current = entry.topic;
-          return;
-        }
-      }
-      // Legacy generic options.
-      const label = optionId === "opt-0" ? "yes, that one" : "the other one";
-      setCounselMessages((ms) => [
-        ...ms,
-        { id: `u_${Date.now().toString(36)}`, role: "user", text: label },
-        {
-          id: `a_${Date.now().toString(36)}`,
-          role: "assistant",
-          kind: "help",
-          answer: "Got it — routing that in the next step.",
-        },
-      ]);
-    },
-    [],
-  );
-
-  const onCounselJumpToPage = useCallback(
-    (page: number) => {
-      // Pages are 1-based in Counsel; editor state is 0-based.
-      const idx = Math.max(0, page - 1);
-      editorDispatch({ type: "SET_PAGE", n: idx });
-    },
-    [editorDispatch],
-  );
-
-
+    if (
+      (intent.kind === "action" && intent.destructive) ||
+      intent.kind === "ambiguous"
+    ) {
+      setPendingIntent(intent);
+      return;
+    }
+    executeIntent(intent);
+    setAiText("");
+  }, [aiText, executeIntent]);
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
@@ -2363,20 +2082,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             }}
             focusSection={focusSection}
             clearFocusSection={() => setFocusSection(null)}
-          />
-
-          {/* COUNSEL — right-docked conversation panel. Sibling of <main>
-              and <Inspector> so the canvas reflows instead of being covered. */}
-          <CounselPanel
-            open={counselOpen}
-            width={counselWidth}
-            setWidth={setCounselWidth}
-            messages={counselMessages}
-            onClose={() => setCounselOpen(false)}
-            onNewConversation={() => setCounselMessages([])}
-            onOpenTool={(toolId) => openTool(toolId)}
-            onJumpToPage={onCounselJumpToPage}
-            onOptionPick={onCounselOptionPick}
           />
         </div>
       </div>
