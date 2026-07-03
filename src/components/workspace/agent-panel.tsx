@@ -329,6 +329,7 @@ export function AgentPanel({
                 title: `Opened ${buttonLabel.replace(/^Open\s+/, "")}`,
                 body: "Follow the confirm inside the panel to apply. The tool reports success or failure with its own verification.",
               });
+              onClose();
             },
           },
           { label: "Cancel", tone: "ghost", onClick: () => onClose() },
