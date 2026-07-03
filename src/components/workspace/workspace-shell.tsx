@@ -1042,6 +1042,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         return;
       }
       if (intent.kind === "question" || intent.kind === "search") {
+        // Pre-Discovery is Pro. Explain that before routing so free
+        // users understand why the panel gates the action.
+        if (!isPro) {
+          toast.info("Search & Q&A is a Pro feature", {
+            description:
+              "Opens the on-device semantic search panel. Upgrade to run the search.",
+          });
+          requirePro("Search & Q&A");
+          setPendingIntent(null);
+          return;
+        }
         openTool("pre-discovery");
         // Panel listens for this and runs the query on the current file.
         // Timeout lets the panel mount before it receives the event.
@@ -1055,6 +1066,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingIntent(null);
         return;
       }
+
     },
     [openTool, isPro, requirePro],
   );
