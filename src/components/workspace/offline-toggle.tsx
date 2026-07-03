@@ -102,6 +102,20 @@ export function OfflineToggle({
         });
         return;
       }
+      // AI models are fetched from HuggingFace CDN on first use — if they
+      // aren't already cached, offline mode will block those features.
+      const status = await getAiCacheStatus();
+      setAiCache(status);
+      if (!status.minilmCached || !status.nerCached) {
+        const missing = [
+          !status.minilmCached && "MiniLM (search / assist)",
+          !status.nerCached && "NER (name detection)",
+        ].filter(Boolean).join(" · ");
+        toast.warning("AI features won't work offline yet", {
+          description: `${missing} isn't cached. Use "Pre-download AI models" first, or continue — non-AI tools still work fully offline.`,
+          duration: 6000,
+        });
+      }
       installOfflineGuard();
       onChange(true);
       saveOfflinePref(true);
