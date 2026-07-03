@@ -1025,12 +1025,34 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     (intent: Intent) => {
       setLastIntentLabel(intentLabel(intent));
       if (intent.kind === "action") {
+        // Free user hitting a Pro-only tool: give them CONTEXT before
+        // the upgrade modal appears. Silent modal-pop with no message
+        // reads as a broken paywall.
+        if (PAID_TOOL_IDS.has(intent.toolId) && !isPro) {
+          toast.info(`${intent.title.replace(/^Open\s+/, "")} is a Pro feature`, {
+            description: intent.description,
+          });
+          requirePro(intent.title.replace(/^Open\s+/, ""));
+          setPendingIntent(null);
+          return;
+        }
         openTool(intent.toolId, { focusSection: intent.focusSection });
         toast.info(intent.title, { description: intent.description });
         setPendingIntent(null);
         return;
       }
       if (intent.kind === "question" || intent.kind === "search") {
+        // Pre-Discovery is Pro. Explain that before routing so free
+        // users understand why the panel gates the action.
+        if (!isPro) {
+          toast.info("Search & Q&A is a Pro feature", {
+            description:
+              "Opens the on-device semantic search panel. Upgrade to run the search.",
+          });
+          requirePro("Search & Q&A");
+          setPendingIntent(null);
+          return;
+        }
         openTool("pre-discovery");
         // Panel listens for this and runs the query on the current file.
         // Timeout lets the panel mount before it receives the event.
@@ -1044,9 +1066,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingIntent(null);
         return;
       }
+
     },
-    [openTool],
+    [openTool, isPro, requirePro],
   );
+
 
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();

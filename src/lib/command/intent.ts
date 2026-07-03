@@ -108,6 +108,17 @@ const INTENTS: IntentDef[] = [
       "where does the document discuss damages",
       "locate every reference to the contract",
       "show me passages about indemnification",
+      // Bare content-noun queries — no verb, just what to look for.
+      // These are the exact class of queries that were mis-routing to
+      // Page Numbers / Header-Footer before ("dollar amounts",
+      // "key dates"). Keep them tight and concrete.
+      "dollar amounts",
+      "money figures and prices",
+      "key dates and deadlines",
+      "financial figures in the document",
+      "names of the parties",
+      "addresses mentioned in the text",
+      "any references to payment",
     ],
   },
   {
@@ -689,10 +700,21 @@ function dot(q: Float32Array, matrix: Float32Array, offset: number, dim: number)
 
 /* ------------------------- semantic classify ------------------------- */
 
-/** Cosine below this → nothing is meaningfully close → clarify. */
-const MIN_ABS = 0.45;
+/** Cosine below this → nothing is meaningfully close → fall back to search. */
+const MIN_ABS = 0.5;
+/** An action intent below this score needs a real action verb in the query. */
+const ACTION_STRONG = 0.6;
 /** Top-1 within this margin of top-2 (different route) → clarify. */
 const GAP = 0.05;
+
+/**
+ * True when the query contains an obvious action verb — the kind of
+ * word that means "perform an operation on the document" rather than
+ * "here is content I want to look up". If none of these appear the
+ * query is almost certainly a search / question, not a tool trigger.
+ */
+const ACTION_VERB_RE =
+  /\b(add|apply|stamp|number|redact|black\s*out|scrub|strip|sanitize|sign|fill|encrypt|protect|password|unlock|decrypt|compress|shrink|convert|export|export\s+to|ocr|recognize|repair|fix|compare|diff|merge|combine|split|separate|extract|pull\s+out|organize|reorder|delete|remove|rotate|crop|trim|hash|checksum|assemble|build|create|make|highlight|underline|bookmark|watermark|open|show|start|run)\b/i;
 
 function makeIntent(def: IntentDef, raw: string): Intent {
   const r = def.route;
@@ -715,6 +737,14 @@ function routeKey(def: IntentDef): string {
   return r.kind;
 }
 
+/** Sensible clarify options — never random tools. */
+function fallbackOptions(raw: string): [Intent, Intent] {
+  return [
+    { kind: "search", query: raw, raw },
+    { kind: "question", query: raw, raw },
+  ];
+}
+
 export async function classifyCommandSemantic(input: string): Promise<Intent> {
   const raw = input.trim();
   if (!raw) return { kind: "search", query: "", raw };
@@ -735,10 +765,13 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
 
   const top = ranked[0];
   const runner = ranked[1];
+  const hasActionVerb = ACTION_VERB_RE.test(raw);
 
   console.log(
     "[intent] query=",
     JSON.stringify(raw),
+    "hasActionVerb=",
+    hasActionVerb,
     "top5=",
     ranked.slice(0, 5).map((r) => ({
       intent: INTENTS[r.idx].id,
@@ -749,17 +782,33 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
   const topIntent = INTENTS[top.idx];
   const runnerIntent = INTENTS[runner.idx];
 
-  const differentRoute = routeKey(topIntent) !== routeKey(runnerIntent);
-
+  // Weak overall match — don't guess a tool. Default to search on the
+  // raw text; offer search + Q&A as the clarification options, never a
+  // random pair of unrelated tools (that was the "dollar amounts →
+  // Page Numbers / Header" bug).
   if (top.s < MIN_ABS) {
     return {
       kind: "ambiguous",
       raw,
-      reason: "I'm not sure what you're asking. Did you mean one of these?",
-      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
+      reason:
+        "I'm not sure what you mean. I can search your document, answer a question, or run a specific tool — what would you like?",
+      options: fallbackOptions(raw),
     };
   }
-  if (differentRoute && top.s - runner.s < GAP) {
+
+  // Action intent, but no action verb in the query and the score isn't
+  // decisive. That's the class of noun-phrase queries ("key dates",
+  // "dollar amounts") that should never trigger a destructive/tool
+  // panel. Route to search on the raw text.
+  if (
+    topIntent.route.kind === "action" &&
+    !hasActionVerb &&
+    top.s < ACTION_STRONG
+  ) {
+    return { kind: "search", query: raw, raw };
+  }
+
+  if (differentRouteOrClarify(topIntent, runnerIntent) && top.s - runner.s < GAP) {
     return {
       kind: "ambiguous",
       raw,
@@ -769,6 +818,11 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
   }
   return makeIntent(topIntent, raw);
 }
+
+function differentRouteOrClarify(a: IntentDef, b: IntentDef): boolean {
+  return routeKey(a) !== routeKey(b);
+}
+
 
 function describeRoute(def: IntentDef): string {
   if (def.route.kind === "search") return "search the document";
