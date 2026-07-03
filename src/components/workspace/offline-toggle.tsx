@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { WifiOff, X, ShieldOff, Loader2, ArrowRight } from "lucide-react";
+import { WifiOff, X, ShieldOff, Loader2, ArrowRight, Download, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -9,6 +9,9 @@ import {
   verifyOfflineReadiness,
   type OfflineGuardState,
 } from "@/lib/trust/offline-guard";
+import { getAiCacheStatus, type AiCacheStatus } from "@/lib/ai/model-download-ui";
+import { loadModel } from "@/lib/discovery/client";
+import { prewarmNer } from "@/lib/pdf/ner";
 
 const OFFLINE_KEY = "counselpdf:work-offline";
 
@@ -46,7 +49,30 @@ export function OfflineToggle({
     blocked: 0,
     allowed: 0,
   });
+  const [aiCache, setAiCache] = useState<AiCacheStatus>({ minilmCached: false, nerCached: false });
+  const [prewarming, setPrewarming] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const refreshAiCache = useCallback(() => {
+    void getAiCacheStatus().then(setAiCache).catch(() => {/* ignore */});
+  }, []);
+  useEffect(() => { if (open) refreshAiCache(); }, [open, refreshAiCache]);
+
+  const prewarmModels = useCallback(async () => {
+    setPrewarming(true);
+    try {
+      await Promise.allSettled([
+        loadModel(undefined, "offline-toggle:pre-download"),
+        prewarmNer("offline-toggle:pre-download"),
+      ]);
+      refreshAiCache();
+      toast.success("AI models cached", {
+        description: "MiniLM and NER are stored on this device. AI features work offline now.",
+      });
+    } finally {
+      setPrewarming(false);
+    }
+  }, [refreshAiCache]);
 
   // Keep the actual network guard in sync with the persisted pref on mount
   // and when the pref changes elsewhere.
@@ -75,6 +101,20 @@ export function OfflineToggle({
           description: result.reason,
         });
         return;
+      }
+      // AI models are fetched from HuggingFace CDN on first use — if they
+      // aren't already cached, offline mode will block those features.
+      const status = await getAiCacheStatus();
+      setAiCache(status);
+      if (!status.minilmCached || !status.nerCached) {
+        const missing = [
+          !status.minilmCached && "MiniLM (search / assist)",
+          !status.nerCached && "NER (name detection)",
+        ].filter(Boolean).join(" · ");
+        toast.warning("AI features won't work offline yet", {
+          description: `${missing} isn't cached. Use "Pre-download AI models" first, or continue — non-AI tools still work fully offline.`,
+          duration: 6000,
+        });
       }
       installOfflineGuard();
       onChange(true);
@@ -208,6 +248,48 @@ export function OfflineToggle({
                     </div>
                   </div>
                 )}
+
+                <div className="mt-3 rounded-md border border-border bg-surface-1 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[11.5px] font-medium text-foreground">
+                        AI models
+                      </div>
+                      <div className="mt-0.5 text-[10.5px] text-text-muted">
+                        {aiCache.minilmCached && aiCache.nerCached
+                          ? "Cached · works offline"
+                          : aiCache.minilmCached || aiCache.nerCached
+                            ? "Partially cached · finish downloading for full offline AI"
+                            : "Not cached · one-time ~155 MB download needed for offline AI"}
+                      </div>
+                    </div>
+                    {aiCache.minilmCached && aiCache.nerCached ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void prewarmModels()}
+                        disabled={prewarming || isOffline}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-vault/40 bg-vault/10 px-2 py-1 text-[10.5px] font-medium text-foreground hover:bg-vault/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        title={isOffline ? "Go online first to download AI models" : "Download MiniLM (~45 MB) and NER (~110 MB) now"}
+                      >
+                        {prewarming ? (
+                          <><Loader2 className="h-3 w-3 animate-spin" /> Downloading…</>
+                        ) : (
+                          <><Download className="h-3 w-3" /> Pre-download</>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-[10px]">
+                    <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5", aiCache.minilmCached ? "bg-emerald-500/10 text-emerald-400" : "bg-surface-3 text-text-muted")}>
+                      {aiCache.minilmCached ? "✓" : "○"} MiniLM · 45 MB
+                    </span>
+                    <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5", aiCache.nerCached ? "bg-emerald-500/10 text-emerald-400" : "bg-surface-3 text-text-muted")}>
+                      {aiCache.nerCached ? "✓" : "○"} NER · 110 MB
+                    </span>
+                  </div>
+                </div>
 
                 <div className="mt-3">
                   {isOffline ? (

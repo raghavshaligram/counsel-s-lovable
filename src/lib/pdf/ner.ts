@@ -47,18 +47,35 @@ async function getPipeline(trigger: string): Promise<Pipeline | null> {
   );
   pipelinePromise = (async () => {
     try {
-      const transformers = await importChunk(() => import("@huggingface/transformers"));
-      // Force on-device: never reach out to a hosted inference endpoint.
-      // Models are fetched once from the Hugging Face CDN and cached by the
-      // browser (Cache Storage) for subsequent runs.
-      (transformers.env as { allowRemoteModels?: boolean; allowLocalModels?: boolean }).allowRemoteModels = true;
-      const pipe = await transformers.pipeline(
-        "token-classification",
-        "Xenova/bert-base-NER",
-        { dtype: "q8" } as unknown as Record<string, unknown>,
+      const { notifyModelDownload } = await import("@/lib/ai/model-download-ui");
+      return await notifyModelDownload(
+        "AI (bert-base-NER)",
+        "110 MB",
+        async (h) => {
+          const transformers = await importChunk(() => import("@huggingface/transformers"));
+          (transformers.env as { allowRemoteModels?: boolean; allowLocalModels?: boolean }).allowRemoteModels = true;
+          // Track weighted progress across all files the pipeline pulls.
+          const perFile = new Map<string, number>();
+          const pipe = await transformers.pipeline(
+            "token-classification",
+            "Xenova/bert-base-NER",
+            {
+              dtype: "q8",
+              progress_callback: (p: { status: string; file?: string; progress?: number }) => {
+                if (p.file && typeof p.progress === "number") {
+                  perFile.set(p.file, p.progress);
+                  let sum = 0;
+                  for (const v of perFile.values()) sum += v;
+                  h.report(sum / Math.max(perFile.size, 1) / 100);
+                }
+              },
+            } as unknown as Record<string, unknown>,
+          );
+          h.report(1);
+          console.info(`[ai-model] NER ready (trigger: ${trigger})`);
+          return pipe as unknown as Pipeline;
+        },
       );
-      console.info(`[ai-model] NER ready (trigger: ${trigger})`);
-      return pipe as unknown as Pipeline;
     } catch (err) {
       // Model fetch / WASM init failures — fall back to regex-only.
       // eslint-disable-next-line no-console
@@ -67,6 +84,12 @@ async function getPipeline(trigger: string): Promise<Pipeline | null> {
     }
   })();
   return pipelinePromise;
+}
+
+/** Public warm-up — used by the "Pre-download AI models" action. */
+export async function prewarmNer(trigger: string): Promise<boolean> {
+  const p = await getPipeline(trigger);
+  return p != null;
 }
 
 /**
