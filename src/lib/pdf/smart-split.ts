@@ -327,13 +327,13 @@ export async function detectSmartBreaks(
         if (!hit) continue;
         const key = normalizePatternKey(hit);
         if (!key) continue;
+        const identifier = key.toUpperCase(); // e.g. "EXHIBIT A"
         if (lastKey === null) {
-          // First matching page: only breaks if it isn't page 1.
           if (p + 1 > 1) {
-            addBreak(p + 1, "pattern", `starts "${hit}"`, sanitizeName(hit));
+            addBreak(p + 1, "pattern", `starts ${identifier}`, sanitizeName(identifier));
           }
         } else if (key !== lastKey) {
-          addBreak(p + 1, "pattern", `starts "${hit}"`, sanitizeName(hit));
+          addBreak(p + 1, "pattern", `starts ${identifier}`, sanitizeName(identifier));
         }
         lastKey = key;
       }
