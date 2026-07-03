@@ -34,6 +34,7 @@ export const PAID_FEATURES = {
   "workflows": "Workflows & automation",
   "privilege-review": "Privilege review (AI)",
   "private-ai-assist": "Private AI assist",
+  "smart-split": "Smart Document Splitter",
 } as const;
 export type PaidFeatureId = keyof typeof PAID_FEATURES;
 
