@@ -121,7 +121,7 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
             : p.stage[0].toUpperCase() + p.stage.slice(1),
         );
         if (typeof p.progress === "number") setLoadPct(Math.round(p.progress));
-      });
+      }, "pre-discovery-panel:user-opened-panel");
       setModelReady(true);
       setLoadStage("");
       setLoadPct(null);
