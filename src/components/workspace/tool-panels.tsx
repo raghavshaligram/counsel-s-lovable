@@ -2902,6 +2902,7 @@ function SmartSplitSection({
   file: File;
   pageCount: number;
 }) {
+  const requirePro = useRequirePro();
   const [modes, setModes] = useState<Set<DetectionMode>>(new Set(["blank"]));
   const [everyN, setEveryN] = useState(10);
   const [pattern, setPattern] = useState("");
