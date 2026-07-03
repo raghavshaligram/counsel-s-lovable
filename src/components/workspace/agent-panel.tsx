@@ -194,7 +194,10 @@ export function AgentPanel({
               {
                 label: "Open Redact tool for manual review",
                 tone: "primary",
-                onClick: () => openTool("redact"),
+                onClick: () => {
+                  openTool("redact");
+                  onClose();
+                },
               },
             ],
           });
@@ -229,6 +232,7 @@ export function AgentPanel({
                   title: "Opened Redact tool",
                   body: `${filtered.length} finding${filtered.length === 1 ? "" : "s"} loaded. Review, tick the ones to redact, then click "Redact, export & verify" — that runs the destructive burn with verification.`,
                 });
+                onClose();
               },
             },
             {
@@ -243,6 +247,7 @@ export function AgentPanel({
                   title: "Selected — one confirm left",
                   body: `All ${filtered.length} findings loaded and selected in the Redact panel. Click "Redact, export & verify" to apply — the verification gate will refuse the download if any redaction region is still recoverable.`,
                 });
+                onClose();
               },
             },
             {
@@ -287,6 +292,7 @@ export function AgentPanel({
                 /* ignore */
               }
               openTool("redact");
+              onClose();
             },
           },
           { label: "Cancel", tone: "ghost", onClick: () => onClose() },
@@ -323,6 +329,7 @@ export function AgentPanel({
                 title: `Opened ${buttonLabel.replace(/^Open\s+/, "")}`,
                 body: "Follow the confirm inside the panel to apply. The tool reports success or failure with its own verification.",
               });
+              onClose();
             },
           },
           { label: "Cancel", tone: "ghost", onClick: () => onClose() },
@@ -341,8 +348,9 @@ export function AgentPanel({
         title: "Asking AI Assist",
         body: `Routed "${f.query}" to the on-device AI Assist panel. The answer will appear there — nothing about your document leaves this browser.`,
       });
+      onClose();
     },
-    [onAnswerQuery, pushStep],
+    [onAnswerQuery, pushStep, onClose],
   );
 
   const runSearch = useCallback(
@@ -354,9 +362,11 @@ export function AgentPanel({
         title: `Searching for "${f.term}"`,
         body: `Routed to the on-device Pre-Discovery search — results appear in that panel. Nothing about the document leaves this browser.`,
       });
+      onClose();
     },
-    [onAnswerQuery, pushStep],
+    [onAnswerQuery, pushStep, onClose],
   );
+
 
   const runFlow = useCallback(
     (f: AgentFlow) => {
