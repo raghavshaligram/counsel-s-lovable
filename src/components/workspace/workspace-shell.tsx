@@ -120,8 +120,7 @@ import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
 import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
 import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
-import { CounselPanel, useCounselWidth, type CounselMessage } from "./counsel-panel";
-import type { PdfJsLikeDocument } from "@/lib/chat/pdf-extract";
+import { CounselPanel, useCounselWidth, draftPlaceholderReply, type CounselMessage } from "./counsel-panel";
 
 
 type ToolId =
@@ -1153,9 +1152,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       }
       try {
         const { answerFromDocument } = await import("@/lib/assist/doc-qa");
-        const reply = await answerFromDocument(file, intent.query, {
-          pdfDoc: pdfDocsRef.current.get(activeIdRef.current) as PdfJsLikeDocument | undefined,
-        });
+        const reply = await answerFromDocument(file, intent.query);
         if (reply) {
           setCounselMessages((ms) => [
             ...stripThinking(ms),
@@ -1223,22 +1220,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setCounselOpen(true);
     setAiText("");
 
-    // 1) Warm the shared MiniLM worker on first use, then use it for both
-    //    KB help and semantic intent routing. This avoids the old first-turn
-    //    fallback that treated natural questions as generic searches.
-    let semanticReady = isDiscoveryModelLoaded();
-    if (!semanticReady) {
-      try {
-        await loadDiscoveryModel();
-        semanticReady = true;
-      } catch (err) {
-        console.warn("[counsel] MiniLM load failed, using safe fallback", err);
-      }
+    // 1) KB retrieval — how-to / product questions get a HELP answer with
+    //    an "Open [tool]" button. Requires the MiniLM model; kick it off
+    //    in the background and, if it's not ready, fall through to intent.
+    if (!isDiscoveryModelLoaded()) {
+      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
     }
-
-    // 2) KB retrieval — how-to / product questions get a HELP answer with
-    //    an "Open [tool]" button.
-    if (semanticReady) {
+    if (isDiscoveryModelLoaded()) {
       try {
         const { matchKB, KB_HIGH, KB_FLOOR } = await import("@/lib/assist/kb-match");
         const match = await matchKB(raw, { recentTopic: counselRecentTopicRef.current });
@@ -1291,9 +1279,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       }
     }
 
-    // 3) Fall back to intent classification (actions, doc Q&A, search).
+    // 2) Fall back to intent classification (actions, doc Q&A, search).
     let intent: Intent;
-    if (semanticReady) {
+    if (isDiscoveryModelLoaded()) {
       try {
         intent = await classifyCommandSemantic(raw);
       } catch (err) {
