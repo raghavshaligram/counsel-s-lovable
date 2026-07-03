@@ -2847,29 +2847,37 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={run}
-            disabled={!canRun}
-            className={cn(
-              "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
-              canRun ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
-            )}
-          >
-            {busy ? (
-              <>
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Splitting…
-              </>
-            ) : (
-              <>
-                <Scissors className="h-3.5 w-3.5" /> Split &amp; download
-              </>
-            )}
-          </button>
+          {mode === "smart" && (
+            <SmartSplitSection file={file} pageCount={pageCount} />
+          )}
 
-          <div className="text-center text-[10px] text-text-muted">
-            On-device · nothing leaves your browser
-          </div>
+          {mode !== "smart" && (
+            <>
+              <button
+                type="button"
+                onClick={run}
+                disabled={!canRun}
+                className={cn(
+                  "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+                  canRun ? "hover:opacity-90" : "cursor-not-allowed opacity-50",
+                )}
+              >
+                {busy ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Splitting…
+                  </>
+                ) : (
+                  <>
+                    <Scissors className="h-3.5 w-3.5" /> Split &amp; download
+                  </>
+                )}
+              </button>
+
+              <div className="text-center text-[10px] text-text-muted">
+                On-device · nothing leaves your browser
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
