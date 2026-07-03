@@ -2041,7 +2041,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                         void loadDiscoveryModel().catch(() => {/* ignore */});
                       }
                     }}
-                    placeholder='Ask, search, or run — "summarize this", "find SSNs", "redact phone numbers"'
+                    placeholder='Tell CounselPDF what to do — try "redact all SSNs" or "add page numbers"'
                     className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
                   {lastIntentLabel && !pendingIntent && (
