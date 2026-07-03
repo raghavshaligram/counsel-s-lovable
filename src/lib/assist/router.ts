@@ -1,0 +1,152 @@
+import { embedTexts } from "@/lib/discovery/client";
+import { ASSIST_KNOWLEDGE_BASE, type AssistToolEntry } from "./knowledge-base";
+
+export type AssistMode = "help" | "open" | "use";
+
+export type AssistClassification =
+  | {
+      kind: "tool";
+      entry: AssistToolEntry;
+      mode: AssistMode;
+      score: number;
+      runnerUp?: { entry: AssistToolEntry; score: number };
+    }
+  | {
+      kind: "clarify";
+      reason: string;
+      options: AssistToolEntry[];
+      score: number;
+    };
+
+type AnchorIndex = {
+  dim: number;
+  matrix: Float32Array;
+  owners: number[];
+};
+
+let anchorPromise: Promise<AnchorIndex> | null = null;
+
+function anchorTextsFor(entry: AssistToolEntry): string[] {
+  return [
+    entry.displayName,
+    entry.capabilitySummary,
+    ...entry.aliases,
+    ...entry.examples,
+  ];
+}
+
+function buildAnchors(): Promise<AnchorIndex> {
+  if (anchorPromise) return anchorPromise;
+  anchorPromise = (async () => {
+    const texts: string[] = [];
+    const owners: number[] = [];
+    ASSIST_KNOWLEDGE_BASE.forEach((entry, idx) => {
+      anchorTextsFor(entry).forEach((text) => {
+        texts.push(text);
+        owners.push(idx);
+      });
+    });
+    const vecs = await embedTexts(texts, "ai-assist:build-training-doc-anchors");
+    const dim = vecs[0]?.length ?? 0;
+    const matrix = new Float32Array(dim * vecs.length);
+    vecs.forEach((vec, idx) => matrix.set(vec, idx * dim));
+    console.info("[ai-assist] training doc anchors ready", {
+      tools: ASSIST_KNOWLEDGE_BASE.length,
+      anchors: vecs.length,
+      dim,
+    });
+    return { dim, matrix, owners };
+  })();
+  return anchorPromise;
+}
+
+function dot(q: Float32Array, matrix: Float32Array, offset: number, dim: number) {
+  let score = 0;
+  for (let i = 0; i < dim; i++) score += q[i] * matrix[offset + i];
+  return score;
+}
+
+const HELP_RE = /\b(what|how|why|explain|describe|tell\s+me|help|does|can\s+i|what\s+is|what's)\b/i;
+const OPEN_RE = /\b(open|show|go\s+to|take\s+me\s+to|start|launch)\b/i;
+const USE_RE = /\b(add|apply|run|scan|detect|find|search|ask|summari[sz]e|redact|black\s*out|stamp|split|merge|combine|sanitize|scrub|ocr|repair|protect|unlock|sign|fill|convert|hash|compute|generate|build|assemble|create|watermark|number)\b/i;
+
+function inferMode(raw: string): AssistMode {
+  if (OPEN_RE.test(raw)) return "open";
+  if (HELP_RE.test(raw) && !USE_RE.test(raw)) return "help";
+  return "use";
+}
+
+function fallbackOptions(ranked: Array<{ idx: number; score: number }>): AssistToolEntry[] {
+  const out: AssistToolEntry[] = [];
+  for (const item of ranked) {
+    const entry = ASSIST_KNOWLEDGE_BASE[item.idx];
+    if (entry && !out.some((e) => e.id === entry.id)) out.push(entry);
+    if (out.length >= 2) break;
+  }
+  if (out.length < 2) {
+    for (const entry of ASSIST_KNOWLEDGE_BASE) {
+      if (!out.some((e) => e.id === entry.id)) out.push(entry);
+      if (out.length >= 2) break;
+    }
+  }
+  return out;
+}
+
+const MIN_SCORE = 0.42;
+const CLARIFY_GAP = 0.035;
+
+export async function classifyAssistQuery(input: string): Promise<AssistClassification> {
+  const raw = input.trim();
+  const [queryVec] = await embedTexts([raw], "ai-assist:submit-query");
+  const { dim, matrix, owners } = await buildAnchors();
+
+  const perTool = new Array<number>(ASSIST_KNOWLEDGE_BASE.length).fill(-Infinity);
+  for (let i = 0; i < owners.length; i++) {
+    const score = dot(queryVec, matrix, i * dim, dim);
+    const owner = owners[i];
+    if (score > perTool[owner]) perTool[owner] = score;
+  }
+
+  const ranked = perTool
+    .map((score, idx) => ({ idx, score }))
+    .sort((a, b) => b.score - a.score);
+  const top = ranked[0];
+  const runner = ranked[1];
+
+  console.info("[ai-assist] semantic route", {
+    query: raw,
+    top5: ranked.slice(0, 5).map((r) => ({
+      id: ASSIST_KNOWLEDGE_BASE[r.idx]?.id,
+      score: Number(r.score.toFixed(3)),
+    })),
+  });
+
+  if (!top || top.score < MIN_SCORE) {
+    return {
+      kind: "clarify",
+      reason: "I can help with tools or search the document. Which direction did you mean?",
+      options: fallbackOptions(ranked),
+      score: top?.score ?? 0,
+    };
+  }
+
+  const topEntry = ASSIST_KNOWLEDGE_BASE[top.idx];
+  const runnerEntry = runner ? ASSIST_KNOWLEDGE_BASE[runner.idx] : undefined;
+
+  if (runnerEntry && topEntry.toolId !== runnerEntry.toolId && top.score - runner.score < CLARIFY_GAP) {
+    return {
+      kind: "clarify",
+      reason: `Did you mean ${topEntry.displayName} or ${runnerEntry.displayName}?`,
+      options: [topEntry, runnerEntry],
+      score: top.score,
+    };
+  }
+
+  return {
+    kind: "tool",
+    entry: topEntry,
+    mode: inferMode(raw),
+    score: top.score,
+    runnerUp: runnerEntry ? { entry: runnerEntry, score: runner.score } : undefined,
+  };
+}
