@@ -1077,8 +1077,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   );
 
 
-  const submitAi = useCallback(async () => {
-    const raw = aiText.trim();
+  const submitAi = useCallback(async (overrideText?: string) => {
+    const raw = (overrideText ?? aiText).trim();
     if (!raw) return;
     patchActive({ inspectorOpen: false, activeToolId: null });
     setPendingIntent(null);
@@ -2036,7 +2036,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    submitAi();
+                    submitAi(aiRef.current?.value);
                   }}
                   className="flex w-full items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
                   style={{ boxShadow: "var(--shadow-float)" }}
@@ -2052,7 +2052,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onKeyDown={(e) => {
                       if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
                       e.preventDefault();
-                      void submitAi();
+                      void submitAi(e.currentTarget.value);
                     }}
                     onFocus={() => {
                       // Intentionally do NOT preload the MiniLM model on
