@@ -2975,7 +2975,7 @@ function SmartSplitSection({
       setDetecting(false);
       setProgress(null);
     }
-  }, [file, modes, everyN, pattern, patternKind, caseSensitive]);
+  }, [file, modes, everyN, pattern, patternKind, caseSensitive, requirePro]);
 
   const parts = useMemo<PartPreview[]>(() => {
     if (!pageCount) return [];
