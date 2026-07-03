@@ -2034,6 +2034,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                       setAiText(e.target.value);
                       if (pendingIntent) setPendingIntent(null);
                     }}
+                    onFocus={() => {
+                      // Warm the MiniLM model on first focus so semantic
+                      // intent routing is ready by the time the user hits ↵.
+                      if (!isDiscoveryModelLoaded()) {
+                        void loadDiscoveryModel().catch(() => {/* ignore */});
+                      }
+                    }}
                     placeholder='Ask, search, or run — "summarize this", "find SSNs", "redact phone numbers"'
                     className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
