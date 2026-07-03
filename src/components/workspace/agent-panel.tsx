@@ -77,6 +77,27 @@ export interface AgentPanelProps {
 let stepSeq = 0;
 const nextId = () => `st-${Date.now().toString(36)}-${(stepSeq++).toString(36)}`;
 
+function describeChoice(f: AgentFlow): string {
+  switch (f.kind) {
+    case "detect-redact":
+      return f.categories && f.categories.length
+        ? `Scan for ${f.categories.join(", ")}`
+        : "Scan for all sensitive info";
+    case "pattern-redact":
+      return `Redact "${f.term}"`;
+    case "search":
+      return `Search for "${f.term}"`;
+    case "sanitize": return "Sanitize document";
+    case "bates": return "Add Bates numbers";
+    case "ocr": return "Make searchable (OCR)";
+    case "repair": return "Repair PDF";
+    case "split": return "Split document";
+    case "exhibit-binder": return "Assemble exhibit binder";
+    case "answer": return "Ask AI Assist";
+    case "ambiguous": return "Clarify";
+  }
+}
+
 export function AgentPanel({
   open,
   onClose,
