@@ -82,6 +82,16 @@ import {
   downloadBlob,
   getPageCount as getSplitPageCount,
 } from "@/lib/pdf/split";
+import {
+  detectSmartBreaks,
+  buildPreview,
+  splitByParts,
+  type DetectionMode,
+  type PartPreview,
+  type DetectedBreak,
+  type PatternKind,
+} from "@/lib/pdf/smart-split";
+import { Sparkles, Plus, X as XIcon } from "lucide-react";
 import { Scissors, RotateCw, RotateCcw, LayoutGrid } from "lucide-react";
 import {
   getRotatePageCount,
