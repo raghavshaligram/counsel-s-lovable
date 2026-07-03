@@ -6003,6 +6003,27 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [pnOn, setPnOn] = useState(false);
   const [hfOn, setHfOn] = useState(false);
   const [flOn, setFlOn] = useState(false);
+  const pnRef = useRef<HTMLDivElement | null>(null);
+  const hfRef = useRef<HTMLDivElement | null>(null);
+  const flRef = useRef<HTMLDivElement | null>(null);
+
+  // Deep-link from the command bar: "add page numbers" opens Doc Settings
+  // scrolled to (and with) the Page Numbers section expanded.
+  useEffect(() => {
+    const focus = ctx.focusSection;
+    if (!focus) return;
+    if (focus === "page-numbers") {
+      setPnOn(true);
+      requestAnimationFrame(() => pnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } else if (focus === "header-footer") {
+      setHfOn(true);
+      requestAnimationFrame(() => hfRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } else if (focus === "flatten") {
+      setFlOn(true);
+      requestAnimationFrame(() => flRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+    ctx.clearFocusSection?.();
+  }, [ctx.focusSection]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -6010,7 +6031,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
         These settings are saved with the document and applied automatically whenever you export. Nothing is stamped until you export.
       </p>
 
-      <div className="flex flex-col gap-2">
+      <div ref={pnRef} className="flex flex-col gap-2 scroll-mt-2">
         <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
           # Page Numbers
         </div>
@@ -6027,7 +6048,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
       )}
 
 
-      <div className="flex flex-col gap-2">
+      <div ref={hfRef} className="flex flex-col gap-2 scroll-mt-2">
         <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
           ⓘ Header &amp; Footer
         </div>
@@ -6043,7 +6064,7 @@ function DocumentSettingsPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div ref={flRef} className="flex flex-col gap-2 scroll-mt-2">
         <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">
           # Flatten
         </div>
