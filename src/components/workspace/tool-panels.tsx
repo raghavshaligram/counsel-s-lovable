@@ -2631,7 +2631,7 @@ function MergePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const { file } = ctx;
-  type SplitUiMode = "ranges" | "each" | "everyN" | "splitPoints";
+  type SplitUiMode = "ranges" | "each" | "everyN" | "splitPoints" | "smart";
   const [mode, setMode] = useState<SplitUiMode>("ranges");
   const [ranges, setRanges] = useState("1-");
   const [everyN, setEveryN] = useState(2);
