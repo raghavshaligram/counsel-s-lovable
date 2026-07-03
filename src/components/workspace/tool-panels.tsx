@@ -2935,6 +2935,7 @@ function SmartSplitSection({
   };
 
   const runDetect = useCallback(async () => {
+    if (!requirePro("Smart Document Splitter")) return;
     if (!file || modes.size === 0) return;
     setDetecting(true);
     setProgress(null);
