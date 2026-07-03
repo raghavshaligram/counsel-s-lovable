@@ -118,7 +118,8 @@ import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
-import { classifyCommand, intentLabel, type Intent } from "@/lib/command/intent";
+import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
+import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
 
 
 type ToolId =
@@ -1043,12 +1044,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [openTool],
   );
 
-  const submitAi = useCallback(() => {
+  const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
-    const intent = classifyCommand(raw);
+    // Try semantic classification (MiniLM). If the model isn't loaded
+    // yet, kick off the load in the background and use the sync
+    // fallback for this first submission so the bar never blocks.
+    let intent: Intent;
+    if (isDiscoveryModelLoaded()) {
+      try {
+        intent = await classifyCommandSemantic(raw);
+      } catch (err) {
+        console.warn("[intent] semantic classify failed, falling back", err);
+        intent = classifyCommand(raw);
+      }
+    } else {
+      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
+      intent = classifyCommand(raw);
+    }
     setLastIntentLabel(intentLabel(intent));
-    // Destructive actions and ambiguous prompts pause for confirmation.
     if (
       (intent.kind === "action" && intent.destructive) ||
       intent.kind === "ambiguous"
@@ -2019,6 +2033,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                     onChange={(e) => {
                       setAiText(e.target.value);
                       if (pendingIntent) setPendingIntent(null);
+                    }}
+                    onFocus={() => {
+                      // Warm the MiniLM model on first focus so semantic
+                      // intent routing is ready by the time the user hits ↵.
+                      if (!isDiscoveryModelLoaded()) {
+                        void loadDiscoveryModel().catch(() => {/* ignore */});
+                      }
                     }}
                     placeholder='Ask, search, or run — "summarize this", "find SSNs", "redact phone numbers"'
                     className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"

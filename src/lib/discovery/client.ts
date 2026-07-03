@@ -163,6 +163,44 @@ export function queryIndex(
   });
 }
 
+/**
+ * Embed arbitrary texts on-device using the already-loaded MiniLM model.
+ * Reused by the command-bar intent router — no separate model download.
+ * Returns L2-normalized 384-dim vectors (cosine == dot product).
+ */
+export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
+  if (texts.length === 0) return [];
+  await loadModel();
+  const w = getWorker();
+  const id = `emb-${++reqCounter}`;
+  return new Promise<Float32Array[]>((resolve, reject) => {
+    const handler = (e: MessageEvent) => {
+      const m = e.data;
+      if (m?.id !== id) return;
+      if (m.kind === "embedded") {
+        w.removeEventListener("message", handler);
+        const { dim, buffer } = m as { dim: number; buffer: ArrayBuffer };
+        if (dim === 0) return resolve([]);
+        const flat = new Float32Array(buffer);
+        const out: Float32Array[] = [];
+        for (let i = 0; i < texts.length; i++) {
+          out.push(flat.slice(i * dim, (i + 1) * dim));
+        }
+        resolve(out);
+      } else if (m.kind === "error") {
+        w.removeEventListener("message", handler);
+        reject(new Error(m.message));
+      }
+    };
+    w.addEventListener("message", handler);
+    w.postMessage({ kind: "embed", id, texts });
+  });
+}
+
+export function isModelLoaded(): boolean {
+  return modelLoaded;
+}
+
 export function dropIndex(docKey: string): void {
   if (!worker) return;
   chunkStore.delete(docKey);
