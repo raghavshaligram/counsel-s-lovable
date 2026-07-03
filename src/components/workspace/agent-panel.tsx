@@ -292,6 +292,7 @@ export function AgentPanel({
                 /* ignore */
               }
               openTool("redact");
+              onClose();
             },
           },
           { label: "Cancel", tone: "ghost", onClick: () => onClose() },
