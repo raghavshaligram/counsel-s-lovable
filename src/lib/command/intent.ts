@@ -83,10 +83,18 @@ const INTENTS: IntentDef[] = [
     route: { kind: "search" },
     examples: [
       "find mentions of the parties",
+      "find every reference to damages",
+      "find ssn",
+      "find social security numbers",
+      "find phone numbers",
+      "find any dates",
+      "find the settlement amount",
       "where does the document discuss damages",
       "locate every reference to the contract",
       "show me passages about liability",
       "look for anything related to indemnification",
+      "search for environmental liability",
+      "anything about arbitration",
     ],
   },
   {
@@ -100,6 +108,27 @@ const INTENTS: IntentDef[] = [
       "give me an overview of the case",
       "who are the parties involved",
       "what are the important dates",
+      "what is the settlement amount",
+    ],
+  },
+  {
+    id: "workflow-builder",
+    route: {
+      kind: "action",
+      toolId: "workflow-builder",
+      destructive: false,
+      title: "Open Workflow Builder",
+      description:
+        "Open Workflow Builder to chain steps (e.g. redact → bates → watermark → export) and run them against one file or a batch.",
+    },
+    examples: [
+      "automate this document",
+      "can we automate documents",
+      "build an automated workflow",
+      "chain several actions together",
+      "save a repeatable process",
+      "run a batch job on many pdfs",
+      "set up a recurring task",
     ],
   },
   {
@@ -114,10 +143,13 @@ const INTENTS: IntentDef[] = [
     },
     examples: [
       "redact all social security numbers",
+      "redact every ssn",
+      "redact phone numbers",
       "black out phone numbers",
       "mask personal information",
       "hide client names",
       "remove sensitive data from this pdf",
+      "cover up confidential information",
     ],
   },
   {
