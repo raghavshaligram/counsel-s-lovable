@@ -160,6 +160,9 @@ export function AgentPanel({
   const cachedFindingsRef = useRef<Detection[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortedRef = useRef(false);
+  const isPro = useIsPro();
+  const openUpgradeModal = useUpgradeModal((s) => s.openModal);
+
 
   const pushStep = useCallback((s: Step) => {
     setSteps((prev) => [...prev, s]);
