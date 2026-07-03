@@ -1,16 +1,24 @@
 /**
- * Command-bar intent router (heuristic, on-device, zero-latency).
+ * Command-bar intent router — semantic (MiniLM embeddings, on-device).
  *
- * Classifies free-text into one of:
- *   - action    → run a destructive/mutating tool (needs confirmation)
- *   - question  → route to AI Assist for a written answer + source refs
- *   - search    → route to Pre-Discovery for ranked passage results
- *   - ambiguous → ask the user to pick between two interpretations
+ * Each intent is defined by a small set of example phrases. The user's
+ * input is embedded with the same MiniLM model already loaded for
+ * Pre-Discovery, then matched to the closest intent by cosine similarity
+ * against the example anchors. No keyword lists, no LLM calls — meaning
+ * comes from the embedding space (e.g. "looks like pdf is corrupted"
+ * matches REPAIR without any regex hit on "repair").
  *
- * Deliberately rules-based (no LLM call). The command bar must feel
- * instant, and destructive actions must NEVER auto-execute — the router
- * only proposes; the user confirms.
+ * Confidence guard: if the top score is below MIN_ABS OR too close to
+ * the runner-up (GAP), we return `ambiguous` with the top-2 options so
+ * the user disambiguates. Destructive intents (redact/sanitize) never
+ * auto-execute — the router only proposes; the popover confirms.
+ *
+ * A synchronous keyword fallback (`classifyCommand`) is kept for the
+ * moment before the model finishes loading, so the bar never feels
+ * broken. Once the model is warm, `classifyCommandSemantic` is used.
  */
+
+import { embedTexts } from "@/lib/discovery/client";
 
 export type ActionToolId =
   | "redact"
@@ -26,6 +34,7 @@ export type ActionToolId =
   | "merge"
   | "split"
   | "rotate"
+  | "repair"
   | "document-hash"
   | "compare"
   | "organize";
@@ -34,239 +43,488 @@ export type Intent =
   | {
       kind: "action";
       toolId: ActionToolId;
-      /** Human-friendly summary shown in the confirmation popover. */
       title: string;
-      /** Longer sentence describing what will happen. */
       description: string;
-      /** True for destructive ops (redact/sanitize/delete). */
       destructive: boolean;
       raw: string;
     }
-  | {
-      kind: "question";
-      query: string;
-      raw: string;
-    }
-  | {
-      kind: "search";
-      query: string;
-      raw: string;
-    }
+  | { kind: "question"; query: string; raw: string }
+  | { kind: "search"; query: string; raw: string }
   | {
       kind: "ambiguous";
       raw: string;
-      /** Two suggested re-routes, each a fully-classified intent. */
       options: [Intent, Intent];
       reason: string;
     };
 
-/* -------------------------- pattern helpers -------------------------- */
+/* --------------------------- semantic anchors --------------------------- */
 
-const QUESTION_STARTERS =
-  /^(what|which|why|who|whom|whose|when|where|how|is|are|was|were|do|does|did|can|could|should|would|will|list|explain|summari[sz]e|describe|tell me|give me a summary)\b/i;
+type Route =
+  | { kind: "action"; toolId: ActionToolId; destructive: boolean; title: string; description: string }
+  | { kind: "question" }
+  | { kind: "search" };
 
-const SEARCH_STARTERS =
-  /^(find|search|locate|show me|show all|anything about|mentions? of|look for|highlight|where (is|are|does|do))\b/i;
-
-const AMBIGUOUS_HINTS =
-  /\b(remove|delete|strip|get rid of|scrub)\b.*\b(confidential|sensitive|private|personal)\b/i;
-
-interface ActionSpec {
-  toolId: ActionToolId;
-  destructive: boolean;
-  patterns: RegExp[];
-  /** How to phrase the confirmation prompt. `{q}` inserts the raw command. */
-  title: (raw: string) => string;
-  description: (raw: string) => string;
+interface IntentDef {
+  id: string;
+  route: Route;
+  examples: string[];
 }
 
-const ACTIONS: ActionSpec[] = [
+/**
+ * Anchor phrases per intent. Keep these SHORT and NATURAL — the model
+ * matches on meaning, not on keyword overlap. 3–6 examples per intent
+ * spread across the semantic neighborhood is plenty for MiniLM.
+ */
+const INTENTS: IntentDef[] = [
   {
-    toolId: "redact",
-    destructive: true,
-    patterns: [
-      /\bredact(ing|ion|ed)?\b/i,
-      /\bblack\s?out\b/i,
-      /\bmask\s+(all\s+)?(ssn|social|phone|email|dob|birth|address|name)/i,
+    id: "search",
+    route: { kind: "search" },
+    examples: [
+      "find mentions of the parties",
+      "where does the document discuss damages",
+      "locate every reference to the contract",
+      "show me passages about liability",
+      "look for anything related to indemnification",
     ],
-    title: () => "Open Redact tool",
-    description: (raw) =>
-      `Open the Redact panel to auto-detect and preview matches for “${raw.trim()}”. You'll review and apply from there — nothing is redacted yet.`,
   },
   {
-    toolId: "sanitize",
-    destructive: true,
-    patterns: [
-      /\bsanitiz(e|ing|ation)\b/i,
-      /\b(remove|strip|clean|scrub)\s+(all\s+)?(metadata|hidden|tracked changes|comments|revisions)\b/i,
-      /\bmetadata\b/i,
+    id: "question",
+    route: { kind: "question" },
+    examples: [
+      "summarize this document",
+      "what are the key points",
+      "explain the main arguments",
+      "what is this file about",
+      "give me an overview of the case",
+      "who are the parties involved",
+      "what are the important dates",
     ],
-    title: () => "Open Sanitize tool",
-    description: () =>
-      "Open Sanitize to remove metadata, hidden layers, comments and revisions. You'll confirm before it applies.",
   },
   {
-    toolId: "bates",
-    destructive: false,
-    patterns: [/\bbates\b/i, /\bstamp\s+numbers?\b/i],
-    title: () => "Open Bates Numbering",
-    description: () =>
-      "Open the Bates panel to configure prefix, start number and placement, then apply.",
-  },
-  {
-    toolId: "ocr",
-    destructive: false,
-    patterns: [/\bocr\b/i, /\bmake\s+searchable\b/i, /\brecogni[sz]e\s+text\b/i],
-    title: () => "Open Make Searchable (OCR)",
-    description: () => "Open OCR to convert scanned pages into searchable text.",
-  },
-  {
-    toolId: "watermark",
-    destructive: false,
-    patterns: [/\bwatermark\b/i, /\bstamp\b(?!\s+numbers?)/i],
-    title: () => "Open Watermark",
-    description: () => "Open Watermark to add a text or image mark across pages.",
-  },
-  {
-    toolId: "sign",
-    destructive: false,
-    patterns: [/\bsign(ing|ature)?\b/i, /\bfill\s+(form|fields)\b/i, /\binitial(s)?\b/i],
-    title: () => "Open Sign & Fill",
-    description: () => "Open Sign & Fill to place a signature or fill form fields.",
-  },
-  {
-    toolId: "protect",
-    destructive: false,
-    patterns: [/\b(password[- ]?protect|encrypt|lock)\b/i, /\bset\s+password\b/i],
-    title: () => "Open Protect",
-    description: () => "Open Protect to encrypt the PDF with a password.",
-  },
-  {
-    toolId: "unlock",
-    destructive: false,
-    patterns: [/\bunlock\b/i, /\bremove\s+password\b/i, /\bdecrypt\b/i],
-    title: () => "Open Unlock",
-    description: () => "Open Unlock to remove password protection.",
-  },
-  {
-    toolId: "compress",
-    destructive: false,
-    patterns: [/\bcompress\b/i, /\bshrink\b/i, /\breduce\s+(the\s+)?(file\s+)?size\b/i],
-    title: () => "Open Compress",
-    description: () => "Open Compress to reduce the PDF's file size.",
-  },
-  {
-    toolId: "merge",
-    destructive: false,
-    patterns: [/\bmerge\b/i, /\bcombine\s+(pdfs?|files?|documents?)\b/i, /\bjoin\s+pdfs?\b/i],
-    title: () => "Open Merge",
-    description: () => "Open Merge to combine multiple PDFs into one.",
-  },
-  {
-    toolId: "split",
-    destructive: false,
-    patterns: [/\bsplit\b/i, /\bseparate\s+pages?\b/i],
-    title: () => "Open Split",
-    description: () => "Open Split to break the PDF into parts.",
-  },
-  {
-    toolId: "rotate",
-    destructive: false,
-    patterns: [/\brotate\b/i, /\bturn\s+(the\s+)?pages?\b/i],
-    title: () => "Open Rotate",
-    description: () => "Open Rotate to change page orientation.",
-  },
-  {
-    toolId: "organize",
-    destructive: false,
-    patterns: [/\borgani[sz]e\b/i, /\breorder\b/i, /\bmove\s+pages?\b/i, /\bdelete\s+pages?\b/i],
-    title: () => "Open Organize Pages",
-    description: () => "Open Organize to reorder or delete pages (change is previewed).",
-  },
-  {
-    toolId: "extract",
-    destructive: false,
-    patterns: [/\bextract\b/i, /\bpull\s+out\s+(pages?|tables?|images?)\b/i],
-    title: () => "Open Extract",
-    description: () => "Open Extract to pull pages, tables or images out.",
-  },
-  {
-    toolId: "document-hash",
-    destructive: false,
-    patterns: [/\bhash\b/i, /\bsha[- ]?256\b/i, /\bchecksum\b/i, /\bfingerprint\b/i],
-    title: () => "Open Document Hash",
-    description: () => "Open Document Hash to compute a SHA-256 for this file.",
-  },
-  {
-    toolId: "compare",
-    destructive: false,
-    patterns: [/\bcompare\b/i, /\bdiff(erence)?\b/i, /\bwhat\s+changed\b/i],
-    title: () => "Open Compare",
-    description: () => "Open Compare to see what changed between two PDFs.",
-  },
-];
-
-/* ------------------------------ classify ------------------------------ */
-
-export function classifyCommand(input: string): Intent {
-  const raw = input.trim();
-  const q = raw.toLowerCase();
-
-  // 1) Ambiguous "remove the confidential parts" — don't guess destructive.
-  if (
-    AMBIGUOUS_HINTS.test(q) &&
-    !ACTIONS[0].patterns.some((p) => p.test(q)) // no explicit "redact"
-  ) {
-    const asRedact: Intent = {
+    id: "redact",
+    route: {
       kind: "action",
       toolId: "redact",
       destructive: true,
-      title: "Redact them",
-      description: `Open Redact and search for confidential/sensitive matches from “${raw}”. You'll review before applying.`,
-      raw,
-    };
-    const asSearch: Intent = {
-      kind: "search",
-      query: raw,
-      raw,
-    };
-    return {
-      kind: "ambiguous",
-      raw,
-      reason: "Did you want to redact these, or just find them?",
-      options: [asRedact, asSearch],
-    };
-  }
+      title: "Open Redact tool",
+      description:
+        "Open the Redact panel to auto-detect matches. You'll review and apply from there — nothing is redacted yet.",
+    },
+    examples: [
+      "redact all social security numbers",
+      "black out phone numbers",
+      "mask personal information",
+      "hide client names",
+      "remove sensitive data from this pdf",
+    ],
+  },
+  {
+    id: "sanitize",
+    route: {
+      kind: "action",
+      toolId: "sanitize",
+      destructive: true,
+      title: "Open Sanitize",
+      description: "Open Sanitize to strip metadata, hidden layers, comments and revisions. You'll confirm before it applies.",
+    },
+    examples: [
+      "remove metadata from this file",
+      "strip hidden information",
+      "clean up tracked changes and comments",
+      "scrub author and revision history",
+    ],
+  },
+  {
+    id: "repair",
+    route: {
+      kind: "action",
+      toolId: "repair",
+      destructive: false,
+      title: "Open Repair PDF",
+      description: "Open Repair to attempt fixing structural issues in a broken or corrupted PDF.",
+    },
+    examples: [
+      "this pdf looks corrupted",
+      "the file will not open properly",
+      "fix a broken document",
+      "repair a damaged pdf",
+      "something is wrong with this file",
+    ],
+  },
+  {
+    id: "compress",
+    route: {
+      kind: "action",
+      toolId: "compress",
+      destructive: false,
+      title: "Open Compress",
+      description: "Open Compress to reduce the PDF's file size.",
+    },
+    examples: [
+      "make this file smaller",
+      "shrink the pdf",
+      "reduce the size of this document",
+      "compress the file for email",
+    ],
+  },
+  {
+    id: "ocr",
+    route: {
+      kind: "action",
+      toolId: "ocr",
+      destructive: false,
+      title: "Open Make Searchable (OCR)",
+      description: "Open OCR to convert scanned pages into searchable, selectable text.",
+    },
+    examples: [
+      "make this scanned document searchable",
+      "recognize the text in this pdf",
+      "convert scanned pages to text",
+      "extract text from scanned images",
+    ],
+  },
+  {
+    id: "sign",
+    route: {
+      kind: "action",
+      toolId: "sign",
+      destructive: false,
+      title: "Open Sign & Fill",
+      description: "Open Sign & Fill to place a signature or fill form fields.",
+    },
+    examples: [
+      "add my signature to this document",
+      "sign this pdf",
+      "fill out the form fields",
+      "place my initials on each page",
+    ],
+  },
+  {
+    id: "protect",
+    route: {
+      kind: "action",
+      toolId: "protect",
+      destructive: false,
+      title: "Open Protect",
+      description: "Open Protect to encrypt the PDF with a password.",
+    },
+    examples: [
+      "password protect this pdf",
+      "encrypt the document",
+      "lock this file with a password",
+      "add a password to open",
+    ],
+  },
+  {
+    id: "unlock",
+    route: {
+      kind: "action",
+      toolId: "unlock",
+      destructive: false,
+      title: "Open Unlock",
+      description: "Open Unlock to remove password protection.",
+    },
+    examples: [
+      "remove the password from this pdf",
+      "unlock this encrypted file",
+      "decrypt this document",
+    ],
+  },
+  {
+    id: "bates",
+    route: {
+      kind: "action",
+      toolId: "bates",
+      destructive: false,
+      title: "Open Bates Numbering",
+      description: "Open the Bates panel to configure prefix, start number and placement, then apply.",
+    },
+    examples: [
+      "add bates numbers to these pages",
+      "stamp bates numbering across the document",
+      "apply legal page numbering",
+    ],
+  },
+  {
+    id: "watermark",
+    route: {
+      kind: "action",
+      toolId: "watermark",
+      destructive: false,
+      title: "Open Watermark",
+      description: "Open Watermark to add a text or image mark across pages.",
+    },
+    examples: [
+      "add a confidential watermark",
+      "stamp draft across every page",
+      "put a watermark on this pdf",
+    ],
+  },
+  {
+    id: "merge",
+    route: {
+      kind: "action",
+      toolId: "merge",
+      destructive: false,
+      title: "Open Merge",
+      description: "Open Merge to combine multiple PDFs into one.",
+    },
+    examples: [
+      "combine these pdfs into one file",
+      "merge two documents together",
+      "join multiple pdfs",
+    ],
+  },
+  {
+    id: "split",
+    route: {
+      kind: "action",
+      toolId: "split",
+      destructive: false,
+      title: "Open Split",
+      description: "Open Split to break the PDF into parts.",
+    },
+    examples: [
+      "split this pdf into separate files",
+      "break this document into pages",
+      "separate every chapter into its own pdf",
+    ],
+  },
+  {
+    id: "rotate",
+    route: {
+      kind: "action",
+      toolId: "rotate",
+      destructive: false,
+      title: "Open Rotate",
+      description: "Open Rotate to change page orientation.",
+    },
+    examples: [
+      "rotate these pages",
+      "turn the sideways pages upright",
+      "fix the page orientation",
+    ],
+  },
+  {
+    id: "organize",
+    route: {
+      kind: "action",
+      toolId: "organize",
+      destructive: false,
+      title: "Open Organize Pages",
+      description: "Open Organize to reorder or delete pages (change is previewed).",
+    },
+    examples: [
+      "reorder the pages",
+      "delete a page from this pdf",
+      "move page three to the end",
+      "rearrange the document",
+    ],
+  },
+  {
+    id: "extract",
+    route: {
+      kind: "action",
+      toolId: "extract",
+      destructive: false,
+      title: "Open Extract",
+      description: "Open Extract to pull pages, tables or images out.",
+    },
+    examples: [
+      "pull out a range of pages",
+      "extract the tables from this document",
+      "save specific pages as a new pdf",
+    ],
+  },
+  {
+    id: "document-hash",
+    route: {
+      kind: "action",
+      toolId: "document-hash",
+      destructive: false,
+      title: "Open Document Hash",
+      description: "Open Document Hash to compute a SHA-256 for this file.",
+    },
+    examples: [
+      "compute a hash of this document",
+      "generate a sha 256 checksum",
+      "fingerprint this pdf",
+    ],
+  },
+  {
+    id: "compare",
+    route: {
+      kind: "action",
+      toolId: "compare",
+      destructive: false,
+      title: "Open Compare",
+      description: "Open Compare to see what changed between two PDFs.",
+    },
+    examples: [
+      "compare these two documents",
+      "show me what changed between versions",
+      "diff two pdfs",
+    ],
+  },
+];
 
-  // 2) Actions win over question/search when a clear verb is present.
-  for (const spec of ACTIONS) {
-    if (spec.patterns.some((p) => p.test(q))) {
-      return {
-        kind: "action",
-        toolId: spec.toolId,
-        destructive: spec.destructive,
-        title: spec.title(raw),
-        description: spec.description(raw),
-        raw,
-      };
+/* --------------------------- embedding cache --------------------------- */
+
+/**
+ * Lazily-computed anchor matrix: flat Float32Array of every example
+ * vector concatenated, plus a parallel index → intent map. Built once
+ * on first semantic classify call; reused for every subsequent one.
+ */
+let anchorsPromise: Promise<{
+  dim: number;
+  matrix: Float32Array;
+  ownerIntentIdx: number[];
+}> | null = null;
+
+function buildAnchors() {
+  if (anchorsPromise) return anchorsPromise;
+  const allTexts: string[] = [];
+  const ownerIntentIdx: number[] = [];
+  INTENTS.forEach((intent, idx) => {
+    intent.examples.forEach((ex) => {
+      allTexts.push(ex);
+      ownerIntentIdx.push(idx);
+    });
+  });
+  anchorsPromise = (async () => {
+    const vecs = await embedTexts(allTexts);
+    const dim = vecs[0]?.length ?? 0;
+    const matrix = new Float32Array(dim * vecs.length);
+    for (let i = 0; i < vecs.length; i++) matrix.set(vecs[i], i * dim);
+    console.log(
+      "[intent] anchors built —",
+      vecs.length,
+      "examples across",
+      INTENTS.length,
+      "intents, dim=",
+      dim,
+    );
+    return { dim, matrix, ownerIntentIdx };
+  })();
+  return anchorsPromise;
+}
+
+function dot(q: Float32Array, matrix: Float32Array, offset: number, dim: number) {
+  let s = 0;
+  for (let i = 0; i < dim; i++) s += q[i] * matrix[offset + i];
+  return s;
+}
+
+/* ------------------------- semantic classify ------------------------- */
+
+/** Cosine below this → nothing is meaningfully close → clarify. */
+const MIN_ABS = 0.42;
+/** Top-1 within this margin of top-2 (different intent) → clarify. */
+const GAP = 0.04;
+
+function makeIntent(def: IntentDef, raw: string): Intent {
+  const r = def.route;
+  if (r.kind === "search") return { kind: "search", query: raw, raw };
+  if (r.kind === "question") return { kind: "question", query: raw, raw };
+  return {
+    kind: "action",
+    toolId: r.toolId,
+    destructive: r.destructive,
+    title: r.title,
+    description: r.description,
+    raw,
+  };
+}
+
+export async function classifyCommandSemantic(input: string): Promise<Intent> {
+  const raw = input.trim();
+  if (!raw) return { kind: "search", query: "", raw };
+
+  const [qVec] = await embedTexts([raw]);
+  const { dim, matrix, ownerIntentIdx } = await buildAnchors();
+
+  // Best score PER INTENT (max over its example anchors).
+  const perIntent = new Array<number>(INTENTS.length).fill(-Infinity);
+  const perIntentBestExample = new Array<number>(INTENTS.length).fill(-1);
+  for (let i = 0; i < ownerIntentIdx.length; i++) {
+    const s = dot(qVec, matrix, i * dim, dim);
+    const idx = ownerIntentIdx[i];
+    if (s > perIntent[idx]) {
+      perIntent[idx] = s;
+      perIntentBestExample[idx] = i;
     }
   }
 
-  // 3) Explicit search verbs
-  if (SEARCH_STARTERS.test(q)) {
-    return { kind: "search", query: raw, raw };
-  }
+  const ranked = perIntent
+    .map((s, idx) => ({ idx, s }))
+    .sort((a, b) => b.s - a.s);
 
-  // 4) Question form
-  if (q.endsWith("?") || QUESTION_STARTERS.test(q)) {
-    return { kind: "question", query: raw, raw };
-  }
+  const top = ranked[0];
+  const runner = ranked[1];
 
-  // 5) Default → search (safest — never destructive).
+  console.log(
+    "[intent] query=",
+    JSON.stringify(raw),
+    "top5=",
+    ranked.slice(0, 5).map((r) => ({
+      intent: INTENTS[r.idx].id,
+      score: +r.s.toFixed(3),
+    })),
+  );
+
+  const topIntent = INTENTS[top.idx];
+  const runnerIntent = INTENTS[runner.idx];
+
+  // Ambiguous if nothing crossed the floor OR the top-2 are effectively tied
+  // AND route to different destinations.
+  const differentRoute =
+    topIntent.route.kind !== runnerIntent.route.kind ||
+    (topIntent.route.kind === "action" &&
+      runnerIntent.route.kind === "action" &&
+      topIntent.route.toolId !== runnerIntent.route.toolId);
+
+  if (top.s < MIN_ABS) {
+    // Genuinely off-topic — ask user to clarify with the two best guesses.
+    return {
+      kind: "ambiguous",
+      raw,
+      reason:
+        "I'm not sure what you're asking. Did you mean one of these?",
+      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
+    };
+  }
+  if (differentRoute && top.s - runner.s < GAP) {
+    return {
+      kind: "ambiguous",
+      raw,
+      reason: `Did you want to ${describeRoute(topIntent)} or ${describeRoute(runnerIntent)}?`,
+      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
+    };
+  }
+  return makeIntent(topIntent, raw);
+}
+
+function describeRoute(def: IntentDef): string {
+  if (def.route.kind === "search") return "search the document";
+  if (def.route.kind === "question") return "get a written answer";
+  return def.route.title.replace(/^Open\s+/, "").toLowerCase();
+}
+
+/* --------------------------- sync fallback --------------------------- */
+
+/**
+ * Instant, keyword-free fallback used before the MiniLM model has
+ * warmed up. Deliberately minimal — punts to "search" (the safest
+ * non-destructive route) rather than guessing an action.
+ */
+export function classifyCommand(input: string): Intent {
+  const raw = input.trim();
+  if (!raw) return { kind: "search", query: "", raw };
+  if (raw.endsWith("?")) return { kind: "question", query: raw, raw };
   return { kind: "search", query: raw, raw };
 }
 
-/** Short badge label for the interpreted mode, shown next to the input. */
+/** Short badge label for the interpreted mode. */
 export function intentLabel(intent: Intent): string {
   switch (intent.kind) {
     case "action":
