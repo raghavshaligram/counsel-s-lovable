@@ -1044,12 +1044,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [openTool],
   );
 
-  const submitAi = useCallback(() => {
+  const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
-    const intent = classifyCommand(raw);
+    // Try semantic classification (MiniLM). If the model isn't loaded
+    // yet, kick off the load in the background and use the sync
+    // fallback for this first submission so the bar never blocks.
+    let intent: Intent;
+    if (isDiscoveryModelLoaded()) {
+      try {
+        intent = await classifyCommandSemantic(raw);
+      } catch (err) {
+        console.warn("[intent] semantic classify failed, falling back", err);
+        intent = classifyCommand(raw);
+      }
+    } else {
+      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
+      intent = classifyCommand(raw);
+    }
     setLastIntentLabel(intentLabel(intent));
-    // Destructive actions and ambiguous prompts pause for confirmation.
     if (
       (intent.kind === "action" && intent.destructive) ||
       intent.kind === "ambiguous"
