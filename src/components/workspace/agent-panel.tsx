@@ -229,6 +229,7 @@ export function AgentPanel({
                   title: "Opened Redact tool",
                   body: `${filtered.length} finding${filtered.length === 1 ? "" : "s"} loaded. Review, tick the ones to redact, then click "Redact, export & verify" — that runs the destructive burn with verification.`,
                 });
+                onClose();
               },
             },
             {
@@ -243,6 +244,7 @@ export function AgentPanel({
                   title: "Selected — one confirm left",
                   body: `All ${filtered.length} findings loaded and selected in the Redact panel. Click "Redact, export & verify" to apply — the verification gate will refuse the download if any redaction region is still recoverable.`,
                 });
+                onClose();
               },
             },
             {
