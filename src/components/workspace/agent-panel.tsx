@@ -93,11 +93,11 @@ function proGateFor(
         featureName: "Exhibit Binder",
         body: "Assembles multiple PDFs into a court-ready binder with a cover page, tabbed exhibits, and an index — all built on-device.",
       };
-    case "split":
-      return {
-        featureName: "Smart Document Splitter",
-        body: "Splits a long PDF into separate documents at blank pages, every N pages, or a text pattern — with a live preview before anything is written.",
-      };
+    // NOTE: `split` is NOT Pro-gated as a whole tool — only the AI/
+    // smart-select mode inside the Split panel is Pro. The Split panel
+    // handles that gate at the point-of-use, so the assistant just
+    // hands off.
+
     case "search":
     case "answer":
       return {
