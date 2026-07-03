@@ -656,6 +656,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       patchActive({ activeToolId: tool.id, inspectorOpen: true });
       if (opts?.focusSection) setFocusSection(opts.focusSection);
       setToolModalOpen(false);
+      // Mutual exclusivity: assistant and any tool inspector are never
+      // open at the same time. Opening a tool closes the assistant.
+      setAgentOpen(false);
       if (opts?.bump !== false) bumpUsage(toolId);
     },
     [bumpUsage, patchActive],
@@ -1080,6 +1083,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     // Falls through to the semantic router otherwise.
     const flow = detectAgentFlow(raw);
     if (flow) {
+      // Mutual exclusivity: opening the assistant closes any tool inspector.
+      patchActive({ inspectorOpen: false, activeToolId: null });
       setAgentFlow(flow);
       setAgentOpen(true);
       setLastIntentLabel("Assistant");
