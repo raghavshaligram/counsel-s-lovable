@@ -3050,11 +3050,14 @@ function SmartSplitSection({
   }, [file, parts, baseName, requirePro]);
 
   const modeChip = (m: DetectionMode, label: string) => {
-    const active = modes.has(m);
+    const active = mode === m;
     return (
       <button
         type="button"
-        onClick={() => toggleMode(m)}
+        onClick={() => {
+          if (!requirePro("Smart Document Splitter")) return;
+          setMode(m);
+        }}
         className={cn(
           "rounded-md border px-2 py-1 text-[11px] transition-colors",
           active
@@ -3077,7 +3080,7 @@ function SmartSplitSection({
           {modeChip("pattern", "Text pattern")}
         </div>
 
-        {modes.has("everyN") && (
+        {mode === "everyN" && (
           <div className="mt-2 flex items-center gap-2">
             <span className="text-[11px] text-text-2">every</span>
             <input
@@ -3092,7 +3095,7 @@ function SmartSplitSection({
           </div>
         )}
 
-        {modes.has("pattern") && (
+        {mode === "pattern" && (
           <div className="mt-2 space-y-1.5">
             <input
               value={pattern}
@@ -3135,28 +3138,12 @@ function SmartSplitSection({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={runDetect}
-          disabled={detecting || modes.size === 0 || pageCount === 0}
-          className={cn(
-            "mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/60 bg-accent-soft px-3 py-1.5 text-[11.5px] font-medium text-foreground transition-opacity",
-            detecting || modes.size === 0 ? "cursor-not-allowed opacity-50" : "hover:opacity-90",
-          )}
-        >
-          {detecting ? (
-            <>
-              <RefreshCw className="h-3 w-3 animate-spin" />
-              {progress
-                ? `${progress.stage} ${progress.page}/${progress.total}`
-                : "Detecting…"}
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-3 w-3" /> Detect split points
-            </>
-          )}
-        </button>
+        {detecting && (
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-text-2">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            {progress ? `${progress.stage} ${progress.page}/${progress.total}` : "Detecting…"}
+          </div>
+        )}
       </Section>
 
       {detected !== null && (
