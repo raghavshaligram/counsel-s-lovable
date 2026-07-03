@@ -324,6 +324,19 @@ export function AgentPanel({
     [onAnswerQuery, pushStep],
   );
 
+  const runSearch = useCallback(
+    (f: AgentFlow & { kind: "search" }) => {
+      onAnswerQuery(f.term);
+      pushStep({
+        kind: "handoff",
+        id: nextId(),
+        title: `Searching for "${f.term}"`,
+        body: `Routed to the on-device Pre-Discovery search — results appear in that panel. Nothing about the document leaves this browser.`,
+      });
+    },
+    [onAnswerQuery, pushStep],
+  );
+
   const runFlow = useCallback(
     (f: AgentFlow) => {
       abortedRef.current = false;
@@ -368,12 +381,60 @@ export function AgentPanel({
             "repair",
           );
           break;
+        case "split":
+          runSimpleHandoff(
+            "Split this document?",
+            "The Split tool lets you break the PDF at blank pages, every N pages, or a text pattern. Nothing is written until you confirm inside the panel.",
+            "Open Split",
+            "split",
+          );
+          break;
+        case "exhibit-binder":
+          runSimpleHandoff(
+            "Assemble an exhibit binder?",
+            "The Exhibit Binder assembles multiple PDFs into a single binder with a cover, tabs and index. Configure and confirm inside the panel.",
+            "Open Exhibit Binder",
+            "exhibit-binder",
+          );
+          break;
+        case "search":
+          runSearch(f);
+          break;
         case "answer":
           runAnswer(f);
           break;
+        case "ambiguous": {
+          const actions: Action[] = f.choices.map((choice) => ({
+            label: describeChoice(choice),
+            tone: "primary" as const,
+            onClick: () => {
+              setSteps([]);
+              lastFlowRef.current = choice;
+              setCurrentFlow(choice);
+              try {
+                runFlowRef.current(choice);
+              } catch (err) {
+                console.error("[agent] choice crashed", err);
+              }
+            },
+          }));
+          actions.push({
+            label: "Cancel",
+            tone: "ghost",
+            onClick: () => onClose(),
+          });
+          pushStep({
+            kind: "propose",
+            id: nextId(),
+            title: "Which did you mean?",
+            body: f.prompt,
+            actions,
+          });
+          break;
+        }
       }
     },
-    [runDetectRedact, runPatternRedact, runSimpleHandoff, runAnswer],
+    [runDetectRedact, runPatternRedact, runSimpleHandoff, runAnswer, runSearch, pushStep, onClose],
   );
 
   /* ---------------- flow lifecycle ---------------- */
