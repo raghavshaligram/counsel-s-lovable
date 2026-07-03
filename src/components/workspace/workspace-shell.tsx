@@ -120,6 +120,7 @@ import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
 import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
 import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
+import { CounselPanel, useCounselWidth, draftPlaceholderReply, type CounselMessage } from "./counsel-panel";
 
 
 type ToolId =
