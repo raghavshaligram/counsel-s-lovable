@@ -2987,11 +2987,12 @@ function SmartSplitSection({
     return buildPreview({
       total: pageCount,
       breakPages,
+      excludePages: removeSeparators ? blankPages : [],
       names,
       reasons,
       baseName,
     });
-  }, [pageCount, breakSet, names, reasons, baseName]);
+  }, [pageCount, breakSet, blankPages, removeSeparators, names, reasons, baseName]);
 
   const removeBreak = (page: number) => {
     setBreakSet((prev) => {
