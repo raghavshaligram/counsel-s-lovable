@@ -1049,12 +1049,57 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [openTool],
   );
 
+  // Route a classified intent → Counsel message. Kept small on purpose:
+  // this shell uses canned placeholder replies; real routing (retrieval,
+  // LLM, source extraction) replaces `draftPlaceholderReply` next.
+  const respondToIntent = useCallback(
+    (raw: string, intent: Intent) => {
+      let reply: CounselMessage;
+      if (intent.kind === "action") {
+        reply = draftPlaceholderReply(raw, {
+          hasFile: !!file,
+          toolIdForAction: intent.toolId,
+          toolLabelForAction: toolById(intent.toolId)?.label ?? intent.toolId,
+          destructive: intent.destructive,
+        });
+      } else if (intent.kind === "ambiguous") {
+        reply = {
+          id: `a_${Date.now().toString(36)}`,
+          role: "assistant",
+          kind: "clarify",
+          question: intent.reason,
+          options: [
+            { id: "opt-0", label: intent.options[0].kind === "action" ? intent.options[0].title.replace(/^Open\s+/, "") : "Redact them" },
+            { id: "opt-1", label: intent.options[1].kind === "action" ? intent.options[1].title.replace(/^Open\s+/, "") : "Just find them" },
+          ],
+        };
+      } else {
+        reply = draftPlaceholderReply(raw, { hasFile: !!file });
+      }
+      setCounselMessages((ms) => [...ms.filter((m) => m.role !== "assistant" || m.kind !== "thinking"), reply]);
+    },
+    [file],
+  );
+
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
-    // Try semantic classification (MiniLM). If the model isn't loaded
-    // yet, kick off the load in the background and use the sync
-    // fallback for this first submission so the bar never blocks.
+    // Push user message + thinking placeholder, open the panel.
+    const userMsg: CounselMessage = {
+      id: `u_${Date.now().toString(36)}`,
+      role: "user",
+      text: raw,
+    };
+    const thinking: CounselMessage = {
+      id: `t_${Date.now().toString(36)}`,
+      role: "assistant",
+      kind: "thinking",
+    };
+    setCounselMessages((ms) => [...ms, userMsg, thinking]);
+    setCounselOpen(true);
+    setAiText("");
+
+    // Classify (semantic when the model is warm; keyword fallback otherwise).
     let intent: Intent;
     if (isDiscoveryModelLoaded()) {
       try {
@@ -1068,16 +1113,37 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       intent = classifyCommand(raw);
     }
     setLastIntentLabel(intentLabel(intent));
-    if (
-      (intent.kind === "action" && intent.destructive) ||
-      intent.kind === "ambiguous"
-    ) {
-      setPendingIntent(intent);
-      return;
-    }
-    executeIntent(intent);
-    setAiText("");
-  }, [aiText, executeIntent]);
+    respondToIntent(raw, intent);
+  }, [aiText, respondToIntent]);
+
+  const onCounselOptionPick = useCallback(
+    (optionId: string) => {
+      // Treat option pick as a new user turn with clear intent phrasing.
+      const label = optionId === "opt-0" ? "yes, that one" : "the other one";
+      setCounselMessages((ms) => [
+        ...ms,
+        { id: `u_${Date.now().toString(36)}`, role: "user", text: label },
+        {
+          id: `a_${Date.now().toString(36)}`,
+          role: "assistant",
+          kind: "help",
+          answer: "Got it — routing that in the next step. This shell captures the choice so real handling can wire in.",
+        },
+      ]);
+    },
+    [],
+  );
+
+  const onCounselJumpToPage = useCallback(
+    (page: number) => {
+      // Pages are 1-based in Counsel; editor state is 0-based.
+      const idx = Math.max(0, page - 1);
+      editorDispatch({ type: "SET_PAGE", n: idx });
+    },
+    [editorDispatch],
+  );
+
+
 
   const sizeLabel = useMemo(() => (file ? prettyBytes(file.size) : "—"), [file]);
 
