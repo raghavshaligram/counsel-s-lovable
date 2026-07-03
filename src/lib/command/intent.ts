@@ -508,6 +508,20 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
       options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
     };
   }
+  // Destructive action but not confidently the top → clarify instead of
+  // silently opening a destructive tool the user didn't mean.
+  if (
+    topIntent.route.kind === "action" &&
+    topIntent.route.destructive &&
+    top.s < DESTR_MIN
+  ) {
+    return {
+      kind: "ambiguous",
+      raw,
+      reason: `Did you want to ${describeRoute(topIntent)} or ${describeRoute(runnerIntent)}?`,
+      options: [makeIntent(topIntent, raw), makeIntent(runnerIntent, raw)],
+    };
+  }
   return makeIntent(topIntent, raw);
 }
 
