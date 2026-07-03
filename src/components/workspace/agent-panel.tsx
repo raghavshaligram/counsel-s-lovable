@@ -378,12 +378,33 @@ export function AgentPanel({
 
   /* ---------------- flow lifecycle ---------------- */
 
+  // Only re-run when the flow prop's identity changes (not when
+  // callback deps like `openTool`/`onAnswerQuery` change on parent
+  // re-renders — those would otherwise re-fire the effect and loop
+  // the same flow repeatedly).
+  const lastFlowRef = useRef<AgentFlow | null>(null);
+  const runFlowRef = useRef(runFlow);
+  runFlowRef.current = runFlow;
   useEffect(() => {
     if (!flow) return;
+    if (lastFlowRef.current === flow) return;
+    lastFlowRef.current = flow;
+    console.info("[agent] new flow", { kind: flow.kind });
     setSteps([]);
+    cachedFindingsRef.current = [];
     abortedRef.current = false;
-    runFlow(flow);
-  }, [flow, runFlow]);
+    try {
+      runFlowRef.current(flow);
+    } catch (err) {
+      console.error("[agent] flow crashed", err);
+      pushStep({
+        kind: "error",
+        id: nextId(),
+        title: "Assistant error",
+        body: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, [flow, pushStep]);
 
   useEffect(() => {
     if (open) return;
