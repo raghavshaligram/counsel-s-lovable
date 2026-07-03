@@ -32,6 +32,9 @@ import {
   targetToolForFlow,
   type AgentFlow,
 } from "@/lib/agent/flows";
+import { useIsPro } from "@/lib/pro-gate";
+import { useUpgradeModal } from "@/components/upgrade-modal";
+
 
 type Action = {
   label: string;
@@ -61,7 +64,51 @@ type Step =
     }
   | { kind: "handoff"; id: string; title: string; body: string }
   | { kind: "success"; id: string; title: string; body: string }
+  | {
+      kind: "pro-gate";
+      id: string;
+      featureName: string;
+      body: string;
+      onUpgrade: () => void;
+    }
   | { kind: "error"; id: string; title: string; body: string };
+
+/** Flow → Pro feature descriptor. Free flows return null. */
+function proGateFor(
+  f: AgentFlow,
+): { featureName: string; body: string } | null {
+  switch (f.kind) {
+    case "detect-redact":
+      return {
+        featureName: "AI sensitive-data detection",
+        body: "Automatically scans your document on-device to find every SSN, email, phone number, financial account, and other sensitive value — then lets you review and redact any or all of them with the verified burn. Nothing uploads.",
+      };
+    case "pattern-redact":
+      return {
+        featureName: "Pattern & bulk redaction",
+        body: "Finds every occurrence of a word, phrase, or regex across the whole document and lets you redact them all in one pass with the verified burn. Runs entirely in your browser.",
+      };
+    case "exhibit-binder":
+      return {
+        featureName: "Exhibit Binder",
+        body: "Assembles multiple PDFs into a court-ready binder with a cover page, tabbed exhibits, and an index — all built on-device.",
+      };
+    case "split":
+      return {
+        featureName: "Smart Document Splitter",
+        body: "Splits a long PDF into separate documents at blank pages, every N pages, or a text pattern — with a live preview before anything is written.",
+      };
+    case "search":
+    case "answer":
+      return {
+        featureName: "Private AI assist & search",
+        body: "Asks questions of your document and finds passages by meaning (not just keywords), using on-device embeddings. Your document never leaves this browser.",
+      };
+    default:
+      return null;
+  }
+}
+
 
 export interface AgentPanelProps {
   open: boolean;
@@ -113,6 +160,9 @@ export function AgentPanel({
   const cachedFindingsRef = useRef<Detection[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortedRef = useRef(false);
+  const isPro = useIsPro();
+  const openUpgradeModal = useUpgradeModal((s) => s.openModal);
+
 
   const pushStep = useCallback((s: Step) => {
     setSteps((prev) => [...prev, s]);
@@ -372,7 +422,24 @@ export function AgentPanel({
     (f: AgentFlow) => {
       abortedRef.current = false;
       setCurrentFlow(f);
+      // Pro gate: intercept before any work is done. Show a Pro action
+      // card in the assistant with the feature description + Upgrade /
+      // Not now. The gated action never runs and no success is claimed.
+      const gate = proGateFor(f);
+      if (gate && !isPro) {
+        pushStep({
+          kind: "pro-gate",
+          id: nextId(),
+          featureName: gate.featureName,
+          body: gate.body,
+          onUpgrade: () => {
+            openUpgradeModal({ featureName: gate.featureName });
+          },
+        });
+        return;
+      }
       switch (f.kind) {
+
         case "detect-redact":
           void runDetectRedact(f);
           break;
@@ -465,7 +532,7 @@ export function AgentPanel({
         }
       }
     },
-    [runDetectRedact, runPatternRedact, runSimpleHandoff, runAnswer, runSearch, pushStep, onClose],
+    [runDetectRedact, runPatternRedact, runSimpleHandoff, runAnswer, runSearch, pushStep, onClose, isPro, openUpgradeModal],
   );
 
   /* ---------------- flow lifecycle ---------------- */
@@ -817,6 +884,37 @@ function StepCard({ step, onDismiss }: { step: Step; onDismiss: () => void }) {
           </div>
         </div>
       );
+    case "pro-gate":
+      return (
+        <div className="rounded-lg border border-vault/50 bg-vault/[0.08] p-2.5">
+          <div className="flex items-start gap-2">
+            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-vault" />
+            <div className="flex-1">
+              <div className="text-[12px] font-medium text-foreground">
+                {step.featureName} is a Pro feature
+              </div>
+              <div className="mt-0.5 text-[11.5px] text-text-2">{step.body}</div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={step.onUpgrade}
+                  className="rounded-md border border-vault/60 bg-vault/20 px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-vault/30"
+                >
+                  Upgrade to Pro
+                </button>
+                <button
+                  type="button"
+                  onClick={onDismiss}
+                  className="rounded-md border border-border bg-transparent px-2 py-1 text-[11px] font-medium text-text-2 transition-colors hover:bg-surface-1"
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
     case "error":
       return (
         <div className="rounded-lg border border-red-500/40 bg-red-500/[0.06] p-2.5">
