@@ -436,7 +436,7 @@ export async function detectPiiInPdf(
       //    names without requiring Mr./Dr./Esq. titles. Skip very short or
       //    pure-numeric items to avoid wasted model calls.
       if (str.trim().length >= 8 && /[A-Za-z]/.test(str)) {
-        const ents = await runNer(str);
+        const ents = await runNer(str, "detect-pii:text-scan");
         for (const e of ents) {
           if (e.type !== "PER" && e.type !== "ORG") continue;
           // Avoid double-flagging spans the regex name pass already caught.
@@ -640,7 +640,7 @@ export async function detectPiiInPdf(
             };
 
             if (lineText.trim().length >= 8 && /[A-Za-z]/.test(lineText)) {
-              const ents = await runNer(lineText);
+              const ents = await runNer(lineText, "detect-pii:ocr-scan");
               for (const e of ents) {
                 if (e.type !== "PER" && e.type !== "ORG") continue;
                 pushOcrSpan(

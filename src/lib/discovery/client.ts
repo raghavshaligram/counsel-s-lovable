@@ -77,9 +77,20 @@ export type LoadProgress = {
   progress?: number;
 };
 
-export function loadModel(onProgress?: (p: LoadProgress) => void): Promise<void> {
+export function loadModel(
+  onProgress?: (p: LoadProgress) => void,
+  trigger: string = "unknown",
+): Promise<void> {
   if (modelLoaded) return Promise.resolve();
-  if (modelLoading) return modelLoading;
+  if (modelLoading) {
+    console.info(`[ai-model] MiniLM already loading — join (trigger: ${trigger})`);
+    return modelLoading;
+  }
+  console.info(
+    `%c[ai-model] MiniLM (Xenova/all-MiniLM-L6-v2, ~22MB + ONNX runtime ~22MB) download triggered by: ${trigger}`,
+    "color:#4C7FB8;font-weight:bold",
+  );
+  addDiscoveryDebug(`MiniLM download triggered by: ${trigger}`);
   const w = getWorker();
   modelLoading = new Promise<void>((resolve, reject) => {
     const handler = (e: MessageEvent) => {
@@ -87,6 +98,7 @@ export function loadModel(onProgress?: (p: LoadProgress) => void): Promise<void>
       if (m?.kind === "loading") onProgress?.(m);
       else if (m?.kind === "loaded") {
         modelLoaded = true;
+        console.info(`[ai-model] MiniLM ready (trigger: ${trigger})`);
         w.removeEventListener("message", handler);
         resolve();
       } else if (m?.kind === "error" && !m.id) {
@@ -168,9 +180,12 @@ export function queryIndex(
  * Reused by the command-bar intent router — no separate model download.
  * Returns L2-normalized 384-dim vectors (cosine == dot product).
  */
-export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
+export async function embedTexts(
+  texts: string[],
+  trigger: string = "embedTexts",
+): Promise<Float32Array[]> {
   if (texts.length === 0) return [];
-  await loadModel();
+  await loadModel(undefined, trigger);
   const w = getWorker();
   const id = `emb-${++reqCounter}`;
   return new Promise<Float32Array[]>((resolve, reject) => {

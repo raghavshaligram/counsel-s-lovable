@@ -356,7 +356,7 @@ async function scanPrivilege(
           total += t.length + 1;
         }
         const joined = chunks.map((c) => c.text).join("\n");
-        const ents = await runNer(joined);
+        const ents = await runNer(joined, "privilege-review-panel:user-clicked-scan");
         const pageOf = (offset: number) => {
           let curs = 0;
           for (const c of chunks) {

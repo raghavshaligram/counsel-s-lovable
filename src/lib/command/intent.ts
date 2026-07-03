@@ -675,7 +675,7 @@ function buildAnchors() {
     });
   });
   anchorsPromise = (async () => {
-    const vecs = await embedTexts(allTexts);
+    const vecs = await embedTexts(allTexts, "intent-router:build-anchors");
     const dim = vecs[0]?.length ?? 0;
     const matrix = new Float32Array(dim * vecs.length);
     for (let i = 0; i < vecs.length; i++) matrix.set(vecs[i], i * dim);
@@ -749,7 +749,7 @@ export async function classifyCommandSemantic(input: string): Promise<Intent> {
   const raw = input.trim();
   if (!raw) return { kind: "search", query: "", raw };
 
-  const [qVec] = await embedTexts([raw]);
+  const [qVec] = await embedTexts([raw], "intent-router:classify-query");
   const { dim, matrix, ownerIntentIdx } = await buildAnchors();
 
   const perIntent = new Array<number>(INTENTS.length).fill(-Infinity);

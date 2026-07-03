@@ -39,20 +39,25 @@ type Pipeline = (
 
 let pipelinePromise: Promise<Pipeline | null> | null = null;
 
-async function getPipeline(): Promise<Pipeline | null> {
+async function getPipeline(trigger: string): Promise<Pipeline | null> {
   if (pipelinePromise) return pipelinePromise;
+  console.info(
+    `%c[ai-model] NER (Xenova/bert-base-NER, ~110MB ONNX) download triggered by: ${trigger}`,
+    "color:#4C7FB8;font-weight:bold",
+  );
   pipelinePromise = (async () => {
     try {
       const transformers = await importChunk(() => import("@huggingface/transformers"));
       // Force on-device: never reach out to a hosted inference endpoint.
       // Models are fetched once from the Hugging Face CDN and cached by the
-      // browser (IndexedDB) for subsequent runs.
+      // browser (Cache Storage) for subsequent runs.
       (transformers.env as { allowRemoteModels?: boolean; allowLocalModels?: boolean }).allowRemoteModels = true;
       const pipe = await transformers.pipeline(
         "token-classification",
         "Xenova/bert-base-NER",
         { dtype: "q8" } as unknown as Record<string, unknown>,
       );
+      console.info(`[ai-model] NER ready (trigger: ${trigger})`);
       return pipe as unknown as Pipeline;
     } catch (err) {
       // Model fetch / WASM init failures — fall back to regex-only.
@@ -69,9 +74,9 @@ async function getPipeline(): Promise<Pipeline | null> {
  * downstream filtering) entities with character offsets back into the input.
  * Empty / very short inputs short-circuit to [].
  */
-export async function runNer(text: string): Promise<NerEntity[]> {
+export async function runNer(text: string, trigger: string = "runNer"): Promise<NerEntity[]> {
   if (!text || text.trim().length < 4) return [];
-  const pipe = await getPipeline();
+  const pipe = await getPipeline(trigger);
   if (!pipe) return [];
   const out: NerEntity[] = [];
   try {
