@@ -155,6 +155,35 @@ function flattenTopLevelOutline(nodes: OutlineNode[]): { title: string; page: nu
 
 // ---------- Detection: text pattern --------------------------------
 
+/** Trim the matched heading text to a reasonable identifier chunk (up to
+ *  the first line break / long-space run or 80 chars). */
+function trimHeading(s: string): string {
+  const cut = s.split(/\s{3,}|[\r\n]/)[0] ?? s;
+  return cut.trim().slice(0, 80);
+}
+
+/** Extract the leading heading area from a page's text: first line if we
+ *  have real line breaks, otherwise the first ~200 chars. */
+function pageHead(text: string): string {
+  const nl = text.indexOf("\n");
+  if (nl > 0 && nl < 300) return text.slice(0, nl);
+  return text.slice(0, 200);
+}
+
+/** Normalize a matched heading to an identifier key so continuation pages
+ *  ("EXHIBIT A (continued)", "Exhibit A — cont.") collapse to the SAME
+ *  key as their opener ("EXHIBIT A"). */
+export function normalizePatternKey(hit: string): string {
+  let s = hit.toLowerCase();
+  // Strip common continuation markers.
+  s = s.replace(/\(\s*cont(?:inued|\.)?\s*\)/g, " ");
+  s = s.replace(/\b(?:continued|cont\.?)\b/g, " ");
+  // Strip trailing punctuation / whitespace noise.
+  s = s.replace(/[^\p{L}\p{N}\s]+/gu, " ");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
 function buildMatcher(opts: SmartDetectOptions): ((text: string) => string | null) | null {
   const raw = (opts.pattern ?? "").trim();
   if (!raw) return null;
@@ -164,9 +193,12 @@ function buildMatcher(opts: SmartDetectOptions): ((text: string) => string | nul
       const flags = opts.patternCaseSensitive ? "" : "i";
       const rx = new RegExp(raw, flags);
       return (text) => {
-        const head = anchor ? text.slice(0, 200) : text;
+        const head = anchor ? pageHead(text) : text;
         const m = head.match(rx);
-        return m ? m[0].slice(0, 80) : null;
+        if (!m) return null;
+        // Return the whole first-line heading so the identifier
+        // ("EXHIBIT A") is captured even if the regex was just "^EXHIBIT".
+        return trimHeading(head.slice(m.index ?? 0));
       };
     } catch {
       return null;
@@ -174,11 +206,14 @@ function buildMatcher(opts: SmartDetectOptions): ((text: string) => string | nul
   }
   const needle = opts.patternCaseSensitive ? raw : raw.toLowerCase();
   return (text) => {
-    const head = anchor ? text.slice(0, 200) : text;
+    const head = anchor ? pageHead(text) : text;
     const hay = opts.patternCaseSensitive ? head : head.toLowerCase();
     const idx = hay.indexOf(needle);
     if (idx < 0) return null;
-    return head.slice(idx, idx + Math.max(needle.length, 40));
+    // Anchored mode: only accept a match at (or very near) the start of
+    // the heading so mid-body mentions don't fire a split.
+    if (anchor && idx > 40) return null;
+    return trimHeading(head.slice(idx));
   };
 }
 
