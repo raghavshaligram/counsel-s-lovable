@@ -1081,6 +1081,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     [file],
   );
 
+  // Topic tags of the most recent assistant answer — used as a small
+  // follow-up bias so "and the exemption codes?" after a Redact turn
+  // still lands in the Redact entry.
+  const counselRecentTopicRef = useRef<string[] | undefined>(undefined);
+
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
@@ -1099,7 +1104,66 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     setCounselOpen(true);
     setAiText("");
 
-    // Classify (semantic when the model is warm; keyword fallback otherwise).
+    // 1) KB retrieval — how-to / product questions get a HELP answer with
+    //    an "Open [tool]" button. Requires the MiniLM model; kick it off
+    //    in the background and, if it's not ready, fall through to intent.
+    if (!isDiscoveryModelLoaded()) {
+      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
+    }
+    if (isDiscoveryModelLoaded()) {
+      try {
+        const { matchKB, KB_HIGH, KB_FLOOR } = await import("@/lib/assist/kb-match");
+        const match = await matchKB(raw, { recentTopic: counselRecentTopicRef.current });
+        if (match && match.score >= KB_HIGH) {
+          const answer = match.entry.steps && match.entry.steps.length
+            ? `${match.entry.answer}\n\nSteps:\n${match.entry.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+            : match.entry.answer;
+          setCounselMessages((ms) => [
+            ...ms.filter((m) => !(m.role === "assistant" && m.kind === "thinking")),
+            {
+              id: `a_${Date.now().toString(36)}`,
+              role: "assistant",
+              kind: "help",
+              answer,
+              toolId: match.entry.tool,
+              toolLabel: match.entry.toolLabel ?? (match.entry.tool ? toolById(match.entry.tool)?.label : undefined),
+            },
+          ]);
+          counselRecentTopicRef.current = match.entry.topic;
+          setLastIntentLabel("Answer");
+          return;
+        }
+        // Borderline: two entries roughly tied above the floor → clarify.
+        const runner = match?.runnerEntry ?? null;
+        if (
+          match &&
+          runner &&
+          match.score >= KB_FLOOR &&
+          match.runnerScore >= KB_FLOOR &&
+          match.score - match.runnerScore < 0.05
+        ) {
+          setCounselMessages((ms) => [
+            ...ms.filter((m) => !(m.role === "assistant" && m.kind === "thinking")),
+            {
+              id: `a_${Date.now().toString(36)}`,
+              role: "assistant",
+              kind: "clarify",
+              question: "A couple of things could match — which did you mean?",
+              options: [
+                { id: `kb:${match.entry.id}`, label: match.entry.toolLabel ?? match.entry.id },
+                { id: `kb:${runner.id}`, label: runner.toolLabel ?? runner.id },
+              ],
+            },
+          ]);
+          setLastIntentLabel("Clarify");
+          return;
+        }
+      } catch (err) {
+        console.warn("[kb] match failed, falling back to intent", err);
+      }
+    }
+
+    // 2) Fall back to intent classification (actions, doc Q&A, search).
     let intent: Intent;
     if (isDiscoveryModelLoaded()) {
       try {
@@ -1109,16 +1173,42 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         intent = classifyCommand(raw);
       }
     } else {
-      void loadDiscoveryModel().catch(() => {/* surfaced elsewhere */});
       intent = classifyCommand(raw);
     }
     setLastIntentLabel(intentLabel(intent));
     respondToIntent(raw, intent);
+    counselRecentTopicRef.current = undefined;
   }, [aiText, respondToIntent]);
 
+
   const onCounselOptionPick = useCallback(
-    (optionId: string) => {
-      // Treat option pick as a new user turn with clear intent phrasing.
+    async (optionId: string) => {
+      // KB clarify option → answer directly from that entry.
+      if (optionId.startsWith("kb:")) {
+        const entryId = optionId.slice(3);
+        const { KB } = await import("@/lib/assist/knowledge-base");
+        const entry = KB.find((e) => e.id === entryId);
+        if (entry) {
+          const answer = entry.steps && entry.steps.length
+            ? `${entry.answer}\n\nSteps:\n${entry.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+            : entry.answer;
+          setCounselMessages((ms) => [
+            ...ms,
+            { id: `u_${Date.now().toString(36)}`, role: "user", text: entry.toolLabel ?? entry.id },
+            {
+              id: `a_${Date.now().toString(36)}`,
+              role: "assistant",
+              kind: "help",
+              answer,
+              toolId: entry.tool,
+              toolLabel: entry.toolLabel ?? (entry.tool ? toolById(entry.tool)?.label : undefined),
+            },
+          ]);
+          counselRecentTopicRef.current = entry.topic;
+          return;
+        }
+      }
+      // Legacy generic options.
       const label = optionId === "opt-0" ? "yes, that one" : "the other one";
       setCounselMessages((ms) => [
         ...ms,
@@ -1127,7 +1217,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           id: `a_${Date.now().toString(36)}`,
           role: "assistant",
           kind: "help",
-          answer: "Got it — routing that in the next step. This shell captures the choice so real handling can wire in.",
+          answer: "Got it — routing that in the next step.",
         },
       ]);
     },
