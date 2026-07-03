@@ -118,7 +118,8 @@ import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 import { importChunk } from "@/lib/chunk-import";
 import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gate";
-import { classifyCommand, intentLabel, type Intent } from "@/lib/command/intent";
+import { classifyCommand, classifyCommandSemantic, intentLabel, type Intent } from "@/lib/command/intent";
+import { loadModel as loadDiscoveryModel, isModelLoaded as isDiscoveryModelLoaded } from "@/lib/discovery/client";
 
 
 type ToolId =
