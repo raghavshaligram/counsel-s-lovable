@@ -271,20 +271,27 @@ export async function detectSmartBreaks(
     }
   }
 
-  // Text pattern
+  // Text pattern — a new document starts only when the matched IDENTIFIER
+  // changes. "EXHIBIT A" followed by "EXHIBIT A (continued)" stays inside
+  // one document; the split fires when the identifier flips to "EXHIBIT B".
   if (modes.has("pattern")) {
     const match = buildMatcher(opts);
     if (match && texts.length) {
+      let lastKey: string | null = null;
       for (let p = 0; p < texts.length; p++) {
         const hit = match(texts[p]);
-        if (hit) {
-          addBreak(
-            p + 1,
-            "pattern",
-            `matches "${hit}"`,
-            sanitizeName(hit),
-          );
+        if (!hit) continue;
+        const key = normalizePatternKey(hit);
+        if (!key) continue;
+        if (lastKey === null) {
+          // First matching page: only breaks if it isn't page 1.
+          if (p + 1 > 1) {
+            addBreak(p + 1, "pattern", `starts "${hit}"`, sanitizeName(hit));
+          }
+        } else if (key !== lastKey) {
+          addBreak(p + 1, "pattern", `starts "${hit}"`, sanitizeName(hit));
         }
+        lastKey = key;
       }
     }
   }
