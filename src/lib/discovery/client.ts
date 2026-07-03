@@ -180,9 +180,12 @@ export function queryIndex(
  * Reused by the command-bar intent router — no separate model download.
  * Returns L2-normalized 384-dim vectors (cosine == dot product).
  */
-export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
+export async function embedTexts(
+  texts: string[],
+  trigger: string = "embedTexts",
+): Promise<Float32Array[]> {
   if (texts.length === 0) return [];
-  await loadModel();
+  await loadModel(undefined, trigger);
   const w = getWorker();
   const id = `emb-${++reqCounter}`;
   return new Promise<Float32Array[]>((resolve, reject) => {
