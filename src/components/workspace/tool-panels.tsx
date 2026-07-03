@@ -3044,7 +3044,7 @@ function SmartSplitSection({
       setSplitting(false);
       setSplitProgress(null);
     }
-  }, [file, parts, baseName]);
+  }, [file, parts, baseName, requirePro]);
 
   const modeChip = (m: DetectionMode, label: string) => {
     const active = modes.has(m);
