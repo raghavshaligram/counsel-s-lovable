@@ -53,15 +53,21 @@ export interface DetectedBreak {
 export interface SmartDetectResult {
   total: number;
   breaks: DetectedBreak[];
+  /** 1-based page numbers detected as blank/separator (only populated when
+   *  the "blank" mode ran). Consumers typically exclude these from output. */
+  blankPages: number[];
   /** First-doc suggested name (before the first break). */
   firstName?: string;
 }
 
 export interface PartPreview {
   index: number;         // 0-based
-  startPage: number;     // 1-based inclusive
-  endPage: number;       // 1-based inclusive
-  pageCount: number;
+  /** 1-based page numbers included in this document, in order. Excludes
+   *  any dropped separator pages, so the array IS the final content. */
+  pages: number[];
+  startPage: number;     // 1-based inclusive (= pages[0])
+  endPage: number;       // 1-based inclusive (= pages[pages.length-1])
+  pageCount: number;     // = pages.length
   name: string;          // suggested filename (no extension)
   reason?: string;       // why the split BEFORE startPage
 }
@@ -188,7 +194,7 @@ export async function detectSmartBreaks(
     const pdfDoc = await PDFDocument.load(await file.arrayBuffer(), {
       ignoreEncryption: true,
     });
-    return { total: pdfDoc.getPageCount(), breaks: [] };
+    return { total: pdfDoc.getPageCount(), breaks: [], blankPages: [] };
   }
 
   const needsText = modes.has("blank") || modes.has("pattern");
@@ -212,22 +218,31 @@ export async function detectSmartBreaks(
     if (cur) {
       if (!cur.sources.includes(source)) cur.sources.push(source);
       if (!cur.suggestedName && name) cur.suggestedName = name;
-      cur.reason = cur.reason + " · " + reason;
+      if (!cur.reason.includes(reason)) cur.reason = cur.reason + " · " + reason;
     } else {
       map.set(page, { page, sources: [source], reason, suggestedName: name });
     }
   };
 
-  // blank/separator pages: split AFTER a blank so the next non-blank starts a new doc
+  // Blank/separator pages: blanks DELIMIT documents. For every run of one
+  // or more blank pages, the first content page after the run starts a
+  // new document. The blanks themselves are dropped from output.
+  const blankPages: number[] = [];
   if (modes.has("blank") && texts.length) {
     for (let i = 0; i < texts.length; i++) {
-      if (!isBlankPageText(texts[i])) continue;
-      // Find the next non-blank page → that's the break
-      for (let j = i + 1; j < texts.length; j++) {
-        if (!isBlankPageText(texts[j])) {
-          addBreak(j + 1, "blank", "blank separator");
-          break;
-        }
+      if (isBlankPageText(texts[i])) blankPages.push(i + 1);
+    }
+    // Walk once and mark the first non-blank AFTER each blank run.
+    let i = 0;
+    while (i < texts.length) {
+      if (!isBlankPageText(texts[i])) {
+        i++;
+        continue;
+      }
+      // Skip the whole blank run
+      while (i < texts.length && isBlankPageText(texts[i])) i++;
+      if (i < texts.length) {
+        addBreak(i + 1, "blank", "after blank separator");
       }
     }
   }
@@ -290,7 +305,7 @@ export async function detectSmartBreaks(
     }
   }
 
-  return { total, breaks, firstName };
+  return { total, breaks, blankPages, firstName };
 }
 
 // ---------- Public: preview -----------------------------------------
@@ -298,30 +313,40 @@ export async function detectSmartBreaks(
 export interface BuildPreviewInput {
   total: number;
   breakPages: number[];                        // 1-based, > 1
+  /** Pages to DROP from output (e.g. blank separator pages). */
+  excludePages?: number[];
   names?: Record<number, string | undefined>;  // startPage → suggested name
   reasons?: Record<number, string | undefined>;
   baseName: string;
 }
 
 export function buildPreview(input: BuildPreviewInput): PartPreview[] {
+  const exclude = new Set(input.excludePages ?? []);
   const groups = groupsFromBreaks(input.total, input.breakPages);
   const parts: PartPreview[] = [];
-  for (let i = 0; i < groups.length; i++) {
-    const g = groups[i];
-    const startPage = g[0];
-    const endPage = g[g.length - 1];
-    const suggested = input.names?.[startPage];
+  let visibleIndex = 0;
+  for (const g of groups) {
+    const pages = g.filter((p) => !exclude.has(p));
+    if (pages.length === 0) continue; // whole group was separators
+    const startPage = pages[0];
+    // Look up the suggested name using the ORIGINAL group start (the break
+    // page) so pattern/outline detections still attach even if that page
+    // itself was skipped as a separator.
+    const suggested = input.names?.[g[0]] ?? input.names?.[startPage];
+    const totalParts = groups.length; // upper bound for padding width
     const name = suggested
-      ? `${input.baseName}-${padIndex(i + 1, groups.length)}-${suggested}`
-      : `${input.baseName}-part${padIndex(i + 1, groups.length)}`;
+      ? `${input.baseName}-${padIndex(visibleIndex + 1, totalParts)}-${suggested}`
+      : `${input.baseName}-part${padIndex(visibleIndex + 1, totalParts)}`;
     parts.push({
-      index: i,
+      index: visibleIndex,
+      pages,
       startPage,
-      endPage,
-      pageCount: g.length,
+      endPage: pages[pages.length - 1],
+      pageCount: pages.length,
       name,
-      reason: input.reasons?.[startPage],
+      reason: input.reasons?.[g[0]] ?? input.reasons?.[startPage],
     });
+    visibleIndex++;
   }
   return parts;
 }
@@ -371,8 +396,7 @@ export async function splitByParts(
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
     opts.onProgress?.({ part: i + 1, total: parts.length });
-    const indices: number[] = [];
-    for (let p = part.startPage; p <= part.endPage; p++) indices.push(p - 1);
+    const indices: number[] = part.pages.map((p) => p - 1);
     totalPages += indices.length;
     const out = await PDFDocument.create();
     const copied = await out.copyPages(src, indices);

@@ -2914,6 +2914,8 @@ function SmartSplitSection({
   );
   const [detected, setDetected] = useState<DetectedBreak[] | null>(null);
   const [breakSet, setBreakSet] = useState<Set<number>>(new Set());
+  const [blankPages, setBlankPages] = useState<number[]>([]);
+  const [removeSeparators, setRemoveSeparators] = useState(true);
   const [names, setNames] = useState<Record<number, string | undefined>>({});
   const [reasons, setReasons] = useState<Record<number, string | undefined>>({});
   const [manualPage, setManualPage] = useState<string>("");
@@ -2932,6 +2934,7 @@ function SmartSplitSection({
     // Any change invalidates the previous detection.
     setDetected(null);
     setBreakSet(new Set());
+    setBlankPages([]);
   };
 
   const runDetect = useCallback(async () => {
@@ -2951,6 +2954,7 @@ function SmartSplitSection({
       });
       setDetected(result.breaks);
       setBreakSet(new Set(result.breaks.map((b) => b.page)));
+      setBlankPages(result.blankPages);
       const n: Record<number, string | undefined> = {};
       const r: Record<number, string | undefined> = {};
       for (const b of result.breaks) {
@@ -2983,11 +2987,12 @@ function SmartSplitSection({
     return buildPreview({
       total: pageCount,
       breakPages,
+      excludePages: removeSeparators ? blankPages : [],
       names,
       reasons,
       baseName,
     });
-  }, [pageCount, breakSet, names, reasons, baseName]);
+  }, [pageCount, breakSet, blankPages, removeSeparators, names, reasons, baseName]);
 
   const removeBreak = (page: number) => {
     setBreakSet((prev) => {
@@ -3157,41 +3162,69 @@ function SmartSplitSection({
       </Section>
 
       {detected !== null && (
-        <Section title={`Preview (${parts.length} document${parts.length === 1 ? "" : "s"})`}>
+        <Section title={`Preview — ${parts.length} document${parts.length === 1 ? "" : "s"}`}>
+          {blankPages.length > 0 && (
+            <label className="mb-2 flex items-center gap-1.5 text-[10.5px] text-text-2">
+              <input
+                type="checkbox"
+                checked={removeSeparators}
+                onChange={(e) => setRemoveSeparators(e.target.checked)}
+              />
+              Remove {blankPages.length} blank separator page
+              {blankPages.length === 1 ? "" : "s"} ({blankPages.join(", ")})
+            </label>
+          )}
           <div className="max-h-[280px] space-y-1.5 overflow-y-auto pr-1">
             {parts.map((part) => {
-              const isBreak = part.startPage > 1;
+              const isBreakDoc = part.index > 0;
+              const rangeLabel =
+                part.startPage === part.endPage
+                  ? `page ${part.startPage}`
+                  : `pages ${part.startPage}–${part.endPage}`;
+              const suggested = names[part.startPage];
+              const suggestedLabel =
+                suggested && suggested !== part.name ? suggested : undefined;
               return (
                 <div
                   key={part.index}
-                  className="rounded-md border border-border bg-surface-2 px-2 py-1.5"
+                  className="rounded-md border border-border bg-surface-2 px-2.5 py-2"
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span className="rounded bg-surface-1 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">
-                      p{part.startPage}
-                      {part.endPage !== part.startPage ? `–${part.endPage}` : ""}
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-[11.5px] font-medium text-foreground">
+                      Document {part.index + 1}
                     </span>
-                    <span className="text-[10.5px] text-text-muted tabular-nums">
-                      {part.pageCount}p
+                    <span className="text-[10.5px] text-text-2 tabular-nums">
+                      {rangeLabel}
                     </span>
-                    {isBreak && (
+                    <span className="text-[10px] text-text-muted tabular-nums">
+                      ({part.pageCount} page{part.pageCount === 1 ? "" : "s"})
+                    </span>
+                    {isBreakDoc && (
                       <button
                         type="button"
                         onClick={() => removeBreak(part.startPage)}
-                        title="Merge with previous"
+                        title="Merge with previous document"
                         className="ml-auto rounded p-0.5 text-text-muted hover:text-foreground"
                       >
                         <XIcon className="h-3 w-3" />
                       </button>
                     )}
                   </div>
+                  {suggestedLabel && (
+                    <div className="mt-0.5 text-[10.5px] text-vault">
+                      {suggestedLabel}
+                    </div>
+                  )}
                   <input
                     value={names[part.startPage] ?? part.name}
                     onChange={(e) => renamePart(part.startPage, e.target.value)}
                     className="mt-1 w-full rounded border border-border bg-surface-1 px-1.5 py-1 font-mono text-[10.5px] text-foreground"
                   />
                   {part.reason && (
-                    <div className="mt-0.5 truncate text-[9.5px] text-text-muted" title={part.reason}>
+                    <div
+                      className="mt-0.5 truncate text-[9.5px] text-text-muted"
+                      title={part.reason}
+                    >
                       {part.reason}
                     </div>
                   )}
