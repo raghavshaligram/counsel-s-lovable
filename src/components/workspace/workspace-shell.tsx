@@ -1051,6 +1051,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const submitAi = useCallback(async () => {
     const raw = aiText.trim();
     if (!raw) return;
+    // Agent-flow first pass: if the input clearly asks for a guided
+    // multi-step operation, open the assistant panel with that flow.
+    // Falls through to the semantic router otherwise.
+    const flow = detectAgentFlow(raw);
+    if (flow) {
+      setAgentFlow(flow);
+      setAgentOpen(true);
+      setLastIntentLabel("Assistant");
+      setAiText("");
+      return;
+    }
     // Try semantic classification (MiniLM). If the model isn't loaded
     // yet, kick off the load in the background and use the sync
     // fallback for this first submission so the bar never blocks.
