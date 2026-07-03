@@ -1134,10 +1134,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           return;
         }
         // Borderline: two entries roughly tied above the floor → clarify.
+        const runner = match?.runnerEntry ?? null;
         if (
           match &&
+          runner &&
           match.score >= KB_FLOOR &&
-          match.runnerEntry &&
           match.runnerScore >= KB_FLOOR &&
           match.score - match.runnerScore < 0.05
         ) {
@@ -1150,7 +1151,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               question: "A couple of things could match — which did you mean?",
               options: [
                 { id: `kb:${match.entry.id}`, label: match.entry.toolLabel ?? match.entry.id },
-                { id: `kb:${match.runnerEntry.id}`, label: match.runnerEntry.toolLabel ?? match.runnerEntry.id },
+                { id: `kb:${runner.id}`, label: runner.toolLabel ?? runner.id },
               ],
             },
           ]);
