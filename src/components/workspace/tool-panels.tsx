@@ -3017,6 +3017,7 @@ function SmartSplitSection({
   };
 
   const runSplit = useCallback(async () => {
+    if (!requirePro("Smart Document Splitter")) return;
     if (parts.length === 0) return;
     setSplitting(true);
     setSplitProgress(null);
