@@ -2760,6 +2760,7 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
               {modeBtn("each", "Every page")}
               {modeBtn("everyN", "Every N pages")}
               {modeBtn("splitPoints", "At split points")}
+              {modeBtn("smart", "Smart (detect)")}
             </div>
           </Section>
 
