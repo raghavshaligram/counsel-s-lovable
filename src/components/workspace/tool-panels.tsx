@@ -2954,6 +2954,7 @@ function SmartSplitSection({
       });
       setDetected(result.breaks);
       setBreakSet(new Set(result.breaks.map((b) => b.page)));
+      setBlankPages(result.blankPages);
       const n: Record<number, string | undefined> = {};
       const r: Record<number, string | undefined> = {};
       for (const b of result.breaks) {
