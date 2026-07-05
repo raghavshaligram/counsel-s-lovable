@@ -5931,9 +5931,18 @@ async function ensureSearchablePdf(
 
     onStatus("Scanned PDF detected — running OCR first…");
     const { ocrPdfToSearchable } = await importChunk(() => import("@/lib/pdf/ocr-pdf"));
-    const out = await ocrPdfToSearchable(file, (p) => {
-      onStatus(`OCR · page ${p.page}/${p.totalPages} (${p.stage})`);
-    });
+    const { runAsJob } = await import("@/lib/jobs/registry");
+    const { promise } = runAsJob(
+      { kind: "ocr", docId: `${file.name}:${file.size}`, docLabel: file.name },
+      async ({ signal, onProgress }) => {
+        return await ocrPdfToSearchable(file, (p) => {
+          onStatus(`OCR · page ${p.page}/${p.totalPages} (${p.stage})`);
+          const total = p.totalPages || 1;
+          onProgress({ fraction: total ? p.page / total : 0, step: `${p.stage} ${p.page}/${total}` });
+        }, signal);
+      },
+    );
+    const out = await promise;
     return new File([out as BlobPart], file.name, { type: "application/pdf" });
   } catch (err) {
     console.warn("[convert] auto-OCR probe failed, continuing with original file", err);
