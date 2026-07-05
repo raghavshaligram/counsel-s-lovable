@@ -387,13 +387,105 @@ export async function detectPiiInPdf(
     (await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise);
   const detections: Detection[] = [];
   const ocrPages: number[] = [];
+  const onPartial = opts.onPartial;
+  const shouldAbort = opts.shouldAbort ?? (() => false);
+  const throwIfAborted = () => {
+    if (shouldAbort()) throw new DOMException("Canceled", "AbortError");
+  };
 
-  // Pass 1 — native text layer
+  // --- Profiling (always on; cheap and invaluable for regression triage). ---
+  const t0 = performance.now();
+  let tText = 0;      // ms in pdf.js getTextContent
+  let tRegex = 0;     // ms in regex + heuristics + privilege
+  let tNer = 0;       // ms in NER inference (both single + batched)
+  let itemCount = 0;  // total text items across all pages
+  let nerCalls = 0;   // number of runNer / runNerBatch invocations
+  let nerBatches = 0; // number of batched inference calls
+  let nerInputChars = 0;
+
+  // NER work collected during Pass A, run in Pass B batched across pages.
+  // Grouping by page lets us surface findings page-by-page as batches
+  // complete, and keeps offset mapping simple (per-page joined string).
+  type PageNerItem = {
+    str: string;
+    x0: number;
+    y: number;
+    fontHeight: number;
+    pad: number;
+    charW: number;
+    fontName: string | undefined;
+    transform: number[];
+    joinedStart: number;
+    joinedEnd: number;
+    // Regex name hits within this item — used to dedupe against NER results
+    // so a name caught by BOTH the "Mr. X" regex and the NER model doesn't
+    // produce two redaction boxes on the same span.
+    regexNameSpans: Array<{ start: number; end: number }>;
+  };
+  type PageNerWork = { page: number; joinedText: string; items: PageNerItem[] };
+  const pageNerWork: PageNerWork[] = [];
+
+  // Small helper: push a detection built from a per-item PageNerItem record.
+  // Used from BOTH the regex pass and the NER-mapping pass so coordinates
+  // are computed identically regardless of which pass surfaced the hit.
+  const emitBoxFor = (
+    pageIdx: number,
+    item: PageNerItem | {
+      str: string;
+      x0: number; y: number; fontHeight: number; pad: number; charW: number;
+      fontName: string | undefined; transform: number[];
+    },
+    spanStart: number,
+    spanLen: number,
+    category: PiiCategory,
+    confidence: "high" | "low" | undefined,
+    text: string,
+  ): Detection => {
+    const subX = item.x0 + item.charW * spanStart;
+    const subW = Math.max(item.charW, item.charW * spanLen);
+    const cx = subX - item.pad;
+    const cy = item.y - item.pad;
+    const cw = subW + item.pad * 2;
+    const ch = item.fontHeight + item.pad * 2;
+    const det: Detection = {
+      id: `det-${pageIdx}-${detections.length}`,
+      page: pageIdx,
+      x: cx, y: cy, w: cw, h: ch,
+      category,
+      confidence,
+      snippet: snippet(text),
+      source: {
+        originalString: item.str,
+        redactText: text,
+        matchStart: spanStart,
+        matchLength: spanLen,
+        transform: item.transform,
+        fontName: item.fontName,
+        bounds: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
+      },
+      pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
+    };
+    detections.push(det);
+    return det;
+  };
+
+  // ========== Pass A — regex + heuristics + privilege terms, all pages ==========
+  // Regex-only, per-item — completes in seconds even on 300+ pages so the
+  // UI can show findings live while the (much slower) NER pass runs.
   for (let i = 1; i <= doc.numPages; i++) {
-    onProgress?.({ stage: "text", page: i, totalPages: doc.numPages });
+    throwIfAborted();
+    onProgress?.({
+      stage: "text",
+      pass: "regex",
+      page: i,
+      totalPages: doc.numPages,
+      foundSoFar: detections.length,
+    });
+    const tp0 = performance.now();
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale });
     const content = await page.getTextContent();
+    tText += performance.now() - tp0;
     const items = content.items as Array<{
       str: string;
       transform: number[];
@@ -401,16 +493,22 @@ export async function detectPiiInPdf(
       height: number;
     }>;
 
-    // Heuristic: a scanned page has ~no text items.
     const totalChars = items.reduce((n, it) => n + (it.str?.length ?? 0), 0);
     if (totalChars < 20) {
       ocrPages.push(i);
       continue;
     }
 
+    const detectionsBefore = detections.length;
+    const nerItems: PageNerItem[] = [];
+    let joinedText = "";
+    const NER_SEP = "\n"; // 1 char — offsets in joined string map cleanly to items
+
+    const tr0 = performance.now();
     for (const raw of items) {
       const str = raw.str;
       if (!str || !str.trim()) continue;
+      itemCount++;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
@@ -418,90 +516,133 @@ export async function detectPiiInPdf(
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
       const fontName = (raw as { fontName?: string }).fontName;
-      // Approximate per-character width across the text item. PDF.js doesn't
-      // give us per-glyph positions for native text, but glyphs in a single
-      // text-run are typeset in a continuous strip, so a uniform divide
-      // produces a tight box around the matched substring rather than the
-      // whole sentence/line.
       const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
-      const pushBox = (
-        spanStart: number,
-        spanLen: number,
-        category: PiiCategory,
-        confidence: "high" | "low" | undefined,
-        text: string,
-      ) => {
-        const subX = x0 + charW * spanStart;
-        const subW = Math.max(charW, charW * spanLen);
-        const cx = subX - pad;
-        const cy = y - pad;
-        const cw = subW + pad * 2;
-        const ch = fontHeight + pad * 2;
-        detections.push({
-          id: `det-${i}-${detections.length}`,
-          page: i,
-          x: cx,
-          y: cy,
-          w: cw,
-          h: ch,
-          category,
-          confidence,
-          snippet: snippet(text),
-          source: {
-            originalString: str,
-            redactText: text,
-            matchStart: spanStart,
-            matchLength: spanLen,
-            transform: raw.transform,
-            fontName,
-            bounds: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
-          },
-          pdfRect: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
-        });
-      };
+
+      const itemRecord = { str, x0, y, fontHeight, pad, charW, fontName, transform: raw.transform };
 
       // 1) Structured regex patterns + heuristic name match.
       const hits = matchAllCategories(str);
-      for (const hit of hits) pushBox(hit.start, hit.length, hit.category, hit.confidence, hit.text);
+      for (const hit of hits) {
+        emitBoxFor(i, itemRecord, hit.start, hit.length, hit.category, hit.confidence, hit.text);
+      }
+      const regexNameSpans = hits
+        .filter((h) => h.category === "name")
+        .map((h) => ({ start: h.start, end: h.start + h.length }));
 
-      // 2) Privilege / confidentiality context — surfaced as low-confidence
-      //    suggestions for human review (not auto-selected).
+      // 2) Privilege / confidentiality context.
       PRIVILEGE_TERMS_RE.lastIndex = 0;
       let pm: RegExpExecArray | null;
       while ((pm = PRIVILEGE_TERMS_RE.exec(str)) !== null) {
-        pushBox(pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
-        // Surface any nearby value as a redactable suggestion.
+        emitBoxFor(i, itemRecord, pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
         const values = findValuesNearPrivilege(str, pm.index, pm.index + pm[0].length);
         for (const v of values) {
-          pushBox(v.start, v.end - v.start, "privilegeValue", "low", v.text);
+          emitBoxFor(i, itemRecord, v.start, v.end - v.start, "privilegeValue", "low", v.text);
         }
         if (pm[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
       }
 
+      // Stash NER work — do NOT run inference here. Items too short / with
+      // no letters are excluded from the joined NER text but STILL contribute
+      // to `joinedText` layout so their span math wouldn't shift the others;
+      // we simply skip them from the map by giving them zero-length spans.
+      const nerEligible = str.trim().length >= 8 && /[A-Za-z]/.test(str);
+      if (nerEligible) {
+        const joinedStart = joinedText.length;
+        joinedText += str;
+        const joinedEnd = joinedText.length;
+        joinedText += NER_SEP;
+        nerItems.push({
+          str, x0, y, fontHeight, pad, charW, fontName,
+          transform: raw.transform,
+          joinedStart, joinedEnd,
+          regexNameSpans,
+        });
+      }
+    }
+    tRegex += performance.now() - tr0;
 
-      // 3) On-device NER for PERSON / ORG entities — catches plain-prose
-      //    names without requiring Mr./Dr./Esq. titles. Skip very short or
-      //    pure-numeric items to avoid wasted model calls.
-      if (str.trim().length >= 8 && /[A-Za-z]/.test(str)) {
-        const ents = await runNer(str, "detect-pii:text-scan");
-        for (const e of ents) {
-          if (e.type !== "PER" && e.type !== "ORG") continue;
-          // Avoid double-flagging spans the regex name pass already caught.
-          const overlap = hits.some(
-            (h) => h.category === "name" && !(e.end <= h.start || e.start >= h.start + h.length),
+    if (nerItems.length > 0) {
+      pageNerWork.push({ page: i, joinedText, items: nerItems });
+    }
+
+    // Stream partial detections for this page's regex/privilege pass.
+    if (onPartial && detections.length > detectionsBefore) {
+      onPartial(detections.slice(detectionsBefore), { page: i, pass: "regex" });
+    }
+  }
+
+  // ========== Pass B — batched NER across pages ==========
+  // Transformer inference is dramatically more efficient when several
+  // inputs go through the model in one call than when the model is invoked
+  // once per input. Combined with per-page joining (Pass A collects ONE
+  // string per page, not one per text-item), this cuts NER cost by ~2
+  // orders of magnitude on real documents.
+  const NER_BATCH_PAGES = 8;
+  for (let b = 0; b < pageNerWork.length; b += NER_BATCH_PAGES) {
+    throwIfAborted();
+    const batch = pageNerWork.slice(b, b + NER_BATCH_PAGES);
+    const texts = batch.map((w) => w.joinedText);
+    onProgress?.({
+      stage: "text",
+      pass: "ner",
+      page: Math.min(b + batch.length, pageNerWork.length),
+      totalPages: pageNerWork.length,
+      foundSoFar: detections.length,
+    });
+    const tn0 = performance.now();
+    for (const t of texts) nerInputChars += t.length;
+    const results = await runNerBatch(texts, "detect-pii:text-batch");
+    tNer += performance.now() - tn0;
+    nerBatches++;
+    nerCalls += texts.length;
+    for (let bi = 0; bi < batch.length; bi++) {
+      const work = batch[bi];
+      const ents = results[bi] || [];
+      const detectionsBeforePage = detections.length;
+      for (const e of ents) {
+        if (e.type !== "PER" && e.type !== "ORG") continue;
+        // Find the item(s) this entity's span sits in.
+        // Binary-search would be nicer for very long pages but nerItems is
+        // small (a page has O(hundreds) of items max) so a linear scan is
+        // both simpler and fast enough. We over-cover if an entity spans
+        // multiple items (rare — the PDF joins text runs with newlines).
+        for (const item of work.items) {
+          if (e.end <= item.joinedStart || e.start >= item.joinedEnd) continue;
+          const localStart = Math.max(0, e.start - item.joinedStart);
+          const localEnd = Math.min(item.str.length, e.end - item.joinedStart);
+          if (localEnd <= localStart) continue;
+          // Dedupe against the regex-name pass on the SAME item.
+          const overlapsRegexName = item.regexNameSpans.some(
+            (s) => !(localEnd <= s.start || localStart >= s.end),
           );
-          if (overlap) continue;
-          pushBox(
-            e.start,
-            e.end - e.start,
+          if (overlapsRegexName) continue;
+          emitBoxFor(
+            work.page,
+            item,
+            localStart,
+            localEnd - localStart,
             e.type === "PER" ? "name" : "org",
             "high",
-            e.text,
+            item.str.slice(localStart, localEnd),
           );
         }
       }
+      if (onPartial && detections.length > detectionsBeforePage) {
+        onPartial(detections.slice(detectionsBeforePage), { page: work.page, pass: "ner" });
+      }
     }
   }
+
+  // Emit final text-pass profile line even before OCR runs, so slow docs
+  // that time out on OCR still leave useful timing behind.
+  // eslint-disable-next-line no-console
+  console.info(
+    `[detect-pii profile] text-pass: pages=${doc.numPages - ocrPages.length} items=${itemCount} ` +
+    `text=${tText.toFixed(0)}ms regex=${tRegex.toFixed(0)}ms ner=${tNer.toFixed(0)}ms ` +
+    `nerBatches=${nerBatches} nerInputs=${nerCalls} nerChars=${nerInputChars} ` +
+    `total=${(performance.now() - t0).toFixed(0)}ms findings=${detections.length}`,
+  );
+
 
   // Pass 2 — OCR for image-only pages. We render at a higher DPI than the
   // canvas scale (digit recognition is brittle below ~3x), then assemble
