@@ -394,6 +394,8 @@ function walkFormTree(
 async function verifyRawStreams(
   bytes: Uint8Array,
   sensitiveStrings: string[],
+  rasterizedPages?: number[],
+  signal?: AbortSignal,
 ): Promise<VerifyLeak[]> {
   const leaks: VerifyLeak[] = [];
   let doc: PDFDocument;
@@ -406,22 +408,27 @@ async function verifyRawStreams(
   const needles = sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3);
   if (needles.length === 0) return leaks;
 
+  // Collect refs reachable from FULLY rasterized pages — /Contents streams
+  // and Resources/XObject entries (the burned JPEG). We skip ONLY these:
+  // partially-rasterized or text-retaining pages are still scanned. Err
+  // toward verifying — never skip on doubt.
+  const skipRefs = collectRasterizedPageStreamRefs(doc, rasterizedPages);
+
+  let i = 0;
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (i++ % 200 === 199) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      // Yield every 200 objects so the main thread stays responsive on
+      // thousands-of-pages docs.
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
     if (!(obj instanceof PDFStream)) continue;
+    if (skipRefs.has(refKey(ref))) continue;
     const decoded = decodeStreamBytes(obj);
     if (!decoded || decoded.length === 0) continue;
-    // Latin-1 round-trip preserves byte values so we can search for
-    // ASCII / UTF-8 literals embedded in the stream regardless of the
-    // glyph encoding. We also check a UTF-16BE view because some PDF
-    // text strings are stored that way after a BOM.
     const text = new TextDecoder("latin1").decode(decoded);
     const utf16 = tryUtf16Be(decoded);
     for (const needle of needles) {
-      // Search for the needle in three forms:
-      //   1. plain Latin-1 bytes (Tj literal strings: `(987-65-4321)`)
-      //   2. UTF-16BE (PDFString that was encoded as UTF-16)
-      //   3. ASCII-hex (Tj hex strings: `<3938372D36352D34333231>` —
-      //      pdf-lib's default for drawText output)
       const hexAscii = asciiToHex(needle);
       const hexUtf16 = asciiToUtf16BeHex(needle);
       if (
@@ -441,6 +448,47 @@ async function verifyRawStreams(
   }
   return leaks;
 }
+
+function refKey(ref: PDFRef | unknown): string {
+  if (ref && typeof ref === "object" && "objectNumber" in ref && "generationNumber" in ref) {
+    return `${(ref as PDFRef).objectNumber} ${(ref as PDFRef).generationNumber}`;
+  }
+  return "";
+}
+
+function collectRasterizedPageStreamRefs(
+  doc: PDFDocument,
+  rasterizedPages?: number[],
+): Set<string> {
+  const out = new Set<string>();
+  if (!rasterizedPages || rasterizedPages.length === 0) return out;
+  const push = (obj: unknown): void => {
+    const k = refKey(obj);
+    if (k) out.add(k);
+  };
+  const pageCount = doc.getPageCount();
+  for (const idx of rasterizedPages) {
+    if (idx < 0 || idx >= pageCount) continue;
+    try {
+      const page = doc.getPage(idx);
+      const contents = page.node.get(PDFName.of("Contents"));
+      if (contents instanceof PDFArray) {
+        for (const c of contents.asArray()) push(c);
+      } else {
+        push(contents);
+      }
+      const resources = page.node.lookupMaybe(PDFName.of("Resources"), PDFDict);
+      if (resources) {
+        const xobj = resources.lookupMaybe(PDFName.of("XObject"), PDFDict);
+        if (xobj) {
+          for (const [, v] of xobj.entries()) push(v);
+        }
+      }
+    } catch { /* ignore — err toward verifying (leave those refs scanned) */ }
+  }
+  return out;
+}
+
 
 function decodeStreamBytes(stream: PDFStream): Uint8Array | null {
   // pdf-lib exposes raw stream contents on PDFRawStream; for content
