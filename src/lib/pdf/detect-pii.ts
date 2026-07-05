@@ -704,7 +704,7 @@ export async function detectPiiInPdf(
           ocrUnderDetectedPages.push(i);
         }
       } finally {
-        if (canvas) { try { canvas.width = 0; canvas.height = 0; } catch { /* ignore */ } }
+        freeCanvas(canvas);
         release(worker);
       }
     };
