@@ -346,7 +346,7 @@ export function AgentPanel({
       try {
         const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
         const { detectPiiInPdfViaWorker } = await importChunk(
-          () => import("@/lib/workers/detect-pii.client"),
+          () => import("@/lib/workers/detect-pii-client"),
         );
         const { runAsJob } = await import("@/lib/jobs/registry");
         const { promise } = runAsJob(

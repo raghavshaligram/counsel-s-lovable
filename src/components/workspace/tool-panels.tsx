@@ -1150,7 +1150,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       // + regex) runs entirely inside a Web Worker so the main thread stays
       // free to render every OTHER open tab smoothly during a 5000-page scan.
       const { detectPiiInPdfViaWorker, detectPiiInSideChannelsViaWorker } =
-        await importChunk(() => import("@/lib/workers/detect-pii.client"));
+        await importChunk(() => import("@/lib/workers/detect-pii-client"));
       const { runAsJob } = await import("@/lib/jobs/registry");
       const docId = `${file.name}:${file.size}`;
       const { promise } = runAsJob(
