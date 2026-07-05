@@ -7,7 +7,11 @@ let cached: PdfjsModule | null = null;
 
 export async function loadPdfjs(): Promise<PdfjsModule> {
   if (cached) return cached;
-  if (typeof window === "undefined") {
+  // Allow both window (main thread) and WorkerGlobalScope (web workers).
+  // Block only true SSR (no window AND no self/importScripts).
+  const hasWindow = typeof window !== "undefined";
+  const hasWorker = typeof self !== "undefined" && typeof (self as unknown as { importScripts?: unknown }).importScripts === "function";
+  if (!hasWindow && !hasWorker) {
     throw new Error("pdfjs can only be loaded in the browser");
   }
   const [pdfjs, workerUrlMod] = await Promise.all([
