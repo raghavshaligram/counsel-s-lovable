@@ -75,6 +75,9 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
 
   // Add pages in working order
   for (let i = 0; i < doc.pages.length; i++) {
+    // Yield to the event loop every 25 pages so a thousands-of-pages
+    // export doesn't freeze the main thread while pdf-lib copies pages.
+    if (i > 0 && i % 25 === 0) await new Promise<void>((r) => setTimeout(r, 0));
     const op = doc.pages[i];
     let outPage;
     if (op.blank) {
