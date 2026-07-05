@@ -521,14 +521,12 @@ export async function detectPiiInPdf(
     let cursor = 0;
     const runOne = async (i: number): Promise<void> => {
       const worker = await acquire();
-      let canvas: HTMLCanvasElement | null = null;
+      let canvas: AnyCanvas | null = null;
       try {
         const page = await doc.getPage(i);
         const viewport = page.getViewport({ scale: ocrScale });
-        canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const ctx = canvas.getContext("2d");
+        canvas = makeCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
         if (!ctx) return;
         await page.render({
           canvasContext: ctx,
@@ -537,13 +535,12 @@ export async function detectPiiInPdf(
         } as Parameters<typeof page.render>[0]).promise;
 
         let words: OcrWord[];
-        const { data } = await worker.recognize(canvas, {}, { blocks: true });
+        const { data } = await worker.recognize(canvas as unknown as HTMLCanvasElement, {}, { blocks: true });
         words = collectWords(data);
 
         // Free the canvas bitmap before we do CPU work on the OCR words —
         // never hold more than `poolSize` canvases alive at once.
-        canvas.width = 0;
-        canvas.height = 0;
+        freeCanvas(canvas);
         canvas = null;
         try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
 
