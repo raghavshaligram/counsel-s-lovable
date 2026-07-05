@@ -25,17 +25,19 @@ export interface NerEntity {
   score: number;
 }
 
-type Pipeline = (
-  text: string,
-  options?: Record<string, unknown>,
-) => Promise<Array<{
+type RawEntity = {
   entity_group?: string;
   entity?: string;
   word: string;
   start?: number;
   end?: number;
   score: number;
-}>>;
+};
+
+type Pipeline = (
+  text: string | string[],
+  options?: Record<string, unknown>,
+) => Promise<RawEntity[] | RawEntity[][]>;
 
 let pipelinePromise: Promise<Pipeline | null> | null = null;
 
