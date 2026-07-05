@@ -769,7 +769,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback(
     (files: FileList | null) => {
+      const tFiles = performance.now();
       const f = files?.[0];
+      console.log("[open-click:onFiles] change event", {
+        hasFile: !!f,
+        name: f?.name ?? null,
+        size: f?.size ?? null,
+        at: Date.now(),
+      });
       const inNewTab = openInNewTabRef.current;
       openInNewTabRef.current = false;
       if (!f) return;
@@ -794,6 +801,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       } else {
         patchActive({ file: f, isDirty: false });
       }
+      console.log("[open-click:onFiles] tab wired", { ms: Math.round(performance.now() - tFiles) });
       void (async () => {
         const meta = await addRecent(f);
         if (meta) {
