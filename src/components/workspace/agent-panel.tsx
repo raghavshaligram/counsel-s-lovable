@@ -345,12 +345,14 @@ export function AgentPanel({
       });
       try {
         const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
+        const { detectPiiInPdfViaWorker } = await importChunk(
+          () => import("@/lib/workers/detect-pii.client"),
+        );
         const { runAsJob } = await import("@/lib/jobs/registry");
         const { promise } = runAsJob(
           { kind: "detect-pii", docId: `${file.name}:${file.size}`, docLabel: file.name },
           async ({ signal, onProgress }) => {
-            return await mod.detectPiiInPdf(file, 1.5, (p) => {
-              if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+            return await detectPiiInPdfViaWorker(file, 1.5, (p) => {
               const t = p.totalPages || 1;
               onProgress({
                 fraction: t ? p.page / t : 0,
@@ -365,7 +367,7 @@ export function AgentPanel({
                     ? `OCR ${p.page}/${p.totalPages}`
                     : `Reading ${p.page}/${p.totalPages}`,
               });
-            });
+            }, signal);
           },
         );
         const { detections, usedOcr, scannedPages, totalPages: total } = await promise;
