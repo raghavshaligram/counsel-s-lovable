@@ -10,6 +10,32 @@ import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
 import { runNer, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
 
+/**
+ * Create a canvas that works on both main thread (HTMLCanvasElement) AND
+ * Web Worker (OffscreenCanvas). detect-pii runs inside a dedicated worker
+ * for large-doc scans so the main thread stays free to render other tabs;
+ * the OCR pipeline (pdf.js render → tesseract) needs a canvas primitive
+ * available in both contexts.
+ */
+type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
+function makeCanvas(width: number, height: number): AnyCanvas {
+  if (typeof document !== "undefined") {
+    const c = document.createElement("canvas");
+    c.width = width;
+    c.height = height;
+    return c;
+  }
+  const c = new OffscreenCanvas(width, height);
+  return c;
+}
+function freeCanvas(canvas: AnyCanvas | null): void {
+  if (!canvas) return;
+  try {
+    canvas.width = 0;
+    canvas.height = 0;
+  } catch { /* noop */ }
+}
+
 export type PiiCategory =
   | "ssn"
   | "email"
