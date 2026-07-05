@@ -376,6 +376,10 @@ export function RedactPage() {
         () => import("@/lib/workers/detect-pii-client"),
       );
       const { runAsJob } = await import("@/lib/jobs/registry");
+      // Live-stream partial findings into the pending list so the user sees
+      // regex hits within seconds and NER hits progressively — no need to
+      // wait for the whole doc.
+      const streaming: import("@/lib/pdf/detect-pii").Detection[] = [];
       const { promise: detPromise } = runAsJob(
         { kind: "detect-pii", docId: `${file.name}:${file.size}`, docLabel: file.name },
         async ({ signal, onProgress }) => {
@@ -386,18 +390,26 @@ export function RedactPage() {
               const t = p.totalPages || 1;
               onProgress({
                 fraction: t ? p.page / t : 0,
-                step: p.stage === "ocr" ? `OCR ${p.page}/${t}` : `Page ${p.page}/${t}`,
+                step: p.stage === "ocr" ? `OCR ${p.page}/${t}` : `${p.pass ?? "text"} ${p.page}/${t}`,
               });
+              const found = p.foundSoFar ?? streaming.length;
               if (p.stage === "ocr") {
-                setDetectStatus(`OCR scanning page ${p.page} of ${p.totalPages}…`);
+                setDetectStatus(`OCR ${p.page}/${p.totalPages} · ${found} found`);
+              } else if (p.pass === "ner") {
+                setDetectStatus(`Names ${p.page}/${p.totalPages} · ${found} found`);
               } else {
-                setDetectStatus(`Reading page ${p.page} of ${p.totalPages}…`);
+                setDetectStatus(`Scanning ${p.page}/${p.totalPages} · ${found} found`);
               }
             },
             signal,
+            (dets) => {
+              streaming.push(...dets);
+              setPendingDetections([...streaming]);
+            },
           );
         },
       );
+
       const { detections: found, usedOcr, scannedPages, lowConfidenceOcrPages } = await detPromise;
       const hasScanned = scannedPages.length > 0;
       const ocrFailed = lowConfidenceOcrPages;
