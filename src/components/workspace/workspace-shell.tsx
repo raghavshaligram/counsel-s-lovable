@@ -674,6 +674,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // the TabStrip only renders document tabs, so an empty tab would be
   // invisible and feel broken.
   const openNewStartTab = useCallback(() => {
+    const t0 = performance.now();
+    console.log("[open-click:openNewStartTab] fired", { at: Date.now() });
     const docCount = tabsRef.current.filter((t) => t.file !== null).length;
     if (docCount >= TAB_CAP) {
       showTabCapToastRef.current("open");
@@ -683,6 +685,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     // Reset value so picking the same file twice still fires `change`.
     if (fileInputRef.current) fileInputRef.current.value = "";
     fileInputRef.current?.click();
+    console.log("[open-click:openNewStartTab] input.click() dispatched", { ms: Math.round(performance.now() - t0) });
   }, []);
 
 
