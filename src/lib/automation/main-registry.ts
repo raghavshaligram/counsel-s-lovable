@@ -32,28 +32,39 @@ function makeOcr(
     const { ocrPdfToSearchable } = await importChunk(
       () => import("@/lib/pdf/ocr-pdf"),
     );
-    const out = await ocrPdfToSearchable(
-      bytesToFile(bytes, "ocr.pdf"),
-      (p) => {
-        const pct = p.totalPages > 0 ? Math.min(1, p.page / p.totalPages) : 0;
-        emit?.({
-          type: "step-progress",
-          index,
-          total,
-          op: "ocr",
-          pct,
-          message: `${p.stage} page ${p.page}/${p.totalPages}`,
-        });
-      },
-      undefined,
-      {
-        highAccuracy: !!params?.highAccuracy,
-        languages: params?.languages && params.languages.length
-          ? params.languages
-          : ["eng"],
+    const { runAsJob } = await import("@/lib/jobs/registry");
+    const inFile = bytesToFile(bytes, "ocr.pdf");
+    // Route through the app-level jobs registry so agent/workflow OCR shows
+    // up in the jobs indicator with cancel + bounded concurrency alongside
+    // interactive jobs. The workflow still `await`s completion here.
+    const { promise } = runAsJob(
+      { kind: "ocr", docId: `${inFile.name}:${inFile.size}`, docLabel: inFile.name },
+      async ({ signal, onProgress }) => {
+        return await ocrPdfToSearchable(
+          inFile,
+          (p) => {
+            const pct = p.totalPages > 0 ? Math.min(1, p.page / p.totalPages) : 0;
+            onProgress({ fraction: pct, step: `${p.stage} ${p.page}/${p.totalPages}` });
+            emit?.({
+              type: "step-progress",
+              index,
+              total,
+              op: "ocr",
+              pct,
+              message: `${p.stage} page ${p.page}/${p.totalPages}`,
+            });
+          },
+          signal,
+          {
+            highAccuracy: !!params?.highAccuracy,
+            languages: params?.languages && params.languages.length
+              ? params.languages
+              : ["eng"],
+          },
+        );
       },
     );
-    return out;
+    return await promise;
   };
 }
 
