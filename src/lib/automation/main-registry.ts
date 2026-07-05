@@ -167,27 +167,9 @@ function makeRedactPattern(
       message: `Burning ${matches.length} redaction${matches.length === 1 ? "" : "s"}…`,
     });
 
-    // Pre-burn ALL matched regions via the verified rasterizer. The gate
-    // will re-verify and re-raster any pages that still leak.
-    const { rasterizeRedactedPages } = await importChunk(
-      () => import("@/lib/editor/rasterize-redacted-pages"),
-    );
-    const preBurn = await rasterizeRedactedPages(bytes, rectsByPage, {
-      mode: "always",
-      scale: 2.5,
-    });
-
-    emit?.({
-      type: "step-progress",
-      index,
-      total,
-      op: "redact-pattern",
-      pct: 0.85,
-      message: "Verifying redaction…",
-    });
-
-    // Feed into the unbypassable gate so we get sanitize + multi-vector
-    // verification + rasterize-fallback exactly like the manual redact path.
+    // Wrap rasterize + gate as ONE background redact-export job. Gate failure
+    // (leak) throws → job fails → agent step surfaces the failure and the
+    // returned bytes are never treated as "redacted".
     const targets = matches
       .filter((m) => m.pdfRect)
       .map((m) => ({
@@ -196,23 +178,64 @@ function makeRedactPattern(
         rect: m.pdfRect!,
       }));
 
-    const { enforceRedactionGate } = await importChunk(
-      () => import("@/lib/editor/redaction-gate"),
-    );
-    const res = await enforceRedactionGate(preBurn.bytes, targets, {
-      rasterizedPages: preBurn.rasterizedPages,
-      onProgress: (step) => {
+    const { runAsJob } = await import("@/lib/jobs/registry");
+    const { promise } = runAsJob(
+      { kind: "redact-export", docId: `agent-redact-${Date.now()}`, docLabel: `Agent redact — ${matches.length} matches` },
+      async ({ signal, onProgress }) => {
+        const { rasterizeRedactedPages } = await importChunk(
+          () => import("@/lib/editor/rasterize-redacted-pages"),
+        );
+        onProgress({ fraction: 0.1, step: `Burning ${matches.length} regions…` });
+        const preBurn = await rasterizeRedactedPages(bytes, rectsByPage, {
+          mode: "always",
+          scale: 2.5,
+          signal,
+          onProgress: (done, tot) => {
+            const p = tot ? (done / tot) * 0.6 : 0;
+            onProgress({ fraction: p, step: `Burning ${done}/${tot}` });
+            emit?.({
+              type: "step-progress",
+              index,
+              total,
+              op: "redact-pattern",
+              pct: 0.6 + p * 0.2,
+              message: `Burning ${done}/${tot}…`,
+            });
+          },
+        });
+
+        onProgress({ fraction: 0.85, step: "Verifying redaction…" });
         emit?.({
           type: "step-progress",
           index,
           total,
           op: "redact-pattern",
-          pct: 0.9,
-          message: `gate: ${step}`,
+          pct: 0.85,
+          message: "Verifying redaction…",
         });
+
+        const { enforceRedactionGate } = await importChunk(
+          () => import("@/lib/editor/redaction-gate"),
+        );
+        const res = await enforceRedactionGate(preBurn.bytes, targets, {
+          rasterizedPages: preBurn.rasterizedPages,
+          signal,
+          onProgress: (step) => {
+            onProgress({ fraction: 0.92, step: `gate: ${step}` });
+            emit?.({
+              type: "step-progress",
+              index,
+              total,
+              op: "redact-pattern",
+              pct: 0.92,
+              message: `gate: ${step}`,
+            });
+          },
+        });
+        return res.bytes;
       },
-    });
-    return res.bytes;
+    );
+    return await promise;
   };
 }
 
