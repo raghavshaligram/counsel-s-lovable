@@ -296,13 +296,24 @@ function Editor() {
           arr.push(t.rect);
           pageRedactions.set(t.page, arr);
         }
-        const { rasterizeRedactedPages } = await import("@/lib/editor/rasterize-redacted-pages");
-        const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, { mode: "always", scale: 2.5 });
-        bytes = rasterResult.bytes;
-        toast.loading("Verifying redaction regions…", { id: "exp" });
-        const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
-        const check = await verifyRedactionRemoval(bytes, redactionTargets, { rasterizedPages: rasterResult.rasterizedPages });
-        if (!check.ok) throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
+        const { runAsJob } = await import("@/lib/jobs/registry");
+        const { promise } = runAsJob(
+          { kind: "redact-export", docId: state.doc.fileName, docLabel: state.doc.fileName },
+          async ({ signal, onProgress }) => {
+            const { rasterizeRedactedPages } = await import("@/lib/editor/rasterize-redacted-pages");
+            const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+              mode: "always", scale: 2.5, signal,
+              onProgress: (done, total) => onProgress({ fraction: total ? (done / total) * 0.7 : 0, step: `Burning ${done}/${total}` }),
+            });
+            let outBytes = rasterResult.bytes;
+            onProgress({ fraction: 0.85, step: "Verifying redaction…" });
+            const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
+            const check = await verifyRedactionRemoval(outBytes, redactionTargets, { rasterizedPages: rasterResult.rasterizedPages });
+            if (!check.ok) throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
+            return outBytes;
+          },
+        );
+        bytes = await promise;
       }
 
       toast.success("Done", { id: "exp" });
