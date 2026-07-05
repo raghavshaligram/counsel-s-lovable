@@ -140,34 +140,50 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           arr.push(t.rect);
           pageRedactions.set(t.page, arr);
         }
-        const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
-        const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
-          mode: "always",
-          scale: 2.5,
-          onProgress: (done, total) => {
-            toast.loading(`Burning redactions ${done}/${total}…`, { id: tid });
+        const { runAsJob } = await import("@/lib/jobs/registry");
+        const docLabel = file?.name ?? doc.fileName;
+        const docId = file ? `${file.name}:${file.size}` : doc.fileName;
+        // Wrap rasterize + verify-gate as ONE background job. The gate runs
+        // INSIDE the job — a gate failure fails the job and prevents the
+        // downstream download (bytes are never written). Cancel via the
+        // jobs indicator aborts both phases at page boundaries.
+        const { promise } = runAsJob(
+          { kind: "redact-export", docId, docLabel },
+          async ({ signal, onProgress }) => {
+            const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
+            const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+              mode: "always",
+              scale: 2.5,
+              signal,
+              onProgress: (done, total) => {
+                onProgress({
+                  fraction: total ? (done / total) * 0.7 : 0,
+                  step: `Burning ${done}/${total}`,
+                });
+                toast.loading(`Burning redactions ${done}/${total}…`, { id: tid });
+              },
+            });
+            let outBytes = rasterResult.bytes;
+            onProgress({ fraction: 0.75, step: "Verifying redaction…" });
+            toast.loading("Verifying redaction…", { id: tid });
+            const { enforceRedactionGate } = await importChunk(() => import("@/lib/editor/redaction-gate"));
+            const gated = await enforceRedactionGate(outBytes, redactionTargets, {
+              rasterizedPages: rasterResult.rasterizedPages,
+              signal,
+              onProgress: (step) => {
+                const msg =
+                  step === "sanitize" ? "Scrubbing side-channels…"
+                  : step === "raster-fallback" ? "Re-burning leaking page…"
+                  : "Verifying redaction…";
+                onProgress({ fraction: 0.9, step: msg });
+                toast.loading(msg, { id: tid });
+              },
+            });
+            outBytes = gated.bytes;
+            return outBytes;
           },
-        });
-        bytes = rasterResult.bytes;
-
-        // Unbypassable verification gate — sanitizes side-channels and
-        // re-verifies removal across every vector (page geometry, raw
-        // streams, form fields, annotations, OCGs, attachments, metadata).
-        // Raw-stream verify skips ONLY fully-rasterized pages (safe: they
-        // are DCT image-only). Everything else is still scanned.
-        toast.loading("Verifying redaction…", { id: tid });
-        const { enforceRedactionGate } = await importChunk(() => import("@/lib/editor/redaction-gate"));
-        const gated = await enforceRedactionGate(bytes, redactionTargets, {
-          rasterizedPages: rasterResult.rasterizedPages,
-          onProgress: (step) => {
-            const msg =
-              step === "sanitize" ? "Scrubbing side-channels…"
-              : step === "raster-fallback" ? "Re-burning leaking page…"
-              : "Verifying redaction…";
-            toast.loading(msg, { id: tid });
-          },
-        });
-        bytes = gated.bytes;
+        );
+        bytes = await promise;
       }
 
 
