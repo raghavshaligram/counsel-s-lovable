@@ -348,8 +348,28 @@ export const CATEGORY_META: Record<PiiCategory, { label: string; hint: string }>
 
 export type DetectProgress = {
   stage: "text" | "ocr";
+  /** Which sub-pass emitted this progress tick. Absent = legacy (treat as "regex"). */
+  pass?: "regex" | "ner" | "ocr";
   page: number;
   totalPages: number;
+  /** Running detection count so callers can show a live "N findings" chip. */
+  foundSoFar?: number;
+};
+
+export type DetectPiiOpts = {
+  /**
+   * Streamed detections. Called after each page's regex/privilege pass, and
+   * after each NER batch, so the UI can show findings live instead of waiting
+   * for the whole scan. `detections` is the delta for that emission (not the
+   * running total).
+   */
+  onPartial?: (detections: Detection[], meta: { page: number; pass: "regex" | "ner" | "ocr" }) => void;
+  /**
+   * Cooperative cancellation. Checked at page and batch boundaries; when it
+   * returns true, throws DOMException("Canceled", "AbortError") so the worker
+   * / caller can react without waiting for the entire document to finish.
+   */
+  shouldAbort?: () => boolean;
 };
 
 export async function detectPiiInPdf(
@@ -357,6 +377,7 @@ export async function detectPiiInPdf(
   scale = 1.5,
   onProgress?: (p: DetectProgress) => void,
   preloadedDoc?: { numPages: number; getPage: (n: number) => Promise<unknown> },
+  opts: DetectPiiOpts = {},
 ): Promise<{ detections: Detection[]; usedOcr: boolean; scannedPages: number[]; totalPages: number; lowConfidenceOcrPages: number[]; ocrPageConfidence: Record<number, number>; ocrUnderDetectedPages: number[] }> {
   const pdfjs = await getPdfjs();
   // Reuse the doc loaded by the caller (e.g. redact route already parsed the
