@@ -487,145 +487,114 @@ export async function detectPiiInPdf(
 
     let done = 0;
     const ocrPageConfidence: Record<number, number> = {};
-    try {
-      await Promise.all(
-        ocrPages.map(async (i) => {
-          const page = await doc.getPage(i);
-          const viewport = page.getViewport({ scale: ocrScale });
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return;
-          await page.render({
-            canvasContext: ctx,
-            viewport,
-            canvas,
-          } as Parameters<typeof page.render>[0]).promise;
+    // Bounded queue: exactly `poolSize` runners share a cursor over ocrPages.
+    // Each runner acquires a worker FIRST, then creates the canvas, renders,
+    // recognizes, and frees the canvas before releasing the worker. Peak
+    // canvas count === poolSize (~4), not ocrPages.length. This is the fix
+    // for the 3000-page OOM: memory scales with concurrency, not doc size.
+    let cursor = 0;
+    const runOne = async (i: number): Promise<void> => {
+      const worker = await acquire();
+      let canvas: HTMLCanvasElement | null = null;
+      try {
+        const page = await doc.getPage(i);
+        const viewport = page.getViewport({ scale: ocrScale });
+        canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        await page.render({
+          canvasContext: ctx,
+          viewport,
+          canvas,
+        } as Parameters<typeof page.render>[0]).promise;
 
-          const worker = await acquire();
-          let words: OcrWord[];
-          try {
-            const { data } = await worker.recognize(canvas, {}, { blocks: true });
-            words = collectWords(data);
-          } finally {
-            release(worker);
-          }
-          done++;
-          onProgress?.({ stage: "ocr", page: done, totalPages: ocrPages.length });
+        let words: OcrWord[];
+        const { data } = await worker.recognize(canvas, {}, { blocks: true });
+        words = collectWords(data);
 
-          const confs = words
-            .filter((w) => w.text && w.text.trim())
-            .map((w) => Math.max(0, w.confidence ?? 0));
-          ocrPageConfidence[i] = confs.length
-            ? confs.reduce((a, b) => a + b, 0) / confs.length
-            : 0;
+        // Free the canvas bitmap before we do CPU work on the OCR words —
+        // never hold more than `poolSize` canvases alive at once.
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas = null;
+        try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
 
-          // Group words into lines by vertical-center overlap.
-          const sortedWords = words
-            .filter((w) => w.text && w.text.trim())
-            .sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
-          const lines: OcrWord[][] = [];
-          for (const w of sortedWords) {
-            const cy = (w.bbox.y0 + w.bbox.y1) / 2;
-            const h = w.bbox.y1 - w.bbox.y0;
-            const line = lines.find((ln) => {
-              const ref = ln[0].bbox;
-              const refCy = (ref.y0 + ref.y1) / 2;
-              return Math.abs(refCy - cy) < Math.max(8, h * 0.6);
-            });
-            if (line) line.push(w);
-            else lines.push([w]);
-          }
-          for (const ln of lines) ln.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+        done++;
+        onProgress?.({ stage: "ocr", page: done, totalPages: ocrPages.length });
 
-          // Build line text + per-character → word index map.
-          const matchedSpans = new Set<string>();
-          const pageDetectionCountBefore = detections.length;
-          let pageRawText = "";
-          for (const ln of lines) {
-            let lineText = "";
-            const charToWord: number[] = [];
-            ln.forEach((w, wi) => {
-              if (lineText.length > 0) {
-                lineText += " ";
-                charToWord.push(-1);
-              }
-              for (let k = 0; k < w.text.length; k++) charToWord.push(wi);
-              lineText += w.text;
-            });
-            pageRawText += lineText + "\n";
+        const confs = words
+          .filter((w) => w.text && w.text.trim())
+          .map((w) => Math.max(0, w.confidence ?? 0));
+        ocrPageConfidence[i] = confs.length
+          ? confs.reduce((a, b) => a + b, 0) / confs.length
+          : 0;
 
-            const variants: { text: string; normalized: boolean }[] = [
-              { text: lineText, normalized: false },
-              { text: normalizeForDigits(lineText), normalized: true },
-            ];
-            for (const { text, normalized } of variants) {
-              const hits = matchAllCategories(text);
-              for (const hit of hits) {
-                // Names are unreliable on normalized text — skip duplicates.
-                if (normalized && hit.category === "name") continue;
-                // Use the matched span's CHAR RANGE to find covered words.
-                const spanStart = hit.start;
-                const spanEnd = hit.start + hit.length;
-                const coveredWords = new Set<number>();
-                for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
-                  const wi = charToWord[c];
-                  if (wi >= 0) coveredWords.add(wi);
-                }
-                if (coveredWords.size === 0) continue;
-                const wordIdx = [...coveredWords];
-                const key = `${hit.category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
-                if (matchedSpans.has(key)) continue;
-                matchedSpans.add(key);
+        // Group words into lines by vertical-center overlap.
+        const sortedWords = words
+          .filter((w) => w.text && w.text.trim())
+          .sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
+        const lines: OcrWord[][] = [];
+        for (const w of sortedWords) {
+          const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+          const h = w.bbox.y1 - w.bbox.y0;
+          const line = lines.find((ln) => {
+            const ref = ln[0].bbox;
+            const refCy = (ref.y0 + ref.y1) / 2;
+            return Math.abs(refCy - cy) < Math.max(8, h * 0.6);
+          });
+          if (line) line.push(w);
+          else lines.push([w]);
+        }
+        for (const ln of lines) ln.sort((a, b) => a.bbox.x0 - b.bbox.x0);
 
-                const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
-                const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
-                const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
-                const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
-                const pad = Math.max(2, (y1 - y0) * 0.15);
-                const snippetText = normalized
-                  ? lineText.slice(spanStart, spanEnd)
-                  : hit.text;
-                detections.push({
-                  id: `det-ocr-${i}-${detections.length}`,
-                  page: i,
-                  x: (x0 - pad) * toCanvas,
-                  y: (y0 - pad) * toCanvas,
-                  w: (x1 - x0 + pad * 2) * toCanvas,
-                  h: (y1 - y0 + pad * 2) * toCanvas,
-                  category: hit.category,
-                  confidence: hit.confidence,
-                  snippet: snippet(snippetText),
-                });
-              }
+        // Build line text + per-character → word index map.
+        const matchedSpans = new Set<string>();
+        const pageDetectionCountBefore = detections.length;
+        let pageRawText = "";
+        for (const ln of lines) {
+          let lineText = "";
+          const charToWord: number[] = [];
+          ln.forEach((w, wi) => {
+            if (lineText.length > 0) {
+              lineText += " ";
+              charToWord.push(-1);
             }
+            for (let k = 0; k < w.text.length; k++) charToWord.push(wi);
+            lineText += w.text;
+          });
+          pageRawText += lineText + "\n";
 
-            // NER + privilege-context pass on the OCR line text. Maps
-            // entity char ranges back to the line's word boxes for the
-            // detection rectangle.
-            const pushOcrSpan = (
-              spanStart: number,
-              spanEnd: number,
-              category: PiiCategory,
-              confidence: "high" | "low" | undefined,
-              text: string,
-            ) => {
-              const covered = new Set<number>();
+          const variants: { text: string; normalized: boolean }[] = [
+            { text: lineText, normalized: false },
+            { text: normalizeForDigits(lineText), normalized: true },
+          ];
+          for (const { text, normalized } of variants) {
+            const hits = matchAllCategories(text);
+            for (const hit of hits) {
+              if (normalized && hit.category === "name") continue;
+              const spanStart = hit.start;
+              const spanEnd = hit.start + hit.length;
+              const coveredWords = new Set<number>();
               for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
                 const wi = charToWord[c];
-                if (wi >= 0) covered.add(wi);
+                if (wi >= 0) coveredWords.add(wi);
               }
-              if (covered.size === 0) return;
-              const wordIdx = [...covered];
-              const key = `${category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
-              if (matchedSpans.has(key)) return;
+              if (coveredWords.size === 0) continue;
+              const wordIdx = [...coveredWords];
+              const key = `${hit.category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
+              if (matchedSpans.has(key)) continue;
               matchedSpans.add(key);
+
               const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
               const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
               const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
               const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
               const pad = Math.max(2, (y1 - y0) * 0.15);
+              const snippetText = normalized
+                ? lineText.slice(spanStart, spanEnd)
+                : hit.text;
               detections.push({
                 id: `det-ocr-${i}-${detections.length}`,
                 page: i,
@@ -633,56 +602,98 @@ export async function detectPiiInPdf(
                 y: (y0 - pad) * toCanvas,
                 w: (x1 - x0 + pad * 2) * toCanvas,
                 h: (y1 - y0 + pad * 2) * toCanvas,
-                category,
-                confidence,
-                snippet: snippet(text),
+                category: hit.category,
+                confidence: hit.confidence,
+                snippet: snippet(snippetText),
               });
-            };
-
-            if (lineText.trim().length >= 8 && /[A-Za-z]/.test(lineText)) {
-              const ents = await runNer(lineText, "detect-pii:ocr-scan");
-              for (const e of ents) {
-                if (e.type !== "PER" && e.type !== "ORG") continue;
-                pushOcrSpan(
-                  e.start,
-                  e.end,
-                  e.type === "PER" ? "name" : "org",
-                  "high",
-                  e.text,
-                );
-              }
             }
-            PRIVILEGE_TERMS_RE.lastIndex = 0;
-            let pmOcr: RegExpExecArray | null;
-            while ((pmOcr = PRIVILEGE_TERMS_RE.exec(lineText)) !== null) {
-              const termStart = pmOcr.index;
-              const termEnd = pmOcr.index + pmOcr[0].length;
-              pushOcrSpan(termStart, termEnd, "privilegeContext", "low", pmOcr[0]);
-              const values = findValuesNearPrivilege(lineText, termStart, termEnd);
-              for (const v of values) {
-                pushOcrSpan(v.start, v.end, "privilegeValue", "low", v.text);
-              }
-              if (pmOcr[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
-            }
-
           }
 
-          // Log the raw OCR text for this page so users / devs can compare
-          // it against what's visually on the page (essential when detection
-          // misses values — tells us if OCR misread or regex didn't match).
-          // eslint-disable-next-line no-console
-          console.info(
-            `[detect-pii] OCR page ${i} (avg conf ${ocrPageConfidence[i].toFixed(0)}):\n${pageRawText.trim()}`,
-          );
+          const pushOcrSpan = (
+            spanStart: number,
+            spanEnd: number,
+            category: PiiCategory,
+            confidence: "high" | "low" | undefined,
+            text: string,
+          ) => {
+            const covered = new Set<number>();
+            for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
+              const wi = charToWord[c];
+              if (wi >= 0) covered.add(wi);
+            }
+            if (covered.size === 0) return;
+            const wordIdx = [...covered];
+            const key = `${category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
+            if (matchedSpans.has(key)) return;
+            matchedSpans.add(key);
+            const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
+            const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
+            const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
+            const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
+            const pad = Math.max(2, (y1 - y0) * 0.15);
+            detections.push({
+              id: `det-ocr-${i}-${detections.length}`,
+              page: i,
+              x: (x0 - pad) * toCanvas,
+              y: (y0 - pad) * toCanvas,
+              w: (x1 - x0 + pad * 2) * toCanvas,
+              h: (y1 - y0 + pad * 2) * toCanvas,
+              category,
+              confidence,
+              snippet: snippet(text),
+            });
+          };
 
-          // Under-detection guard: the page LOOKS structured but produced
-          // very few hits — surface a caution so the user does a manual pass.
-          const pageHits = detections.length - pageDetectionCountBefore;
-          if (looksStructured(pageRawText) && pageHits < 2) {
-            ocrUnderDetectedPages.push(i);
+          if (lineText.trim().length >= 8 && /[A-Za-z]/.test(lineText)) {
+            const ents = await runNer(lineText, "detect-pii:ocr-scan");
+            for (const e of ents) {
+              if (e.type !== "PER" && e.type !== "ORG") continue;
+              pushOcrSpan(
+                e.start,
+                e.end,
+                e.type === "PER" ? "name" : "org",
+                "high",
+                e.text,
+              );
+            }
           }
-        }),
-      );
+          PRIVILEGE_TERMS_RE.lastIndex = 0;
+          let pmOcr: RegExpExecArray | null;
+          while ((pmOcr = PRIVILEGE_TERMS_RE.exec(lineText)) !== null) {
+            const termStart = pmOcr.index;
+            const termEnd = pmOcr.index + pmOcr[0].length;
+            pushOcrSpan(termStart, termEnd, "privilegeContext", "low", pmOcr[0]);
+            const values = findValuesNearPrivilege(lineText, termStart, termEnd);
+            for (const v of values) {
+              pushOcrSpan(v.start, v.end, "privilegeValue", "low", v.text);
+            }
+            if (pmOcr[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
+          }
+        }
+
+        // eslint-disable-next-line no-console
+        console.info(
+          `[detect-pii] OCR page ${i} (avg conf ${ocrPageConfidence[i].toFixed(0)}):\n${pageRawText.trim()}`,
+        );
+
+        const pageHits = detections.length - pageDetectionCountBefore;
+        if (looksStructured(pageRawText) && pageHits < 2) {
+          ocrUnderDetectedPages.push(i);
+        }
+      } finally {
+        if (canvas) { try { canvas.width = 0; canvas.height = 0; } catch { /* ignore */ } }
+        release(worker);
+      }
+    };
+    const runner = async (): Promise<void> => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= ocrPages.length) return;
+        await runOne(ocrPages[idx]);
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: poolSize }, () => runner()));
     } finally {
       await Promise.all(workers.map((w) => w.terminate().catch(() => undefined)));
     }

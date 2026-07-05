@@ -297,10 +297,11 @@ function Editor() {
           pageRedactions.set(t.page, arr);
         }
         const { rasterizeRedactedPages } = await import("@/lib/editor/rasterize-redacted-pages");
-        bytes = (await rasterizeRedactedPages(bytes, pageRedactions, { mode: "always", scale: 2.5 })).bytes;
+        const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, { mode: "always", scale: 2.5 });
+        bytes = rasterResult.bytes;
         toast.loading("Verifying redaction regions…", { id: "exp" });
         const { verifyRedactionRemoval } = await import("@/lib/editor/verify-redaction");
-        const check = await verifyRedactionRemoval(bytes, redactionTargets);
+        const check = await verifyRedactionRemoval(bytes, redactionTargets, { rasterizedPages: rasterResult.rasterizedPages });
         if (!check.ok) throw new Error(`${check.leaks.length} redaction region${check.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
 

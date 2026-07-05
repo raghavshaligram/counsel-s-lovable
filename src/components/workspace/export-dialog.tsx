@@ -122,6 +122,17 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         return [{ page: a.page, text: diagnosticText, rect: { x: a.x, y: a.y, w: a.w, h: a.h } }];
       });
       if (redactionTargets.length > 0) {
+        // Graceful hard-limit: warn/block on extreme docs before we start.
+        const { assessLargeDoc, LargeDocGuardError } = await importChunk(() => import("@/lib/editor/large-doc-guard"));
+        const pageCount = doc.pages.length;
+        const assess = assessLargeDoc(pageCount);
+        if (assess.level === "block") {
+          throw new LargeDocGuardError(assess);
+        }
+        if (assess.level === "warn" && assess.message) {
+          toast.message(assess.message, { id: `${tid}-warn`, duration: 6000 });
+        }
+
         toast.loading("Burning redaction regions…", { id: tid });
         const pageRedactions = new Map<number, { x: number; y: number; w: number; h: number }[]>();
         for (const t of redactionTargets) {
@@ -130,16 +141,24 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           pageRedactions.set(t.page, arr);
         }
         const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
-        bytes = (await rasterizeRedactedPages(bytes, pageRedactions, { mode: "always", scale: 2.5 })).bytes;
+        const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+          mode: "always",
+          scale: 2.5,
+          onProgress: (done, total) => {
+            toast.loading(`Burning redactions ${done}/${total}…`, { id: tid });
+          },
+        });
+        bytes = rasterResult.bytes;
 
         // Unbypassable verification gate — sanitizes side-channels and
         // re-verifies removal across every vector (page geometry, raw
         // streams, form fields, annotations, OCGs, attachments, metadata).
-        // Throws if any redacted value survives anywhere — the file is
-        // never delivered in that case.
+        // Raw-stream verify skips ONLY fully-rasterized pages (safe: they
+        // are DCT image-only). Everything else is still scanned.
         toast.loading("Verifying redaction…", { id: tid });
         const { enforceRedactionGate } = await importChunk(() => import("@/lib/editor/redaction-gate"));
         const gated = await enforceRedactionGate(bytes, redactionTargets, {
+          rasterizedPages: rasterResult.rasterizedPages,
           onProgress: (step) => {
             const msg =
               step === "sanitize" ? "Scrubbing side-channels…"
