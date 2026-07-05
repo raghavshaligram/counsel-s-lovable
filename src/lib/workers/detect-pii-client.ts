@@ -68,16 +68,56 @@ export function detectPiiInPdfViaWorker(
         const id = `det-${++reqCounter}`;
         const bytes = await file.arrayBuffer();
 
+        // Coalesce worker→main callbacks per animation frame. The scan
+        // worker can emit hundreds of progress + partial messages per
+        // second on a large doc; if each triggered a synchronous React
+        // state update the main thread's task queue would stay saturated
+        // and starve unrelated main-thread work — most visibly the
+        // "open a new PDF" path (arrayBuffer read + pdf.js structured
+        // clone). Keep the worker running full speed and cap main-thread
+        // updates at ~60/sec via RAF batching (latest-only progress,
+        // append-all partials).
+        let pendingProgress: DetectProgress | null = null;
+        let pendingPartials: Array<{ dets: Detection[]; meta: { page: number; pass: "regex" | "ner" | "ocr" } }> = [];
+        let flushScheduled = false;
+        const schedule =
+          typeof requestAnimationFrame === "function"
+            ? (cb: () => void) => requestAnimationFrame(cb)
+            : (cb: () => void) => setTimeout(cb, 16);
+        const flush = () => {
+          flushScheduled = false;
+          const prog = pendingProgress;
+          const parts = pendingPartials;
+          pendingProgress = null;
+          pendingPartials = [];
+          if (prog && onProgress) {
+            try { onProgress(prog); } catch (e) { console.warn("[detect] onProgress threw", e); }
+          }
+          if (parts.length && onPartial) {
+            for (const p of parts) {
+              try { onPartial(p.dets, p.meta); } catch (e) { console.warn("[detect] onPartial threw", e); }
+            }
+          }
+        };
+        const ensureFlush = () => {
+          if (flushScheduled) return;
+          flushScheduled = true;
+          schedule(flush);
+        };
+
         const handler = (ev: MessageEvent<OutboundMsg>) => {
           const m = ev.data;
           if (m.id !== id) return;
           if (m.kind === "progress" && m.progress) {
-            onProgress?.(m.progress);
+            pendingProgress = m.progress; // latest-only
+            ensureFlush();
           } else if (m.kind === "partial" && m.detections && typeof m.page === "number" && m.pass) {
-            onPartial?.(m.detections, { page: m.page, pass: m.pass });
+            pendingPartials.push({ dets: m.detections as Detection[], meta: { page: m.page, pass: m.pass } });
+            ensureFlush();
           } else if (m.kind === "result") {
             w.removeEventListener("message", handler);
             signal?.removeEventListener("abort", onAbort);
+            if (flushScheduled) flush();
             resolve(m.result as DetectResult);
           } else if (m.kind === "error") {
             w.removeEventListener("message", handler);

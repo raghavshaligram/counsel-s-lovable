@@ -674,6 +674,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // the TabStrip only renders document tabs, so an empty tab would be
   // invisible and feel broken.
   const openNewStartTab = useCallback(() => {
+    const t0 = performance.now();
+    console.log("[open-click:openNewStartTab] fired", { at: Date.now() });
     const docCount = tabsRef.current.filter((t) => t.file !== null).length;
     if (docCount >= TAB_CAP) {
       showTabCapToastRef.current("open");
@@ -683,6 +685,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     // Reset value so picking the same file twice still fires `change`.
     if (fileInputRef.current) fileInputRef.current.value = "";
     fileInputRef.current?.click();
+    console.log("[open-click:openNewStartTab] input.click() dispatched", { ms: Math.round(performance.now() - t0) });
   }, []);
 
 
@@ -766,7 +769,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const openFile = useCallback(() => fileInputRef.current?.click(), []);
   const onFiles = useCallback(
     (files: FileList | null) => {
+      const tFiles = performance.now();
       const f = files?.[0];
+      console.log("[open-click:onFiles] change event", {
+        hasFile: !!f,
+        name: f?.name ?? null,
+        size: f?.size ?? null,
+        at: Date.now(),
+      });
       const inNewTab = openInNewTabRef.current;
       openInNewTabRef.current = false;
       if (!f) return;
@@ -791,6 +801,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       } else {
         patchActive({ file: f, isDirty: false });
       }
+      console.log("[open-click:onFiles] tab wired", { ms: Math.round(performance.now() - tFiles) });
       void (async () => {
         const meta = await addRecent(f);
         if (meta) {
