@@ -1146,13 +1146,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
-      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await mod.detectPiiInPdf(file, 1.5, (p) => {
-        setProgress(
-          p.stage === "ocr"
-            ? `OCR scanning ${p.page}/${p.totalPages}`
-            : `Reading page ${p.page}/${p.totalPages}`,
-        );
-      });
+      const { runAsJob } = await import("@/lib/jobs/registry");
+      const docId = `${file.name}:${file.size}`;
+      const { promise } = runAsJob(
+        { kind: "detect-pii", docId, docLabel: file.name },
+        async ({ signal, onProgress }) => {
+          return await mod.detectPiiInPdf(file, 1.5, (p) => {
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+            const total = p.totalPages || 1;
+            onProgress({
+              fraction: total ? p.page / total : 0,
+              step: p.stage === "ocr" ? `OCR ${p.page}/${total}` : `Page ${p.page}/${total}`,
+            });
+            setProgress(
+              p.stage === "ocr"
+                ? `OCR scanning ${p.page}/${p.totalPages}`
+                : `Reading page ${p.page}/${p.totalPages}`,
+            );
+          });
+        },
+      );
+      const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await promise;
       // Side-channel scan: form fields, annotations, document metadata.
       // These vectors are invisible on the page but ship with the file
       // unless explicitly stripped. Sanitize handles removal during the
