@@ -6,6 +6,7 @@
  */
 import { PDFDocument } from "pdf-lib";
 import { importChunk } from "@/lib/chunk-import";
+import { maybeYield, throwIfAborted } from "@/lib/pdf/yield";
 
 export type SplitMode = "ranges" | "each";
 
