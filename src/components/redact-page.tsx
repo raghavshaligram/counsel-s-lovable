@@ -373,7 +373,7 @@ export function RedactPage() {
     setPendingUsedOcr(false);
     try {
       const { detectPiiInPdfViaWorker } = await importChunk(
-        () => import("@/lib/workers/detect-pii.client"),
+        () => import("@/lib/workers/detect-pii-client"),
       );
       const { runAsJob } = await import("@/lib/jobs/registry");
       const { promise: detPromise } = runAsJob(
