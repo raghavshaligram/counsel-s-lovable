@@ -105,6 +105,10 @@ import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
+import { JobsIndicator } from "./jobs-indicator";
+import { bindGlobalCompletionToasts } from "@/lib/jobs/registry";
+
+bindGlobalCompletionToasts();
 import { CaseSessionSaveButton } from "./case-session-save";
 import { AnnouncementBanner } from "./announcement-banner";
 import { ExportFormatChip } from "./export-format-row";
@@ -1666,6 +1670,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           </button>
           <span className="mx-0.5 h-4 w-px bg-border" />
           <CaseSessionSaveButton file={file} />
+          <JobsIndicator />
           <AccountMenu onShowWelcome={() => setWelcomeNonce((n) => n + 1)} />
         </div>
       </header>
