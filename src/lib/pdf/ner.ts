@@ -49,9 +49,9 @@ async function getPipeline(trigger: string): Promise<Pipeline | null> {
     try {
       const inWorker =
         typeof window === "undefined" ||
-        (typeof WorkerGlobalScope !== "undefined" &&
-          // @ts-expect-error — self typing differs in worker context
-          self instanceof WorkerGlobalScope);
+        (typeof (globalThis as { WorkerGlobalScope?: unknown }).WorkerGlobalScope !== "undefined" &&
+          (self as unknown) instanceof
+            ((globalThis as { WorkerGlobalScope: new () => object }).WorkerGlobalScope));
       const run = async (h: { report: (n: number) => void }) => {
         const transformers = await importChunk(() => import("@huggingface/transformers"));
         (transformers.env as { allowRemoteModels?: boolean; allowLocalModels?: boolean }).allowRemoteModels = true;
