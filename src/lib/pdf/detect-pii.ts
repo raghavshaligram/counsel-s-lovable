@@ -1051,10 +1051,8 @@ export async function findKeywordInPdf(
         scannedPages.map(async (i) => {
           const page = await doc.getPage(i);
           const viewport = page.getViewport({ scale });
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          const ctx = canvas.getContext("2d");
+          const canvas = makeCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+          const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
           if (!ctx) return;
           await page.render({
             canvasContext: ctx,
@@ -1065,10 +1063,11 @@ export async function findKeywordInPdf(
           const worker = await acquire();
           let words: OcrWord[];
           try {
-            const { data } = await worker.recognize(canvas, {}, { blocks: true });
+            const { data } = await worker.recognize(canvas as unknown as HTMLCanvasElement, {}, { blocks: true });
             words = collectWords(data);
           } finally {
             release(worker);
+            freeCanvas(canvas);
           }
           done++;
           opts.onProgress?.({ stage: "ocr", page: done, totalPages: scannedPages.length });
