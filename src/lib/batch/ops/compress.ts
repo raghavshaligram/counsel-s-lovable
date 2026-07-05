@@ -1,7 +1,8 @@
 /**
  * Compress — guaranteed never to return a larger file than the input.
  *
- * Two strategies run and we keep the smaller result:
+ * Two strategies run SEQUENTIALLY (never in parallel — that doubled peak
+ * memory and OOM'd 3000-page docs) and we keep the smaller result:
  *
  *   A. Structural rebuild (pdf-lib re-save with object streams + metadata
  *      dropped). Fast, lossless, wins on text/vector PDFs whose images
@@ -9,14 +10,17 @@
  *      the file BIGGER. Re-encodes nothing.
  *
  *   B. Rasterise pipeline (pdf.js → JPEG re-encode at preset quality).
- *      Wins on scan-heavy / image-heavy PDFs.
+ *      Wins on scan-heavy / image-heavy PDFs. Yields to the event loop
+ *      every few pages and nulls each page canvas so GC can reclaim it
+ *      before allocating the next one.
  *
  * Safeguard: if neither beats the original, we return the original bytes
  * and report `keptOriginal: true`. A Compress action MUST NEVER hand the
  * user a larger file.
  */
 import { PDFDocument } from "pdf-lib";
-import { loadPdfjs } from "@/lib/pdf/worker";
+import { openPdfjs, type PasswordPrompt } from "@/lib/pdf/pdf-open";
+import { maybeYield, throwIfAborted } from "@/lib/pdf/yield";
 
 export type CompressPreset = "low" | "medium" | "high" | "extreme";
 
@@ -30,6 +34,9 @@ export const COMPRESS_PRESETS: Record<CompressPreset, { dpi: number; quality: nu
 export interface CompressOpts {
   preset: CompressPreset;
   grayscale: boolean;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number, phase: "structural" | "rasterise") => void;
+  onPassword?: PasswordPrompt;
 }
 
 export type CompressMethod = "structural" | "rasterise" | "kept-original";
@@ -59,7 +66,6 @@ async function compressStructural(bytes: Uint8Array): Promise<Uint8Array | null>
       updateMetadata: false,
       throwOnInvalidObject: false,
     });
-    // Drop metadata most users never see; this is small but free savings.
     try { doc.setTitle(""); } catch { /* noop */ }
     try { doc.setAuthor(""); } catch { /* noop */ }
     try { doc.setSubject(""); } catch { /* noop */ }
@@ -85,13 +91,13 @@ async function compressRasterise(
   try {
     const { dpi, quality } = COMPRESS_PRESETS[opts.preset];
     const scale = dpi / 72;
-    const pdfjs = await loadPdfjs();
-    const srcDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const srcDoc = await openPdfjs(bytes.slice(), { onPassword: opts.onPassword });
     const sizingDoc = await PDFDocument.load(bytes.slice(), { ignoreEncryption: true });
     const sizes = sizingDoc.getPages().map((p) => ({ w: p.getWidth(), h: p.getHeight() }));
 
     const out = await PDFDocument.create();
     for (let i = 0; i < srcDoc.numPages; i++) {
+      throwIfAborted(opts.signal);
       const page = await srcDoc.getPage(i + 1);
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
@@ -118,6 +124,15 @@ async function compressRasterise(
       const sz = sizes[i] ?? { w: viewport.width / scale, h: viewport.height / scale };
       const p = out.addPage([sz.w, sz.h]);
       p.drawImage(jpg, { x: 0, y: 0, width: sz.w, height: sz.h });
+
+      // Free the pdf.js page + canvas allocation before the next iter so a
+      // 3000-page doc doesn't accumulate canvas RAM.
+      try { page.cleanup(); } catch { /* noop */ }
+      canvas.width = 0;
+      canvas.height = 0;
+
+      opts.onProgress?.(i + 1, srcDoc.numPages, "rasterise");
+      await maybeYield(i, 4);
     }
 
     out.setTitle("");
@@ -128,15 +143,15 @@ async function compressRasterise(
     out.setCreator("CounselPDF");
     return await out.save({ useObjectStreams: true });
   } catch (e) {
+    if ((e as { name?: string })?.name === "AbortError") throw e;
     console.warn("[compress] rasterise failed", e);
     return null;
   }
 }
 
 /**
- * Smart compress — runs both strategies, returns the smaller result, and
- * NEVER returns bytes larger than the input. Use this for user-facing
- * Compress actions where size reporting matters.
+ * Smart compress — runs strategies SEQUENTIALLY, returns the smaller
+ * result, and NEVER returns bytes larger than the input.
  */
 export async function compressSmart(
   bytes: Uint8Array,
@@ -144,17 +159,20 @@ export async function compressSmart(
 ): Promise<CompressResult> {
   const originalSize = bytes.byteLength;
 
-  const [structural, rasterised] = await Promise.all([
-    compressStructural(bytes),
-    compressRasterise(bytes, opts),
-  ]);
+  // Sequential — running both in parallel was the source of the 2× peak.
+  opts.onProgress?.(0, 1, "structural");
+  const structural = await compressStructural(bytes);
+  opts.onProgress?.(1, 1, "structural");
+  throwIfAborted(opts.signal);
+
+  const rasterised = await compressRasterise(bytes, opts);
+  throwIfAborted(opts.signal);
 
   type Candidate = { bytes: Uint8Array; method: CompressMethod };
   const candidates: Candidate[] = [];
   if (structural) candidates.push({ bytes: structural, method: "structural" });
   if (rasterised) candidates.push({ bytes: rasterised, method: "rasterise" });
 
-  // Pick the smallest candidate that actually beats the original.
   let best: Candidate | null = null;
   for (const c of candidates) {
     if (c.bytes.byteLength >= originalSize) continue;
@@ -162,11 +180,6 @@ export async function compressSmart(
   }
 
   if (!best) {
-    console.info("[compress] no strategy beat the original — keeping source", {
-      originalSize,
-      structuralSize: structural?.byteLength ?? null,
-      rasteriseSize: rasterised?.byteLength ?? null,
-    });
     return {
       bytes,
       originalSize,
@@ -175,13 +188,6 @@ export async function compressSmart(
       method: "kept-original",
     };
   }
-
-  console.info("[compress] selected", {
-    method: best.method,
-    originalSize,
-    outputSize: best.bytes.byteLength,
-    saved: originalSize - best.bytes.byteLength,
-  });
   return {
     bytes: best.bytes,
     originalSize,
@@ -191,10 +197,7 @@ export async function compressSmart(
   };
 }
 
-/**
- * Back-compat wrapper used by the /compress route and batch runner.
- * Always returns bytes <= input size (falls back to the source on tie/loss).
- */
+/** Back-compat wrapper. Always returns bytes <= input size. */
 export async function compress(bytes: Uint8Array, opts: CompressOpts): Promise<Uint8Array> {
   const res = await compressSmart(bytes, opts);
   return res.bytes;
