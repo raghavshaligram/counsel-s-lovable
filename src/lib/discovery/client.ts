@@ -239,6 +239,26 @@ export function dropIndex(docKey: string): void {
   worker.postMessage({ kind: "drop", docKey });
 }
 
+/**
+ * Drop every in-memory index and its ~14 MB chunk-text pin. Called on tab
+ * close (beforeunload / pagehide) so a large document doesn't hold RAM
+ * for the tab's lifetime once the user has navigated away.
+ */
+export function dropAllIndexes(): void {
+  const keys = Array.from(chunkStore.keys());
+  chunkStore.clear();
+  indexedDocs.clear();
+  if (worker) {
+    for (const k of keys) worker.postMessage({ kind: "drop", docKey: k });
+  }
+}
+
+if (typeof window !== "undefined") {
+  const evict = () => dropAllIndexes();
+  window.addEventListener("pagehide", evict);
+  window.addEventListener("beforeunload", evict);
+}
+
 /** Rough device capability probe — refuses tiny devices up front. */
 export function capabilityCheck(): { ok: boolean; reason?: string } {
   if (typeof Worker === "undefined")

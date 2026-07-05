@@ -1,41 +1,54 @@
-import { loadPdfjs } from "@/lib/pdf/worker";
+import { openPdfjs, EncryptedPdfError, MalformedPdfError, type PasswordPrompt } from "@/lib/pdf/pdf-open";
+import { maybeYield, throwIfAborted } from "@/lib/pdf/yield";
 
 export interface PdfChunk {
   page: number;
   text: string;
 }
 
+export interface ExtractOpts {
+  signal?: AbortSignal;
+  onPassword?: PasswordPrompt;
+}
+
 // Extract text per page, then break each page into ~chunkChars-sized
 // passages on sentence/paragraph boundaries. Page number is preserved
-// for citation.
+// for citation. Yields on a bounded cadence so 3000-page docs don't lock
+// the main thread. Encrypted / malformed PDFs surface as EncryptedPdfError
+// / MalformedPdfError from `openPdfjs` — never an uncaught exception.
 export async function extractPdfChunks(
   file: File,
   chunkChars = 1200,
   overlap = 150,
   onProgress?: (page: number, totalPages: number) => void,
+  extract: ExtractOpts = {},
 ): Promise<PdfChunk[]> {
-  const pdfjs = await loadPdfjs();
   const buf = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const doc = await openPdfjs(buf, { onPassword: extract.onPassword });
   const chunks: PdfChunk[] = [];
 
   for (let p = 1; p <= doc.numPages; p++) {
+    throwIfAborted(extract.signal);
     onProgress?.(p, doc.numPages);
     const page = await doc.getPage(p);
     const content = await page.getTextContent();
     const text = content.items
-      .map((it: any) => ("str" in it ? it.str : ""))
+      .map((it: unknown) => (typeof it === "object" && it && "str" in it ? String((it as { str: string }).str) : ""))
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
-    if (!text) continue;
-
-    if (text.length <= chunkChars) {
-      chunks.push({ page: p, text });
+    try { page.cleanup(); } catch { /* noop */ }
+    if (!text) {
+      await maybeYield(p, 8);
       continue;
     }
 
-    // Sliding window with sentence-aware boundary
+    if (text.length <= chunkChars) {
+      chunks.push({ page: p, text });
+      await maybeYield(p, 8);
+      continue;
+    }
+
     let start = 0;
     while (start < text.length) {
       let end = Math.min(start + chunkChars, text.length);
@@ -52,33 +65,30 @@ export async function extractPdfChunks(
       if (end >= text.length) break;
       start = end - overlap;
     }
+    await maybeYield(p, 8);
   }
 
   return chunks;
 }
 
-// Paragraph-level chunker for semantic search. Produces smaller, focused
-// passages (~targetChars) split on paragraph → sentence boundaries so
-// embedding scores separate cleanly across a doc of any size. Never
-// splits mid-word. Preserves the source page.
+// Paragraph-level chunker for semantic search.
 export async function extractPdfParagraphChunks(
   file: File,
   targetChars = 300,
   minChars = 120,
   onProgress?: (page: number, totalPages: number) => void,
+  extract: ExtractOpts = {},
 ): Promise<PdfChunk[]> {
-  const pdfjs = await loadPdfjs();
   const buf = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const doc = await openPdfjs(buf, { onPassword: extract.onPassword });
   const chunks: PdfChunk[] = [];
 
   for (let p = 1; p <= doc.numPages; p++) {
+    throwIfAborted(extract.signal);
     onProgress?.(p, doc.numPages);
     const page = await doc.getPage(p);
     const content = await page.getTextContent();
 
-    // Reconstruct paragraphs using pdf.js hasEOL. Two consecutive EOLs
-    // (or an EOL after a blank item) mark a paragraph break.
     let buffer = "";
     const paragraphs: string[] = [];
     const flushPara = () => {
@@ -87,8 +97,8 @@ export async function extractPdfParagraphChunks(
       buffer = "";
     };
     let prevEOL = false;
-    for (const it of content.items as any[]) {
-      const str = "str" in it ? it.str : "";
+    for (const it of content.items as Array<{ str?: string; hasEOL?: boolean }>) {
+      const str = typeof it.str === "string" ? it.str : "";
       const eol = !!it.hasEOL;
       if (str) buffer += str;
       if (eol) {
@@ -104,10 +114,13 @@ export async function extractPdfParagraphChunks(
       }
     }
     flushPara();
+    try { page.cleanup(); } catch { /* noop */ }
 
-    if (paragraphs.length === 0) continue;
+    if (paragraphs.length === 0) {
+      await maybeYield(p, 8);
+      continue;
+    }
 
-    // Split any paragraph longer than targetChars on sentence boundaries.
     const pieces: string[] = [];
     for (const para of paragraphs) {
       if (para.length <= targetChars) {
@@ -126,7 +139,6 @@ export async function extractPdfParagraphChunks(
           if (sTrim.length <= targetChars) {
             acc = sTrim;
           } else {
-            // Sentence itself too long — hard-split on word boundaries.
             let i = 0;
             while (i < sTrim.length) {
               let end = Math.min(i + targetChars, sTrim.length);
@@ -144,8 +156,6 @@ export async function extractPdfParagraphChunks(
       if (acc) pieces.push(acc);
     }
 
-    // Merge very small adjacent pieces so single-line fragments don't
-    // pollute rankings.
     let merged = "";
     for (const piece of pieces) {
       if (!merged) {
@@ -158,8 +168,11 @@ export async function extractPdfParagraphChunks(
       }
     }
     if (merged) chunks.push({ page: p, text: merged });
+    await maybeYield(p, 8);
   }
 
   return chunks;
 }
 
+// Re-export so callers can `try { … } catch (e) { if (e instanceof EncryptedPdfError) …}`
+export { EncryptedPdfError, MalformedPdfError };

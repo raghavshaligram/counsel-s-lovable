@@ -250,3 +250,19 @@ export async function parsePdf(bytes: Uint8Array): Promise<{ doc: PDFDocument; p
     },
   };
 }
+
+/**
+ * Safe wrapper — returns null on malformed input instead of throwing. Callers
+ * that don't already try/catch should prefer this so a corrupt PDF surfaces
+ * as a clean toast rather than an uncaught exception at the module boundary.
+ */
+export async function tryParsePdf(
+  bytes: Uint8Array,
+): Promise<{ doc: PDFDocument; parsed: ParsedDoc } | null> {
+  try {
+    return await parsePdf(bytes);
+  } catch (err) {
+    console.warn("[outline/parse] parse failed — treating as unreadable", err);
+    return null;
+  }
+}
