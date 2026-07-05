@@ -11,7 +11,7 @@
  *  caller-supplied "redacted strings". Any hit is reported as a leak so
  *  the export pipeline can block the download.
  */
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from "pdf-lib";
 import { unzlibSync } from "fflate";
 import { loadPdfjs } from "@/lib/pdf/worker";
 
@@ -55,9 +55,21 @@ export interface VerifyResult {
   scannedAt: string;
 }
 
+export interface VerifyOptions {
+  /** 0-based page indices that were FULLY rasterized (entire page is a
+   *  burned image, no residual text streams). Raw-stream verification is
+   *  skipped ONLY for these pages — partially-rasterized or text-retaining
+   *  pages remain scanned. Err toward verifying: if uncertain, omit the
+   *  index. */
+  rasterizedPages?: number[];
+  signal?: AbortSignal;
+  onProgress?: (stage: "page" | "side-channel" | "raw-stream", done: number, total: number) => void;
+}
+
 export async function verifyRedactionRemoval(
   bytes: Uint8Array,
   targets: RedactionTarget[],
+  opts: VerifyOptions = {},
 ): Promise<VerifyResult> {
   const scannedAt = new Date().toISOString();
   const regionTargets = targets.filter((t) => t.rect && t.rect.w > 0 && t.rect.h > 0);
@@ -67,23 +79,16 @@ export async function verifyRedactionRemoval(
 
   const leaks: VerifyLeak[] = [];
 
-  // ---- Vector 1: page geometry (the original check) -------------------
   if (regionTargets.length > 0) {
     const pageLeaks = await verifyPageGeometry(bytes, regionTargets);
     leaks.push(...pageLeaks);
   }
 
-  // ---- Vectors 2-5: form fields, annotations, layers, attachments -----
   const vectorLeaks = await verifySideChannelVectors(bytes, sensitiveStrings);
   leaks.push(...vectorLeaks);
 
-  // ---- Vector 6: raw content streams (don't trust text-layer alone) ---
-  // Decodes every PDFStream in the file (page content streams, form
-  // XObjects, anything else) and searches the bytes directly for the
-  // sensitive literals. Catches values that survive in baked-down glyph
-  // strings even when pdf.js can't extract them as text items.
   if (sensitiveStrings.length > 0) {
-    const rawLeaks = await verifyRawStreams(bytes, sensitiveStrings);
+    const rawLeaks = await verifyRawStreams(bytes, sensitiveStrings, opts.rasterizedPages, opts.signal);
     leaks.push(...rawLeaks);
   }
 
