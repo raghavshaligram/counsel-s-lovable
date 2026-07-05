@@ -345,18 +345,30 @@ export function AgentPanel({
       });
       try {
         const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
-        const { detections, usedOcr, scannedPages, totalPages: total } =
-          await mod.detectPiiInPdf(file, 1.5, (p) => {
-            replaceStep(runId, {
-              kind: "running",
-              id: runId,
-              label: "Scanning on-device for sensitive info…",
-              progress:
-                p.stage === "ocr"
-                  ? `OCR ${p.page}/${p.totalPages}`
-                  : `Reading ${p.page}/${p.totalPages}`,
+        const { runAsJob } = await import("@/lib/jobs/registry");
+        const { promise } = runAsJob(
+          { kind: "detect-pii", docId: `${file.name}:${file.size}`, docLabel: file.name },
+          async ({ signal, onProgress }) => {
+            return await mod.detectPiiInPdf(file, 1.5, (p) => {
+              if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+              const t = p.totalPages || 1;
+              onProgress({
+                fraction: t ? p.page / t : 0,
+                step: p.stage === "ocr" ? `OCR ${p.page}/${t}` : `Reading ${p.page}/${t}`,
+              });
+              replaceStep(runId, {
+                kind: "running",
+                id: runId,
+                label: "Scanning on-device for sensitive info…",
+                progress:
+                  p.stage === "ocr"
+                    ? `OCR ${p.page}/${p.totalPages}`
+                    : `Reading ${p.page}/${p.totalPages}`,
+              });
             });
-          });
+          },
+        );
+        const { detections, usedOcr, scannedPages, totalPages: total } = await promise;
         if (abortedRef.current) return;
 
         const cats = f.categories;
