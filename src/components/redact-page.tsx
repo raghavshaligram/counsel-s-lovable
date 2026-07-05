@@ -372,16 +372,17 @@ export function RedactPage() {
     setPendingDetections(null);
     setPendingUsedOcr(false);
     try {
-      const { detectPiiInPdf } = await importChunk(() => import("@/lib/pdf/detect-pii"));
+      const { detectPiiInPdfViaWorker } = await importChunk(
+        () => import("@/lib/workers/detect-pii.client"),
+      );
       const { runAsJob } = await import("@/lib/jobs/registry");
       const { promise: detPromise } = runAsJob(
         { kind: "detect-pii", docId: `${file.name}:${file.size}`, docLabel: file.name },
         async ({ signal, onProgress }) => {
-          return await detectPiiInPdf(
+          return await detectPiiInPdfViaWorker(
             file,
             1.5,
             (p) => {
-              if (signal.aborted) throw new DOMException("Aborted", "AbortError");
               const t = p.totalPages || 1;
               onProgress({
                 fraction: t ? p.page / t : 0,
@@ -393,7 +394,7 @@ export function RedactPage() {
                 setDetectStatus(`Reading page ${p.page} of ${p.totalPages}…`);
               }
             },
-            docRef.current ?? undefined,
+            signal,
           );
         },
       );
