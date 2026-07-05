@@ -111,77 +111,85 @@ export async function stampMultiFileBates(
   const plan = await planMultiFileBates(files, opts);
   const totalPages = plan.reduce((n, r) => n + r.pageCount, 0);
 
-  const stamped: { name: string; bytes: Uint8Array; doc: PDFDocument }[] = [];
+  // Stream mode: we never hold every stamped output in memory. Each file
+  // is stamped, saved, its bytes handed to the caller through
+  // stampedFiles[], and — if merge is on — copied into the merger inline
+  // so the per-file PDFDocument can be released before the next file.
+  const stampedFiles: { name: string; bytes: Uint8Array }[] = [];
+  const merger = cfg.merge ? await PDFDocument.create() : null;
   let totalDone = 0;
 
   for (let fi = 0; fi < files.length; fi++) {
     if (cfg.signal?.aborted) throw new Error("aborted");
     const f = files[fi];
     const r = plan[fi];
-    const doc = await PDFDocument.load(f.bytes, { ignoreEncryption: true });
-    const font = await embedStandardFont(doc, "HelveticaBold");
-    const pages = doc.getPages();
+    // Scope the per-file doc so it becomes GC-eligible after this iteration.
+    const fileBytes: Uint8Array = await (async () => {
+      const doc = await PDFDocument.load(f.bytes, { ignoreEncryption: true });
+      const font = await embedStandardFont(doc, "HelveticaBold");
+      const pages = doc.getPages();
 
-    for (let i = 0; i < pages.length; i++) {
-      if (cfg.signal?.aborted) throw new Error("aborted");
-      const page = pages[i];
-      const { width, height } = page.getSize();
-      const stamp = formatBates(r.firstNumber + i, opts);
-      const tw = font.widthOfTextAtSize(stamp, opts.fontSize);
-      const th = opts.fontSize;
-      let x = margin;
-      let y = margin;
-      switch (opts.position) {
-        case "tl": x = margin; y = height - margin - th; break;
-        case "tc": x = (width - tw) / 2; y = height - margin - th; break;
-        case "tr": x = width - margin - tw; y = height - margin - th; break;
-        case "bl": x = margin; y = margin; break;
-        case "bc": x = (width - tw) / 2; y = margin; break;
-        case "br": x = width - margin - tw; y = margin; break;
+      for (let i = 0; i < pages.length; i++) {
+        if (cfg.signal?.aborted) throw new Error("aborted");
+        const page = pages[i];
+        const { width, height } = page.getSize();
+        const stamp = formatBates(r.firstNumber + i, opts);
+        const tw = font.widthOfTextAtSize(stamp, opts.fontSize);
+        const th = opts.fontSize;
+        let x = margin;
+        let y = margin;
+        switch (opts.position) {
+          case "tl": x = margin; y = height - margin - th; break;
+          case "tc": x = (width - tw) / 2; y = height - margin - th; break;
+          case "tr": x = width - margin - tw; y = height - margin - th; break;
+          case "bl": x = margin; y = margin; break;
+          case "bc": x = (width - tw) / 2; y = margin; break;
+          case "br": x = width - margin - tw; y = margin; break;
+        }
+        page.drawRectangle({
+          x: x - 4, y: y - 3, width: tw + 8, height: th + 6,
+          color: rgb(1, 1, 1), opacity: 0.75,
+        });
+        page.drawText(stamp, { x, y, size: opts.fontSize, font, color: fill });
+
+        totalDone++;
+        cfg.onProgress?.({
+          fileIndex: fi,
+          fileCount: files.length,
+          fileName: f.name,
+          page: i + 1,
+          pageCount: pages.length,
+          totalPagesDone: totalDone,
+          totalPages,
+        });
+        if (i % 4 === 3) await yieldToUi();
       }
-      page.drawRectangle({
-        x: x - 4, y: y - 3, width: tw + 8, height: th + 6,
-        color: rgb(1, 1, 1), opacity: 0.75,
-      });
-      page.drawText(stamp, { x, y, size: opts.fontSize, font, color: fill });
 
-      totalDone++;
-      cfg.onProgress?.({
-        fileIndex: fi,
-        fileCount: files.length,
-        fileName: f.name,
-        page: i + 1,
-        pageCount: pages.length,
-        totalPagesDone: totalDone,
-        totalPages,
-      });
-      // Yield every few pages so the UI stays responsive on large sets.
-      if (i % 4 === 3) await yieldToUi();
+      return doc.save();
+    })();
+
+    stampedFiles.push({ name: f.name, bytes: fileBytes });
+
+    // Fold into the merger immediately, then release the per-file src doc
+    // so peak memory stays bounded regardless of file count.
+    if (merger) {
+      if (cfg.signal?.aborted) throw new Error("aborted");
+      const src = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
+      const copied = await merger.copyPages(src, src.getPageIndices());
+      for (const p of copied) merger.addPage(p);
     }
-
-    const bytes = await doc.save();
-    stamped.push({ name: f.name, bytes, doc });
     await yieldToUi();
   }
 
   const result: MultiBatesResult = {
-    files: stamped.map((s) => ({ name: s.name, bytes: s.bytes })),
+    files: stampedFiles,
     ranges: plan,
   };
 
-  if (cfg.merge) {
-    const merged = await PDFDocument.create();
-    for (const s of stamped) {
-      if (cfg.signal?.aborted) throw new Error("aborted");
-      // Re-load from saved bytes so the merge uses the stamped content.
-      const src = await PDFDocument.load(s.bytes, { ignoreEncryption: true });
-      const copied = await merged.copyPages(src, src.getPageIndices());
-      for (const p of copied) merged.addPage(p);
-      await yieldToUi();
-    }
+  if (merger) {
     result.merged = {
       name: cfg.mergedName ?? "bates-merged.pdf",
-      bytes: await merged.save(),
+      bytes: await merger.save(),
     };
   }
 
