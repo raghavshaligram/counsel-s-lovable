@@ -237,6 +237,12 @@ export function jobLabel(kind: JobKind): string {
     case "rasterize-redact": return "Rasterizing";
     case "redact-export": return "Redacting";
     case "verify": return "Verifying";
+    case "compress": return "Compressing";
+    case "bates": return "Bates numbering";
+    case "watermark": return "Watermarking";
+    case "split": return "Splitting";
+    case "exhibit-binder": return "Building binder";
+    case "extract-chunks": return "Extracting text";
   }
 }
 
