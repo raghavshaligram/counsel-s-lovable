@@ -218,7 +218,35 @@ function OcrPage() {
         );
         outName = file.name.replace(/\.(jpe?g|png|webp)$/i, "") + " (searchable).pdf";
       } else {
-        bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
+        const { runAsJob } = await import("@/lib/jobs/registry");
+        const routeSignal = abortRef.current.signal;
+        const { promise } = runAsJob(
+          { kind: "ocr", docId: `${file.name}:${file.size}`, docLabel: file.name },
+          async ({ signal, onProgress }) => {
+            // Combine route-level cancel button with jobs-indicator cancel.
+            const combined = new AbortController();
+            const onAbort = () => combined.abort();
+            routeSignal.addEventListener("abort", onAbort, { once: true });
+            signal.addEventListener("abort", onAbort, { once: true });
+            try {
+              return await ocrPdfToSearchable(
+                file,
+                (p) => {
+                  setProgress(p);
+                  const total = p.totalPages || 1;
+                  const frac = Math.max(0, Math.min(1, ((p.page - 1) + (p.stage === "ocr" ? 0.5 : p.stage === "embedding" ? 0.9 : 0.1)) / total));
+                  onProgress({ fraction: frac, step: `${p.stage} ${p.page}/${total}` });
+                },
+                combined.signal,
+                { highAccuracy, languages },
+              );
+            } finally {
+              routeSignal.removeEventListener("abort", onAbort);
+              signal.removeEventListener("abort", onAbort);
+            }
+          },
+        );
+        bytes = await promise;
         outName = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
       }
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
