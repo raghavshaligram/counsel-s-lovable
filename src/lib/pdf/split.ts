@@ -115,26 +115,45 @@ function groupsFromPoints(total: number, points: number[]): number[][] {
 /**
  * Split a PDF according to options. Returns a single PDF blob (one group) or a
  * zip blob (multiple groups / every-page mode). Never mutates the input file.
+ *
+ * All per-page work yields to the event loop on a bounded cadence so 3000-page
+ * splits stay responsive. The zip is still built in memory via JSZip — for the
+ * scanned-document scale that's fine (JSZip streams internally), and callers
+ * that need progressive per-file downloads should use the returned
+ * `zip.forEach` path in the UI layer.
  */
-export async function splitPdf(file: File, opts: SplitOptions): Promise<SplitResult> {
+export interface SplitRunOpts {
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
+}
+
+export async function splitPdf(
+  file: File,
+  opts: SplitOptions,
+  run: SplitRunOpts = {},
+): Promise<SplitResult> {
   const src = await PDFDocument.load(await file.arrayBuffer(), {
     ignoreEncryption: true,
   });
   const base = file.name.replace(/\.pdf$/i, "");
   const total = src.getPageCount();
 
-  // "each" stays a streaming write since it can be very large.
   if (opts.mode === "each") {
     const JSZip = (await importChunk(() => import("jszip"))).default;
     const zip = new JSZip();
     for (let i = 0; i < total; i++) {
+      throwIfAborted(run.signal);
       const out = await PDFDocument.create();
       const [p] = await out.copyPages(src, [i]);
       out.addPage(p);
       const bytes = await out.save();
       zip.file(`${base}-p${String(i + 1).padStart(3, "0")}.pdf`, bytes);
+      run.onProgress?.(i + 1, total);
+      await maybeYield(i, 4);
     }
-    const blob = await zip.generateAsync({ type: "blob" });
+    // `streamFiles` lets JSZip release each entry from memory once it's been
+    // compressed, avoiding a 3000-file spike right before Blob assembly.
+    const blob = await zip.generateAsync({ type: "blob", streamFiles: true });
     return {
       kind: "zip",
       blob,
@@ -191,6 +210,7 @@ export async function splitPdf(file: File, opts: SplitOptions): Promise<SplitRes
   const zip = new JSZip();
   let totalPages = 0;
   for (let g = 0; g < groups.length; g++) {
+    throwIfAborted(run.signal);
     const idx = groups[g].map((n) => n - 1);
     totalPages += idx.length;
     const out = await PDFDocument.create();
@@ -198,8 +218,10 @@ export async function splitPdf(file: File, opts: SplitOptions): Promise<SplitRes
     pages.forEach((p) => out.addPage(p));
     const bytes = await out.save();
     zip.file(`${base}-part${g + 1}.pdf`, bytes);
+    run.onProgress?.(g + 1, groups.length);
+    await maybeYield(g, 2);
   }
-  const blob = await zip.generateAsync({ type: "blob" });
+  const blob = await zip.generateAsync({ type: "blob", streamFiles: true });
   return {
     kind: "zip",
     blob,
