@@ -737,7 +737,55 @@ export async function detectPiiInPdf(
         // Build line text + per-character → word index map.
         const matchedSpans = new Set<string>();
         const pageDetectionCountBefore = detections.length;
+        type LineInfo = { lineText: string; charToWord: number[]; ln: OcrWord[]; nerStart: number };
+        const lineInfos: LineInfo[] = [];
         let pageRawText = "";
+        let pageNerText = "";
+        const OCR_NER_SEP = "\n";
+
+        // Page-scoped helper: emit a detection box spanning one OCR line's
+        // words. Lifted out of the line loop so both per-line regex and
+        // (later) per-page NER can share it.
+        const pushOcrSpan = (
+          ln: OcrWord[],
+          charToWord: number[],
+          lineText: string,
+          spanStart: number,
+          spanEnd: number,
+          category: PiiCategory,
+          confidence: "high" | "low" | undefined,
+          text: string,
+        ) => {
+          const covered = new Set<number>();
+          for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
+            const wi = charToWord[c];
+            if (wi >= 0) covered.add(wi);
+          }
+          if (covered.size === 0) return;
+          const wordIdx = [...covered];
+          const key = `${category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
+          if (matchedSpans.has(key)) return;
+          matchedSpans.add(key);
+          const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
+          const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
+          const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
+          const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
+          const pad = Math.max(2, (y1 - y0) * 0.15);
+          // Reference-only; keep lineText available for future snippet needs.
+          void lineText;
+          detections.push({
+            id: `det-ocr-${i}-${detections.length}`,
+            page: i,
+            x: (x0 - pad) * toCanvas,
+            y: (y0 - pad) * toCanvas,
+            w: (x1 - x0 + pad * 2) * toCanvas,
+            h: (y1 - y0 + pad * 2) * toCanvas,
+            category,
+            confidence,
+            snippet: snippet(text),
+          });
+        };
+
         for (const ln of lines) {
           let lineText = "";
           const charToWord: number[] = [];
@@ -750,6 +798,9 @@ export async function detectPiiInPdf(
             lineText += w.text;
           });
           pageRawText += lineText + "\n";
+          const nerStart = pageNerText.length;
+          pageNerText += lineText + OCR_NER_SEP;
+          lineInfos.push({ lineText, charToWord, ln, nerStart });
 
           const variants: { text: string; normalized: boolean }[] = [
             { text: lineText, normalized: false },
@@ -759,102 +810,64 @@ export async function detectPiiInPdf(
             const hits = matchAllCategories(text);
             for (const hit of hits) {
               if (normalized && hit.category === "name") continue;
-              const spanStart = hit.start;
-              const spanEnd = hit.start + hit.length;
-              const coveredWords = new Set<number>();
-              for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
-                const wi = charToWord[c];
-                if (wi >= 0) coveredWords.add(wi);
-              }
-              if (coveredWords.size === 0) continue;
-              const wordIdx = [...coveredWords];
-              const key = `${hit.category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
-              if (matchedSpans.has(key)) continue;
-              matchedSpans.add(key);
-
-              const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
-              const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
-              const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
-              const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
-              const pad = Math.max(2, (y1 - y0) * 0.15);
-              const snippetText = normalized
-                ? lineText.slice(spanStart, spanEnd)
-                : hit.text;
-              detections.push({
-                id: `det-ocr-${i}-${detections.length}`,
-                page: i,
-                x: (x0 - pad) * toCanvas,
-                y: (y0 - pad) * toCanvas,
-                w: (x1 - x0 + pad * 2) * toCanvas,
-                h: (y1 - y0 + pad * 2) * toCanvas,
-                category: hit.category,
-                confidence: hit.confidence,
-                snippet: snippet(snippetText),
-              });
+              const snippetText = normalized ? lineText.slice(hit.start, hit.start + hit.length) : hit.text;
+              pushOcrSpan(ln, charToWord, lineText, hit.start, hit.start + hit.length, hit.category, hit.confidence, snippetText);
             }
           }
 
-          const pushOcrSpan = (
-            spanStart: number,
-            spanEnd: number,
-            category: PiiCategory,
-            confidence: "high" | "low" | undefined,
-            text: string,
-          ) => {
-            const covered = new Set<number>();
-            for (let c = spanStart; c < spanEnd && c < charToWord.length; c++) {
-              const wi = charToWord[c];
-              if (wi >= 0) covered.add(wi);
-            }
-            if (covered.size === 0) return;
-            const wordIdx = [...covered];
-            const key = `${category}|${ln[wordIdx[0]].bbox.y0}|${wordIdx.join(",")}`;
-            if (matchedSpans.has(key)) return;
-            matchedSpans.add(key);
-            const x0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.x0));
-            const y0 = Math.min(...wordIdx.map((wi) => ln[wi].bbox.y0));
-            const x1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.x1));
-            const y1 = Math.max(...wordIdx.map((wi) => ln[wi].bbox.y1));
-            const pad = Math.max(2, (y1 - y0) * 0.15);
-            detections.push({
-              id: `det-ocr-${i}-${detections.length}`,
-              page: i,
-              x: (x0 - pad) * toCanvas,
-              y: (y0 - pad) * toCanvas,
-              w: (x1 - x0 + pad * 2) * toCanvas,
-              h: (y1 - y0 + pad * 2) * toCanvas,
-              category,
-              confidence,
-              snippet: snippet(text),
-            });
-          };
-
-          if (lineText.trim().length >= 8 && /[A-Za-z]/.test(lineText)) {
-            const ents = await runNer(lineText, "detect-pii:ocr-scan");
-            for (const e of ents) {
-              if (e.type !== "PER" && e.type !== "ORG") continue;
-              pushOcrSpan(
-                e.start,
-                e.end,
-                e.type === "PER" ? "name" : "org",
-                "high",
-                e.text,
-              );
-            }
-          }
           PRIVILEGE_TERMS_RE.lastIndex = 0;
           let pmOcr: RegExpExecArray | null;
           while ((pmOcr = PRIVILEGE_TERMS_RE.exec(lineText)) !== null) {
             const termStart = pmOcr.index;
             const termEnd = pmOcr.index + pmOcr[0].length;
-            pushOcrSpan(termStart, termEnd, "privilegeContext", "low", pmOcr[0]);
+            pushOcrSpan(ln, charToWord, lineText, termStart, termEnd, "privilegeContext", "low", pmOcr[0]);
             const values = findValuesNearPrivilege(lineText, termStart, termEnd);
             for (const v of values) {
-              pushOcrSpan(v.start, v.end, "privilegeValue", "low", v.text);
+              pushOcrSpan(ln, charToWord, lineText, v.start, v.end, "privilegeValue", "low", v.text);
             }
             if (pmOcr[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
           }
         }
+
+        // Single NER call per PAGE (not per line) — the biggest single-page
+        // speedup in the OCR path. Entities' offsets in the joined page text
+        // are mapped back to their originating line via lineInfos[i].nerStart.
+        if (pageNerText.trim().length >= 8 && /[A-Za-z]/.test(pageNerText)) {
+          const tn0 = performance.now();
+          const ents = await runNer(pageNerText, "detect-pii:ocr-scan");
+          tNer += performance.now() - tn0;
+          nerCalls += 1;
+          nerInputChars += pageNerText.length;
+          for (const e of ents) {
+            if (e.type !== "PER" && e.type !== "ORG") continue;
+            // Find the line whose nerStart..nerStart+len contains this entity.
+            for (let li = 0; li < lineInfos.length; li++) {
+              const info = lineInfos[li];
+              const lineEndInNer = info.nerStart + info.lineText.length;
+              if (e.end <= info.nerStart || e.start >= lineEndInNer) continue;
+              const localStart = Math.max(0, e.start - info.nerStart);
+              const localEnd = Math.min(info.lineText.length, e.end - info.nerStart);
+              if (localEnd <= localStart) continue;
+              pushOcrSpan(
+                info.ln,
+                info.charToWord,
+                info.lineText,
+                localStart,
+                localEnd,
+                e.type === "PER" ? "name" : "org",
+                "high",
+                info.lineText.slice(localStart, localEnd),
+              );
+              break; // one line per entity — the joined text uses a newline
+                     // separator so entities don't legitimately span lines.
+            }
+          }
+        }
+
+        if (onPartial && detections.length > pageDetectionCountBefore) {
+          onPartial(detections.slice(pageDetectionCountBefore), { page: i, pass: "ocr" });
+        }
+
 
         // eslint-disable-next-line no-console
         console.info(
