@@ -218,7 +218,27 @@ function OcrPage() {
         );
         outName = file.name.replace(/\.(jpe?g|png|webp)$/i, "") + " (searchable).pdf";
       } else {
-        bytes = await ocrPdfToSearchable(file, setProgress, abortRef.current.signal, { highAccuracy, languages });
+        const { runAsJob } = await import("@/lib/jobs/registry");
+        const { promise } = runAsJob(
+          { kind: "ocr", docId: `${file.name}:${file.size}`, docLabel: file.name },
+          async ({ signal, onProgress }) => {
+            return await ocrPdfToSearchable(
+              file,
+              (p) => {
+                setProgress(p);
+                const total = p.totalPages || 1;
+                const frac = Math.max(0, Math.min(1, ((p.page - 1) + (p.stage === "ocr" ? 0.5 : p.stage === "embedding" ? 0.9 : 0.1)) / total));
+                onProgress({ fraction: frac, step: `${p.stage} ${p.page}/${total}` });
+              },
+              signal,
+              { highAccuracy, languages },
+            );
+          },
+        );
+        // Bridge the route's local cancel button into the job.
+        const originalAbort = abortRef.current;
+        abortRef.current = { abort: () => { originalAbort?.abort(); } , signal: originalAbort!.signal } as AbortController;
+        bytes = await promise;
         outName = file.name.replace(/\.pdf$/i, "") + " (searchable).pdf";
       }
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
