@@ -6,6 +6,7 @@
  */
 import { PDFDocument, rgb } from "pdf-lib";
 import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
+import { maybeYield, throwIfAborted } from "@/lib/pdf/yield";
 
 export type BatesPosition = "tl" | "tc" | "tr" | "bl" | "bc" | "br";
 export type BatesColor = "black" | "red" | "blue";
@@ -21,11 +22,20 @@ export interface BatesOpts {
   margin?: number;
 }
 
+export interface BatesRunOpts {
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
+}
+
 export function formatBates(n: number, opts: Pick<BatesOpts, "prefix" | "suffix" | "digits">): string {
   return `${opts.prefix ?? ""}${String(n).padStart(opts.digits, "0")}${opts.suffix ?? ""}`;
 }
 
-export async function addBates(bytes: Uint8Array, opts: BatesOpts): Promise<Uint8Array> {
+export async function addBates(
+  bytes: Uint8Array,
+  opts: BatesOpts,
+  run: BatesRunOpts = {},
+): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const font = await embedStandardFont(doc, "HelveticaBold");
   const fill =
@@ -35,6 +45,7 @@ export async function addBates(bytes: Uint8Array, opts: BatesOpts): Promise<Uint
   const margin = opts.margin ?? 24;
   const pages = doc.getPages();
   for (let i = 0; i < pages.length; i++) {
+    throwIfAborted(run.signal);
     const page = pages[i];
     const { width, height } = page.getSize();
     const stamp = formatBates(opts.startAt + i, opts);
@@ -55,6 +66,8 @@ export async function addBates(bytes: Uint8Array, opts: BatesOpts): Promise<Uint
       color: rgb(1, 1, 1), opacity: 0.75,
     });
     page.drawText(stamp, { x, y, size: opts.fontSize, font, color: fill });
+    run.onProgress?.(i + 1, pages.length);
+    await maybeYield(i, 16);
   }
   return doc.save();
 }
