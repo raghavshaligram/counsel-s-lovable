@@ -23,7 +23,13 @@ export type JobKind =
   | "detect-pii"
   | "rasterize-redact"
   | "redact-export"
-  | "verify";
+  | "verify"
+  | "compress"
+  | "bates"
+  | "watermark"
+  | "split"
+  | "exhibit-binder"
+  | "extract-chunks";
 
 export type JobStatus =
   | "queued"
