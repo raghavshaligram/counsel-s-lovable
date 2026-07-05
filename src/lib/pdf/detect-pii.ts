@@ -10,6 +10,32 @@ import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
 import { runNer, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
 
+/**
+ * Create a canvas that works on both main thread (HTMLCanvasElement) AND
+ * Web Worker (OffscreenCanvas). detect-pii runs inside a dedicated worker
+ * for large-doc scans so the main thread stays free to render other tabs;
+ * the OCR pipeline (pdf.js render → tesseract) needs a canvas primitive
+ * available in both contexts.
+ */
+type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
+function makeCanvas(width: number, height: number): AnyCanvas {
+  if (typeof document !== "undefined") {
+    const c = document.createElement("canvas");
+    c.width = width;
+    c.height = height;
+    return c;
+  }
+  const c = new OffscreenCanvas(width, height);
+  return c;
+}
+function freeCanvas(canvas: AnyCanvas | null): void {
+  if (!canvas) return;
+  try {
+    canvas.width = 0;
+    canvas.height = 0;
+  } catch { /* noop */ }
+}
+
 export type PiiCategory =
   | "ssn"
   | "email"
@@ -495,14 +521,12 @@ export async function detectPiiInPdf(
     let cursor = 0;
     const runOne = async (i: number): Promise<void> => {
       const worker = await acquire();
-      let canvas: HTMLCanvasElement | null = null;
+      let canvas: AnyCanvas | null = null;
       try {
         const page = await doc.getPage(i);
         const viewport = page.getViewport({ scale: ocrScale });
-        canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const ctx = canvas.getContext("2d");
+        canvas = makeCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
         if (!ctx) return;
         await page.render({
           canvasContext: ctx,
@@ -511,13 +535,12 @@ export async function detectPiiInPdf(
         } as Parameters<typeof page.render>[0]).promise;
 
         let words: OcrWord[];
-        const { data } = await worker.recognize(canvas, {}, { blocks: true });
+        const { data } = await worker.recognize(canvas as unknown as HTMLCanvasElement, {}, { blocks: true });
         words = collectWords(data);
 
         // Free the canvas bitmap before we do CPU work on the OCR words —
         // never hold more than `poolSize` canvases alive at once.
-        canvas.width = 0;
-        canvas.height = 0;
+        freeCanvas(canvas);
         canvas = null;
         try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
 
@@ -681,7 +704,7 @@ export async function detectPiiInPdf(
           ocrUnderDetectedPages.push(i);
         }
       } finally {
-        if (canvas) { try { canvas.width = 0; canvas.height = 0; } catch { /* ignore */ } }
+        freeCanvas(canvas);
         release(worker);
       }
     };
@@ -1028,10 +1051,8 @@ export async function findKeywordInPdf(
         scannedPages.map(async (i) => {
           const page = await doc.getPage(i);
           const viewport = page.getViewport({ scale });
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          const ctx = canvas.getContext("2d");
+          const canvas = makeCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+          const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
           if (!ctx) return;
           await page.render({
             canvasContext: ctx,
@@ -1042,10 +1063,11 @@ export async function findKeywordInPdf(
           const worker = await acquire();
           let words: OcrWord[];
           try {
-            const { data } = await worker.recognize(canvas, {}, { blocks: true });
+            const { data } = await worker.recognize(canvas as unknown as HTMLCanvasElement, {}, { blocks: true });
             words = collectWords(data);
           } finally {
             release(worker);
+            freeCanvas(canvas);
           }
           done++;
           opts.onProgress?.({ stage: "ocr", page: done, totalPages: scannedPages.length });

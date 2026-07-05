@@ -1146,13 +1146,17 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
+      // The scan pipeline (pdf.js render + Tesseract OCR + Transformers.js NER
+      // + regex) runs entirely inside a Web Worker so the main thread stays
+      // free to render every OTHER open tab smoothly during a 5000-page scan.
+      const { detectPiiInPdfViaWorker, detectPiiInSideChannelsViaWorker } =
+        await importChunk(() => import("@/lib/workers/detect-pii.client"));
       const { runAsJob } = await import("@/lib/jobs/registry");
       const docId = `${file.name}:${file.size}`;
       const { promise } = runAsJob(
         { kind: "detect-pii", docId, docLabel: file.name },
         async ({ signal, onProgress }) => {
-          return await mod.detectPiiInPdf(file, 1.5, (p) => {
-            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+          return await detectPiiInPdfViaWorker(file, 1.5, (p) => {
             const total = p.totalPages || 1;
             onProgress({
               fraction: total ? p.page / total : 0,
@@ -1163,18 +1167,16 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                 ? `OCR scanning ${p.page}/${p.totalPages}`
                 : `Reading page ${p.page}/${p.totalPages}`,
             );
-          });
+          }, signal);
         },
       );
       const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await promise;
-      // Side-channel scan: form fields, annotations, document metadata.
-      // These vectors are invisible on the page but ship with the file
-      // unless explicitly stripped. Sanitize handles removal during the
-      // redact export; we surface them here so the user can SEE them.
+      // Side-channel scan (form fields / annotations / metadata) also runs
+      // in the worker.
       setProgress("Scanning form fields, comments, metadata…");
       let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
       try {
-        sideFindings = await mod.detectPiiInSideChannels(file);
+        sideFindings = (await detectPiiInSideChannelsViaWorker(file)) as typeof sideFindings;
       } catch (e) {
         console.warn("[auto-detect] side-channel scan failed", e);
       }
