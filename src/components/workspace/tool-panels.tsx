@@ -1884,87 +1884,89 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         arr.push(t.rect);
         pageRedactions.set(t.page, arr);
       }
-      const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
-      const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
-        mode: maxSecurity ? "always" : "fallback",
-        scale: 2.5,
-      });
-      bytes = rasterResult.bytes;
+      // Wrap rasterize + sanitize + verify + pixel-verify as ONE background
+      // redact-export job. Any leak throws → job fails → download never fires.
+      const { runAsJob } = await import("@/lib/jobs/registry");
+      const jobDocId = `${file.name}:${file.size}`;
+      const jobRun = runAsJob(
+        { kind: "redact-export", docId: jobDocId, docLabel: file.name },
+        async ({ signal, onProgress }) => {
+          const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
+          const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+            mode: maxSecurity ? "always" : "fallback",
+            scale: 2.5,
+            signal,
+            onProgress: (done, total) => {
+              onProgress({ fraction: total ? (done / total) * 0.55 : 0, step: `Burning ${done}/${total}` });
+              toast.loading(`Burning redactions ${done}/${total}…`, { id: tid });
+            },
+          });
+          let outBytes = rasterResult.bytes;
 
-      // Sanitize: wipe form-field values, annotation/comment text, document
-      // metadata (Info dict + XMP), embedded attachments, and JavaScript.
-      // These vectors carry the same sensitive data the user just redacted
-      // on-page; without this, the verification gate below would block the
-      // export because side-channel leaks would still be present.
-      toast.loading("Scrubbing form fields, comments, metadata…", { id: tid });
-      const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
-      bytes = await sanitizePdfBytes(bytes);
+          onProgress({ fraction: 0.6, step: "Scrubbing side-channels…" });
+          toast.loading("Scrubbing form fields, comments, metadata…", { id: tid });
+          const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
+          outBytes = await sanitizePdfBytes(outBytes);
 
-      toast.loading("Verifying removal…", { id: tid });
-      const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
-      let result = await verifyRedactionRemoval(bytes, targets, {
-        rasterizedPages: rasterResult.rasterizedPages,
-      });
-
-      // Safety net: if anything still leaks (only possible in fallback mode),
-      // force rasterization on the offending pages and re-verify. A leaky
-      // file is never downloaded.
-      if (!result.ok) {
-        const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
-        for (const leak of result.leaks) {
-          if (leak.vector !== "page") continue;
-          if (!leak.rect || leak.page === undefined) continue;
-          const arr = leakedPages.get(leak.page) ?? [];
-          const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
-          arr.push(...pageRects);
-          leakedPages.set(leak.page, arr);
-        }
-        if (leakedPages.size > 0) {
-          const forced = await rasterizeRedactedPages(bytes, leakedPages, { mode: "always", scale: 2.5 });
-          bytes = forced.bytes;
-          rasterResult.rasterizedPages.push(
-            ...forced.rasterizedPages.filter((p) => !rasterResult.rasterizedPages.includes(p)),
-          );
-          result = await verifyRedactionRemoval(bytes, targets, {
+          if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+          onProgress({ fraction: 0.75, step: "Verifying removal…" });
+          toast.loading("Verifying removal…", { id: tid });
+          const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
+          let vresult = await verifyRedactionRemoval(outBytes, targets, {
             rasterizedPages: rasterResult.rasterizedPages,
           });
-        }
-        // Side-channel vectors (form field / annotation / hidden layer /
-        // attachment) can't be fixed by rasterizing — fail loudly so the
-        // file is never handed over as "redacted".
-        const sideLeaks = result.leaks.filter((l) => l.vector !== "page");
-        if (sideLeaks.length > 0) {
-          const summary = sideLeaks
-            .slice(0, 3)
-            .map((l) => `${l.vector}: ${l.text}`)
-            .join("; ");
-          throw new Error(
-            `${sideLeaks.length} redacted value${sideLeaks.length === 1 ? "" : "s"} still recoverable from non-page vectors — refusing to download. ${summary}`,
-          );
-        }
-      }
 
+          // Safety net: re-rasterize leaks + re-verify.
+          if (!vresult.ok) {
+            const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+            for (const leak of vresult.leaks) {
+              if (leak.vector !== "page") continue;
+              if (!leak.rect || leak.page === undefined) continue;
+              const arr = leakedPages.get(leak.page) ?? [];
+              const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
+              arr.push(...pageRects);
+              leakedPages.set(leak.page, arr);
+            }
+            if (leakedPages.size > 0) {
+              const forced = await rasterizeRedactedPages(outBytes, leakedPages, { mode: "always", scale: 2.5, signal });
+              outBytes = forced.bytes;
+              rasterResult.rasterizedPages.push(
+                ...forced.rasterizedPages.filter((p) => !rasterResult.rasterizedPages.includes(p)),
+              );
+              vresult = await verifyRedactionRemoval(outBytes, targets, {
+                rasterizedPages: rasterResult.rasterizedPages,
+              });
+            }
+            const sideLeaks = vresult.leaks.filter((l) => l.vector !== "page");
+            if (sideLeaks.length > 0) {
+              const summary = sideLeaks.slice(0, 3).map((l) => `${l.vector}: ${l.text}`).join("; ");
+              throw new Error(
+                `${sideLeaks.length} redacted value${sideLeaks.length === 1 ? "" : "s"} still recoverable from non-page vectors — refusing to download. ${summary}`,
+              );
+            }
+          }
 
-      // Pixel-level re-OCR check for every page we rasterized — pdf.js sees
-      // no text layer on those pages, so it can't prove the underlying
-      // pixels were actually destroyed. Tesseract is the only way to verify.
-      if (rasterResult.rasterizedPages.length > 0) {
-        toast.loading("Re-OCR check on burned pages…", { id: tid });
-        const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
-        const pixelTargets = targets
-          .filter((t) => !!t.rect)
-          .map((t) => ({ page: t.page, rect: t.rect! }));
-        const pixelResult = await verifyPixelRedaction(
-          bytes,
-          pixelTargets,
-          new Set(rasterResult.rasterizedPages),
-        );
-        if (!pixelResult.ok) {
-          throw new Error(
-            `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still show recognizable text after pixel burn — refusing to download.`,
-          );
-        }
-      }
+          // Pixel-level re-OCR check for burned pages.
+          if (rasterResult.rasterizedPages.length > 0) {
+            onProgress({ fraction: 0.9, step: "Re-OCR check on burned pages…" });
+            toast.loading("Re-OCR check on burned pages…", { id: tid });
+            const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
+            const pixelTargets = targets.filter((t) => !!t.rect).map((t) => ({ page: t.page, rect: t.rect! }));
+            const pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(rasterResult.rasterizedPages));
+            if (!pixelResult.ok) {
+              throw new Error(
+                `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still show recognizable text after pixel burn — refusing to download.`,
+              );
+            }
+          }
+
+          return { bytes: outBytes, rasterizedPages: rasterResult.rasterizedPages, verify: vresult };
+        },
+      );
+      const jobOutput = await jobRun.promise;
+      bytes = jobOutput.bytes;
+      const rasterResult = { bytes: jobOutput.bytes, rasterizedPages: jobOutput.rasterizedPages };
+      const result = jobOutput.verify;
 
       setVerify(result);
       if (result.ok) {
