@@ -35,9 +35,12 @@ function getWorker(): Worker {
 }
 
 interface OutboundMsg {
-  kind: "progress" | "result" | "side-result" | "error";
+  kind: "progress" | "partial" | "result" | "side-result" | "error";
   id: string;
   progress?: DetectProgress;
+  detections?: Detection[];
+  page?: number;
+  pass?: "regex" | "ner" | "ocr";
   result?: unknown;
   message?: string;
 }
@@ -45,12 +48,18 @@ interface OutboundMsg {
 /**
  * Scan a PDF for PII in a dedicated worker. Signature matches
  * detectPiiInPdf so callers only need to swap the import.
+ *
+ * `onPartial` receives incremental detections as they're found: regex
+ * findings after each page, NER findings after each cross-page batch,
+ * OCR findings after each scanned page. This lets the UI show results
+ * live within seconds instead of waiting for the whole scan.
  */
 export function detectPiiInPdfViaWorker(
   file: File,
   scale = 1.5,
   onProgress?: (p: DetectProgress) => void,
   signal?: AbortSignal,
+  onPartial?: (detections: Detection[], meta: { page: number; pass: "regex" | "ner" | "ocr" }) => void,
 ): Promise<DetectResult> {
   return new Promise<DetectResult>((resolve, reject) => {
     (async () => {
@@ -64,6 +73,8 @@ export function detectPiiInPdfViaWorker(
           if (m.id !== id) return;
           if (m.kind === "progress" && m.progress) {
             onProgress?.(m.progress);
+          } else if (m.kind === "partial" && m.detections && typeof m.page === "number" && m.pass) {
+            onPartial?.(m.detections, { page: m.page, pass: m.pass });
           } else if (m.kind === "result") {
             w.removeEventListener("message", handler);
             signal?.removeEventListener("abort", onAbort);

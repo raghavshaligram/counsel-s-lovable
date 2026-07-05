@@ -26,6 +26,7 @@ type InboundMsg =
 
 type OutboundMsg =
   | { kind: "progress"; id: string; progress: DetectProgress }
+  | { kind: "partial"; id: string; detections: unknown[]; page: number; pass: "regex" | "ner" | "ocr" }
   | { kind: "result"; id: string; result: unknown }
   | { kind: "side-result"; id: string; result: unknown }
   | { kind: "error"; id: string; message: string };
@@ -48,10 +49,22 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
     active.set(m.id, entry);
     try {
       const file = new File([new Uint8Array(m.bytes)], m.filename, { type: "application/pdf" });
-      const result = await detectPiiInPdf(file, m.scale, (progress) => {
-        if (entry.canceled) return;
-        post({ kind: "progress", id: m.id, progress });
-      });
+      const result = await detectPiiInPdf(
+        file,
+        m.scale,
+        (progress) => {
+          if (entry.canceled) return;
+          post({ kind: "progress", id: m.id, progress });
+        },
+        undefined,
+        {
+          onPartial: (detections, meta) => {
+            if (entry.canceled) return;
+            post({ kind: "partial", id: m.id, detections, page: meta.page, pass: meta.pass });
+          },
+          shouldAbort: () => entry.canceled,
+        },
+      );
       if (entry.canceled) throw new DOMException("Canceled", "AbortError");
       post({ kind: "result", id: m.id, result });
     } catch (err) {

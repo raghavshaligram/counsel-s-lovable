@@ -356,19 +356,23 @@ export function AgentPanel({
               const t = p.totalPages || 1;
               onProgress({
                 fraction: t ? p.page / t : 0,
-                step: p.stage === "ocr" ? `OCR ${p.page}/${t}` : `Reading ${p.page}/${t}`,
+                step: p.stage === "ocr" ? `OCR ${p.page}/${t}` : `${p.pass ?? "text"} ${p.page}/${t}`,
               });
+              const found = p.foundSoFar ?? 0;
               replaceStep(runId, {
                 kind: "running",
                 id: runId,
                 label: "Scanning on-device for sensitive info…",
                 progress:
                   p.stage === "ocr"
-                    ? `OCR ${p.page}/${p.totalPages}`
-                    : `Reading ${p.page}/${p.totalPages}`,
+                    ? `OCR ${p.page}/${p.totalPages} · ${found} found`
+                    : p.pass === "ner"
+                      ? `Names ${p.page}/${p.totalPages} · ${found} found`
+                      : `Scanning ${p.page}/${p.totalPages} · ${found} found`,
               });
             }, signal);
           },
+
         );
         const { detections, usedOcr, scannedPages, totalPages: total } = await promise;
         if (abortedRef.current) return;

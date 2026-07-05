@@ -1153,23 +1153,37 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         await importChunk(() => import("@/lib/workers/detect-pii-client"));
       const { runAsJob } = await import("@/lib/jobs/registry");
       const docId = `${file.name}:${file.size}`;
+      const streamingDetections: import("@/lib/pdf/detect-pii").Detection[] = [];
       const { promise } = runAsJob(
         { kind: "detect-pii", docId, docLabel: file.name },
         async ({ signal, onProgress }) => {
-          return await detectPiiInPdfViaWorker(file, 1.5, (p) => {
-            const total = p.totalPages || 1;
-            onProgress({
-              fraction: total ? p.page / total : 0,
-              step: p.stage === "ocr" ? `OCR ${p.page}/${total}` : `Page ${p.page}/${total}`,
-            });
-            setProgress(
-              p.stage === "ocr"
-                ? `OCR scanning ${p.page}/${p.totalPages}`
-                : `Reading page ${p.page}/${p.totalPages}`,
-            );
-          }, signal);
+          return await detectPiiInPdfViaWorker(
+            file,
+            1.5,
+            (p) => {
+              const total = p.totalPages || 1;
+              onProgress({
+                fraction: total ? p.page / total : 0,
+                step: p.stage === "ocr" ? `OCR ${p.page}/${total}` : `${p.pass ?? "text"} ${p.page}/${total}`,
+              });
+              const found = p.foundSoFar ?? streamingDetections.length;
+              setProgress(
+                p.stage === "ocr"
+                  ? `OCR ${p.page}/${p.totalPages} · ${found} findings`
+                  : p.pass === "ner"
+                    ? `Names ${p.page}/${p.totalPages} · ${found} findings`
+                    : `Scanning ${p.page}/${p.totalPages} · ${found} findings`,
+              );
+            },
+            signal,
+            (dets) => {
+              streamingDetections.push(...dets);
+              setFindings([...streamingDetections]);
+            },
+          );
         },
       );
+
       const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await promise;
       // Side-channel scan (form fields / annotations / metadata) also runs
       // in the worker.
