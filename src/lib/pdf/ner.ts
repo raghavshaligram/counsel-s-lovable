@@ -47,8 +47,11 @@ async function getPipeline(trigger: string): Promise<Pipeline | null> {
   );
   pipelinePromise = (async () => {
     try {
-      const { notifyModelDownload, getAiCacheStatus } = await import("@/lib/ai/model-download-ui");
-      const { nerCached } = await getAiCacheStatus();
+      const inWorker =
+        typeof window === "undefined" ||
+        (typeof WorkerGlobalScope !== "undefined" &&
+          // @ts-expect-error — self typing differs in worker context
+          self instanceof WorkerGlobalScope);
       const run = async (h: { report: (n: number) => void }) => {
         const transformers = await importChunk(() => import("@huggingface/transformers"));
         (transformers.env as { allowRemoteModels?: boolean; allowLocalModels?: boolean }).allowRemoteModels = true;
@@ -69,10 +72,15 @@ async function getPipeline(trigger: string): Promise<Pipeline | null> {
           } as unknown as Record<string, unknown>,
         );
         h.report(1);
-        console.info(`[ai-model] NER ready (trigger: ${trigger}, cached: ${nerCached})`);
+        console.info(`[ai-model] NER ready (trigger: ${trigger})`);
         return pipe as unknown as Pipeline;
       };
-      // Cached warm-start: skip the download toast entirely.
+      if (inWorker) {
+        // No DOM / no toast when we're running inside a scan worker.
+        return await run({ report: () => {} });
+      }
+      const { notifyModelDownload, getAiCacheStatus } = await import("@/lib/ai/model-download-ui");
+      const { nerCached } = await getAiCacheStatus();
       if (nerCached) return await run({ report: () => {} });
       return await notifyModelDownload("AI (bert-base-NER)", "110 MB", run);
     } catch (err) {
