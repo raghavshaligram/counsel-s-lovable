@@ -189,6 +189,7 @@ function makeRedactPattern(
       () => import("@/lib/editor/redaction-gate"),
     );
     const res = await enforceRedactionGate(preBurn.bytes, targets, {
+      rasterizedPages: preBurn.rasterizedPages,
       onProgress: (step) => {
         emit?.({
           type: "step-progress",

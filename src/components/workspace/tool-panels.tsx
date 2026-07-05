@@ -1888,7 +1888,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
       toast.loading("Verifying removal…", { id: tid });
       const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
-      let result = await verifyRedactionRemoval(bytes, targets);
+      let result = await verifyRedactionRemoval(bytes, targets, {
+        rasterizedPages: rasterResult.rasterizedPages,
+      });
 
       // Safety net: if anything still leaks (only possible in fallback mode),
       // force rasterization on the offending pages and re-verify. A leaky
@@ -1909,7 +1911,9 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           rasterResult.rasterizedPages.push(
             ...forced.rasterizedPages.filter((p) => !rasterResult.rasterizedPages.includes(p)),
           );
-          result = await verifyRedactionRemoval(bytes, targets);
+          result = await verifyRedactionRemoval(bytes, targets, {
+            rasterizedPages: rasterResult.rasterizedPages,
+          });
         }
         // Side-channel vectors (form field / annotation / hidden layer /
         // attachment) can't be fixed by rasterizing — fail loudly so the
