@@ -8,7 +8,7 @@
 
 import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
-import { runNer, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
+import { runNer, runNerBatch, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
 
 /**
  * Create a canvas that works on both main thread (HTMLCanvasElement) AND
