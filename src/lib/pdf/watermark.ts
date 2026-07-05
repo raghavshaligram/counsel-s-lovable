@@ -3,6 +3,7 @@
 
 import { PDFDocument, degrees, rgb } from "pdf-lib";
 import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
+import { maybeYield, throwIfAborted } from "@/lib/pdf/yield";
 
 export type WatermarkPos = "diagonal" | "top" | "bottom" | "center";
 
@@ -13,6 +14,8 @@ export type WatermarkOptions = {
   /** 12–160 (pt) */
   size: number;
   pos: WatermarkPos;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
 };
 
 export type WatermarkResult = {
@@ -25,7 +28,7 @@ export async function applyTextWatermark(
   file: File,
   opts: WatermarkOptions,
 ): Promise<WatermarkResult> {
-  const { text, opacity, size, pos } = opts;
+  const { text, opacity, size, pos, signal, onProgress } = opts;
   if (!text.trim()) throw new Error("Watermark text is empty");
 
   const doc = await PDFDocument.load(await file.arrayBuffer(), {
@@ -34,7 +37,10 @@ export async function applyTextWatermark(
   const font = await embedStandardFont(doc, "HelveticaBold");
   const op = Math.max(0.05, Math.min(1, opacity / 100));
 
-  for (const page of doc.getPages()) {
+  const pages = doc.getPages();
+  for (let i = 0; i < pages.length; i++) {
+    throwIfAborted(signal);
+    const page = pages[i];
     const { width, height } = page.getSize();
     const tw = font.widthOfTextAtSize(text, size);
     const th = size;
@@ -44,34 +50,30 @@ export async function applyTextWatermark(
       y = height / 2 - th / 2;
       const rot = Math.atan2(height, width) * (180 / Math.PI);
       page.drawText(text, {
-        x,
-        y,
-        font,
-        size,
+        x, y, font, size,
         color: rgb(0.5, 0.5, 0.5),
         opacity: op,
         rotate: degrees(rot),
       });
-      continue;
-    }
-    if (pos === "top") {
-      x = width / 2 - tw / 2;
-      y = height - th - 36;
-    } else if (pos === "bottom") {
-      x = width / 2 - tw / 2;
-      y = 36;
     } else {
-      x = width / 2 - tw / 2;
-      y = height / 2 - th / 2;
+      if (pos === "top") {
+        x = width / 2 - tw / 2;
+        y = height - th - 36;
+      } else if (pos === "bottom") {
+        x = width / 2 - tw / 2;
+        y = 36;
+      } else {
+        x = width / 2 - tw / 2;
+        y = height / 2 - th / 2;
+      }
+      page.drawText(text, {
+        x, y, font, size,
+        color: rgb(0.5, 0.5, 0.5),
+        opacity: op,
+      });
     }
-    page.drawText(text, {
-      x,
-      y,
-      font,
-      size,
-      color: rgb(0.5, 0.5, 0.5),
-      opacity: op,
-    });
+    onProgress?.(i + 1, pages.length);
+    await maybeYield(i, 16);
   }
 
   const bytes = await doc.save();
@@ -82,3 +84,4 @@ export async function applyTextWatermark(
     pageCount: doc.getPageCount(),
   };
 }
+
