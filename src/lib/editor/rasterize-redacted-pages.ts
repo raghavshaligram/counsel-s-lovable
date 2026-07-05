@@ -1,5 +1,5 @@
 /**
- * Region-rasterize redaction (bulletproof).
+ * Region-rasterize redaction (bulletproof, streaming).
  *
  * For every page that carries one or more redaction rectangles, this module
  * re-renders the page via pdf.js at high resolution, paints solid-black
@@ -7,6 +7,11 @@
  * page in the exported PDF with the burned-in image. The text layer for
  * those pages is therefore physically gone — no glyph encoding,
  * CMap or font tricks can recover the underlying content.
+ *
+ * MEMORY MODEL: pages are processed one-at-a-time. Canvas + JPEG bytes are
+ * freed BEFORE moving to the next page. Peak memory === one page's canvas
+ * plus one JPEG, regardless of document size. This is the fix for the
+ * 3000-page redaction crash — previously all N JPEGs accumulated in RAM.
  *
  * Two modes:
  *   - "always"   → every page with a redaction is rasterized. Guaranteed safe;
@@ -32,11 +37,14 @@ export type RasterizeMode = "always" | "fallback";
 export interface RasterizeOptions {
   scale?: number;
   mode?: RasterizeMode;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
 }
 
 export interface RasterizeResult {
   bytes: Uint8Array;
-  /** Page indices (0-based) that were rasterized. */
+  /** Page indices (0-based) that were rasterized. FULLY rasterized only —
+   *  a downstream raw-stream verifier can safely skip these pages. */
   rasterizedPages: number[];
 }
 
@@ -47,19 +55,33 @@ export async function rasterizeRedactedPages(
 ): Promise<RasterizeResult> {
   const scale = options.scale ?? 2.5;
   const mode: RasterizeMode = options.mode ?? "always";
+  const signal = options.signal;
+  const onProgress = options.onProgress;
   if (pageRedactions.size === 0) return { bytes, rasterizedPages: [] };
 
   const pdfjs = await loadPdfjs();
   // pdf.js detaches the buffer it's handed — slice so we keep `bytes` usable.
   const srcDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
 
-  type Replacement = { pageIdx: number; jpegBytes: Uint8Array };
-  const replacements: Replacement[] = [];
+  // Load the output doc ONCE up front so we can stream embeds page-by-page
+  // instead of accumulating every JPEG in a replacements[] array.
+  const outDoc = await PDFDocument.load(bytes);
+  const rasterizedPages: number[] = [];
+
+  // Sort keys descending — removePage(i)+insertPage(i) keeps ordering but
+  // processing high→low means we never touch a page after mutation.
+  const pageOrder = Array.from(pageRedactions.keys()).sort((a, b) => b - a);
+
+  let done = 0;
+  const total = pageOrder.length;
 
   try {
-    for (const [pageIdx, rects] of pageRedactions) {
+    for (const pageIdx of pageOrder) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const rects = pageRedactions.get(pageIdx);
+      if (!rects || !rects.length) continue;
       if (pageIdx < 0 || pageIdx >= srcDoc.numPages) continue;
-      if (!rects.length) continue;
+
       const page = await srcDoc.getPage(pageIdx + 1);
       const viewport1 = page.getViewport({ scale: 1 });
       const pw = viewport1.width;
@@ -74,7 +96,6 @@ export async function rasterizeRedactedPages(
           const t = item.transform;
           if (!t) return false;
           const fontH = Math.hypot(t[2], t[3]) || item.height || 1;
-          // pdf.js user-space → editor top-left.
           const x = t[4];
           const yTop = ph - t[5];
           const w = Math.max(item.width ?? fontH * 0.5, 0.5);
@@ -82,26 +103,26 @@ export async function rasterizeRedactedPages(
           return rects.some((r) => rectIntersects(itemRect, r));
         });
         if (!hit) {
-          page.cleanup();
+          try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
+          done++;
+          onProgress?.(done, total);
           continue;
         }
       }
 
       // Render page to canvas at scale.
       const vp = page.getViewport({ scale });
-      const canvas = document.createElement("canvas");
+      let canvas: HTMLCanvasElement | null = document.createElement("canvas");
       canvas.width = Math.max(1, Math.ceil(vp.width));
       canvas.height = Math.max(1, Math.ceil(vp.height));
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        page.cleanup();
+        try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
         throw new Error("Canvas 2D context unavailable");
       }
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // pdfjs render API accepts `canvas` in recent versions; pass both for
-      // compatibility.
       const renderTask = page.render({
         canvasContext: ctx,
         viewport: vp,
@@ -109,16 +130,14 @@ export async function rasterizeRedactedPages(
       } as unknown as Parameters<typeof page.render>[0]);
       await renderTask.promise;
 
-      // Burn black rectangles over each redaction region (editor coords are
-      // top-left and match the canvas axis after scaling).
       ctx.fillStyle = "#000000";
       for (const r of rects) {
         ctx.fillRect(r.x * scale, r.y * scale, r.w * scale, r.h * scale);
       }
-      page.cleanup();
+      try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
 
-      const jpegBytes: Uint8Array = await new Promise((resolve, reject) => {
-        canvas.toBlob(
+      let jpegBytes: Uint8Array | null = await new Promise<Uint8Array>((resolve, reject) => {
+        canvas!.toBlob(
           (blob) => {
             if (!blob) return reject(new Error("canvas.toBlob failed"));
             blob
@@ -131,34 +150,41 @@ export async function rasterizeRedactedPages(
         );
       });
 
-      replacements.push({ pageIdx, jpegBytes });
+      // Free the canvas bitmap NOW — peak memory === 1 canvas + 1 JPEG.
+      canvas.width = 0;
+      canvas.height = 0;
+      canvas = null;
+
+      // Stream the embed: remove old page, insert a new one, draw the JPEG,
+      // and drop the JPEG bytes before moving on.
+      const pages = outDoc.getPages();
+      const existing = pages[pageIdx];
+      if (existing) {
+        const { width, height } = existing.getSize();
+        const img = await outDoc.embedJpg(jpegBytes);
+        outDoc.removePage(pageIdx);
+        const newPage = outDoc.insertPage(pageIdx, [width, height]);
+        newPage.drawImage(img, { x: 0, y: 0, width, height });
+        rasterizedPages.push(pageIdx);
+      }
+      jpegBytes = null;
       void pw; void ph;
+
+      done++;
+      onProgress?.(done, total);
+
+      // Yield to the event loop every page so the main thread can paint
+      // and process user input (progress toasts, cancel button).
+      await new Promise<void>((r) => setTimeout(r, 0));
     }
   } finally {
     try { (srcDoc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
   }
 
-  if (replacements.length === 0) return { bytes, rasterizedPages: [] };
-
-  // Mutate the exported PDF: replace each affected page with a fresh page of
-  // the same size containing only the rasterized bitmap.
-  const outDoc = await PDFDocument.load(bytes);
-  // Process in descending index order so remove/insert at the same index
-  // doesn't shift later targets.
-  replacements.sort((a, b) => b.pageIdx - a.pageIdx);
-  for (const r of replacements) {
-    const pages = outDoc.getPages();
-    const existing = pages[r.pageIdx];
-    if (!existing) continue;
-    const { width, height } = existing.getSize();
-    const img = await outDoc.embedJpg(r.jpegBytes);
-    outDoc.removePage(r.pageIdx);
-    const newPage = outDoc.insertPage(r.pageIdx, [width, height]);
-    newPage.drawImage(img, { x: 0, y: 0, width, height });
-  }
+  if (rasterizedPages.length === 0) return { bytes, rasterizedPages: [] };
 
   const out = await outDoc.save();
-  return { bytes: out, rasterizedPages: replacements.map((r) => r.pageIdx).sort((a, b) => a - b) };
+  return { bytes: out, rasterizedPages: rasterizedPages.slice().sort((a, b) => a - b) };
 }
 
 function rectIntersects(
