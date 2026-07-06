@@ -1246,7 +1246,6 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       const autoSelect = merged.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
       const hasScanned = scanned.length > 0;
-      const lowConf = lowConfidenceOcrPages.length;
       // OCR "succeeded" on a scanned page when we ran it AND confidence was
       // not flagged low. Only the genuinely-failed pages get the hard
       // "manual redaction required" warning.
