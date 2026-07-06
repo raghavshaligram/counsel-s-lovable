@@ -577,7 +577,17 @@ export async function detectPiiInPdf(
   // once per input. Combined with per-page joining (Pass A collects ONE
   // string per page, not one per text-item), this cuts NER cost by ~2
   // orders of magnitude on real documents.
-  const NER_BATCH_PAGES = 8;
+  //
+  // Yielding rule: even though we're in a Web Worker, the browser still
+  // schedules worker CPU time on a shared pool. Larger batches monopolize
+  // the pool for longer and starve the viewer's pdf.js worker (grey
+  // placeholders on scroll). On low-core devices (≤4 logical cores) we
+  // shrink batches further so the OS scheduler has more preemption
+  // opportunities. We also await a macrotask between batches so any
+  // pending main-thread task (opening a new PDF, rendering a page in
+  // another tab) can execute before the next inference call.
+  const hwCores = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency || 4) : 4;
+  const NER_BATCH_PAGES = hwCores <= 4 ? 3 : 6;
   for (let b = 0; b < pageNerWork.length; b += NER_BATCH_PAGES) {
     throwIfAborted();
     const batch = pageNerWork.slice(b, b + NER_BATCH_PAGES);
