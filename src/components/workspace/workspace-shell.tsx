@@ -2263,6 +2263,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         </div>
       )}
 
+      {/* Opening spinner — instant feedback while the file picker / arrayBuffer
+          read / pdf.js structured clone is in flight. Non-blocking (no backdrop
+          catch), lives in a corner so it doesn't fight the drop overlay. */}
+      {isOpening && (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-surface-1/95 px-4 py-2 text-[12.5px] text-text-2 shadow-[var(--shadow-float)] backdrop-blur">
+            <span
+              aria-hidden
+              className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-vault/30 border-t-vault"
+            />
+            Opening document…
+          </div>
+        </div>
+      )}
+
       {/* Unsaved-changes guard — used only when closing a dirty tab */}
       {pendingCloseId && (
         <UnsavedChangesDialog
