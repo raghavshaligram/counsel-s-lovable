@@ -671,7 +671,11 @@ export async function detectPiiInPdf(
     const toCanvas = scale / ocrScale; // OCR-px → detection-canvas-px
     const { createWorker } = await importChunk(() => import("tesseract.js"));
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-    const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2), ocrPages.length));
+    // Leave 2 cores free for the viewer + main thread when possible so
+    // scrolling other tabs doesn't grey out during scans. On ≤4-core
+    // devices, cap the pool at 1 OCR worker to keep the UI responsive.
+    const maxPool = hw <= 4 ? 1 : Math.min(3, Math.floor((hw - 2) / 2));
+    const poolSize = Math.max(1, Math.min(maxPool, ocrPages.length));
     const workers = await Promise.all(
       Array.from({ length: poolSize }, () => createWorker("eng")),
     );
