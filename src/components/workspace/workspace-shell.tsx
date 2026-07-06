@@ -106,7 +106,8 @@ import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
 import { JobsIndicator } from "./jobs-indicator";
-import { bindGlobalCompletionToasts } from "@/lib/jobs/registry";
+import { bindGlobalCompletionToasts, useJobsStore } from "@/lib/jobs/registry";
+import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
 
 bindGlobalCompletionToasts();
 import { CaseSessionSaveButton } from "./case-session-save";
@@ -381,6 +382,23 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // Pending close (for the unsaved-changes guard).
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
   const [pendingHomeClose, setPendingHomeClose] = useState(false); // legacy guard
+  // Immediate visual affordance when the user triggers "open file". The
+  // OS file picker doesn't block us, but under CPU load from a running
+  // scan the arrayBuffer read + pdf.js structured clone can take several
+  // seconds, during which nothing visibly changes. This flag flips on
+  // synchronously so the user sees the click landed.
+  const [isOpening, setIsOpening] = useState(false);
+  // Clear the opening spinner if the user dismissed the OS file picker
+  // (no `change` event fires in that case; window focus returns instead).
+  useEffect(() => {
+    if (!isOpening) return;
+    const clear = () => {
+      // Delay one turn so a real `change` event handler runs first.
+      setTimeout(() => setIsOpening((v) => (v ? false : v)), 150);
+    };
+    window.addEventListener("focus", clear, { once: true });
+    return () => window.removeEventListener("focus", clear);
+  }, [isOpening]);
 
   // ----------------- Patch helpers ------------------------------------
   const patchTab = useCallback((id: string, patch: Partial<TabState>) => {
@@ -682,6 +700,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       return;
     }
     openInNewTabRef.current = true;
+    setIsOpening(true);
     // Reset value so picking the same file twice still fires `change`.
     if (fileInputRef.current) fileInputRef.current.value = "";
     fileInputRef.current?.click();
@@ -697,6 +716,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingCloseId(id);
         return;
       }
+      // Cancel any active background jobs tied to this tab (docId === tab.id).
+      // Without this, a PII scan whose tab is closed keeps burning CPU and
+      // posting partials into a dead store entry.
+      try {
+        const store = useJobsStore.getState();
+        for (const j of store.jobs) {
+          if (j.docId === id && (j.status === "running" || j.status === "queued")) {
+            store.cancelJob(j.id);
+          }
+        }
+      } catch { /* noop */ }
+      // Drop any persisted scan result state for this tab.
+      try { usePiiScanResultsStore.getState().clearScan(id); } catch { /* noop */ }
       // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
       const doc = pdfDocsRef.current.get(id);
       if (doc) {
@@ -766,7 +798,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
 
   // ----------------- File open (into the ACTIVE tab) ------------------
-  const openFile = useCallback(() => fileInputRef.current?.click(), []);
+  const openFile = useCallback(() => {
+    setIsOpening(true);
+    fileInputRef.current?.click();
+  }, []);
   const onFiles = useCallback(
     (files: FileList | null) => {
       const tFiles = performance.now();
@@ -779,7 +814,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       });
       const inNewTab = openInNewTabRef.current;
       openInNewTabRef.current = false;
-      if (!f) return;
+      if (!f) { setIsOpening(false); return; }
       if (inNewTab) {
         const docCount = tabsRef.current.filter((t) => t.file !== null).length;
         if (docCount >= TAB_CAP) {
@@ -802,6 +837,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         patchActive({ file: f, isDirty: false });
       }
       console.log("[open-click:onFiles] tab wired", { ms: Math.round(performance.now() - tFiles) });
+      // Keep the spinner visible for one paint so the user sees it landed,
+      // then let the open-effect take over rendering the new document.
+      requestAnimationFrame(() => setIsOpening(false));
       void (async () => {
         const meta = await addRecent(f);
         if (meta) {
@@ -2221,6 +2259,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             <Upload className="mx-auto h-7 w-7 text-vault" />
             <div className="mt-3 font-display text-xl">Drop to open</div>
             <div className="text-[12px] text-muted-foreground">Stays on this device</div>
+          </div>
+        </div>
+      )}
+
+      {/* Opening spinner — instant feedback while the file picker / arrayBuffer
+          read / pdf.js structured clone is in flight. Non-blocking (no backdrop
+          catch), lives in a corner so it doesn't fight the drop overlay. */}
+      {isOpening && (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-surface-1/95 px-4 py-2 text-[12.5px] text-text-2 shadow-[var(--shadow-float)] backdrop-blur">
+            <span
+              aria-hidden
+              className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-vault/30 border-t-vault"
+            />
+            Opening document…
           </div>
         </div>
       )}

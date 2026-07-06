@@ -577,7 +577,17 @@ export async function detectPiiInPdf(
   // once per input. Combined with per-page joining (Pass A collects ONE
   // string per page, not one per text-item), this cuts NER cost by ~2
   // orders of magnitude on real documents.
-  const NER_BATCH_PAGES = 8;
+  //
+  // Yielding rule: even though we're in a Web Worker, the browser still
+  // schedules worker CPU time on a shared pool. Larger batches monopolize
+  // the pool for longer and starve the viewer's pdf.js worker (grey
+  // placeholders on scroll). On low-core devices (≤4 logical cores) we
+  // shrink batches further so the OS scheduler has more preemption
+  // opportunities. We also await a macrotask between batches so any
+  // pending main-thread task (opening a new PDF, rendering a page in
+  // another tab) can execute before the next inference call.
+  const hwCores = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency || 4) : 4;
+  const NER_BATCH_PAGES = hwCores <= 4 ? 3 : 6;
   for (let b = 0; b < pageNerWork.length; b += NER_BATCH_PAGES) {
     throwIfAborted();
     const batch = pageNerWork.slice(b, b + NER_BATCH_PAGES);
@@ -631,6 +641,12 @@ export async function detectPiiInPdf(
         onPartial(detections.slice(detectionsBeforePage), { page: work.page, pass: "ner" });
       }
     }
+    // Cooperative yield: give the scheduler a chance to run higher-priority
+    // work (e.g. the main-thread "open a new PDF" pipeline, other tabs'
+    // pdf.js render tasks) between NER inference calls. setTimeout(0)
+    // enqueues a macrotask, which is the coarsest yield the browser
+    // honors across worker + main threads.
+    await new Promise<void>((r) => setTimeout(r, 0));
   }
 
   // Emit final text-pass profile line even before OCR runs, so slow docs
@@ -655,7 +671,11 @@ export async function detectPiiInPdf(
     const toCanvas = scale / ocrScale; // OCR-px → detection-canvas-px
     const { createWorker } = await importChunk(() => import("tesseract.js"));
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-    const poolSize = Math.max(1, Math.min(4, Math.floor(hw / 2), ocrPages.length));
+    // Leave 2 cores free for the viewer + main thread when possible so
+    // scrolling other tabs doesn't grey out during scans. On ≤4-core
+    // devices, cap the pool at 1 OCR worker to keep the UI responsive.
+    const maxPool = hw <= 4 ? 1 : Math.min(3, Math.floor((hw - 2) / 2));
+    const poolSize = Math.max(1, Math.min(maxPool, ocrPages.length));
     const workers = await Promise.all(
       Array.from({ length: poolSize }, () => createWorker("eng")),
     );
