@@ -388,6 +388,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // seconds, during which nothing visibly changes. This flag flips on
   // synchronously so the user sees the click landed.
   const [isOpening, setIsOpening] = useState(false);
+  // Clear the opening spinner if the user dismissed the OS file picker
+  // (no `change` event fires in that case; window focus returns instead).
+  useEffect(() => {
+    if (!isOpening) return;
+    const clear = () => {
+      // Delay one turn so a real `change` event handler runs first.
+      setTimeout(() => setIsOpening((v) => (v ? false : v)), 150);
+    };
+    window.addEventListener("focus", clear, { once: true });
+    return () => window.removeEventListener("focus", clear);
+  }, [isOpening]);
 
   // ----------------- Patch helpers ------------------------------------
   const patchTab = useCallback((id: string, patch: Partial<TabState>) => {
