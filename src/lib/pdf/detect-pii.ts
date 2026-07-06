@@ -641,6 +641,12 @@ export async function detectPiiInPdf(
         onPartial(detections.slice(detectionsBeforePage), { page: work.page, pass: "ner" });
       }
     }
+    // Cooperative yield: give the scheduler a chance to run higher-priority
+    // work (e.g. the main-thread "open a new PDF" pipeline, other tabs'
+    // pdf.js render tasks) between NER inference calls. setTimeout(0)
+    // enqueues a macrotask, which is the coarsest yield the browser
+    // honors across worker + main threads.
+    await new Promise<void>((r) => setTimeout(r, 0));
   }
 
   // Emit final text-pass profile line even before OCR runs, so slow docs
