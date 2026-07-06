@@ -2096,6 +2096,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             open={inspectorOpen}
             activeTool={activeToolId ? toolById(activeToolId) ?? null : null}
             onClose={() => patchActive({ inspectorOpen: false, activeToolId: null })}
+            docId={active.id}
             file={active.file}
             replaceFile={(f) => patchActive({ file: f, isDirty: true })}
             editorDispatch={editorDispatch}
@@ -2123,6 +2124,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             onClose={() => setAgentOpen(false)}
             flow={agentFlow}
             query={agentQuery}
+            docId={active.id}
             file={active.file}
             totalPages={editorState.doc?.pages.length ?? 0}
             openTool={(id, opts) => openTool(id, opts)}
@@ -3654,6 +3656,7 @@ function Inspector({
   open,
   activeTool,
   onClose,
+  docId,
   file,
   replaceFile,
   editorDispatch,
@@ -3667,6 +3670,7 @@ function Inspector({
   open: boolean;
   activeTool: RailTool | null;
   onClose: () => void;
+  docId: string;
   file: File | null;
   replaceFile: (f: File) => void;
   editorDispatch: React.Dispatch<EditorAction>;
@@ -3772,7 +3776,7 @@ function Inspector({
           <div className={cn("flex-1 overflow-auto px-3 py-3", dragging && "pointer-events-none select-none")}>
             <ToolPanel
               toolId={activeTool.id}
-              ctx={{ file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
+              ctx={{ docId, file, replaceFile, editorDispatch, editorState, closeInspector, otherTabs, ocr, focusSection, clearFocusSection }}
             />
           </div>
         </div>

@@ -134,6 +134,7 @@ export interface AgentPanelProps {
   onClose: () => void;
   flow: AgentFlow | null;
   query: { id: number; text: string } | null;
+  docId: string | null;
   file: File | null;
   totalPages: number;
   openTool: (id: string, opts?: { focusSection?: string }) => void;
@@ -170,6 +171,7 @@ export function AgentPanel({
   onClose,
   flow,
   query,
+  docId,
   file,
   totalPages,
   openTool,
@@ -349,8 +351,9 @@ export function AgentPanel({
           () => import("@/lib/workers/detect-pii-client"),
         );
         const { runAsJob } = await import("@/lib/jobs/registry");
+        const ownerDocId = docId ?? `${file.name}:${file.size}`;
         const { promise } = runAsJob(
-          { kind: "detect-pii", docId: `${file.name}:${file.size}`, docLabel: file.name },
+          { kind: "detect-pii", docId: ownerDocId, docLabel: file.name },
           async ({ signal, onProgress }) => {
             return await detectPiiInPdfViaWorker(file, 1.5, (p) => {
               const t = p.totalPages || 1;
@@ -484,7 +487,7 @@ export function AgentPanel({
         });
       }
     },
-    [file, pushStep, replaceStep, openTool, onClose],
+    [file, docId, pushStep, replaceStep, openTool, onClose],
   );
 
   const runPatternRedact = useCallback(
