@@ -22,16 +22,13 @@ export type DetectResult = {
   ocrUnderDetectedPages: number[];
 };
 
-let worker: Worker | null = null;
 let reqCounter = 0;
 
-function getWorker(): Worker {
-  if (worker) return worker;
-  worker = new Worker(new URL("./detect-pii.worker.ts", import.meta.url), {
+function createWorker(): Worker {
+  return new Worker(new URL("./detect-pii.worker.ts", import.meta.url), {
     type: "module",
     name: "counselpdf-detect-pii",
   });
-  return worker;
 }
 
 interface OutboundMsg {
@@ -64,9 +61,10 @@ export function detectPiiInPdfViaWorker(
   return new Promise<DetectResult>((resolve, reject) => {
     (async () => {
       try {
-        const w = getWorker();
+        const w = createWorker();
         const id = `det-${++reqCounter}`;
         const bytes = await file.arrayBuffer();
+        let settled = false;
 
         // Coalesce worker→main callbacks per animation frame. The scan
         // worker can emit hundreds of progress + partial messages per
@@ -115,19 +113,28 @@ export function detectPiiInPdfViaWorker(
             pendingPartials.push({ dets: m.detections as Detection[], meta: { page: m.page, pass: m.pass } });
             ensureFlush();
           } else if (m.kind === "result") {
+            if (settled) return;
+            settled = true;
             w.removeEventListener("message", handler);
             signal?.removeEventListener("abort", onAbort);
             if (flushScheduled) flush();
+            w.terminate();
             resolve(m.result as DetectResult);
           } else if (m.kind === "error") {
+            if (settled) return;
+            settled = true;
             w.removeEventListener("message", handler);
             signal?.removeEventListener("abort", onAbort);
+            w.terminate();
             reject(new Error(m.message ?? "scan failed"));
           }
         };
         const onAbort = () => {
+          if (settled) return;
+          settled = true;
           w.postMessage({ kind: "cancel", id });
           w.removeEventListener("message", handler);
+          w.terminate();
           reject(new DOMException("Canceled", "AbortError"));
         };
         if (signal?.aborted) return onAbort();
@@ -157,25 +164,35 @@ export function detectPiiInSideChannelsViaWorker(
   return new Promise((resolve, reject) => {
     (async () => {
       try {
-        const w = getWorker();
+        const w = createWorker();
         const id = `side-${++reqCounter}`;
         const bytes = await file.arrayBuffer();
+        let settled = false;
         const handler = (ev: MessageEvent<OutboundMsg>) => {
           const m = ev.data;
           if (m.id !== id) return;
           if (m.kind === "side-result") {
+            if (settled) return;
+            settled = true;
             w.removeEventListener("message", handler);
             signal?.removeEventListener("abort", onAbort);
+            w.terminate();
             resolve((m.result as unknown[]) ?? []);
           } else if (m.kind === "error") {
+            if (settled) return;
+            settled = true;
             w.removeEventListener("message", handler);
             signal?.removeEventListener("abort", onAbort);
+            w.terminate();
             reject(new Error(m.message ?? "side scan failed"));
           }
         };
         const onAbort = () => {
+          if (settled) return;
+          settled = true;
           w.postMessage({ kind: "cancel", id });
           w.removeEventListener("message", handler);
+          w.terminate();
           reject(new DOMException("Canceled", "AbortError"));
         };
         if (signal?.aborted) return onAbort();

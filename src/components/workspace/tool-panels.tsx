@@ -121,6 +121,7 @@ import { CitationHyperlinkerPanel } from "./citation-hyperlinker-panel";
 import { TableOfAuthoritiesPanel } from "./toa-panel";
 import { DocumentHashPanel } from "./document-hash-panel";
 import { PreDiscoveryPanel } from "./pre-discovery-panel";
+import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -135,6 +136,8 @@ export type OcrCtx = {
 };
 
 export type ToolPanelCtx = {
+  /** Stable owning workspace tab id for document-scoped background jobs. */
+  docId?: string;
   /** The active tab's PDF file (or null when none open). */
   file: File | null;
   /** Replace the active tab's file in place (used by Fill → apply). */
@@ -1086,11 +1089,9 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
  * confirms by triggering export.
  */
 function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
-  const { file, replaceFile, editorDispatch, editorState } = ctx;
+  const { docId: ctxDocId, file, replaceFile, editorDispatch, editorState } = ctx;
   type Det = import("@/lib/pdf/detect-pii").Detection;
   type Cat = import("@/lib/pdf/detect-pii").PiiCategory;
-  const [scanning, setScanning] = useState(false);
-  const [progress, setProgress] = useState<string>("");
   const [findings, setFindings] = useState<Det[] | null>(null);
   const [usedOcr, setUsedOcr] = useState(false);
   const [scannedPages, setScannedPages] = useState<number[]>([]);
@@ -1099,6 +1100,40 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
+  const docId = ctxDocId ?? (file ? `${file.name}:${file.size}` : "");
+  const scanRecord = usePiiScanResultsStore((s) => (docId ? s.scans[docId] : undefined));
+  const beginScan = usePiiScanResultsStore((s) => s.beginScan);
+  const updateScanProgress = usePiiScanResultsStore((s) => s.updateProgress);
+  const appendScanFindings = usePiiScanResultsStore((s) => s.appendFindings);
+  const completeScan = usePiiScanResultsStore((s) => s.completeScan);
+  const failScan = usePiiScanResultsStore((s) => s.failScan);
+  const scanning = scanRecord?.status === "queued" || scanRecord?.status === "running";
+  const progress = scanRecord?.progress ?? "";
+
+  useEffect(() => {
+    if (!docId || !scanRecord) {
+      setFindings(null);
+      setUsedOcr(false);
+      setScannedPages([]);
+      setLowConfOcrPages([]);
+      setUnderDetectedOcrPages([]);
+      setTotalPagesScanned(0);
+      setSelected(new Set());
+      return;
+    }
+    setFindings(scanRecord.findings);
+    setUsedOcr(scanRecord.usedOcr);
+    setScannedPages(scanRecord.scannedPages);
+    setLowConfOcrPages(scanRecord.lowConfidenceOcrPages);
+    setUnderDetectedOcrPages(scanRecord.ocrUnderDetectedPages);
+    setTotalPagesScanned(scanRecord.totalPagesScanned);
+    if (scanRecord.status === "completed" && scanRecord.findings) {
+      const autoSelect = scanRecord.findings.filter((d) => d.confidence !== "low");
+      setSelected(new Set(autoSelect.map((d) => d.id)));
+    } else if (scanRecord.status === "queued" || scanRecord.status === "running") {
+      setSelected(new Set());
+    }
+  }, [docId, scanRecord]);
 
   // Agent hand-off: the assistant panel can seed us with findings it
   // already scanned so the user isn't paying for a second detect pass.
@@ -1133,8 +1168,9 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   }, [editorState?.doc?.annotations]);
 
   const runScan = useCallback(async () => {
-    if (!file) return;
-    setScanning(true);
+    if (!file || !docId) return;
+    const ownerFile = file;
+    const ownerDocId = docId;
     setFindings(null);
     setUsedOcr(false);
     setScannedPages([]);
@@ -1142,7 +1178,6 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setUnderDetectedOcrPages([]);
     setTotalPagesScanned(0);
     setSelected(new Set());
-    setProgress("Reading text layer…");
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
@@ -1152,22 +1187,23 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       const { detectPiiInPdfViaWorker, detectPiiInSideChannelsViaWorker } =
         await importChunk(() => import("@/lib/workers/detect-pii-client"));
       const { runAsJob } = await import("@/lib/jobs/registry");
-      const docId = `${file.name}:${file.size}`;
       const streamingDetections: import("@/lib/pdf/detect-pii").Detection[] = [];
-      const { promise } = runAsJob(
-        { kind: "detect-pii", docId, docLabel: file.name },
+      const { jobId, promise } = runAsJob(
+        { kind: "detect-pii", docId: ownerDocId, docLabel: ownerFile.name },
         async ({ signal, onProgress }) => {
+          updateScanProgress(ownerDocId, "Reading text layer…");
           return await detectPiiInPdfViaWorker(
-            file,
+            ownerFile,
             1.5,
             (p) => {
               const total = p.totalPages || 1;
+              const step = p.stage === "ocr" ? `OCR ${p.page}/${total}` : `${p.pass ?? "text"} ${p.page}/${total}`;
               onProgress({
                 fraction: total ? p.page / total : 0,
-                step: p.stage === "ocr" ? `OCR ${p.page}/${total}` : `${p.pass ?? "text"} ${p.page}/${total}`,
+                step,
               });
               const found = p.foundSoFar ?? streamingDetections.length;
-              setProgress(
+              updateScanProgress(ownerDocId,
                 p.stage === "ocr"
                   ? `OCR ${p.page}/${p.totalPages} · ${found} findings`
                   : p.pass === "ner"
@@ -1178,29 +1214,32 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             signal,
             (dets) => {
               streamingDetections.push(...dets);
-              setFindings([...streamingDetections]);
+              appendScanFindings(ownerDocId, dets);
             },
           );
         },
       );
+      beginScan({ docId: ownerDocId, docLabel: ownerFile.name, jobId });
 
       const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await promise;
       // Side-channel scan (form fields / annotations / metadata) also runs
       // in the worker.
-      setProgress("Scanning form fields, comments, metadata…");
+      updateScanProgress(ownerDocId, "Scanning form fields, comments, metadata…");
       let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
       try {
-        sideFindings = (await detectPiiInSideChannelsViaWorker(file)) as typeof sideFindings;
+        sideFindings = (await detectPiiInSideChannelsViaWorker(ownerFile)) as typeof sideFindings;
       } catch (e) {
         console.warn("[auto-detect] side-channel scan failed", e);
       }
       const merged = [...detections, ...sideFindings];
-      setFindings(merged);
-      setUsedOcr(usedOcr);
-      setScannedPages(scanned);
-      setLowConfOcrPages(lowConfidenceOcrPages);
-      setUnderDetectedOcrPages(ocrUnderDetectedPages ?? []);
-      setTotalPagesScanned(totalPages);
+      completeScan(ownerDocId, {
+        findings: merged,
+        usedOcr,
+        scannedPages: scanned,
+        lowConfidenceOcrPages,
+        ocrUnderDetectedPages: ocrUnderDetectedPages ?? [],
+        totalPagesScanned: totalPages,
+      });
       const autoSelect = merged.filter((d) => d.confidence !== "low");
       setSelected(new Set(autoSelect.map((d) => d.id)));
       const hasScanned = scanned.length > 0;
@@ -1247,13 +1286,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       }
 
     } catch (err) {
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      failScan(ownerDocId, err instanceof Error ? err.message : String(err), aborted);
       console.error("[auto-detect] failed", err);
-      toast.error("Scan failed", { description: (err as Error).message });
-    } finally {
-      setScanning(false);
-      setProgress("");
+      if (!aborted) toast.error("Scan failed", { description: (err as Error).message });
     }
-  }, [file]);
+  }, [file, docId, beginScan, updateScanProgress, appendScanFindings, completeScan, failScan]);
 
   const jumpToFinding = useCallback(
     (d: Det) => {
