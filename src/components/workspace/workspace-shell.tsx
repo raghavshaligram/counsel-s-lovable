@@ -698,6 +698,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         setPendingCloseId(id);
         return;
       }
+      // Cancel any active background jobs tied to this tab (docId === tab.id).
+      // Without this, a PII scan whose tab is closed keeps burning CPU and
+      // posting partials into a dead store entry.
+      try {
+        const store = useJobsStore.getState();
+        for (const j of store.jobs) {
+          if (j.docId === id && (j.status === "running" || j.status === "queued")) {
+            store.cancelJob(j.id);
+          }
+        }
+      } catch { /* noop */ }
+      // Drop any persisted scan result state for this tab.
+      try { usePiiScanResultsStore.getState().clearScan(id); } catch { /* noop */ }
       // Destroy the parsed pdfDoc for this tab, if any, to release worker memory.
       const doc = pdfDocsRef.current.get(id);
       if (doc) {
