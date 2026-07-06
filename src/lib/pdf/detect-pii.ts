@@ -397,11 +397,11 @@ export async function detectPiiInPdf(
   const t0 = performance.now();
   let tText = 0;      // ms in pdf.js getTextContent
   let tRegex = 0;     // ms in regex + heuristics + privilege
-  let tNer = 0;       // ms in NER inference (both single + batched)
   let itemCount = 0;  // total text items across all pages
-  let nerCalls = 0;   // number of runNer / runNerBatch invocations
-  let nerBatches = 0; // number of batched inference calls
-  let nerInputChars = 0;
+  // Reset per-scan NER stats so the profile line below reflects THIS scan only
+  // (calls, batches, cache hits/misses, per-call timings, active device).
+  resetNerStats();
+
 
   // NER work collected during Pass A, run in Pass B batched across pages.
   // Grouping by page lets us surface findings page-by-page as batches
