@@ -1099,6 +1099,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [underDetectedOcrPages, setUnderDetectedOcrPages] = useState<number[]>([]);
   const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const docId = ctxDocId ?? (file ? `${file.name}:${file.size}` : "");
   const scanRecord = usePiiScanResultsStore((s) => (docId ? s.scans[docId] : undefined));
