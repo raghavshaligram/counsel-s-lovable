@@ -689,6 +689,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       return;
     }
     openInNewTabRef.current = true;
+    setIsOpening(true);
     // Reset value so picking the same file twice still fires `change`.
     if (fileInputRef.current) fileInputRef.current.value = "";
     fileInputRef.current?.click();
