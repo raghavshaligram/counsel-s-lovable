@@ -1611,55 +1611,127 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
             </button>
           </div>
           <ul className="max-h-[280px] overflow-y-auto py-1">
-            {grouped?.map(([cat, list]) => (
-              <li key={cat}>
-                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                  {meta?.[cat]?.label ?? cat} · {list.length}
-                </div>
-                <ul>
-                  {list.map((d) => {
-                    const checked = selected.has(d.id);
-                    return (
-                      <li key={d.id}>
-                        <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => {
-                              setSelected((prev) => {
-                                const next = new Set(prev);
-                                if (e.target.checked) next.add(d.id);
-                                else next.delete(d.id);
-                                return next;
-                              });
-                            }}
-                            className="mt-[3px] h-3 w-3 shrink-0 accent-vault"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => jumpToFinding(d)}
-                            className="min-w-0 flex-1 text-left"
-                            title="Jump to this finding"
-                          >
-                            <div className="font-mono text-[11px] text-foreground">
-                              {maskPreview(d)}
-                            </div>
-                            <div className="text-[10px] text-text-2">
-                              Page {d.page}
-                              {!d.source && (
-                                <span className="ml-1 text-amber-400/80">
-                                  · visual-only (scanned)
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </li>
-            ))}
+            {grouped?.map(([cat, groups]) => {
+              const catTotal = groups.reduce((s, g) => s + g.dets.length, 0);
+              return (
+                <li key={cat}>
+                  <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                    {meta?.[cat]?.label ?? cat} · {catTotal.toLocaleString()}
+                    {groups.length !== catTotal && (
+                      <span className="ml-1 text-text-2 normal-case tracking-normal">
+                        ({groups.length.toLocaleString()} distinct)
+                      </span>
+                    )}
+                  </div>
+                  <ul>
+                    {groups.map((g) => {
+                      const groupKey = `${cat}::${g.key}`;
+                      const selCount = g.dets.reduce((s, d) => s + (selected.has(d.id) ? 1 : 0), 0);
+                      const allChecked = selCount === g.dets.length;
+                      const someChecked = selCount > 0 && !allChecked;
+                      const isExpanded = expandedGroups.has(groupKey);
+                      const first = g.dets[0];
+                      const isSingle = g.dets.length === 1;
+                      return (
+                        <li key={groupKey}>
+                          <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
+                            <input
+                              type="checkbox"
+                              checked={allChecked}
+                              ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                              onChange={(e) => {
+                                setSelected((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) for (const d of g.dets) next.add(d.id);
+                                  else for (const d of g.dets) next.delete(d.id);
+                                  return next;
+                                });
+                              }}
+                              className="mt-[3px] h-3 w-3 shrink-0 accent-vault"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => jumpToFinding(first)}
+                              className="min-w-0 flex-1 text-left"
+                              title={isSingle ? "Jump to this finding" : "Jump to first occurrence"}
+                            >
+                              <div className="font-mono text-[11px] text-foreground truncate">
+                                {maskPreview(first)}
+                              </div>
+                              <div className="text-[10px] text-text-2">
+                                {isSingle ? (
+                                  <>
+                                    Page {first.page}
+                                    {!first.source && (
+                                      <span className="ml-1 text-amber-400/80">· visual-only (scanned)</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>{g.dets.length.toLocaleString()} occurrences</>
+                                )}
+                              </div>
+                            </button>
+                            {!isSingle && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedGroups((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(groupKey)) next.delete(groupKey);
+                                    else next.add(groupKey);
+                                    return next;
+                                  });
+                                }}
+                                className="mt-[2px] shrink-0 rounded px-1 py-0.5 text-[10px] text-text-2 hover:bg-surface-3 hover:text-foreground"
+                                title={isExpanded ? "Collapse pages" : "Show pages"}
+                              >
+                                {isExpanded ? "Hide" : "Pages"}
+                              </button>
+                            )}
+                          </div>
+                          {!isSingle && isExpanded && (
+                            <ul className="ml-6 border-l border-border/60">
+                              {g.dets.map((d) => {
+                                const checked = selected.has(d.id);
+                                return (
+                                  <li key={d.id}>
+                                    <div className="group flex items-center gap-1.5 px-2.5 py-0.5 hover:bg-surface-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          setSelected((prev) => {
+                                            const next = new Set(prev);
+                                            if (e.target.checked) next.add(d.id);
+                                            else next.delete(d.id);
+                                            return next;
+                                          });
+                                        }}
+                                        className="h-3 w-3 shrink-0 accent-vault"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => jumpToFinding(d)}
+                                        className="min-w-0 flex-1 text-left text-[10px] text-text-2 hover:text-foreground"
+                                      >
+                                        Page {d.page}
+                                        {!d.source && (
+                                          <span className="ml-1 text-amber-400/80">· visual-only</span>
+                                        )}
+                                      </button>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              );
+            })}
           </ul>
           {sideChannelGrouped && sideChannelGrouped.length > 0 && (
             <div className="border-t border-border/60">
