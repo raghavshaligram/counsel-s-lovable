@@ -1485,13 +1485,34 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
 
   const grouped = useMemo(() => {
     if (!pageRedactableFindings.length) return null;
-    const m = new Map<Cat, Det[]>();
+    // Category → snippet-key → detections. Collapsing identical matched-text
+    // rows into ONE group keeps the list navigable on large scans (a caption
+    // that appears on 5000 pages becomes one row, not 5000). All underlying
+    // Detection objects remain in the group so selecting it selects every
+    // occurrence for redaction — only the DISPLAY collapses.
+    const byCat = new Map<Cat, Map<string, Det[]>>();
     for (const d of pageRedactableFindings) {
-      const arr = m.get(d.category) ?? [];
+      const catMap = byCat.get(d.category) ?? new Map<string, Det[]>();
+      const key = (d.snippet ?? "").trim() || `∅::${d.id}`;
+      const arr = catMap.get(key) ?? [];
       arr.push(d);
-      m.set(d.category, arr);
+      catMap.set(key, arr);
+      byCat.set(d.category, catMap);
     }
-    return Array.from(m.entries()).sort((a, b) => b[1].length - a[1].length);
+    const out: Array<[Cat, Array<{ key: string; text: string; dets: Det[] }>]> = [];
+    for (const [cat, catMap] of byCat) {
+      const groups = Array.from(catMap.entries())
+        .map(([key, dets]) => ({ key, text: dets[0].snippet ?? "", dets }))
+        .sort((a, b) => b.dets.length - a.dets.length);
+      out.push([cat, groups]);
+    }
+    // Categories with more total detections first.
+    out.sort((a, b) => {
+      const sa = a[1].reduce((s, g) => s + g.dets.length, 0);
+      const sb = b[1].reduce((s, g) => s + g.dets.length, 0);
+      return sb - sa;
+    });
+    return out;
   }, [pageRedactableFindings]);
 
   const sideChannelGrouped = useMemo(() => {
