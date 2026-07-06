@@ -571,81 +571,89 @@ export async function detectPiiInPdf(
     }
   }
 
-  // ========== Pass B — batched NER across pages ==========
-  // Transformer inference is dramatically more efficient when several
-  // inputs go through the model in one call than when the model is invoked
-  // once per input. Combined with per-page joining (Pass A collects ONE
-  // string per page, not one per text-item), this cuts NER cost by ~2
-  // orders of magnitude on real documents.
+  // ========== Pass B — batched NER, PER-ITEM (cache-friendly) ==========
+  // Cache granularity note: earlier revisions joined every text item on a
+  // page into one string and hashed THAT for the dedup cache. Because body
+  // text differs page-to-page, the joined string was unique per page and
+  // the cache hit rate was ~0% — pure overhead. Individual text items
+  // (case captions, headers, footers, exhibit stamps, "Page N of M"
+  // rows) DO repeat verbatim across dozens or hundreds of pages, so we
+  // hash and cache each ITEM independently. runNerBatch already keys its
+  // internal LRU on the input string via fnv1a64, so passing item.str
+  // values one-per-input gives us dedup for free while still batching
+  // cache-miss inputs through the model in one inference call.
   //
-  // Yielding rule: even though we're in a Web Worker, the browser still
-  // schedules worker CPU time on a shared pool. Larger batches monopolize
-  // the pool for longer and starve the viewer's pdf.js worker (grey
-  // placeholders on scroll). On low-core devices (≤4 logical cores) we
-  // shrink batches further so the OS scheduler has more preemption
-  // opportunities. We also await a macrotask between batches so any
-  // pending main-thread task (opening a new PDF, rendering a page in
-  // another tab) can execute before the next inference call.
-  // With header/footer dedup caching in ner.ts + optional WebGPU accel, each
-  // batch is much cheaper AND many pages hit the cache without inference. That
-  // shifts the trade-off back toward larger batches: fewer scheduler round
-  // trips, better GPU/CPU utilization per call. Keep low-core devices a touch
-  // more conservative so the viewer stays responsive.
+  // Yielding: setTimeout(0) between batches lets the browser scheduler
+  // run higher-priority work (opening a new PDF, rendering other tabs'
+  // pdf.js) so scans stay in the background instead of starving the UI.
   const hwCores = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency || 4) : 4;
-  const NER_BATCH_PAGES = hwCores <= 4 ? 6 : 8;
-  for (let b = 0; b < pageNerWork.length; b += NER_BATCH_PAGES) {
+  const NER_BATCH_ITEMS = hwCores <= 4 ? 32 : 48;
+  const allNerItems: Array<{ page: number; item: PageNerItem }> = [];
+  for (const w of pageNerWork) for (const it of w.items) allNerItems.push({ page: w.page, item: it });
+
+  let lastReportedPage = 0;
+  for (let b = 0; b < allNerItems.length; b += NER_BATCH_ITEMS) {
     throwIfAborted();
-    const batch = pageNerWork.slice(b, b + NER_BATCH_PAGES);
-    const texts = batch.map((w) => w.joinedText);
-    onProgress?.({
-      stage: "text",
-      pass: "ner",
-      page: Math.min(b + batch.length, pageNerWork.length),
-      totalPages: pageNerWork.length,
-      foundSoFar: detections.length,
-    });
-    const results = await runNerBatch(texts, "detect-pii:text-batch");
+    const batch = allNerItems.slice(b, b + NER_BATCH_ITEMS);
+    const texts = batch.map((x) => x.item.str);
+    const lastPage = batch[batch.length - 1].page;
+    if (lastPage !== lastReportedPage) {
+      lastReportedPage = lastPage;
+      onProgress?.({
+        stage: "text",
+        pass: "ner",
+        page: lastPage,
+        totalPages: doc.numPages,
+        foundSoFar: detections.length,
+      });
+    }
+    const results = await runNerBatch(texts, "detect-pii:item-batch");
+    // Group emitted detections by page so onPartial fires once per page.
+    const emittedByPage = new Map<number, number>();
     for (let bi = 0; bi < batch.length; bi++) {
-      const work = batch[bi];
+      const { page, item } = batch[bi];
       const ents = results[bi] || [];
-      const detectionsBeforePage = detections.length;
+      const detectionsBeforeItem = detections.length;
       for (const e of ents) {
         if (e.type !== "PER" && e.type !== "ORG") continue;
-        // Find the item(s) this entity's span sits in.
-        // Binary-search would be nicer for very long pages but nerItems is
-        // small (a page has O(hundreds) of items max) so a linear scan is
-        // both simpler and fast enough. We over-cover if an entity spans
-        // multiple items (rare — the PDF joins text runs with newlines).
-        for (const item of work.items) {
-          if (e.end <= item.joinedStart || e.start >= item.joinedEnd) continue;
-          const localStart = Math.max(0, e.start - item.joinedStart);
-          const localEnd = Math.min(item.str.length, e.end - item.joinedStart);
-          if (localEnd <= localStart) continue;
-          // Dedupe against the regex-name pass on the SAME item.
-          const overlapsRegexName = item.regexNameSpans.some(
-            (s) => !(localEnd <= s.start || localStart >= s.end),
-          );
-          if (overlapsRegexName) continue;
-          emitBoxFor(
-            work.page,
-            item,
-            localStart,
-            localEnd - localStart,
-            e.type === "PER" ? "name" : "org",
-            "high",
-            item.str.slice(localStart, localEnd),
-          );
+        const localStart = Math.max(0, e.start);
+        const localEnd = Math.min(item.str.length, e.end);
+        if (localEnd <= localStart) continue;
+        const overlapsRegexName = item.regexNameSpans.some(
+          (s) => !(localEnd <= s.start || localStart >= s.end),
+        );
+        if (overlapsRegexName) continue;
+        emitBoxFor(
+          page,
+          item,
+          localStart,
+          localEnd - localStart,
+          e.type === "PER" ? "name" : "org",
+          "high",
+          item.str.slice(localStart, localEnd),
+        );
+      }
+      const added = detections.length - detectionsBeforeItem;
+      if (added > 0) emittedByPage.set(page, (emittedByPage.get(page) ?? 0) + added);
+    }
+    if (onPartial) {
+      // Emit page-scoped partials for pages that gained detections in this batch.
+      let cursor = detections.length;
+      // Walk back through the newly-added tail and split by page.
+      const totalAdded = Array.from(emittedByPage.values()).reduce((s, v) => s + v, 0);
+      if (totalAdded > 0) {
+        const tail = detections.slice(cursor - totalAdded);
+        const byPage = new Map<number, Detection[]>();
+        for (const d of tail) {
+          const arr = byPage.get(d.page) ?? [];
+          arr.push(d);
+          byPage.set(d.page, arr);
+        }
+        for (const [page, dets] of byPage) {
+          onPartial(dets, { page, pass: "ner" });
         }
       }
-      if (onPartial && detections.length > detectionsBeforePage) {
-        onPartial(detections.slice(detectionsBeforePage), { page: work.page, pass: "ner" });
-      }
     }
-    // Cooperative yield: give the scheduler a chance to run higher-priority
-    // work (e.g. the main-thread "open a new PDF" pipeline, other tabs'
-    // pdf.js render tasks) between NER inference calls. setTimeout(0)
-    // enqueues a macrotask, which is the coarsest yield the browser
-    // honors across worker + main threads.
     await new Promise<void>((r) => setTimeout(r, 0));
   }
 
