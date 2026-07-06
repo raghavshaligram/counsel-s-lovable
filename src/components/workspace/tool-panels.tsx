@@ -1191,8 +1191,9 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       const { jobId, promise } = runAsJob(
         { kind: "detect-pii", docId: ownerDocId, docLabel: ownerFile.name },
         async ({ signal, onProgress }) => {
+          await Promise.resolve();
           updateScanProgress(ownerDocId, "Reading text layer…");
-          return await detectPiiInPdfViaWorker(
+          const result = await detectPiiInPdfViaWorker(
             ownerFile,
             1.5,
             (p) => {
@@ -1217,21 +1218,23 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
               appendScanFindings(ownerDocId, dets);
             },
           );
+          updateScanProgress(ownerDocId, "Scanning form fields, comments, metadata…");
+          let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
+          try {
+            sideFindings = (await detectPiiInSideChannelsViaWorker(
+              ownerFile,
+              signal,
+            )) as typeof sideFindings;
+          } catch (e) {
+            console.warn("[auto-detect] side-channel scan failed", e);
+          }
+          return { ...result, detections: [...result.detections, ...sideFindings] };
         },
       );
       beginScan({ docId: ownerDocId, docLabel: ownerFile.name, jobId });
 
       const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await promise;
-      // Side-channel scan (form fields / annotations / metadata) also runs
-      // in the worker.
-      updateScanProgress(ownerDocId, "Scanning form fields, comments, metadata…");
-      let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
-      try {
-        sideFindings = (await detectPiiInSideChannelsViaWorker(ownerFile)) as typeof sideFindings;
-      } catch (e) {
-        console.warn("[auto-detect] side-channel scan failed", e);
-      }
-      const merged = [...detections, ...sideFindings];
+      const merged = detections;
       completeScan(ownerDocId, {
         findings: merged,
         usedOcr,
