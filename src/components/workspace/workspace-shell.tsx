@@ -826,6 +826,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         patchActive({ file: f, isDirty: false });
       }
       console.log("[open-click:onFiles] tab wired", { ms: Math.round(performance.now() - tFiles) });
+      // Keep the spinner visible for one paint so the user sees it landed,
+      // then let the open-effect take over rendering the new document.
+      requestAnimationFrame(() => setIsOpening(false));
       void (async () => {
         const meta = await addRecent(f);
         if (meta) {
