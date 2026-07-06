@@ -8,7 +8,7 @@
 
 import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
-import { runNer, runNerBatch, PRIVILEGE_TERMS_RE, type NerEntity } from "./ner";
+import { runNer, runNerBatch, PRIVILEGE_TERMS_RE, getNerStats, resetNerStats, type NerEntity } from "./ner";
 
 /**
  * Create a canvas that works on both main thread (HTMLCanvasElement) AND
@@ -397,11 +397,11 @@ export async function detectPiiInPdf(
   const t0 = performance.now();
   let tText = 0;      // ms in pdf.js getTextContent
   let tRegex = 0;     // ms in regex + heuristics + privilege
-  let tNer = 0;       // ms in NER inference (both single + batched)
   let itemCount = 0;  // total text items across all pages
-  let nerCalls = 0;   // number of runNer / runNerBatch invocations
-  let nerBatches = 0; // number of batched inference calls
-  let nerInputChars = 0;
+  // Reset per-scan NER stats so the profile line below reflects THIS scan only
+  // (calls, batches, cache hits/misses, per-call timings, active device).
+  resetNerStats();
+
 
   // NER work collected during Pass A, run in Pass B batched across pages.
   // Grouping by page lets us surface findings page-by-page as batches
@@ -586,8 +586,13 @@ export async function detectPiiInPdf(
   // opportunities. We also await a macrotask between batches so any
   // pending main-thread task (opening a new PDF, rendering a page in
   // another tab) can execute before the next inference call.
+  // With header/footer dedup caching in ner.ts + optional WebGPU accel, each
+  // batch is much cheaper AND many pages hit the cache without inference. That
+  // shifts the trade-off back toward larger batches: fewer scheduler round
+  // trips, better GPU/CPU utilization per call. Keep low-core devices a touch
+  // more conservative so the viewer stays responsive.
   const hwCores = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency || 4) : 4;
-  const NER_BATCH_PAGES = hwCores <= 4 ? 3 : 6;
+  const NER_BATCH_PAGES = hwCores <= 4 ? 6 : 8;
   for (let b = 0; b < pageNerWork.length; b += NER_BATCH_PAGES) {
     throwIfAborted();
     const batch = pageNerWork.slice(b, b + NER_BATCH_PAGES);
@@ -599,12 +604,7 @@ export async function detectPiiInPdf(
       totalPages: pageNerWork.length,
       foundSoFar: detections.length,
     });
-    const tn0 = performance.now();
-    for (const t of texts) nerInputChars += t.length;
     const results = await runNerBatch(texts, "detect-pii:text-batch");
-    tNer += performance.now() - tn0;
-    nerBatches++;
-    nerCalls += texts.length;
     for (let bi = 0; bi < batch.length; bi++) {
       const work = batch[bi];
       const ents = results[bi] || [];
@@ -650,14 +650,27 @@ export async function detectPiiInPdf(
   }
 
   // Emit final text-pass profile line even before OCR runs, so slow docs
-  // that time out on OCR still leave useful timing behind.
+  // that time out on OCR still leave useful timing behind. Includes:
+  //   - device (webgpu/wasm) — which backend actually loaded
+  //   - nerCalls / nerBatches — pipeline() invocations (post-cache)
+  //   - cacheHits / cacheMisses + hit-rate — dedup effectiveness
+  //   - meanMs / p95Ms — per-call inference latency
+  const ns = getNerStats();
+  const totalReq = ns.cacheHits + ns.cacheMisses;
+  const hitRate = totalReq > 0 ? ((ns.cacheHits / totalReq) * 100).toFixed(1) : "0.0";
+  const timings = ns.perCall.map((c) => c.ms).sort((a, b) => a - b);
+  const mean = timings.length > 0 ? timings.reduce((s, v) => s + v, 0) / timings.length : 0;
+  const p95 = timings.length > 0 ? timings[Math.min(timings.length - 1, Math.floor(timings.length * 0.95))] : 0;
   // eslint-disable-next-line no-console
   console.info(
     `[detect-pii profile] text-pass: pages=${doc.numPages - ocrPages.length} items=${itemCount} ` +
-    `text=${tText.toFixed(0)}ms regex=${tRegex.toFixed(0)}ms ner=${tNer.toFixed(0)}ms ` +
-    `nerBatches=${nerBatches} nerInputs=${nerCalls} nerChars=${nerInputChars} ` +
+    `text=${tText.toFixed(0)}ms regex=${tRegex.toFixed(0)}ms ner=${ns.totalMs.toFixed(0)}ms ` +
+    `device=${ns.device} nerCalls=${ns.calls} nerBatches=${ns.batches} nerInputs=${ns.inputs} ` +
+    `cacheHits=${ns.cacheHits} cacheMisses=${ns.cacheMisses} hitRate=${hitRate}% ` +
+    `nerChars=${ns.totalChars} meanMs=${mean.toFixed(1)} p95Ms=${p95.toFixed(1)} ` +
     `total=${(performance.now() - t0).toFixed(0)}ms findings=${detections.length}`,
   );
+
 
 
   // Pass 2 — OCR for image-only pages. We render at a higher DPI than the
@@ -853,11 +866,9 @@ export async function detectPiiInPdf(
         // speedup in the OCR path. Entities' offsets in the joined page text
         // are mapped back to their originating line via lineInfos[i].nerStart.
         if (pageNerText.trim().length >= 8 && /[A-Za-z]/.test(pageNerText)) {
-          const tn0 = performance.now();
+          // runNer records its own timing + dedup-cache stats via ner.ts.
           const ents = await runNer(pageNerText, "detect-pii:ocr-scan");
-          tNer += performance.now() - tn0;
-          nerCalls += 1;
-          nerInputChars += pageNerText.length;
+
           for (const e of ents) {
             if (e.type !== "PER" && e.type !== "ORG") continue;
             // Find the line whose nerStart..nerStart+len contains this entity.

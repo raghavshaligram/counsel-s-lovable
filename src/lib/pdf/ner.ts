@@ -40,6 +40,85 @@ type Pipeline = (
 ) => Promise<RawEntity[] | RawEntity[][]>;
 
 let pipelinePromise: Promise<Pipeline | null> | null = null;
+let activeDevice: "webgpu" | "wasm" | "unknown" = "unknown";
+
+/**
+ * Per-scan NER instrumentation. Counters accumulate across ALL calls so
+ * detect-pii can snapshot them before/after and log a delta. `callTimings`
+ * is capped so long scans don't grow it unboundedly; the aggregate ms /
+ * counts remain accurate.
+ */
+export interface NerStats {
+  calls: number;         // number of pipeline() invocations (single or batched)
+  batches: number;       // number of batched invocations
+  inputs: number;        // number of input strings actually sent to model (post-cache)
+  cacheHits: number;     // number of input strings served from the dedup cache
+  cacheMisses: number;   // == inputs (for symmetry with hits)
+  totalMs: number;       // wall-clock ms across all pipeline() calls
+  totalChars: number;    // chars actually sent to the model
+  device: "webgpu" | "wasm" | "unknown";
+  perCall: Array<{ batchSize: number; chars: number; ms: number }>;
+}
+
+const stats: NerStats = {
+  calls: 0, batches: 0, inputs: 0, cacheHits: 0, cacheMisses: 0,
+  totalMs: 0, totalChars: 0, device: "unknown", perCall: [],
+};
+const PER_CALL_CAP = 200;
+
+export function getNerStats(): NerStats {
+  return { ...stats, device: activeDevice, perCall: stats.perCall.slice() };
+}
+export function resetNerStats(): void {
+  stats.calls = 0; stats.batches = 0; stats.inputs = 0;
+  stats.cacheHits = 0; stats.cacheMisses = 0;
+  stats.totalMs = 0; stats.totalChars = 0;
+  stats.perCall.length = 0;
+}
+
+/**
+ * LRU dedup cache: hash(joinedText) → post-processed entities. On a
+ * boilerplate-heavy filing (repeated captions/headers/footers), the same
+ * joined-text string appears on dozens or hundreds of pages. Serving those
+ * from cache skips the inference call entirely.
+ *
+ * Cache keys are FNV-1a 64-bit (as two u32s → hex) of the raw input string.
+ * Collisions on 64 bits are astronomically unlikely for scan-sized inputs;
+ * a false positive would return entities from an identically-hashed string,
+ * which for our use is indistinguishable from a true match.
+ */
+const NER_CACHE_MAX = 1024;
+const nerCache = new Map<string, NerEntity[]>();
+
+function fnv1a64(s: string): string {
+  // Two 32-bit lanes to approximate 64-bit FNV-1a in pure JS (no BigInt cost).
+  let h1 = 0x811c9dc5 | 0;
+  let h2 = 0x1b873593 | 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= c;
+    h2 = Math.imul(h2, 0x85ebca6b);
+  }
+  return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+}
+function cacheGet(key: string): NerEntity[] | undefined {
+  const v = nerCache.get(key);
+  if (v !== undefined) {
+    // LRU: refresh recency
+    nerCache.delete(key);
+    nerCache.set(key, v);
+  }
+  return v;
+}
+function cacheSet(key: string, value: NerEntity[]): void {
+  nerCache.set(key, value);
+  if (nerCache.size > NER_CACHE_MAX) {
+    const oldest = nerCache.keys().next().value;
+    if (oldest !== undefined) nerCache.delete(oldest);
+  }
+}
 
 async function getPipeline(trigger: string): Promise<Pipeline | null> {
   if (pipelinePromise) return pipelinePromise;
@@ -54,15 +133,17 @@ async function getPipeline(trigger: string): Promise<Pipeline | null> {
         (typeof (globalThis as { WorkerGlobalScope?: unknown }).WorkerGlobalScope !== "undefined" &&
           (self as unknown) instanceof
             ((globalThis as { WorkerGlobalScope: new () => object }).WorkerGlobalScope));
-      const run = async (h: { report: (n: number) => void }) => {
-        const transformers = await importChunk(() => import("@huggingface/transformers"));
-        (transformers.env as { allowRemoteModels?: boolean; allowLocalModels?: boolean }).allowRemoteModels = true;
+      const loadWith = async (
+        transformers: typeof import("@huggingface/transformers"),
+        opts: Record<string, unknown>,
+        h: { report: (n: number) => void },
+      ) => {
         const perFile = new Map<string, number>();
-        const pipe = await transformers.pipeline(
+        return await transformers.pipeline(
           "token-classification",
           "Xenova/bert-base-NER",
           {
-            dtype: "q8",
+            ...opts,
             progress_callback: (p: { status: string; file?: string; progress?: number }) => {
               if (p.file && typeof p.progress === "number") {
                 perFile.set(p.file, p.progress);
@@ -73,8 +154,32 @@ async function getPipeline(trigger: string): Promise<Pipeline | null> {
             },
           } as unknown as Record<string, unknown>,
         );
+      };
+      const run = async (h: { report: (n: number) => void }) => {
+        const transformers = await importChunk(() => import("@huggingface/transformers"));
+        (transformers.env as { allowRemoteModels?: boolean; allowLocalModels?: boolean }).allowRemoteModels = true;
+        // WebGPU is 3-10x faster than WASM for BERT-sized token-classification
+        // on Chrome/Edge with a discrete or modern integrated GPU. Fall back
+        // silently to WASM (q8) on Safari, Firefox, older Chromium, or when
+        // adapter init fails at model-compile time.
+        const hasWebGpu =
+          typeof (globalThis as { navigator?: { gpu?: unknown } }).navigator !== "undefined" &&
+          !!(globalThis as { navigator?: { gpu?: unknown } }).navigator?.gpu;
+        if (hasWebGpu) {
+          try {
+            const pipe = await loadWith(transformers, { device: "webgpu", dtype: "q8" }, h);
+            activeDevice = "webgpu";
+            h.report(1);
+            console.info(`[ai-model] NER ready on WebGPU (trigger: ${trigger})`);
+            return pipe as unknown as Pipeline;
+          } catch (err) {
+            console.warn("[ner] WebGPU init failed, falling back to WASM", err);
+          }
+        }
+        const pipe = await loadWith(transformers, { dtype: "q8" }, h);
+        activeDevice = "wasm";
         h.report(1);
-        console.info(`[ai-model] NER ready (trigger: ${trigger})`);
+        console.info(`[ai-model] NER ready on WASM (trigger: ${trigger})`);
         return pipe as unknown as Pipeline;
       };
       if (inWorker) {
@@ -99,6 +204,7 @@ export async function prewarmNer(trigger: string): Promise<boolean> {
   const p = await getPipeline(trigger);
   return p != null;
 }
+
 
 /**
  * Run NER on a single text string. Returns PERSON / ORG (and LOC / MISC for
@@ -187,11 +293,30 @@ function postProcessEntities(text: string, raw: RawEntity[]): NerEntity[] {
  */
 export async function runNer(text: string, trigger: string = "runNer"): Promise<NerEntity[]> {
   if (!text || text.trim().length < 4) return [];
+  const key = fnv1a64(text);
+  const cached = cacheGet(key);
+  if (cached) {
+    stats.cacheHits++;
+    // Return a fresh copy so callers can safely mutate.
+    return cached.map((e) => ({ ...e }));
+  }
   const pipe = await getPipeline(trigger);
   if (!pipe) return [];
   try {
+    const t0 = performance.now();
     const raw = (await pipe(text, { aggregation_strategy: "simple" })) as RawEntity[];
-    return postProcessEntities(text, raw);
+    const ms = performance.now() - t0;
+    stats.calls++;
+    stats.inputs++;
+    stats.cacheMisses++;
+    stats.totalMs += ms;
+    stats.totalChars += text.length;
+    if (stats.perCall.length < PER_CALL_CAP) {
+      stats.perCall.push({ batchSize: 1, chars: text.length, ms });
+    }
+    const processed = postProcessEntities(text, raw);
+    cacheSet(key, processed);
+    return processed.map((e) => ({ ...e }));
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[ner] run failed", err);
@@ -203,62 +328,111 @@ export async function runNer(text: string, trigger: string = "runNer"): Promise<
  * Batched NER — runs one pipeline inference across MANY input strings at
  * once. Transformer models are massively more efficient batched: on a large
  * scan, batching pages 8-at-a-time cuts per-page cost by roughly the batch
- * factor after model warmup. Falls back to per-input serial calls if the
- * pipeline runtime doesn't support array input in this build.
+ * factor after model warmup.
+ *
+ * Dedup: identical input strings (same FNV-1a hash) share results via the
+ * module-level LRU cache. Repeated captions/headers/footers on boilerplate-
+ * heavy filings hit the cache on the 2nd+ page and skip the inference call.
+ *
+ * Falls back to per-input serial calls if the pipeline runtime doesn't
+ * support array input in this build.
  *
  * Returns entities[i] corresponding to texts[i]. Empty inputs yield [].
  */
 export async function runNerBatch(texts: string[], trigger: string = "runNerBatch"): Promise<NerEntity[][]> {
   const results: NerEntity[][] = texts.map(() => []);
-  const activeIdx: number[] = [];
-  const activeTexts: string[] = [];
+
+  // Split inputs into cache-hit vs cache-miss (to send to pipeline).
+  const missIdx: number[] = [];       // index into `texts`
+  const missTexts: string[] = [];
+  const missKeys: string[] = [];
   for (let i = 0; i < texts.length; i++) {
     const t = texts[i];
-    if (t && t.trim().length >= 4) {
-      activeIdx.push(i);
-      activeTexts.push(t);
+    if (!t || t.trim().length < 4) continue;
+    const key = fnv1a64(t);
+    const cached = cacheGet(key);
+    if (cached) {
+      stats.cacheHits++;
+      results[i] = cached.map((e) => ({ ...e }));
+      continue;
     }
+    missIdx.push(i);
+    missTexts.push(t);
+    missKeys.push(key);
   }
-  if (activeTexts.length === 0) return results;
+  if (missTexts.length === 0) return results;
+
   const pipe = await getPipeline(trigger);
   if (!pipe) return results;
+
+  const recordCall = (batchSize: number, chars: number, ms: number) => {
+    stats.calls++;
+    stats.batches += batchSize > 1 ? 1 : 0;
+    stats.inputs += batchSize;
+    stats.cacheMisses += batchSize;
+    stats.totalMs += ms;
+    stats.totalChars += chars;
+    if (stats.perCall.length < PER_CALL_CAP) {
+      stats.perCall.push({ batchSize, chars, ms });
+    }
+  };
+
   try {
-    const raw = (await pipe(activeTexts, { aggregation_strategy: "simple" })) as
+    const t0 = performance.now();
+    const raw = (await pipe(missTexts, { aggregation_strategy: "simple" })) as
       | RawEntity[]
       | RawEntity[][];
+    const ms = performance.now() - t0;
+    let totalChars = 0;
+    for (const t of missTexts) totalChars += t.length;
     // Some runtimes flatten a single-input array into a bare RawEntity[]; treat that as one group.
     const grouped: RawEntity[][] = Array.isArray(raw) && raw.length > 0 && Array.isArray(raw[0])
       ? (raw as RawEntity[][])
-      : activeTexts.length === 1
+      : missTexts.length === 1
         ? [raw as RawEntity[]]
         : // Runtime returned a flat list for multi-input — best-effort fallback: run serially.
           [];
-    if (grouped.length !== activeTexts.length) {
+    if (grouped.length !== missTexts.length) {
+      // Don't record the failed batched call in stats — it was wasted work.
       // Fallback to serial per-input calls; still one inference per input, no offset drift.
-      for (let k = 0; k < activeTexts.length; k++) {
-        const single = (await pipe(activeTexts[k], { aggregation_strategy: "simple" })) as RawEntity[];
-        results[activeIdx[k]] = postProcessEntities(activeTexts[k], single);
+      for (let k = 0; k < missTexts.length; k++) {
+        const ts = performance.now();
+        const single = (await pipe(missTexts[k], { aggregation_strategy: "simple" })) as RawEntity[];
+        const sms = performance.now() - ts;
+        recordCall(1, missTexts[k].length, sms);
+        const processed = postProcessEntities(missTexts[k], single);
+        cacheSet(missKeys[k], processed);
+        results[missIdx[k]] = processed.map((e) => ({ ...e }));
       }
       return results;
     }
+    recordCall(missTexts.length, totalChars, ms);
     for (let k = 0; k < grouped.length; k++) {
-      results[activeIdx[k]] = postProcessEntities(activeTexts[k], grouped[k]);
+      const processed = postProcessEntities(missTexts[k], grouped[k]);
+      cacheSet(missKeys[k], processed);
+      results[missIdx[k]] = processed.map((e) => ({ ...e }));
     }
     return results;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[ner] batch run failed, falling back to serial", err);
-    for (let k = 0; k < activeTexts.length; k++) {
+    for (let k = 0; k < missTexts.length; k++) {
       try {
-        const single = (await pipe(activeTexts[k], { aggregation_strategy: "simple" })) as RawEntity[];
-        results[activeIdx[k]] = postProcessEntities(activeTexts[k], single);
+        const ts = performance.now();
+        const single = (await pipe(missTexts[k], { aggregation_strategy: "simple" })) as RawEntity[];
+        const sms = performance.now() - ts;
+        recordCall(1, missTexts[k].length, sms);
+        const processed = postProcessEntities(missTexts[k], single);
+        cacheSet(missKeys[k], processed);
+        results[missIdx[k]] = processed.map((e) => ({ ...e }));
       } catch {
-        results[activeIdx[k]] = [];
+        results[missIdx[k]] = [];
       }
     }
     return results;
   }
 }
+
 
 /**
  * Privilege / confidentiality context terms. These are NOT redaction targets
