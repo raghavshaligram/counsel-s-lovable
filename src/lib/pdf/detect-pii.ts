@@ -866,11 +866,9 @@ export async function detectPiiInPdf(
         // speedup in the OCR path. Entities' offsets in the joined page text
         // are mapped back to their originating line via lineInfos[i].nerStart.
         if (pageNerText.trim().length >= 8 && /[A-Za-z]/.test(pageNerText)) {
-          const tn0 = performance.now();
+          // runNer records its own timing + dedup-cache stats via ner.ts.
           const ents = await runNer(pageNerText, "detect-pii:ocr-scan");
-          tNer += performance.now() - tn0;
-          nerCalls += 1;
-          nerInputChars += pageNerText.length;
+
           for (const e of ents) {
             if (e.type !== "PER" && e.type !== "ORG") continue;
             // Find the line whose nerStart..nerStart+len contains this entity.
