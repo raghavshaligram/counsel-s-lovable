@@ -787,7 +787,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
 
   // ----------------- File open (into the ACTIVE tab) ------------------
-  const openFile = useCallback(() => fileInputRef.current?.click(), []);
+  const openFile = useCallback(() => {
+    setIsOpening(true);
+    fileInputRef.current?.click();
+  }, []);
   const onFiles = useCallback(
     (files: FileList | null) => {
       const tFiles = performance.now();
@@ -800,7 +803,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       });
       const inNewTab = openInNewTabRef.current;
       openInNewTabRef.current = false;
-      if (!f) return;
+      if (!f) { setIsOpening(false); return; }
       if (inNewTab) {
         const docCount = tabsRef.current.filter((t) => t.file !== null).length;
         if (docCount >= TAB_CAP) {
