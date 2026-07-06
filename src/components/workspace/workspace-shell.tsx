@@ -106,7 +106,8 @@ import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
 import { JobsIndicator } from "./jobs-indicator";
-import { bindGlobalCompletionToasts } from "@/lib/jobs/registry";
+import { bindGlobalCompletionToasts, useJobsStore } from "@/lib/jobs/registry";
+import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
 
 bindGlobalCompletionToasts();
 import { CaseSessionSaveButton } from "./case-session-save";
