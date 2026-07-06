@@ -382,6 +382,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // Pending close (for the unsaved-changes guard).
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
   const [pendingHomeClose, setPendingHomeClose] = useState(false); // legacy guard
+  // Immediate visual affordance when the user triggers "open file". The
+  // OS file picker doesn't block us, but under CPU load from a running
+  // scan the arrayBuffer read + pdf.js structured clone can take several
+  // seconds, during which nothing visibly changes. This flag flips on
+  // synchronously so the user sees the click landed.
+  const [isOpening, setIsOpening] = useState(false);
 
   // ----------------- Patch helpers ------------------------------------
   const patchTab = useCallback((id: string, patch: Partial<TabState>) => {
