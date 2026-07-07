@@ -109,7 +109,7 @@ import { ExportFormatRow } from "./export-format-row";
 import { RedactionAuditLedger } from "./redaction-ledger";
 import { useCompare } from "@/lib/workspace/compare-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
+import { useBatesSettings, docKey as batesDocKey, computeBatesFingerprint } from "@/lib/workspace/bates-store";
 import { importChunk } from "@/lib/chunk-import";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
