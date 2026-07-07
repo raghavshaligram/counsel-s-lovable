@@ -219,7 +219,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, pnFormat, headerText, footerText, onOpenChange]);
+  }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, batesAlreadyStamped, currentBatesFingerprint, pnFormat, headerText, footerText, onOpenChange]);
 
   const anyOn = pnOn || hfOn || flOn || batesOn;
 
