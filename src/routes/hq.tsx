@@ -921,6 +921,7 @@ function SupportTab() {
           <thead className="bg-surface-1 text-left text-text-2">
             <tr>
               <th className="px-3 py-2 font-medium">Type</th>
+              <th className="px-3 py-2 font-medium">Category</th>
               <th className="px-3 py-2 font-medium">From</th>
               <th className="px-3 py-2 font-medium">Message</th>
               <th className="px-3 py-2 font-medium">Plan</th>
