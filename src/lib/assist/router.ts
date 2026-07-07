@@ -406,9 +406,44 @@ export async function classifyAssistQuery(
     };
   }
 
-  // 4. Follow-up: sticky-bias to previous subject if the query is clearly a follow-up
+  // 4. Semantic-descriptor lane (rule 6): find + adjective/about/passages phrasing
+  //    with no action verb → semantic search proposal.
+  const looksLikeFind = FIND_VERB_RE.test(raw);
+  const hasSemanticShape = SEMANTIC_CUE_RE.test(raw) || SEMANTIC_DESCRIPTOR_RE.test(raw) || ABOUT_RE.test(raw);
+  const hasActionVerb = USE_RE.test(raw) && !/^\s*(?:find|show|list|search|look\s+for|locate)\b/i.test(raw);
+  if (looksLikeFind && hasSemanticShape && !hasActionVerb) {
+    return {
+      kind: "semantic",
+      query: raw.replace(FIND_VERB_RE, "").trim() || raw,
+      reason: "Interpreting this as a meaning-based search across the document.",
+      alternates: [{ lane: "literal", label: "Find exact matches instead" }],
+    };
+  }
+
+  // 4b. Bare noun / short find-phrase → ambiguous. Offer both lanes plus Redact.
+  //     Only kicks in when the user said "find/show X" with no other cues.
+  if (looksLikeFind && !hasSemanticShape && !hasActionVerb) {
+    const term = raw.replace(FIND_VERB_RE, "").replace(/[?.!]+$/, "").trim();
+    if (term && tokenize(term).length <= 3) {
+      return {
+        kind: "literal",
+        term,
+        wholeWord: true,
+        regex: false,
+        reason: `Searching for the exact word “${term}” in this document. Not what you meant?`,
+        alternates: [
+          { lane: "semantic", label: `Search by meaning` },
+          { lane: "action", label: `Redact "${term}"` },
+        ],
+      };
+    }
+  }
+
+  // 5. Follow-up: sticky-bias to previous subject if the query is clearly a follow-up
   const followUp = isFollowUp(raw) && (ctx?.lastEntryId || ctx?.lastTopicId);
   const virtualQuery = followUp && ctx?.lastQuery ? `${ctx.lastQuery} ${raw}` : raw;
+
+
 
 
 
