@@ -2895,6 +2895,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [verify, setVerify] = useState<Verify | null>(null);
   const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
   const [reviewedSignOff, setReviewedSignOff] = useState(false);
+  // Flips true after the first successful in-place commit — enables the
+  // "Export redacted PDF" button even when the user has staged nothing new
+  // (they just want the file with everything committed so far).
+  const [committedOnce, setCommittedOnce] = useState(false);
   // "always" = rasterize every page that carries a redaction (default, safest).
   // "fallback" = attempt content-stream surgery first, rasterize only pages
   // where text still intersects a redaction rect after verification.
@@ -2933,47 +2937,52 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
 
-  const exportRedacted = useCallback(async () => {
+  const exportRedacted = useCallback(async (opts?: { mode?: "commit" | "export" }) => {
+    const mode = opts?.mode ?? "export";
     if (!file || !editorState?.doc) return;
     // Two-phase commit: marks are drafts up to this point. Confirm before
-    // we permanently remove the underlying content.
+    // we permanently remove the underlying content — but only in EXPORT
+    // mode. Commit-mode is triggered by a per-category "Redact" button that
+    // already carries its own confirmation UX; a second modal would double-
+    // gate every category action.
     const n = totalBoxes;
-    const ok = await confirmDialog({
-      title: "Apply redactions?",
-      description: (
-        <>
-          This will permanently remove the content under{" "}
-          <span className="font-medium text-foreground">
-            {n} redaction{n === 1 ? "" : "s"}
-          </span>
-          . The original text and images beneath each mark will be deleted from
-          the document — this cannot be undone.
-        </>
-      ),
-      body: (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            <span
-              aria-hidden
-              className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--vault,#4C7FB8)]"
-            />
-            Processed on your device. Nothing uploads.
+    if (mode === "export") {
+      const ok = await confirmDialog({
+        title: "Export redacted PDF?",
+        description: (
+          <>
+            This will permanently remove the content under{" "}
+            <span className="font-medium text-foreground">
+              {n} redaction{n === 1 ? "" : "s"}
+            </span>{" "}
+            and download the redacted file. Cannot be undone.
+          </>
+        ),
+        body: (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <span
+                aria-hidden
+                className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--vault,#4C7FB8)]"
+              />
+              Processed on your device. Nothing uploads.
+            </div>
+            <div className="text-xs text-muted-foreground">
+              A Certificate of Redaction will be generated after verification.
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            A Certificate of Redaction will be generated after verification.
-          </div>
-        </div>
-      ),
-      confirmText: "Apply & burn",
-      cancelText: "Cancel",
-      tone: "danger",
-    });
-    if (!ok) return;
+        ),
+        confirmText: "Export",
+        cancelText: "Cancel",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     setVerify(null);
     setLastBytes(null);
     const tid = "wsx-redact-export";
-    toast.loading("Building redacted PDF…", { id: tid });
+    toast.loading(mode === "commit" ? "Committing redactions…" : "Building redacted PDF…", { id: tid });
     try {
       // Reuse the editor's exporter — it already runs the destructive
       // content-stream rewrite for every redact annotation that captured
@@ -3046,19 +3055,46 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           const gatedRasterizedPages = gated.rasterizedPages;
           const vresult = gated.verify;
 
-          // Pixel-level re-OCR check for burned pages. Outside the gate's
+          // Pixel-coverage check for burned pages. Outside the gate's
           // scope: the gate proves NO extractable text remains; this proves
-          // the raster pixels are unreadable to OCR too.
+          // the raster pixels are truly black (not just "text-cleared").
+          // On leak: auto-escalate once — re-rasterize ONLY the leaked
+          // pages in max-security mode at higher DPI, then re-verify.
+          // Only fail if the second pass still leaks (a genuine burn bug).
           if (gatedRasterizedPages.length > 0) {
-            onProgress({ fraction: 0.9, step: "Re-OCR check on burned pages…" });
-            toast.loading("Re-OCR check on burned pages…", { id: tid });
+            onProgress({ fraction: 0.9, step: "Pixel-coverage check on burned pages…" });
+            toast.loading("Pixel-coverage check on burned pages…", { id: tid });
             const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
             const pixelTargets = targets.filter((t) => !!t.rect).map((t) => ({ page: t.page, rect: t.rect! }));
-            const pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(gatedRasterizedPages));
+            let pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(gatedRasterizedPages));
             if (!pixelResult.ok) {
-              throw new Error(
-                `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still show recognizable text after pixel burn — refusing to download.`,
-              );
+              // Auto-escalate: force max-security raster on the leaked pages
+              // at scale 3.0 (was 2.5), then re-verify.
+              const leakedPageIdxs = Array.from(new Set(pixelResult.leaks.map((l) => l.page)));
+              onProgress({ fraction: 0.93, step: `Re-burning ${leakedPageIdxs.length} page(s) at higher DPI…` });
+              toast.loading(`Re-burning ${leakedPageIdxs.length} page(s) at higher DPI…`, { id: tid });
+              const escalatePageRedactions = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+              for (const p of leakedPageIdxs) {
+                const rects = pageRedactions.get(p);
+                if (rects) escalatePageRedactions.set(p, rects);
+              }
+              if (escalatePageRedactions.size > 0) {
+                const escalated = await rasterizeRedactedPagesInWorker(outBytes, escalatePageRedactions, {
+                  mode: "always",
+                  scale: 3.0,
+                  signal,
+                });
+                outBytes = escalated.bytes;
+                onProgress({ fraction: 0.96, step: "Re-verifying re-burned pages…" });
+                toast.loading("Re-verifying re-burned pages…", { id: tid });
+                pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(gatedRasterizedPages));
+              }
+              if (!pixelResult.ok) {
+                const pages = Array.from(new Set(pixelResult.leaks.map((l) => l.page + 1))).slice(0, 8).join(", ");
+                throw new Error(
+                  `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still not fully burned on page${pixelResult.leaks.length === 1 ? "" : "s"} ${pages}${pixelResult.leaks.length > 8 ? "…" : ""} — refusing to download.`,
+                );
+              }
             }
           }
 
@@ -3072,12 +3108,32 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
       setVerify(result);
       if (result.ok) {
-        await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
         const flatNote = rasterResult.rasterizedPages.length
-          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
+          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & verified`
           : "";
-        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+
+        if (mode === "commit") {
+          // Commit-in-place: swap the editor's srcBytes with the burned +
+          // sanitized bytes and drop the redact annotations that were just
+          // baked in. The next per-category redact starts from a clean
+          // slate — no double-burn on already-cleaned regions.
+          editorDispatch({ type: "SET_SRC_BYTES", bytes });
+          const committedIds = (editorState?.doc?.annotations ?? [])
+            .filter((a) => a.kind === "redact")
+            .map((a) => a.id);
+          if (committedIds.length > 0) {
+            editorDispatch({ type: "DELETE_ANNOS", ids: committedIds });
+          }
+          // Clear any staged selection so those items don't immediately
+          // re-stage from the auto-detect list.
+          try { window.dispatchEvent(new Event("redact:clear-selection")); } catch { /* ignore */ }
+          setCommittedOnce(true);
+          toast.success(`Committed — ${result.removed}/${result.total} regions cleared${flatNote}. Click Export to download.`, { id: tid });
+        } else {
+          await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
+          toast.success(`Verified & downloaded — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+        }
         try {
           window.dispatchEvent(new CustomEvent("agent:redact-complete", {
             detail: { ok: true, removed: result.removed, total: result.total, leaks: 0 },
@@ -3085,66 +3141,68 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         } catch { /* ignore */ }
 
         // Offer the formal Redaction Certificate as a free-signup value gate.
-        // Only fires when verification PASSED — never claim unverified compliance.
-        try {
-          const { requestCertificate } = await import("@/components/workspace/certificate-gate");
-          const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
-          const hash = async (data: Uint8Array): Promise<string> => {
-            const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
-            return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
-          };
-          const [sourceHash, redactedHash] = await Promise.all([
-            hash(new Uint8Array(await file.arrayBuffer())),
-            hash(bytes),
-          ]);
-          const categoryCounts: Record<string, number> = {};
-          const perPageCounts: Record<number, number> = {};
-          for (const a of (editorState?.doc?.annotations ?? [])) {
-            if (a.kind !== "redact") continue;
-            const cat = (a as { category?: string }).category ?? "manual";
-            categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
-            const p = a.page + 1;
-            perPageCounts[p] = (perPageCounts[p] ?? 0) + 1;
+        // Only on EXPORT (the deliverable) — not on every intermediate commit.
+        if (mode === "export") {
+          try {
+            const { requestCertificate } = await import("@/components/workspace/certificate-gate");
+            const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
+            const hash = async (data: Uint8Array): Promise<string> => {
+              const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+              return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
+            };
+            const [sourceHash, redactedHash] = await Promise.all([
+              hash(new Uint8Array(await file.arrayBuffer())),
+              hash(bytes),
+            ]);
+            const categoryCounts: Record<string, number> = {};
+            const perPageCounts: Record<number, number> = {};
+            for (const a of (editorState?.doc?.annotations ?? [])) {
+              if (a.kind !== "redact") continue;
+              const cat = (a as { category?: string }).category ?? "manual";
+              categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+              const p = a.page + 1;
+              perPageCounts[p] = (perPageCounts[p] ?? 0) + 1;
+            }
+            const totalRedactions = (editorState?.doc?.annotations ?? []).filter((a) => a.kind === "redact").length;
+            const pageCount = editorState?.doc?.pages.length ?? 0;
+            const payload = {
+              sourceName: file.name,
+              sourceBytes: file.size,
+              pageCount,
+              totalRedactions,
+              categoryCounts,
+              perPageCounts,
+              verification: {
+                ok: result.ok,
+                total: result.total,
+                removed: result.removed,
+                scannedAt: result.scannedAt,
+                leaks: result.leaks.length,
+              },
+              sourceHashSHA256: sourceHash,
+              redactedHashSHA256: redactedHash,
+            };
+            requestCertificate({
+              kind: "redaction",
+              actionLabel: "Redaction",
+              sourceName: file.name,
+              downloadBaseName: file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction",
+              payload,
+              build: () => buildRedactionCertificate({
+                ...payload,
+                verification: payload.verification,
+              }),
+            });
+          } catch (gateErr) {
+            console.warn("[redact] cert gate failed", gateErr);
           }
-          const totalRedactions = (editorState?.doc?.annotations ?? []).filter((a) => a.kind === "redact").length;
-          const pageCount = editorState?.doc?.pages.length ?? 0;
-          const payload = {
-            sourceName: file.name,
-            sourceBytes: file.size,
-            pageCount,
-            totalRedactions,
-            categoryCounts,
-            perPageCounts,
-            verification: {
-              ok: result.ok,
-              total: result.total,
-              removed: result.removed,
-              scannedAt: result.scannedAt,
-              leaks: result.leaks.length,
-            },
-            sourceHashSHA256: sourceHash,
-            redactedHashSHA256: redactedHash,
-          };
-          requestCertificate({
-            kind: "redaction",
-            actionLabel: "Redaction",
-            sourceName: file.name,
-            downloadBaseName: file.name.replace(/\.pdf$/i, "") + "-certificate-of-redaction",
-            payload,
-            build: () => buildRedactionCertificate({
-              ...payload,
-              verification: payload.verification,
-            }),
-          });
-        } catch (gateErr) {
-          console.warn("[redact] cert gate failed", gateErr);
         }
       } else {
         throw new Error(`${result.leaks.length} redaction region${result.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
     } catch (err) {
-      console.error("[redact] export failed", err);
-      toast.error("Redaction export failed", { id: tid, description: (err as Error).message });
+      console.error(`[redact] ${mode} failed`, err);
+      toast.error(mode === "commit" ? "Redaction commit failed" : "Redaction export failed", { id: tid, description: (err as Error).message });
       try {
         window.dispatchEvent(new CustomEvent("agent:redact-complete", {
           detail: { ok: false, error: (err as Error).message },
@@ -3153,7 +3211,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setBusy(false);
     }
-  }, [file, editorState?.doc, targets, totalBoxes, maxSecurity]);
+  }, [file, editorState?.doc, editorDispatch, targets, totalBoxes, maxSecurity]);
 
 
   const downloadCertificate = useCallback(async () => {
@@ -3300,23 +3358,43 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
 
-      <Section title="Commit" icon={<ShieldCheck className="h-3 w-3" />}>
+      <Section title="Commit & Export" icon={<ShieldCheck className="h-3 w-3" />}>
         {(() => {
           // Total items awaiting commit = manual/AI page annotations + ticked
           // side-channel items (form fields, comments, metadata). Either can
           // drive a commit on its own.
           const totalStaged = totalBoxes + (staged.sideStaged || 0);
           const canCommit = totalStaged > 0;
+          const canExport = committedOnce || canCommit; // export always runs the pipeline on current staged+committed state
           const onCommit = async () => {
-            // Prefer the page-burn path when any page box is staged — the
-            // gate inside `exportRedacted` scrubs side-channels too, so ticked
-            // form-field/annotation/metadata items are covered by the same
-            // pass. Side-channel-only stages fall back to the sanitize+swap
-            // path published by AutoDetectSection.
+            // Commit in place: burn + verify, then swap srcBytes and clear
+            // committed annotations. No download. Enables the multi-round
+            // workflow (redact SSNs → redact phones → … → export once).
             if (totalBoxes > 0) {
-              await exportRedacted();
+              await exportRedacted({ mode: "commit" });
             } else if (staged.sideCommit) {
               await staged.sideCommit();
+              setCommittedOnce(true);
+            }
+          };
+          const onExport = async () => {
+            // Export path: if there's still staged content, commit+download
+            // in one shot; otherwise re-export the already-cleaned srcBytes.
+            if (totalBoxes > 0) {
+              await exportRedacted({ mode: "export" });
+            } else if (staged.sideCommit) {
+              // Rare: side-channel-only pending. Sanitize then trigger a
+              // plain PDF download of the current srcBytes.
+              await staged.sideCommit();
+              setCommittedOnce(true);
+              // Fall through: user can hit Export again for the download.
+            } else if (committedOnce && editorState?.doc?.srcBytes) {
+              // Nothing new to burn — just download the current cleaned bytes.
+              await downloadPdf(
+                editorState.doc.srcBytes,
+                (file?.name ?? "document").replace(/\.pdf$/i, "") + "-redacted.pdf",
+              );
+              toast.success("Downloaded redacted PDF");
             }
           };
           return (
@@ -3334,23 +3412,48 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
                   className="mt-0.5 h-3 w-3 accent-vault"
                 />
                 <span className="text-foreground">
-                  I have reviewed every page of this document and confirm the redaction set is complete.
+                  I have reviewed every page of this document and confirm the staged redactions are correct.
                   I understand auto-detection only flags structured patterns and that I am responsible
                   for catching names and context-dependent secrets.
                 </span>
               </label>
-              <button
-                type="button"
-                onClick={onCommit}
-                disabled={busy || !canCommit || !reviewedSignOff}
-                className={cn(
-                  "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-                  (busy || !canCommit || !reviewedSignOff) && "cursor-not-allowed opacity-60",
-                )}
-              >
-                <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-                {busy ? "Working…" : `Redact & verify${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
-              </button>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  onClick={onCommit}
+                  disabled={busy || !canCommit || !reviewedSignOff}
+                  className={cn(
+                    "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/60 bg-surface-2 px-2.5 py-1.5 text-[12px] font-medium text-vault hover:bg-accent-soft",
+                    (busy || !canCommit || !reviewedSignOff) && "cursor-not-allowed opacity-60",
+                  )}
+                  title="Burn & verify staged items in place. Doesn't download — stage more categories, then hit Export."
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  {busy ? "Working…" : `Commit staged${canCommit ? ` (${totalStaged.toLocaleString()})` : ""}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={onExport}
+                  disabled={busy || (!canExport)}
+                  className={cn(
+                    "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+                    (busy || !canExport) && "cursor-not-allowed opacity-60",
+                  )}
+                  title="Verify & download the redacted PDF. Runs commit first if anything is still staged."
+                >
+                  <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  {busy
+                    ? "Working…"
+                    : canCommit
+                      ? `Commit & export (${totalStaged.toLocaleString()})`
+                      : "Export redacted PDF"}
+                </button>
+              </div>
+              {!canCommit && !committedOnce && (
+                <p className="mt-1.5 text-[10.5px] text-text-muted">
+                  Tick items in the categories above, then Commit. Repeat for other categories. Hit Export when done.
+                </p>
+              )}
             </>
           );
         })()}
@@ -3359,7 +3462,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             aria-hidden
             className="inline-block h-1.5 w-1.5 rounded-full bg-vault"
           />
-          Processed on your device. Nothing uploads. Exports a redacted PDF, then re-parses it to confirm no extractable text remains.
+          Processed on your device. Nothing uploads. Every commit re-parses the burned bytes to confirm no extractable text remains.
         </p>
       </Section>
 

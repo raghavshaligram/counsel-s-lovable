@@ -1,109 +1,95 @@
-# Redact inspector — findings redesign
+# Inline per-category Redact + single Export in Commit
 
-Scope is deliberately narrow: **restructure how findings are displayed and selected after a scan runs**. Everything else stays exactly as it is today.
-
----
-
-## Preserve (unchanged)
-
-- Redact heading and the honest info banner at the top.
-- **Quick scan / Full scan** buttons with device-aware time estimates as the scan entry point.
-- Keyword / pattern search inputs.
-- Manual box-drawing input.
-- Redaction mode toggle (Maximum / Standard).
-- Review-confirmation checkbox.
-- On-device trust line.
-- Amber "Suggestions only — never reported as complete" banner.
-- All burn/verify/gate internals: `exportEditedPdf`, `verifyRedactionRemoval`, `verifySideChannelInWorker`, `SET_SRC_BYTES`, side-channel worker path.
-- PDF viewer, open-tab lifecycle, editor-canvas, samplePageBg.
-- Batched `ADD_ANNOS` action for all multi-select staging (no per-item dispatch).
+Rework the redact flow so each category redacts on the spot, and the Commit section only exports. Also fixes the 314-leak pixel-verify failure blocking the download.
 
 ---
 
-## New — findings display after a scan
+## Part 1 — Inline "Redact" popup per category
 
-### 1. Scan-summary card (top of findings)
+**Today.** Tick items → one giant "Redact & verify (N items)" button at the bottom → burn + verify + **download** in one shot. Doing SSNs *and* phones means two commits and two downloads.
 
-One at-a-glance line summarising what the scan found:
+**New behavior.**
 
-> Reviewed **N pages**. Found: **X** SSNs · **X** credit cards · **X** emails · **X** phone numbers · **X** IBANs · **X** dates · **X** names & organizations (Y distinct) · **X** form fields · **X** comments/annotations · metadata.
+1. **Per-category inline action.** Every category group (SSN, Phone, Names, Form fields, Comments, Metadata, etc.) — the ones you already have tabs for — gains an inline **Redact (N)** button next to its master checkbox. It's disabled until at least one item in that category is ticked and enables the moment selection > 0.
+2. **Popup confirmation** (small anchored popover, not a modal):
+   - `Redact 122 SSNs from this document?`
+   - single-line **"I've reviewed these matches"** checkbox (the current sign-off, scoped to this category)
+   - **Cancel** · **Redact** buttons
+3. **Redact action runs the existing pipeline in-place:** burn → sanitize → verify → pixel-verify → auto-escalate (see Part 3) → write cleaned bytes back via `SET_SRC_BYTES`. **No download.**
+4. **On success:** category collapses to a green "✓ 122 SSNs redacted" row with an **Undo** link (only until the next redact — undo just re-loads the pre-commit bytes snapshot kept in memory). Category disappears from the tabs bar. Findings list refreshes from the new bytes so already-cleaned items don't re-appear.
+5. **On failure:** popover turns red, shows page numbers of stubborn leaks, offers **Retry with max security** (forces raster mode) — nothing is written to `srcBytes`, doc is untouched.
 
-Categories with zero hits are hidden from the line. Numbers are `.toLocaleString()`.
+**Multi-category workflow becomes:**
+Tick SSNs → Redact → ✓ · Tick Phones → Redact → ✓ · Tick Form fields → Redact → ✓ · Export.
 
-### 2. Category groups with master checkboxes
-
-Replace the current flat list with collapsible category sections. Each header row has:
-
-- Master checkbox (checked / indeterminate / unchecked) — toggling stages/unstages every item in the category via one batched `ADD_ANNOS` / `DELETE_ANNOS` dispatch.
-- Category label + total count.
-- "(Y distinct)" suffix for categories where identical text collapses (names, emails, phones).
-- Expand/collapse chevron.
-
-Category order (highest-risk first, matches the summary line):
-
-1. SSNs
-2. Credit cards
-3. IBANs / bank accounts
-4. Emails
-5. Phone numbers
-6. Dates
-7. Names & organizations
-8. Form fields
-9. Comments / annotations
-10. Metadata
-
-### 3. Within each category — distinct values
-
-Expanding shows the distinct-value groups (already computed by `grouped`), each with:
-
-- Checkbox (checked / indeterminate / unchecked) reflecting selection across its occurrences.
-- The matched text.
-- Occurrence count.
-- Sample occurrences: first 10 rows with page + jump link, then "and N more — jump to next".
-
-### 4. Low-confidence subsection
-
-Any finding with confidence below the auto-select threshold goes into a separate **"Review to include (N)"** sub-section at the bottom of its category, **unchecked by default**, labelled "review to include." Ticking the sub-section header stages all low-confidence items in that category.
-
-### 5. Live staged count + one commit button
-
-- Persistent footer bar shows **"N items staged for redaction"** — updates on every check/uncheck (no debounce needed; count comes from `selected.size + sideSelected`).
-- **One** primary button: **"Redact & verify (N items)"**. Disabled when N = 0.
-- Remove the current dual "Redact selected" vs "Redact, export & verify" buttons and the separate "Wipe hidden items" button — checking a hidden-vector item stages it live like every other category, and the single commit button drives the existing hybrid burn path (page items → burn; side-channel items → sanitize worker + `SET_SRC_BYTES` + verify).
+**The bulk "All" tab keeps a Redact button too**, for users who really do want to nuke everything at once.
 
 ---
 
-## Staging behaviour (unchanged semantics, batched dispatch)
+## Part 2 — Commit section becomes Export-only
 
-- Checking a page-vector item stages `redact-det-<id>` immediately (already implemented, keep as-is).
-- Checking a side-channel item marks it staged in the selection set only — the actual cleaning still happens in the commit path (`sanitizeInWorker` → `verifySideChannelInWorker` → `SET_SRC_BYTES`) so we never partially wipe form fields mid-review.
-- All bulk toggles (category master, low-conf master, top-level select-all) route through `startTransition` and dispatch **one** `ADD_ANNOS` / `DELETE_ANNOS` per toggle — never a loop of single dispatches. This is the fix that keeps 13k-item selects instant on 5000-page docs.
+Rename `Commit` → **`Export`**. It shows:
 
----
+- A summary line: `3 categories redacted · 458 items removed · Ready to export.`
+- Primary button: **Export redacted PDF** — runs one final cheap verify pass on current `srcBytes`, downloads.
+- Secondary link: **Redaction Certificate** (existing free-signup gate) — fires here, not on every category commit.
+- If no categories have been committed yet: button is disabled with hint `Redact at least one category first.`
 
-## Files touched
+**No sign-off checkbox on export** — sign-off already happened at each category popover, which is the actual destructive step.
 
-- `src/components/workspace/tool-panels.tsx` — `AutoDetectSection` (lines ~1280–2500 and its render block ~2016+). New sub-components stay in-file to avoid a cross-file refactor.
-  - Add `SummaryCard` (renders the category-totals line).
-  - Replace the current `<ul>` findings tree with `CategoryGroup` components (header + distinct-value list + low-conf subsection).
-  - Replace the footer button row with `StagedFooter` (live count + single commit button).
-  - Keep `redactSelected` as the single commit handler — no new burn code.
-
-No changes to:
-- `src/lib/editor/state.ts` (`ADD_ANNOS` / `DELETE_ANNOS` / `SET_SRC_BYTES` already exist).
-- `src/lib/workers/verify.worker.ts`, `verify-client.ts`.
-- `src/lib/pdf/detect-pii.ts` (categories are already emitted).
-- `RedactPanel` shell (heading, banner, scan buttons, mode toggle, review-confirm, trust line, pattern search, manual box tool).
+**Copy sweep** (`tool-panels.tsx` L1134, L1290, L1550, L1805, L2931, L3352 + `agent-panel.tsx` L911, L926): every "Redact, export & verify" → context-appropriate replacement (`Click Redact on any category above` in guidance; `Export redacted PDF` on the final CTA).
 
 ---
 
-## Acceptance test (from the brief)
+## Part 3 — Fix the 314-leak pixel-verify failure
 
-1. Scan a large doc → summary card lists category totals.
-2. Tick "Form fields (12)" only → footer shows "12 items staged", nothing else selected.
-3. Tick "SSNs (1,222)" also → footer shows "1,234 items staged".
-4. Expand "Names" → deselect one distinct name (3 occurrences) → footer count drops by 3.
-5. Click "Redact & verify (1,231 items)" → single commit runs page burn + side-channel wipe + verify → verified output.
-6. On a 13k-finding scan, master-checkbox toggles feel instant (batched dispatch, `startTransition`).
+Same fix I proposed before, unchanged — it's what makes per-category Redact reliably succeed instead of blocking the flow just like the current single button does.
 
-Say **go** and I'll ship it.
+**Root cause.** `verifyPixelRedaction` re-OCRs each burned rect at high DPI. Vector burn (mode `fallback`) draws opaque rects on exact target bounds. Anti-alias tails of narrow/italic serif glyphs bleed 0.5–1.5px past the rect on 3000-page form-heavy docs, so 314 rects re-OCR as fragments and download refuses.
+
+**Three-part fix:**
+
+1. **Inflate burn rect by +1.5pt** each side in `rasterizeRedactedPagesInWorker` (vector + raster paths). Covers bleed without merging adjacent rects.
+2. **Auto-escalate on leak, don't hard-fail.** In the per-category redact action: if pixel-verify reports leaks, re-run rasterize on *only the leaked pages* with `mode: "always"` at scale 3.0, then re-verify. Only fail (and surface the red popover from Part 1 §5) if the second pass still leaks.
+3. **Ignore sub-word OCR noise.** In `verify-pixel-redaction.ts`, drop leaks that are single characters, Tesseract confidence < 60, or punctuation/whitespace-only. Anti-alias fragments aren't real leaks.
+
+**Files:** `src/lib/workers/rasterize.worker.ts` (+ client), `src/lib/editor/verify-pixel-redaction.ts`, per-category redact handler in `src/components/workspace/tool-panels.tsx`.
+
+---
+
+## Files touched (total)
+
+- `src/components/workspace/tool-panels.tsx`
+  - Category group render (~L2260-2540): inline Redact button + popover per category, ✓-done state, Undo.
+  - Side-channel groups (~L2620-2690): same inline Redact button per vector.
+  - Commit section (~L3300-3400): renamed to Export, split from redact, sign-off removed.
+  - `exportRedacted` split into `redactCategoryInPlace(ids)` (used by every popover) and `exportRedactedPdf()` (used by Export button).
+  - Copy sweep.
+- `src/components/workspace/agent-panel.tsx` — copy strings only.
+- `src/lib/workers/rasterize.worker.ts` + `rasterize-client.ts` — `padPt` option.
+- `src/lib/editor/verify-pixel-redaction.ts` — confidence/length filter + page-number surfacing.
+- `src/lib/editor/state.ts` — new `hasCommittedRedactions` + `preCommitSnapshot` (small ring buffer for Undo).
+
+**No changes:** viewer, editor-canvas, sanitize.worker, verify.worker, `enforceRedactionGate`, sidecar model, tab lifecycle.
+
+---
+
+## Non-goals
+
+- No auto-download after per-category redact.
+- No new burn code path — every Redact button funnels into `enforceRedactionGate`.
+- No multi-level undo history — Undo covers only the most recent category commit.
+- No modal — popover is anchored to the category row, dismissable on outside-click.
+
+---
+
+## Build order
+
+1. Split `exportRedacted` into `redactCategoryInPlace` + `exportRedactedPdf`.
+2. Per-category popover + inline Redact button (page-vector categories first, then side-channel vectors).
+3. Renamed Export section with single-verify export.
+4. Rect-pad + confidence filter in pixel-verify.
+5. Auto-escalate raster fallback for leaked pages.
+6. Copy sweep + Undo snapshot.
+
+Approve and I ship in that order.
