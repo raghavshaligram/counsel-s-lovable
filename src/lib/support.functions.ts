@@ -128,10 +128,11 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
         if (ownerEmail) {
           const subject =
             data.type === "help"
-              ? `[CounselPDF] Help request from ${data.name || data.email || "user"}`
+              ? `[CounselPDF] Help (${data.category ?? "general"}) from ${data.name || data.email || "user"}`
               : `[CounselPDF] Feature request — ${data.title || "(no title)"}`;
-          const rows = [
+          const rows: Array<[string, string]> = [
             ["Type", data.type],
+            ["Category", data.category ?? "(none)"],
             ["From", `${data.name || "(anon)"} <${data.email || "(no email)"}>`],
             ["Plan", plan ?? "(unknown)"],
             ["Page", data.page || "(unknown)"],
