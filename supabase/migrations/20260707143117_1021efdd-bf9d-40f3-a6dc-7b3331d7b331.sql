@@ -1,0 +1,1 @@
+ALTER TABLE public.support_requests ADD COLUMN IF NOT EXISTS category text;
