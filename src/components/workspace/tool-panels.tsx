@@ -1862,15 +1862,21 @@ function sanitizeStageLabel(stage: string): string {
   // unified ledger can show a "Staged from AI scan" row + one-click commit.
   // On unmount we reset to zero so the row disappears when the panel closes.
   useEffect(() => {
+    const sideStaged = sideChannelFindings.reduce(
+      (n, d) => n + (selected.has(d.id) ? 1 : 0),
+      0,
+    );
     publishStagedRedact({
       selected: selected.size,
       total: redactableFindings.length,
+      sideStaged,
       commit: redactableFindings.length > 0 ? redactSelected : null,
+      sideCommit: sideStaged > 0 ? redactSelected : null,
     });
-  }, [selected, redactableFindings, redactSelected]);
+  }, [selected, redactableFindings, sideChannelFindings, redactSelected]);
   useEffect(() => {
     return () => {
-      publishStagedRedact({ selected: 0, total: 0, commit: null });
+      publishStagedRedact({ selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null });
     };
   }, []);
 
