@@ -1735,29 +1735,44 @@ function sanitizeStageLabel(stage: string): string {
           }),
         ));
         if (sensitiveStrings.length > 0) {
-          const { verifySideChannelVectors } = await importChunk(
-            () => import("@/lib/editor/verify-redaction"),
+          const { verifySideChannelInWorker } = await importChunk(
+            () => import("@/lib/workers/verify-client"),
           );
-          const sideLeaks = await verifySideChannelVectors(cleaned, sensitiveStrings);
+          // Off-main-thread now. Previously `verifySideChannelVectors` ran
+          // synchronously on the main thread, doing a full pdf-lib parse +
+          // AcroForm walk + per-page Annots walk + full
+          // enumerateIndirectObjects over the whole 5000-page graph. That
+          // was the "Page Unresponsive" freeze. Same guarantee: any leak
+          // returned still fails the redaction, exactly as before.
+          const sideLeaks = await verifySideChannelInWorker(cleaned, sensitiveStrings, {
+            signal: abort.signal,
+            onProgress: (_stage, done, total) => {
+              if (total > 0) {
+                toast.loading(`Verifying hidden-vector wipe… (${done}/${total})`, {
+                  id: tid,
+                  action: { label: "Cancel", onClick: () => abort.abort() },
+                });
+              }
+            },
+          });
           if (sideLeaks.length > 0) {
             throw new Error(
               `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
             );
           }
         }
-        // Replace srcBytes in-place; preserve annotations + page ops + ocr.
-        editorDispatch({
-          type: "LOAD",
-          doc: { ...editorState.doc, srcBytes: cleaned },
-        });
+        // Hot-swap srcBytes in place. Previously this dispatched
+        // `LOAD { doc: { ...doc, srcBytes: cleaned } }` — which reset
+        // state to `initialState` and dropped annotations — and then a
+        // follow-up `LOAD_SIDECAR` to restore them. That was two full
+        // reducer passes + two re-renders, with the intermediate render
+        // committing 0 annotations. `SET_SRC_BYTES` mutates only srcBytes
+        // on the current doc so annotations/pages/ocr stay put, undo
+        // history is cleared (pre-sanitize bytes are no longer valid),
+        // and the next export/burn reads the sanitized bytes directly
+        // via `editorState.doc.srcBytes` (see `exportEditedPdf`).
+        editorDispatch({ type: "SET_SRC_BYTES", bytes: cleaned });
         replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
-        if (editorState.doc.annotations.length > 0 || editorState.doc.ocrLayer) {
-          editorDispatch({
-            type: "LOAD_SIDECAR",
-            annotations: editorState.doc.annotations,
-            pages: editorState.doc.pages,
-            ocrLayer: editorState.doc.ocrLayer,
-          });
         }
         // Drop wiped findings from the visible list so the user SEES them
         // gone (and a re-scan would confirm clean).
