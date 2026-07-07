@@ -32,10 +32,11 @@ import {
   targetToolForFlow,
   type AgentFlow,
 } from "@/lib/agent/flows";
-import { classifyAssistQuery } from "@/lib/assist/router";
-import type { AssistToolEntry } from "@/lib/assist/knowledge-base";
+import { classifyAssistQuery, type AssistCtx } from "@/lib/assist/router";
+import type { AssistToolEntry, AssistTopicEntry } from "@/lib/assist/knowledge-base";
 import { useIsPro } from "@/lib/pro-gate";
 import { useUpgradeModal } from "@/components/upgrade-modal";
+import { useNavigate } from "@tanstack/react-router";
 
 
 type Action = {
