@@ -1146,6 +1146,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [underDetectedOcrPages, setUnderDetectedOcrPages] = useState<number[]>([]);
   const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // IDs we've already auto-selected this scan. Lets us progressively add
+  // newly-arrived high-confidence findings during a running scan WITHOUT
+  // clobbering the user's manual toggles — the old code called
+  // setSelected(new Set()) on every scanRecord tick while running, which
+  // made "Commit staged" impossible mid-scan (selection kept resetting).
+  const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const docId = ctxDocId ?? (file ? `${file.name}:${file.size}` : "");
@@ -1167,6 +1173,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setUnderDetectedOcrPages([]);
       setTotalPagesScanned(0);
       setSelected(new Set());
+      autoSelectedRef.current = new Set();
       return;
     }
     setFindings(scanRecord.findings);
@@ -1175,11 +1182,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setLowConfOcrPages(scanRecord.lowConfidenceOcrPages);
     setUnderDetectedOcrPages(scanRecord.ocrUnderDetectedPages);
     setTotalPagesScanned(scanRecord.totalPagesScanned);
-    if (scanRecord.status === "completed" && scanRecord.findings) {
-      const autoSelect = scanRecord.findings.filter((d) => d.confidence !== "low");
-      setSelected(new Set(autoSelect.map((d) => d.id)));
-    } else if (scanRecord.status === "queued" || scanRecord.status === "running") {
-      setSelected(new Set());
+    // Progressive auto-select: while running OR on completion, add newly-
+    // arrived high-confidence findings to the current selection without
+    // wiping user toggles. Tracking auto-selected IDs in a ref means an
+    // item the user manually unchecks stays unchecked on subsequent ticks.
+    if (
+      (scanRecord.status === "running" ||
+        scanRecord.status === "queued" ||
+        scanRecord.status === "completed") &&
+      scanRecord.findings
+    ) {
+      const highConf = scanRecord.findings.filter((d) => d.confidence !== "low");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const d of highConf) {
+          if (!autoSelectedRef.current.has(d.id)) {
+            next.add(d.id);
+            autoSelectedRef.current.add(d.id);
+          }
+        }
+        return next;
+      });
     }
   }, [docId, scanRecord]);
 
@@ -1226,6 +1249,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setUnderDetectedOcrPages([]);
     setTotalPagesScanned(0);
     setSelected(new Set());
+    autoSelectedRef.current = new Set();
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
@@ -1291,8 +1315,20 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         ocrUnderDetectedPages: ocrUnderDetectedPages ?? [],
         totalPagesScanned: totalPages,
       });
+      // Preserve any mid-scan toggles: only auto-select IDs we haven't
+      // already auto-added, so items the user manually unchecked stay
+      // unchecked at completion.
       const autoSelect = merged.filter((d) => d.confidence !== "low");
-      setSelected(new Set(autoSelect.map((d) => d.id)));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const d of autoSelect) {
+          if (!autoSelectedRef.current.has(d.id)) {
+            next.add(d.id);
+            autoSelectedRef.current.add(d.id);
+          }
+        }
+        return next;
+      });
       const hasScanned = scanned.length > 0;
       // OCR "succeeded" on a scanned page when we ran it AND confidence was
       // not flagged low. Only the genuinely-failed pages get the hard
