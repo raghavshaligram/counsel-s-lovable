@@ -12,10 +12,15 @@ const REVALIDATE_MS = 1000 * 60 * 60 * 6; // 6h
  * meant gating components could lag behind the account menu and stay
  * "free" even after the server returned "solo".
  */
-let current: LicenseSnapshot | null = null;
+type LicenseStoreState = {
+  license: LicenseSnapshot | null;
+  checking: boolean;
+};
+
+let state: LicenseStoreState = { license: null, checking: true };
 const listeners = new Set<() => void>();
-function setCurrent(next: LicenseSnapshot | null) {
-  current = next;
+function setState(patch: Partial<LicenseStoreState>) {
+  state = { ...state, ...patch };
   for (const l of listeners) l();
 }
 function subscribe(l: () => void) {
@@ -24,8 +29,10 @@ function subscribe(l: () => void) {
     listeners.delete(l);
   };
 }
-const getSnapshot = () => current;
-const getServerSnapshot = () => null;
+const getLicenseSnapshot = () => state.license;
+const getStateSnapshot = () => state;
+const getServerLicenseSnapshot = () => null;
+const getServerStateSnapshot = () => ({ license: null, checking: true });
 
 let bootstrapped = false;
 let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -72,11 +79,18 @@ async function readLiveLicenseFromDatabase(
 }
 
 async function activate(reason: string) {
+  setState({ checking: true });
   try {
     const { data } = await supabase.auth.getSession();
     const session = data.session;
-    if (!session) return;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    if (!session) {
+      setState({ license: null, checking: false });
+      return;
+    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setState({ checking: false });
+      return;
+    }
     let snap: LicenseSnapshot;
     try {
       // Primary source for UI gating: the live subscriptions row read by the
@@ -92,7 +106,7 @@ async function activate(reason: string) {
     }
     await saveLicense(snap);
     await persistStorage();
-    setCurrent(snap);
+    setState({ license: snap, checking: false });
     // Always log — paid gating depends on this, so a stale value is the
     // first thing to inspect when a user reports locked features.
     // eslint-disable-next-line no-console
@@ -103,6 +117,7 @@ async function activate(reason: string) {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[license] activation failed", err);
+    setState({ checking: false });
   }
 }
 
@@ -111,7 +126,13 @@ async function seedFromStoredLicense() {
   if (!stored) return;
   if (!data.session || stored.userId !== data.session.user.id) {
     await clearLicense();
-    if (current?.userId === stored.userId) setCurrent(null);
+    if (state.license?.userId === stored.userId) setState({ license: null });
+    return;
+  }
+  // Never seed a cached Free plan. A pre-grant Free snapshot is worse than
+  // no snapshot because it visibly locks paid users before the live read lands.
+  if (stored.plan === "free") {
+    await clearLicense();
     return;
   }
   // Discard stored snapshots older than 60s — an admin plan grant made
@@ -124,7 +145,7 @@ async function seedFromStoredLicense() {
     return;
   }
 
-  if (!current) setCurrent(stored);
+  if (!state.license) setState({ license: stored });
 }
 
 function subscribeRealtime(userId: string) {
@@ -174,7 +195,7 @@ function bootstrap() {
     if (event === "TOKEN_REFRESHED") void activate("token_refreshed");
     if (event === "SIGNED_OUT") {
       void clearLicense();
-      setCurrent(null);
+      setState({ license: null, checking: false });
       if (realtimeChannel) {
         void supabase.removeChannel(realtimeChannel);
         realtimeChannel = null;
@@ -212,7 +233,15 @@ export function useLicenseActivation(): LicenseSnapshot | null {
     // into any gated surface, instead of waiting for focus/6h.
     void activate("mount");
   }, []);
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return useSyncExternalStore(subscribe, getLicenseSnapshot, getServerLicenseSnapshot);
+}
+
+export function useLicenseStatus(): LicenseStoreState {
+  useEffect(() => {
+    bootstrap();
+    void activate("mount");
+  }, []);
+  return useSyncExternalStore(subscribe, getStateSnapshot, getServerStateSnapshot);
 }
 
 
