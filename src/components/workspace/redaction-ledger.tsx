@@ -83,6 +83,25 @@ export function RedactionAuditLedger({ sourceName, redactions }: Props) {
       }));
   }, [redactions]);
 
+  // Group rows by category label for a scannable summary; each group can be
+  // expanded to a sampled list. Sorted by count (largest first) so the
+  // biggest sources are at the top.
+  const groups = useMemo(() => {
+    const m = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const arr = m.get(r.category) ?? [];
+      arr.push(r);
+      m.set(r.category, arr);
+    }
+    return Array.from(m.entries())
+      .map(([label, items]) => ({ label, items }))
+      .sort((a, b) => b.items.length - a.items.length);
+  }, [rows]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState<Set<string>>(new Set());
+  const SAMPLE = 10;
+
   const buildCsv = useCallback(() => {
     const header = ["#", "Page", "Type", "Region (PDF pts)"];
     const lines = [header.map(csvEscape).join(",")];
