@@ -1884,7 +1884,7 @@ function sanitizeStageLabel(stage: string): string {
     }
     // Batch adds (newly checked page-vector items).
     const byId = new Map(findings.map((d) => [d.id, d]));
-    const toAdd: import("@/lib/editor/state").Anno[] = [];
+    const toAdd: Anno[] = [];
     for (const detId of selected) {
       if (stagedDetIds.has(detId)) continue;
       const d = byId.get(detId);
@@ -1914,7 +1914,7 @@ function sanitizeStageLabel(stage: string): string {
               bounds: d.source.bounds,
             }]
           : undefined,
-      } as import("@/lib/editor/state").Anno);
+      } as Anno);
     }
     if (toRemove.length > 0) editorDispatch({ type: "DELETE_ANNOS", ids: toRemove });
     if (toAdd.length > 0) editorDispatch({ type: "ADD_ANNOS", list: toAdd });
