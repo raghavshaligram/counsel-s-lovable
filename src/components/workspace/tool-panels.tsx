@@ -2933,7 +2933,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
 
-  const exportRedacted = useCallback(async () => {
+  const exportRedacted = useCallback(async (opts?: { mode?: "commit" | "export" }) => {
+    const mode = opts?.mode ?? "export";
     if (!file || !editorState?.doc) return;
     // Two-phase commit: marks are drafts up to this point. Confirm before
     // we permanently remove the underlying content.
