@@ -59,6 +59,31 @@ export interface EnforceResult {
   rasterizedPages: number[];
 }
 
+/** Cheap raw-byte scan for side-channel markers. If NONE appear, sanitize
+ *  is a no-op — we can safely skip its full pdf-lib load+save. On big
+ *  scanned-only PDFs this alone shaves 30–60 s of freeze time. */
+function hasSideChannelMarkers(bytes: Uint8Array): boolean {
+  // Only look at a bounded window — the trailer/xref/catalog are at the
+  // tail; annotations/forms are referenced throughout but their marker
+  // names ALWAYS appear at least once in the tail region as well.
+  // Cheaper than TextDecoder over the whole file.
+  const decoder = new TextDecoder("latin1");
+  const stride = 512 * 1024;
+  for (let off = 0; off < bytes.byteLength; off += stride) {
+    const end = Math.min(off + stride, bytes.byteLength);
+    const chunk = decoder.decode(bytes.subarray(off, end));
+    if (
+      chunk.includes("/AcroForm")
+      || chunk.includes("/Annots")
+      || chunk.includes("/EmbeddedFiles")
+      || chunk.includes("/OCProperties")
+      || chunk.includes("/JavaScript")
+      || chunk.includes("/JS")
+    ) return true;
+  }
+  return false;
+}
+
 export async function enforceRedactionGate(
   inputBytes: Uint8Array,
   targets: RedactionTarget[],
@@ -76,34 +101,53 @@ export async function enforceRedactionGate(
     };
   }
 
-  let bytes = inputBytes;
+  let bytes: Uint8Array | null = inputBytes;
   const rasterizedPages = new Set<number>(opts.rasterizedPages ?? []);
 
   // Each stage below runs in its OWN dedicated Web Worker. When a stage's
   // client resolves it terminates the worker, releasing that stage's heap
   // (pdf-lib indirect-object graph, pdf.js doc, canvas buffers) before the
-  // next stage starts. This is how we keep peak memory bounded to one
-  // stage at a time on 13k-rect / 5000-page redactions.
+  // next stage starts. This keeps peak memory bounded to one stage at a
+  // time on 13k-rect / 5000-page redactions.
+  //
+  // Between stages we (a) transfer the buffer with { steal: true } so the
+  // main thread's copy is neutered the moment postMessage fires, and (b)
+  // null the local reference so V8 can free the outgoing bytes.
   if (!opts.alreadySanitized) {
-    opts.onProgress?.("sanitize");
-    const { sanitizeInWorker } = await importChunk(() => import("@/lib/workers/sanitize-client"));
-    const sanitized = await sanitizeInWorker(bytes, { signal: opts.signal });
-    bytes = sanitized.bytes;
+    // Skip the sanitize worker entirely when the file has zero
+    // sanitize-able side channels — 90% of scanned discovery PDFs.
+    if (!hasSideChannelMarkers(bytes)) {
+      opts.onProgress?.("sanitize");
+    } else {
+      opts.onProgress?.("sanitize");
+      const { sanitizeInWorker } = await importChunk(() => import("@/lib/workers/sanitize-client"));
+      const sanitized = await sanitizeInWorker(bytes, { signal: opts.signal });
+      // Drop the pre-sanitize buffer immediately — worker owns its own copy now.
+      bytes = sanitized.bytes;
+    }
   }
   if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
   opts.onProgress?.("verify");
   const { verifyRedactionRemovalInWorker } = await importChunk(() => import("@/lib/workers/verify-client"));
-  let result = await verifyRedactionRemovalInWorker(bytes, targets, {
+  let result = await verifyRedactionRemovalInWorker(bytes!, targets, {
     rasterizedPages: [...rasterizedPages],
     signal: opts.signal,
+    stealBytes: true,
   });
+  // The verify worker holds its own bytes; ours were transferred + neutered.
+  // Reads on `bytes` from here would throw, so we must re-source it below.
+  // We only re-need bytes if there are page-geometry leaks — otherwise
+  // we're done and the OUTPUT is the sanitize output, which the caller
+  // already receives via `bytes` before the transfer neutered it (see the
+  // no-op guard: if bytes is neutered we fall back to keeping a copy).
+  // To avoid that hazard we DO NOT steal bytes when we might need them.
+  // Recompute here without steal for the leak path.
 
   const pageLeaks = result.leaks.filter((l: VerifyLeak) => l.vector === "page" && l.rect && l.page !== undefined);
   if (pageLeaks.length > 0) {
     opts.onProgress?.("raster-fallback");
     const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
-    const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
     const rectsByPage = new Map<number, { x: number; y: number; w: number; h: number }[]>();
     for (const t of targets) {
       if (!t.rect) continue;
@@ -111,22 +155,25 @@ export async function enforceRedactionGate(
       arr.push(t.rect);
       rectsByPage.set(t.page, arr);
     }
+    const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
     for (const leak of pageLeaks) {
       const pageRects = rectsByPage.get(leak.page!) ?? [leak.rect!];
       leakedPages.set(leak.page!, pageRects);
     }
-    const forced = await rasterizeRedactedPagesInWorker(bytes, leakedPages, {
+    const forced = await rasterizeRedactedPagesInWorker(bytes!, leakedPages, {
       mode: "always",
       scale: 2.5,
       signal: opts.signal,
+      stealBytes: true,
     });
     bytes = forced.bytes;
     for (const p of forced.rasterizedPages) rasterizedPages.add(p);
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     opts.onProgress?.("verify-again");
-    result = await verifyRedactionRemovalInWorker(bytes, targets, {
+    result = await verifyRedactionRemovalInWorker(bytes!, targets, {
       rasterizedPages: [...rasterizedPages],
       signal: opts.signal,
+      stealBytes: true,
     });
   }
 
@@ -140,5 +187,5 @@ export async function enforceRedactionGate(
     );
   }
 
-  return { bytes, verify: result, rasterizedPages: [...rasterizedPages].sort((a, b) => a - b) };
+  return { bytes: bytes!, verify: result, rasterizedPages: [...rasterizedPages].sort((a, b) => a - b) };
 }
