@@ -7,11 +7,15 @@ import {
 } from "./knowledge-base";
 
 export type AssistMode = "help" | "open" | "use";
+export type AssistLane = "literal" | "semantic" | "action" | "help";
 
 export interface AssistCtx {
   lastEntryId?: string;
   lastTopicId?: string;
   lastQuery?: string;
+  lastLane?: AssistLane;
+  lastFindTerm?: string;
+  lastFindMatches?: { page: number; snippet: string }[];
 }
 
 export type AssistClassification =
@@ -24,6 +28,8 @@ export type AssistClassification =
       corrected?: { from: string; to: string };
       followUp?: boolean;
       contextFrom?: string;
+      /** For "redact them" follow-ups after a literal find. */
+      stagedTerm?: string;
     }
   | {
       kind: "topic";
@@ -31,6 +37,21 @@ export type AssistClassification =
       score: number;
       followUp?: boolean;
       contextFrom?: string;
+    }
+  | {
+      kind: "literal";
+      term: string;
+      wholeWord: boolean;
+      regex: boolean;
+      reason: string;
+      /** Alternate lanes offered as chips when the query is plausibly ambiguous. */
+      alternates?: Array<{ lane: AssistLane; label: string }>;
+    }
+  | {
+      kind: "semantic";
+      query: string;
+      reason: string;
+      alternates?: Array<{ lane: AssistLane; label: string }>;
     }
   | {
       kind: "clarify";
@@ -43,6 +64,7 @@ export type AssistClassification =
       original: string;
       suggestions: AssistToolEntry[];
     };
+
 
 type AnchorIndex = {
   dim: number;
