@@ -96,6 +96,31 @@ const CASES: Case[] = [
     },
   })),
 
+  // Lane routing
+  { name: `lane: find "contract" → literal`, input: `find "contract"`,
+    expect: (c) => c.kind === "literal" && c.term === "contract" ? null : `got ${c.kind}` },
+  { name: "lane: search for the word John → literal", input: "search for the word John",
+    expect: (c) => c.kind === "literal" && c.term === "John" ? null : `got ${c.kind}` },
+  { name: "lane: find sensitive contracts → semantic", input: "find sensitive contracts",
+    expect: (c) => c.kind === "semantic" ? null : `got ${c.kind}` },
+  { name: "lane: passages about damages → semantic", input: "find passages about damages",
+    expect: (c) => c.kind === "semantic" ? null : `got ${c.kind}` },
+  { name: "lane: find contracts (ambiguous) → literal with alternates",
+    input: "find contracts",
+    expect: (c) => c.kind === "literal" && (c.alternates?.length ?? 0) >= 2 ? null : `got ${c.kind}` },
+  { name: "lane: redact SSNs → action redact", input: "redact SSNs",
+    expect: (c) => c.kind === "tool" && c.entry.id === "redact" ? null : `got ${c.kind}` },
+
+  // Cross-lane follow-up: after literal find, "redact them" → action with stagedTerm
+  { name: "cross-lane: redact them (after literal contract)",
+    input: "now redact them",
+    ctx: { lastLane: "literal", lastFindTerm: "contract", lastQuery: `find "contract"` },
+    expect: (c) =>
+      c.kind === "tool" && c.entry.id === "redact" && c.stagedTerm === "contract"
+        ? null
+        : `got ${c.kind}${"entry" in c ? `:${c.entry.id}` : ""} stagedTerm=${"stagedTerm" in c ? c.stagedTerm : "-"}`,
+  },
+
   // Regression
   { name: "regression: what is redact → redact help", input: "what is redact",
     expect: (c) => c.kind === "tool" && c.entry.id === "redact" && c.mode === "help" ? null : `got ${c.kind}` },
