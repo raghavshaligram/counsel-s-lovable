@@ -1,12 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import {
   CreditCard, ArrowLeft, ExternalLink, ShieldCheck, Users, Loader2, FileText, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMyBilling, openMyBillingPortal, createMyCheckout } from "@/lib/billing.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { refreshLicense } from "@/lib/use-license-activation";
 
 export const Route = createFileRoute("/_authenticated/billing")({
   head: () => ({
