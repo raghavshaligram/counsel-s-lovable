@@ -63,6 +63,7 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
             post({ kind: "partial", id: m.id, detections, page: meta.page, pass: meta.pass });
           },
           shouldAbort: () => entry.canceled,
+          skipNer: m.skipNer === true,
         },
       );
       if (entry.canceled) throw new DOMException("Canceled", "AbortError");
