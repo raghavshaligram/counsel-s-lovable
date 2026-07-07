@@ -7,10 +7,27 @@
  * uniform across call sites.
  */
 
-/** Copy `src` into a fresh, transferable ArrayBuffer. Never returns the
- *  caller's underlying buffer — safe to `transfer` without neutering the
- *  caller's Uint8Array. */
-export function toTransferable(src: Uint8Array): ArrayBuffer {
+/** Get a transferable ArrayBuffer for `src`.
+ *
+ *  Default (safe): copies the bytes into a fresh buffer so transferring it
+ *  does NOT neuter the caller's Uint8Array. Use when the caller still
+ *  needs the source bytes (e.g. editor srcBytes).
+ *
+ *  `{ steal: true }` (zero-copy): returns the caller's own underlying
+ *  ArrayBuffer. After `postMessage(..., [buf])` the caller's Uint8Array
+ *  becomes empty (byteLength 0). Use in pipelines where the caller drops
+ *  its reference immediately — releases that buffer's memory now. */
+export function toTransferable(src: Uint8Array, opts?: { steal?: boolean }): ArrayBuffer {
+  if (opts?.steal) {
+    // If the Uint8Array is a view over a larger buffer, we must copy —
+    // transferring the whole buffer would neuter unrelated views.
+    if (src.byteOffset !== 0 || src.byteLength !== src.buffer.byteLength) {
+      const copy = new Uint8Array(src.byteLength);
+      copy.set(src);
+      return copy.buffer;
+    }
+    return src.buffer;
+  }
   const copy = new Uint8Array(src.byteLength);
   copy.set(src);
   return copy.buffer;
