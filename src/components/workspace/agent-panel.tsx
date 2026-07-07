@@ -140,6 +140,12 @@ export interface AgentPanelProps {
   openTool: (id: string, opts?: { focusSection?: string }) => void;
   /** Dispatches a query into the Pre-Discovery / AI Assist panel. */
   onAnswerQuery: (query: string) => void;
+  /** Which tab to open on. Changes when `initialTabNonce` bumps. */
+  initialTab?: "ask" | "do" | "learn";
+  /** Bumping this re-applies `initialTab` and focuses the tab input. */
+  initialTabNonce?: number;
+  /** Shared parsed pdf.js document for basic on-device text search. */
+  pdfDoc?: unknown | null;
 }
 
 let stepSeq = 0;
