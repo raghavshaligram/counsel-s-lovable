@@ -1978,7 +1978,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                   <ul>
                     {groups.map((g) => {
                       const groupKey = `${cat}::${g.key}`;
-                      const selCount = g.dets.reduce((s, d) => s + (selected.has(d.id) ? 1 : 0), 0);
+                      const selCount = selectionByGroup.get(`${cat}::${g.key}`) ?? 0;
                       const allChecked = selCount === g.dets.length;
                       const someChecked = selCount > 0 && !allChecked;
                       const isExpanded = expandedGroups.has(groupKey);
