@@ -1309,6 +1309,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   // made "Commit staged" impossible mid-scan (selection kept resetting).
   const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<string>("all");
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const [capability, setCapability] = useState<DeviceCapability | null>(null);
   const [activeScanMode, setActiveScanMode] = useState<"quick" | "full" | null>(null);
@@ -2071,6 +2072,47 @@ function sanitizeStageLabel(stage: string): string {
     return { parts, total: findings.length };
   }, [findings, categoryIds, grouped]);
 
+  // Category tabs — quick filter so users can zero in on e.g. Form fields.
+  type TabEntry = { key: string; label: string; count: number };
+  const tabList = useMemo<TabEntry[]>(() => {
+    const tabs: TabEntry[] = [];
+    if (grouped) {
+      for (const [cat, groups] of grouped) {
+        const total = groups.reduce((n, g) => n + g.dets.length, 0);
+        const loCount = categoryIds.lo.get(cat as Cat2)?.length ?? 0;
+        tabs.push({
+          key: String(cat),
+          label: meta?.[cat]?.label ?? String(cat),
+          count: total + loCount,
+        });
+      }
+    }
+    if (sideChannelGrouped) {
+      for (const [vector, list] of sideChannelGrouped) {
+        tabs.push({
+          key: vector,
+          label:
+            vector === "form-field"
+              ? "Form fields"
+              : vector === "annotation"
+              ? "Comments"
+              : "Metadata",
+          count: list.length,
+        });
+      }
+    }
+    return tabs;
+  }, [grouped, sideChannelGrouped, categoryIds, meta]);
+
+  // Reset tab if it no longer exists after a re-scan.
+  useEffect(() => {
+    if (activeTab === "all") return;
+    if (!tabList.some((t) => t.key === activeTab)) setActiveTab("all");
+  }, [tabList, activeTab]);
+
+  const showPageCat = (cat: string) => activeTab === "all" || activeTab === cat;
+  const showSideVector = (v: string) => activeTab === "all" || activeTab === v;
+
 
 
 
@@ -2226,8 +2268,38 @@ function sanitizeStageLabel(stage: string): string {
                 : "Tick a category or item to stage"}
             </span>
           </div>
+          {tabList.length > 1 && (
+            <div className="flex flex-wrap gap-1 border-b border-border/60 px-2 py-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab("all")}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  activeTab === "all"
+                    ? "bg-vault text-white"
+                    : "bg-surface-3 text-text-2 hover:text-foreground"
+                }`}
+              >
+                All · {redactableFindings.length.toLocaleString()}
+              </button>
+              {tabList.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    activeTab === t.key
+                      ? "bg-vault text-white"
+                      : "bg-surface-3 text-text-2 hover:text-foreground"
+                  }`}
+                  title={`Show only ${t.label}`}
+                >
+                  {t.label} · {t.count.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          )}
           <ul className="max-h-[280px] overflow-y-auto py-1">
-            {grouped?.map(([cat, allGroups]) => {
+            {grouped?.filter(([cat]) => showPageCat(String(cat))).map(([cat, allGroups]) => {
               // Split groups into high-conf and low-conf. A group is
               // "low-conf" when *every* detection inside it is low-conf
               // (otherwise it stays with the main list and its low-conf
@@ -2540,7 +2612,7 @@ function sanitizeStageLabel(stage: string): string {
             })}
           </ul>
 
-          {sideChannelGrouped && sideChannelGrouped.length > 0 && (
+          {sideChannelGrouped && sideChannelGrouped.length > 0 && (activeTab === "all" || sideChannelGrouped.some(([v]) => v === activeTab)) && (
             <div className="border-t border-border/60">
               <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-vault">
                 Hidden in document · {sideChannelFindings.length}
@@ -2551,16 +2623,40 @@ function sanitizeStageLabel(stage: string): string {
                 misses these. Click Redact to wipe them from the document now.
               </p>
               <ul className="max-h-[200px] overflow-y-auto pb-1">
-                {sideChannelGrouped.map(([vector, list]) => (
+                {sideChannelGrouped.filter(([vector]) => showSideVector(vector)).map(([vector, list]) => {
+                  const vecIds = list.map((d) => d.id);
+                  const vecSelCount = vecIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0);
+                  const vecAll = vecIds.length > 0 && vecSelCount === vecIds.length;
+                  const vecSome = vecSelCount > 0 && !vecAll;
+                  const toggleVec = (checked: boolean) => {
+                    startTransition(() => {
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (checked) for (const id of vecIds) next.add(id);
+                        else for (const id of vecIds) next.delete(id);
+                        return next;
+                      });
+                    });
+                  };
+                  return (
                   <li key={vector}>
-                    <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                      {vector === "form-field"
-                        ? "Form fields"
-                        : vector === "annotation"
-                        ? "Comments / annotations"
-                        : "Document metadata"}{" "}
-                      · {list.length}
-                    </div>
+                    <label className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted cursor-pointer hover:bg-surface-2">
+                      <input
+                        type="checkbox"
+                        checked={vecAll}
+                        ref={(el) => { if (el) el.indeterminate = vecSome; }}
+                        onChange={(e) => toggleVec(e.target.checked)}
+                        className="h-3 w-3 shrink-0 accent-vault"
+                      />
+                      <span>
+                        {vector === "form-field"
+                          ? "Form fields"
+                          : vector === "annotation"
+                          ? "Comments / annotations"
+                          : "Document metadata"}{" "}
+                        · {list.length}
+                      </span>
+                    </label>
                     <ul>
                       {list.map((d) => {
                         const checked = selected.has(d.id);
@@ -2594,7 +2690,8 @@ function sanitizeStageLabel(stage: string): string {
                       })}
                     </ul>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           )}
