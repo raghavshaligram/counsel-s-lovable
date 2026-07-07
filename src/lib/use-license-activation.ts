@@ -111,6 +111,11 @@ function bootstrap() {
   void activate("launch");
 
   const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+    // INITIAL_SESSION fires on every mount when a session was restored from
+    // storage (hard reload with a signed-in user). Without it, the launch
+    // activate() can race the session restore, return early with no session,
+    // and leave the stale IDB seed on screen until the next focus/interval.
+    if (event === "INITIAL_SESSION") void activate("initial_session");
     if (event === "SIGNED_IN") void activate("signed_in");
     if (event === "USER_UPDATED") void activate("user_updated");
     if (event === "TOKEN_REFRESHED") void activate("token_refreshed");
