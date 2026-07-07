@@ -50,6 +50,7 @@ export type SubmitSupportInput = z.infer<typeof submitSchema>;
 export type SupportRow = {
   id: string;
   type: "help" | "feature";
+  category: string | null;
   title: string | null;
   message: string;
   name: string | null;
