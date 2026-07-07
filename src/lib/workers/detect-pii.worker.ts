@@ -20,7 +20,7 @@
 import { detectPiiInPdf, detectPiiInSideChannels, type DetectProgress } from "@/lib/pdf/detect-pii";
 
 type InboundMsg =
-  | { kind: "detect"; id: string; bytes: ArrayBuffer; filename: string; scale: number }
+  | { kind: "detect"; id: string; bytes: ArrayBuffer; filename: string; scale: number; skipNer?: boolean }
   | { kind: "detect-side"; id: string; bytes: ArrayBuffer; filename: string }
   | { kind: "cancel"; id: string };
 
