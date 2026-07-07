@@ -109,7 +109,19 @@ export function useBatesSettings(
   }, [key]);
   const update = useCallback(
     (patch: Partial<BatesSettings>) => {
-      const merged = { ...getBatesSettings(key), ...patch };
+      const current = getBatesSettings(key);
+      const merged = { ...current, ...patch };
+      // If the caller is editing stamp-affecting settings (not just `on` or
+      // the applied-state fields), invalidate the applied fingerprint so
+      // export knows this is a different stamp now and will stamp again.
+      const stampChanged =
+        computeBatesFingerprint(current) !== computeBatesFingerprint(merged);
+      const isApplyingPatch =
+        patch.appliedAt !== undefined || patch.appliedFingerprint !== undefined;
+      if (stampChanged && !isApplyingPatch) {
+        merged.appliedAt = undefined;
+        merged.appliedFingerprint = undefined;
+      }
       setBatesSettings(key, merged);
     },
     [key],
