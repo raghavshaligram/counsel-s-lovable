@@ -140,12 +140,6 @@ export interface AgentPanelProps {
   openTool: (id: string, opts?: { focusSection?: string }) => void;
   /** Dispatches a query into the Pre-Discovery / AI Assist panel. */
   onAnswerQuery: (query: string) => void;
-  /** Which tab to open on. Changes when `initialTabNonce` bumps. */
-  initialTab?: "ask" | "do" | "learn";
-  /** Bumping this re-applies `initialTab` and focuses the tab input. */
-  initialTabNonce?: number;
-  /** Shared parsed pdf.js document for basic on-device text search. */
-  pdfDoc?: unknown | null;
 }
 
 let stepSeq = 0;
@@ -182,15 +176,9 @@ export function AgentPanel({
   totalPages,
   openTool,
   onAnswerQuery,
-  initialTab = "ask",
-  initialTabNonce = 0,
-  pdfDoc = null,
 }: AgentPanelProps) {
   const [steps, setSteps] = useState<Step[]>([]);
   const [input, setInput] = useState("");
-  const [tab, setTab] = useState<"ask" | "do" | "learn">(initialTab);
-  const askInputRef = useRef<HTMLInputElement | null>(null);
-  const followUpRef = useRef<HTMLInputElement | null>(null);
   const [currentFlow, setCurrentFlow] = useState<AgentFlow | null>(null);
   const cachedFindingsRef = useRef<Detection[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -878,46 +866,7 @@ export function AgentPanel({
     return null;
   }, [currentFlow]);
 
-  // Apply requested initial tab whenever the nonce changes (Ctrl+F).
-  useEffect(() => {
-    if (!open) return;
-    setTab(initialTab);
-    const t = setTimeout(() => {
-      if (initialTab === "ask") askInputRef.current?.focus();
-      else followUpRef.current?.focus();
-    }, 20);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTabNonce, open]);
-
-  const runSemanticSearch = useCallback(
-    (term: string) => {
-      const t = term.trim();
-      if (!t) return;
-      safeRunFlow({ kind: "search", term: t, raw: t });
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
-  const runAskDocument = useCallback(
-    (q: string) => {
-      const t = q.trim();
-      if (!t) return;
-      safeRunFlow({ kind: "answer", query: t, raw: t });
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
   if (!open) return null;
-
-  const followUpPlaceholder =
-    tab === "learn"
-      ? "Ask how a tool works…"
-      : tab === "do"
-        ? "Tell the assistant what to do…"
-        : "Adjust or ask a follow-up…";
 
   return (
     <aside
@@ -954,46 +903,10 @@ export function AgentPanel({
         </button>
       </header>
 
-      <div role="tablist" aria-label="Assistant tabs" className="flex border-b border-border bg-surface-1">
-        {(["ask", "do", "learn"] as const).map((k) => {
-          const on = tab === k;
-          const label = k === "ask" ? "Ask" : k === "do" ? "Do" : "Learn";
-          return (
-            <button
-              key={k}
-              role="tab"
-              aria-selected={on}
-              type="button"
-              onClick={() => setTab(k)}
-              className={`flex-1 px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
-                on
-                  ? "border-b-2 border-vault text-foreground"
-                  : "border-b-2 border-transparent text-text-muted hover:text-foreground"
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
       {scopeNote && (
         <div className="border-b border-border px-3 py-1.5 text-[10.5px] text-vault">
           {scopeNote} · {totalPages} total
         </div>
-      )}
-
-      {tab === "ask" && (
-        <AskSearchSection
-          pdfDoc={pdfDoc}
-          docId={docId}
-          totalPages={totalPages}
-          isPro={isPro}
-          inputRef={askInputRef}
-          onSemanticSearch={runSemanticSearch}
-          onAskDocument={runAskDocument}
-          onProGate={(featureName) => openUpgradeModal({ featureName })}
-        />
       )}
 
       <div
@@ -1005,12 +918,8 @@ export function AgentPanel({
         ))}
         {steps.length === 0 && (
           <div className="rounded-lg border border-border/60 bg-surface-1 p-3 text-[11.5px] text-text-muted">
-            {tab === "ask" &&
-              "Basic search above is free. AI search & Q&A are Pro. Tool actions and knowledge live in the Do and Learn tabs."}
-            {tab === "do" &&
-              "Tell the assistant what to do — e.g. \"redact all emails\", \"add Bates numbers\", \"make searchable\"."}
-            {tab === "learn" &&
-              "Ask how any tool works — e.g. \"how does redaction verify?\", \"what does sanitize remove?\"."}
+            Ready. Ask about any tool, or tell the assistant what to open.
+            Tool questions work on every plan; Pro actions show upgrade options.
           </div>
         )}
       </div>
@@ -1023,10 +932,9 @@ export function AgentPanel({
         }}
       >
         <input
-          ref={followUpRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={followUpPlaceholder}
+          placeholder="Adjust or ask a follow-up…"
           className="min-w-0 flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none"
         />
         <button
@@ -1240,319 +1148,4 @@ function seedRedactTool(findings: Detection[], autoSelect: boolean) {
   } catch {
     /* ignore */
   }
-}
-
-/* ---------------- Ask tab: basic search + Pro AI actions ---------------- */
-
-type SearchHit = { page: number; index: number; snippet: string; before: string; match: string; after: string };
-
-function AskSearchSection({
-  pdfDoc,
-  docId,
-  totalPages,
-  isPro,
-  inputRef,
-  onSemanticSearch,
-  onAskDocument,
-  onProGate,
-}: {
-  pdfDoc: unknown | null;
-  docId: string | null;
-  totalPages: number;
-  isPro: boolean;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  onSemanticSearch: (term: string) => void;
-  onAskDocument: (query: string) => void;
-  onProGate: (featureName: string) => void;
-}) {
-  const [term, setTerm] = useState("");
-  const [caseSensitive, setCaseSensitive] = useState(false);
-  const [pageText, setPageText] = useState<string[] | null>(null);
-  const [indexing, setIndexing] = useState<{ page: number; total: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const textCacheRef = useRef<Map<string, string[]>>(new Map());
-  const abortRef = useRef({ aborted: false });
-
-  // Reset when doc changes.
-  useEffect(() => {
-    setPageText(null);
-    setError(null);
-    setActiveIdx(0);
-    abortRef.current.aborted = true;
-    abortRef.current = { aborted: false };
-    if (!docId) return;
-    const cached = textCacheRef.current.get(docId);
-    if (cached) setPageText(cached);
-  }, [docId]);
-
-  // Extract text (lazy — kicks off on first search).
-  const extractText = useCallback(async () => {
-    if (pageText) return pageText;
-    if (!pdfDoc || !docId) {
-      setError("Open a document first.");
-      return null;
-    }
-    const cached = textCacheRef.current.get(docId);
-    if (cached) {
-      setPageText(cached);
-      return cached;
-    }
-    setError(null);
-    const doc = pdfDoc as { numPages: number; getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: Array<{ str?: string }> }> }> };
-    const n = doc.numPages || totalPages || 0;
-    if (!n) {
-      setError("No pages.");
-      return null;
-    }
-    setIndexing({ page: 0, total: n });
-    const out: string[] = new Array(n).fill("");
-    const local = abortRef.current;
-    try {
-      for (let i = 1; i <= n; i++) {
-        if (local.aborted) return null;
-        const p = await doc.getPage(i);
-        const tc = await p.getTextContent();
-        out[i - 1] = tc.items.map((it) => (it.str ?? "")).join(" ").replace(/\s+/g, " ").trim();
-        if (i % 5 === 0 || i === n) setIndexing({ page: i, total: n });
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Text extraction failed.");
-      setIndexing(null);
-      return null;
-    }
-    setIndexing(null);
-    textCacheRef.current.set(docId, out);
-    setPageText(out);
-    return out;
-  }, [pageText, pdfDoc, docId, totalPages]);
-
-  // Compute matches from current pageText + term + caseSensitive.
-  const hits = useMemo<SearchHit[]>(() => {
-    if (!pageText || !term.trim()) return [];
-    const needle = term;
-    const flags = caseSensitive ? "g" : "gi";
-    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    let re: RegExp;
-    try { re = new RegExp(escaped, flags); } catch { return []; }
-    const out: SearchHit[] = [];
-    for (let pi = 0; pi < pageText.length; pi++) {
-      const txt = pageText[pi];
-      if (!txt) continue;
-      let m: RegExpExecArray | null;
-      re.lastIndex = 0;
-      while ((m = re.exec(txt)) !== null) {
-        const start = m.index;
-        const end = start + m[0].length;
-        const before = txt.slice(Math.max(0, start - 40), start);
-        const after = txt.slice(end, Math.min(txt.length, end + 60));
-        out.push({
-          page: pi + 1,
-          index: start,
-          snippet: `${before}${m[0]}${after}`,
-          before,
-          match: m[0],
-          after,
-        });
-        if (m[0].length === 0) re.lastIndex++;
-        if (out.length > 5000) return out;
-      }
-    }
-    return out;
-  }, [pageText, term, caseSensitive]);
-
-  const hasNoText = pageText != null && pageText.every((t) => !t);
-
-  // Clamp active index.
-  useEffect(() => {
-    if (activeIdx >= hits.length) setActiveIdx(0);
-  }, [hits.length, activeIdx]);
-
-  const scrollToHit = useCallback((h: SearchHit | undefined) => {
-    if (!h) return;
-    const el = document.querySelector<HTMLElement>(`[data-page-index="${h.page - 1}"]`);
-    if (el) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
-      el.setAttribute("data-search-flash", "1");
-      window.setTimeout(() => el.removeAttribute("data-search-flash"), 900);
-    }
-  }, []);
-
-  const cycle = useCallback((delta: number) => {
-    if (!hits.length) return;
-    const next = (activeIdx + delta + hits.length) % hits.length;
-    setActiveIdx(next);
-    scrollToHit(hits[next]);
-  }, [hits, activeIdx, scrollToHit]);
-
-  const runSearch = useCallback(async () => {
-    setError(null);
-    setActiveIdx(0);
-    const txt = await extractText();
-    if (!txt || !term.trim()) return;
-    // hits will recompute; jump to first via microtask
-    setTimeout(() => {
-      const first = document.querySelector<HTMLElement>(`[data-page-index]`);
-      if (first) {
-        // scroll to first hit after render — use hits state via callback
-      }
-    }, 0);
-  }, [extractText, term]);
-
-  const onKey = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (!pageText) { void runSearch(); return; }
-      if (e.shiftKey) cycle(-1); else cycle(1);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault(); cycle(1);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault(); cycle(-1);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setTerm("");
-      (e.target as HTMLInputElement).blur();
-    }
-  }, [cycle, pageText, runSearch]);
-
-  // On first hit computed after runSearch, scroll to it.
-  const prevHitCountRef = useRef(0);
-  useEffect(() => {
-    if (hits.length && prevHitCountRef.current === 0) {
-      scrollToHit(hits[0]);
-    }
-    prevHitCountRef.current = hits.length;
-  }, [hits, scrollToHit]);
-
-  return (
-    <div className="border-b border-border bg-surface-1/60 px-3 py-2 space-y-2">
-      <div className="flex items-center gap-1.5">
-        <Search className="h-3.5 w-3.5 text-text-muted" />
-        <input
-          ref={inputRef}
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="Find in document…"
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-          aria-label="Basic text search"
-        />
-        <span className="text-[10.5px] tabular-nums text-text-muted">
-          {term.trim() && pageText
-            ? hits.length
-              ? `${activeIdx + 1} of ${hits.length}`
-              : "0 of 0"
-            : ""}
-        </span>
-        <button
-          type="button"
-          onClick={() => cycle(-1)}
-          disabled={!hits.length}
-          aria-label="Previous match"
-          className="rounded p-0.5 text-text-muted hover:bg-surface-2 hover:text-foreground disabled:opacity-40"
-        >‹</button>
-        <button
-          type="button"
-          onClick={() => cycle(1)}
-          disabled={!hits.length}
-          aria-label="Next match"
-          className="rounded p-0.5 text-text-muted hover:bg-surface-2 hover:text-foreground disabled:opacity-40"
-        >›</button>
-      </div>
-      <div className="flex items-center gap-2 text-[10.5px] text-text-muted">
-        <label className="inline-flex items-center gap-1 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={caseSensitive}
-            onChange={(e) => setCaseSensitive(e.target.checked)}
-            className="h-3 w-3 accent-vault"
-          />
-          Case-sensitive
-        </label>
-        <span>·</span>
-        <span>Free · on-device · literal text</span>
-      </div>
-
-      {indexing && (
-        <div className="flex items-center gap-1.5 text-[10.5px] text-text-muted">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Indexing page {indexing.page} of {indexing.total}…
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-[10.5px] text-amber-500/90">
-          {error}
-        </div>
-      )}
-
-      {hasNoText && !error && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-[10.5px] text-amber-500/90">
-          No searchable text — run Make Searchable (OCR) first.
-        </div>
-      )}
-
-      {hits.length > 0 && (
-        <div className="max-h-32 overflow-y-auto rounded-md border border-border/60 bg-surface-1">
-          {hits.slice(0, 50).map((h, i) => {
-            const on = i === activeIdx;
-            return (
-              <button
-                key={`${h.page}-${h.index}`}
-                type="button"
-                onClick={() => { setActiveIdx(i); scrollToHit(h); }}
-                className={`block w-full text-left px-2 py-1 text-[11px] leading-snug border-b border-border/40 last:border-b-0 ${
-                  on ? "bg-vault/15 text-foreground" : "text-text-2 hover:bg-surface-2"
-                }`}
-              >
-                <span className="mr-1 font-mono text-[10px] text-text-muted">p{h.page}</span>
-                <span className="text-text-muted">…{h.before}</span>
-                <mark className="bg-vault/40 text-foreground rounded-sm px-0.5">{h.match}</mark>
-                <span className="text-text-muted">{h.after}…</span>
-              </button>
-            );
-          })}
-          {hits.length > 50 && (
-            <div className="px-2 py-1 text-[10.5px] text-text-muted">
-              Showing first 50 of {hits.length}. Narrow your search to see the rest.
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="pt-1 border-t border-border/60 space-y-1.5">
-        <div className="text-[10px] uppercase tracking-[0.12em] text-text-muted">AI (Pro)</div>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              if (!term.trim()) return;
-              if (!isPro) { onProGate("Search by meaning (AI)"); return; }
-              onSemanticSearch(term);
-            }}
-            className="flex items-center justify-center gap-1 rounded-md border border-vault/40 bg-vault/10 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-vault/20 disabled:opacity-50"
-            disabled={!term.trim()}
-            title="Semantic search — finds passages by meaning, not just literal words"
-          >
-            {!isPro && <Lock className="h-3 w-3 text-vault" />}
-            Search by meaning
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!term.trim()) return;
-              if (!isPro) { onProGate("Ask about this document (AI)"); return; }
-              onAskDocument(term);
-            }}
-            className="flex items-center justify-center gap-1 rounded-md border border-vault/40 bg-vault/10 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-vault/20 disabled:opacity-50"
-            disabled={!term.trim()}
-            title="Ask a question — the assistant answers using on-device retrieval"
-          >
-            {!isPro && <Lock className="h-3 w-3 text-vault" />}
-            Ask about document
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
