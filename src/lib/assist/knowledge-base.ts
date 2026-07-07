@@ -789,12 +789,7 @@ export const ASSIST_KNOWLEDGE_BASE: AssistToolEntry[] = RAW_ENTRIES.map((e) => {
         ? DEFAULT_PRICING_MIXED
         : DEFAULT_PRICING_FREE;
   return {
-    runsOffline: true,
-    requiresNetwork: e.requiresNetwork ?? "never",
-    privacy: e.privacy ?? DEFAULT_PRIVACY,
-    pricing: e.pricing ?? baseline,
     ...e,
-    // ensure defaults don't get clobbered by spread from partial-defined entries above
     pricing: e.pricing ?? baseline,
     privacy: e.privacy ?? DEFAULT_PRIVACY,
     runsOffline: e.runsOffline ?? true,
