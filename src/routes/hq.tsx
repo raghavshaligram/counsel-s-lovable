@@ -30,6 +30,11 @@ import {
   type HqUserRow,
   type HqSubsSnapshot,
 } from "@/lib/hq.functions";
+import {
+  hqListSupportRequests,
+  hqUpdateSupportRequestStatus,
+  type SupportRow,
+} from "@/lib/support.functions";
 
 export const Route = createFileRoute("/hq")({
   ssr: false,
@@ -43,7 +48,7 @@ export const Route = createFileRoute("/hq")({
   component: HqPage,
 });
 
-type Tab = "users" | "subs" | "offers" | "notifs";
+type Tab = "users" | "subs" | "offers" | "notifs" | "support";
 
 function HqPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -104,6 +109,7 @@ function HqPage() {
             ["subs", "Subscriptions"],
             ["offers", "Offers"],
             ["notifs", "Notifications"],
+            ["support", "Support"],
           ] as Array<[Tab, string]>
         ).map(([id, label]) => (
           <button
@@ -125,6 +131,7 @@ function HqPage() {
         {tab === "subs" && <SubsTab />}
         {tab === "offers" && <OffersTab />}
         {tab === "notifs" && <NotifsTab />}
+        {tab === "support" && <SupportTab />}
       </main>
     </div>
   );
