@@ -1245,7 +1245,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     return set;
   }, [editorState?.doc?.annotations]);
 
-  const runScan = useCallback(async () => {
+  const runScan = useCallback(async (mode: "quick" | "full" = "full") => {
     if (!file || !docId) return;
     const ownerFile = file;
     const ownerDocId = docId;
@@ -1267,50 +1267,75 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         await importChunk(() => import("@/lib/workers/detect-pii-client"));
       const { runAsJob } = await import("@/lib/jobs/registry");
       const streamingDetections: import("@/lib/pdf/detect-pii").Detection[] = [];
+      // Live timing: recalibrate estimate every ~500 pages using real per-page
+      // ms observed from the current scan so the ETA converges on this device.
+      const scanStart = performance.now();
+      let lastRecalibPage = 0;
+      let currentPass: "regex" | "ner" | "ocr" = "regex";
       const { jobId, promise } = runAsJob(
         { kind: "detect-pii", docId: ownerDocId, docLabel: ownerFile.name },
         async ({ signal, onProgress }) => {
           await Promise.resolve();
-          updateScanProgress(ownerDocId, "Reading text layer…");
+          updateScanProgress(ownerDocId, "Reading document text…");
           const result = await detectPiiInPdfViaWorker(
             ownerFile,
             1.5,
             (p) => {
               const total = p.totalPages || 1;
+              currentPass = p.pass ?? "regex";
               const step = p.stage === "ocr" ? `OCR ${p.page}/${total}` : `${p.pass ?? "text"} ${p.page}/${total}`;
               onProgress({
                 fraction: total ? p.page / total : 0,
                 step,
               });
               const found = p.foundSoFar ?? streamingDetections.length;
-              updateScanProgress(ownerDocId,
+              // Recalibrate ETA every ~500 pages using observed time.
+              let etaSuffix = "";
+              if (p.page - lastRecalibPage >= 500 && p.page > 0) {
+                lastRecalibPage = p.page;
+                const elapsed = performance.now() - scanStart;
+                const perPage = elapsed / p.page;
+                const remainingMs = perPage * Math.max(0, total - p.page);
+                etaSuffix = ` · ETA ${formatEstimate(remainingMs)}`;
+              }
+              // Narrated phase-by-phase status (plain language).
+              const msg =
                 p.stage === "ocr"
-                  ? `OCR ${p.page}/${p.totalPages} · ${found} findings`
+                  ? `Reading scanned pages with OCR — page ${p.page} of ${total} · ${found} found${etaSuffix}`
                   : p.pass === "ner"
-                    ? `Names ${p.page}/${p.totalPages} · ${found} findings`
-                    : `Scanning ${p.page}/${p.totalPages} · ${found} findings`,
-              );
+                    ? `Looking for names and organizations — page ${p.page} of ${total} · ${found} recognized${etaSuffix}`
+                    : `Checking for SSNs, cards, emails, phone numbers — page ${p.page} of ${total} · ${found} found${etaSuffix}`;
+              updateScanProgress(ownerDocId, msg);
             },
             signal,
             (dets) => {
               streamingDetections.push(...dets);
               appendScanFindings(ownerDocId, dets);
             },
+            { skipNer: mode === "quick" },
           );
-          updateScanProgress(ownerDocId, "Scanning form fields, comments, metadata…");
+          updateScanProgress(ownerDocId, "Checking form fields, comments, and hidden document info…");
           let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
           try {
             sideFindings = (await detectPiiInSideChannelsViaWorker(
               ownerFile,
               signal,
             )) as typeof sideFindings;
+            if (sideFindings.length > 0) {
+              updateScanProgress(
+                ownerDocId,
+                `Checking form fields, comments, and hidden document info… (${sideFindings.length} found)`,
+              );
+            }
           } catch (e) {
             console.warn("[auto-detect] side-channel scan failed", e);
           }
+          void currentPass;
           return { ...result, detections: [...result.detections, ...sideFindings] };
         },
       );
       beginScan({ docId: ownerDocId, docLabel: ownerFile.name, jobId });
+
 
       const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await promise;
       const merged = detections;
