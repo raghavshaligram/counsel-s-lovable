@@ -2262,58 +2262,45 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               toast.loading(`Burning redactions ${done}/${total}…`, { id: tid });
             },
           });
-          let outBytes = rasterResult.bytes;
-
-          onProgress({ fraction: 0.6, step: "Scrubbing side-channels…" });
-          toast.loading("Scrubbing form fields, comments, metadata…", { id: tid });
-          const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
-          outBytes = await sanitizePdfBytes(outBytes);
-
-          if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-          onProgress({ fraction: 0.75, step: "Verifying removal…" });
-          toast.loading("Verifying removal…", { id: tid });
-          const { verifyRedactionRemoval } = await importChunk(() => import("@/lib/editor/verify-redaction"));
-          let vresult = await verifyRedactionRemoval(outBytes, targets, {
+          // STAGE 3 — single commit path.
+          // Sanitize + verify + raster-fallback + re-verify now go through the
+          // ONE consolidated `enforceRedactionGate` chokepoint (see
+          // src/lib/editor/redaction-gate.ts). No divergent inline copy of the
+          // verification pipeline lives here anymore — a leak throws inside
+          // the gate and the download never fires.
+          const { enforceRedactionGate } = await importChunk(() => import("@/lib/editor/redaction-gate"));
+          const gated = await enforceRedactionGate(rasterResult.bytes, targets, {
             rasterizedPages: rasterResult.rasterizedPages,
+            signal,
+            onProgress: (step) => {
+              if (step === "sanitize") {
+                onProgress({ fraction: 0.6, step: "Scrubbing side-channels…" });
+                toast.loading("Scrubbing form fields, comments, metadata…", { id: tid });
+              } else if (step === "verify") {
+                onProgress({ fraction: 0.75, step: "Verifying removal…" });
+                toast.loading("Verifying removal…", { id: tid });
+              } else if (step === "raster-fallback") {
+                onProgress({ fraction: 0.82, step: "Re-burning leaked regions…" });
+                toast.loading("Re-burning leaked regions…", { id: tid });
+              } else if (step === "verify-again") {
+                onProgress({ fraction: 0.86, step: "Re-verifying removal…" });
+                toast.loading("Re-verifying removal…", { id: tid });
+              }
+            },
           });
+          let outBytes = gated.bytes;
+          const gatedRasterizedPages = gated.rasterizedPages;
+          const vresult = gated.verify;
 
-          // Safety net: re-rasterize leaks + re-verify.
-          if (!vresult.ok) {
-            const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
-            for (const leak of vresult.leaks) {
-              if (leak.vector !== "page") continue;
-              if (!leak.rect || leak.page === undefined) continue;
-              const arr = leakedPages.get(leak.page) ?? [];
-              const pageRects = pageRedactions.get(leak.page) ?? [leak.rect];
-              arr.push(...pageRects);
-              leakedPages.set(leak.page, arr);
-            }
-            if (leakedPages.size > 0) {
-              const forced = await rasterizeRedactedPages(outBytes, leakedPages, { mode: "always", scale: 2.5, signal });
-              outBytes = forced.bytes;
-              rasterResult.rasterizedPages.push(
-                ...forced.rasterizedPages.filter((p) => !rasterResult.rasterizedPages.includes(p)),
-              );
-              vresult = await verifyRedactionRemoval(outBytes, targets, {
-                rasterizedPages: rasterResult.rasterizedPages,
-              });
-            }
-            const sideLeaks = vresult.leaks.filter((l) => l.vector !== "page");
-            if (sideLeaks.length > 0) {
-              const summary = sideLeaks.slice(0, 3).map((l) => `${l.vector}: ${l.text}`).join("; ");
-              throw new Error(
-                `${sideLeaks.length} redacted value${sideLeaks.length === 1 ? "" : "s"} still recoverable from non-page vectors — refusing to download. ${summary}`,
-              );
-            }
-          }
-
-          // Pixel-level re-OCR check for burned pages.
-          if (rasterResult.rasterizedPages.length > 0) {
+          // Pixel-level re-OCR check for burned pages. Outside the gate's
+          // scope: the gate proves NO extractable text remains; this proves
+          // the raster pixels are unreadable to OCR too.
+          if (gatedRasterizedPages.length > 0) {
             onProgress({ fraction: 0.9, step: "Re-OCR check on burned pages…" });
             toast.loading("Re-OCR check on burned pages…", { id: tid });
             const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
             const pixelTargets = targets.filter((t) => !!t.rect).map((t) => ({ page: t.page, rect: t.rect! }));
-            const pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(rasterResult.rasterizedPages));
+            const pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(gatedRasterizedPages));
             if (!pixelResult.ok) {
               throw new Error(
                 `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still show recognizable text after pixel burn — refusing to download.`,
@@ -2321,7 +2308,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             }
           }
 
-          return { bytes: outBytes, rasterizedPages: rasterResult.rasterizedPages, verify: vresult };
+          return { bytes: outBytes, rasterizedPages: gatedRasterizedPages, verify: vresult };
         },
       );
       const jobOutput = await jobRun.promise;
@@ -2508,28 +2495,13 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </p>
           )}
           {staged.total > 0 && (
-            <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
-              <div className="min-w-0">
-                <div className="text-text-2">
-                  Staged from AI scan
-                  <span className="ml-1.5 text-[10.5px] text-text-muted">(not yet committed)</span>
-                </div>
-                <div className="mt-0.5 font-mono text-[10.5px] tabular-nums text-text-muted">
-                  {staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected
-                </div>
+            <div className="mt-2.5 border-t border-border/60 pt-2">
+              <div className="text-text-2">
+                Staged from AI scan
+                <span className="ml-1.5 text-[10.5px] text-text-muted">
+                  ({staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected — commits with the single Redact & verify button below)
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => staged.commit?.()}
-                disabled={!staged.commit || staged.selected === 0}
-                className={cn(
-                  "shrink-0 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90",
-                  (!staged.commit || staged.selected === 0) && "cursor-not-allowed opacity-50",
-                )}
-                title="Move selected AI findings into the committed ledger below"
-              >
-                Commit staged
-              </button>
             </div>
           )}
         </div>
@@ -2633,7 +2605,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           )}
         >
           <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {busy ? "Working…" : "Redact, export & verify"}
+          {busy ? "Working…" : `Redact & verify${totalBoxes > 0 ? ` (${totalBoxes.toLocaleString()} item${totalBoxes === 1 ? "" : "s"})` : ""}`}
         </button>
         <p className="mt-1.5 text-[10.5px] text-text-muted">
           Exports a redacted PDF, then re-parses the exported file and confirms no
