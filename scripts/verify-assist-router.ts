@@ -124,6 +124,21 @@ const CASES: Case[] = [
   // Regression
   { name: "regression: what is redact → redact help", input: "what is redact",
     expect: (c) => c.kind === "tool" && c.entry.id === "redact" && c.mode === "help" ? null : `got ${c.kind}` },
+
+  // v2 — smart clarify: PII nouns without a lane verb should ASK, never
+  // guess. This is the "count ssn → Court Readiness" bug fix.
+  { name: "clarify-ask: count ssn", input: "count ssn",
+    expect: (c) => c.kind === "clarify-ask" && c.choices.some((x) => x.lane === "action") ? null : `got ${c.kind}` },
+  { name: "clarify-ask: count the social security numbers",
+    input: "count the social security numbers",
+    expect: (c) => c.kind === "clarify-ask" ? null : `got ${c.kind}` },
+  { name: "clarify-ask: phone numbers", input: "phone numbers",
+    expect: (c) => c.kind === "clarify-ask" ? null : `got ${c.kind}` },
+  { name: "PII with explicit redact still routes to redact",
+    input: "redact SSNs",
+    expect: (c) => c.kind === "tool" && c.entry.id === "redact" ? null : `got ${c.kind}` },
+  { name: "unhandled verb → clarify-ask", input: "analyze this contract",
+    expect: (c) => c.kind === "clarify-ask" ? null : `got ${c.kind}` },
 ];
 
 let passed = 0, failed = 0;
