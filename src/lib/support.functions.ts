@@ -193,7 +193,7 @@ export const hqListSupportRequests = createServerFn({ method: "POST" })
     const { data, error } = await supabaseAdmin
       .from("support_requests")
       .select(
-        "id, type, title, message, name, email, plan, page, user_agent, status, user_id, created_at",
+        "id, type, category, title, message, name, email, plan, page, user_agent, status, user_id, created_at",
       )
       .order("created_at", { ascending: false })
       .limit(500);
