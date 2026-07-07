@@ -40,6 +40,10 @@ const cache = new Map<
   { dim: number; vectors: Float32Array; chunks: ChunkIn[] }
 >();
 
+// In-flight index runs — indexed by request id so the main thread can abort.
+const runningIndex = new Set<string>();
+const abortedIndex = new Set<string>();
+
 function post(msg: object, transfer: Transferable[] = []) {
   ctx.postMessage(msg, transfer);
 }
@@ -48,6 +52,7 @@ function debug(line: string, data?: unknown) {
   const suffix = data === undefined ? "" : ` ${JSON.stringify(data)}`;
   post({ kind: "debug", line: `[discovery-worker] ${line}${suffix}` });
 }
+
 
 async function getExtractor(): Promise<Extractor> {
   if (extractorPromise) return extractorPromise;

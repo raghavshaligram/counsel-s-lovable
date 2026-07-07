@@ -318,6 +318,54 @@ export type Database = {
         }
         Relationships: []
       }
+      support_requests: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          message: string
+          name: string | null
+          page: string | null
+          plan: string | null
+          status: string
+          title: string | null
+          type: string
+          updated_at: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          message: string
+          name?: string | null
+          page?: string | null
+          plan?: string | null
+          status?: string
+          title?: string | null
+          type: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          message?: string
+          name?: string | null
+          page?: string | null
+          plan?: string | null
+          status?: string
+          title?: string | null
+          type?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       waitlist: {
         Row: {
           created_at: string
