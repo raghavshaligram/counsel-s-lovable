@@ -478,20 +478,7 @@ export function AgentPanel({
     [isPro, onClose, openTool, showEntryHelp, showTopicAnswer],
   );
 
-        if (seq !== querySeqRef.current || abortedRef.current) return;
-        setSteps([
-          echo,
-          {
-            kind: "error",
-            id: runId,
-            title: "Assistant error",
-            body: err instanceof Error ? err.message : String(err),
-          },
-        ]);
-      }
-    },
-    [isPro, onClose, openTool, showEntryHelp, showTopicAnswer],
-  );
+
 
 
 
