@@ -62,7 +62,12 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
     // spawn another nested worker bypasses these shims in that nested global
     // and crashes on browsers without `Map#getOrInsertComputed`. Fake-worker
     // mode stays inside this redaction worker, so the shimmed APIs are present.
-    pdfjs.GlobalWorkerOptions.workerSrc = undefined as unknown as string;
+    const [workerUrlMod, workerModule] = await Promise.all([
+      import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs"),
+    ]);
+    (globalThis as typeof globalThis & { pdfjsWorker?: unknown }).pdfjsWorker = workerModule;
+    pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
   } else {
     const workerUrlMod = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
