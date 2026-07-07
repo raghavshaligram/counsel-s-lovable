@@ -149,6 +149,8 @@ export interface AgentPanelProps {
   file: File | null;
   totalPages: number;
   openTool: (id: string, opts?: { focusSection?: string }) => void;
+  /** Jump the editor canvas to a 1-based page number. */
+  onJumpToPage?: (page: number) => void;
   /** Dispatches a query into the Pre-Discovery / AI Assist panel. */
   onAnswerQuery: (query: string) => void;
 }
