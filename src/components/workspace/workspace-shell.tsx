@@ -4562,7 +4562,7 @@ function EditorPages({
   // ~65M comparisons per render pass, on every dispatch. Bucketing turns
   // that into a single 13k pass + O(1) lookup per page.
   const annosByPage = useMemo(() => {
-    const m = new Map<number, import("@/lib/editor/types").Anno[]>();
+    const m = new Map<number, Anno[]>();
     for (const a of state.doc?.annotations ?? []) {
       const arr = m.get(a.page);
       if (arr) arr.push(a);
@@ -4570,7 +4570,7 @@ function EditorPages({
     }
     return m;
   }, [state.doc?.annotations]);
-  const EMPTY_ANNOS = useMemo<import("@/lib/editor/types").Anno[]>(() => [], []);
+  const EMPTY_ANNOS = useMemo<Anno[]>(() => [], []);
 
   if (!state.doc) return null;
 
