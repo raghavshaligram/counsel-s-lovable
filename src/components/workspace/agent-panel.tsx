@@ -1448,6 +1448,9 @@ function StepCard({ step, onDismiss }: { step: Step; onDismiss: () => void }) {
         </div>
       );
 
+    case "find-results":
+      return <FindResultsCard step={step} />;
+
     case "error":
       return (
         <div className="rounded-lg border border-red-500/40 bg-red-500/[0.06] p-2.5">
