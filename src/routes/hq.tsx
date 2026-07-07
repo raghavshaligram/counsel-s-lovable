@@ -984,7 +984,7 @@ function SupportTab() {
             ))}
             {rows && filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-text-2">
+                <td colSpan={7} className="px-3 py-6 text-center text-text-2">
                   No support requests match these filters
                 </td>
               </tr>
