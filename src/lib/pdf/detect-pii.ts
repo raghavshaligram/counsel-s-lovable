@@ -595,7 +595,9 @@ export async function detectPiiInPdf(
   const hwCores = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency || 4) : 4;
   const NER_BATCH_ITEMS = hwCores <= 4 ? 32 : 48;
   const allNerItems: Array<{ page: number; item: PageNerItem }> = [];
-  for (const w of pageNerWork) for (const it of w.items) allNerItems.push({ page: w.page, item: it });
+  if (!opts.skipNer) {
+    for (const w of pageNerWork) for (const it of w.items) allNerItems.push({ page: w.page, item: it });
+  }
 
   let lastReportedPage = 0;
   for (let b = 0; b < allNerItems.length; b += NER_BATCH_ITEMS) {
