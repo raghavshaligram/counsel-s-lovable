@@ -26,7 +26,7 @@ export function toTransferable(src: Uint8Array, opts?: { steal?: boolean }): Arr
       copy.set(src);
       return copy.buffer;
     }
-    return src.buffer;
+    return src.buffer as ArrayBuffer;
   }
   const copy = new Uint8Array(src.byteLength);
   copy.set(src);
