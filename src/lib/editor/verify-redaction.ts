@@ -167,7 +167,7 @@ async function verifyPageGeometry(
 // Side-channel scan: form fields, annotations, OCGs, attachments
 // ---------------------------------------------------------------------------
 
-async function verifySideChannelVectors(
+export async function verifySideChannelVectors(
   bytes: Uint8Array,
   sensitiveStrings: string[],
 ): Promise<VerifyLeak[]> {
