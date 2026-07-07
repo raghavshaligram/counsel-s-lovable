@@ -1310,6 +1310,8 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<string>("all");
+  const [committingCat, setCommittingCat] = useState<string | null>(null);
+
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const [capability, setCapability] = useState<DeviceCapability | null>(null);
   const [activeScanMode, setActiveScanMode] = useState<"quick" | "full" | null>(null);
