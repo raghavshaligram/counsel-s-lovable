@@ -334,6 +334,11 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
             <p className="text-[10.5px] text-text-muted">
               Preview: <span className="font-mono text-foreground">{batesPreview}</span> · sequential on every page. Full options in Document Settings.
             </p>
+            {batesAlreadyStamped ? (
+              <p className="rounded-md border border-vault/30 bg-accent-soft px-2 py-1.5 text-[10.5px] text-vault">
+                Bates already stamped on this document with these settings — export will skip stamping. Change any Bates setting to re-stamp.
+              </p>
+            ) : null}
           </OptionRow>
 
 
