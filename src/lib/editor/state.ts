@@ -38,6 +38,7 @@ export type State = {
 
 export type Action =
   | { type: "LOAD"; doc: EditorDoc }
+  | { type: "SET_SRC_BYTES"; bytes: Uint8Array }
   | { type: "SET_PAGE"; n: number }
   | { type: "SET_TOOL"; t: Tool }
   | { type: "SET_COLOR"; c: RGB }
