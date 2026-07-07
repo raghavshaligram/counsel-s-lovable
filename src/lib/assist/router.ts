@@ -305,7 +305,10 @@ export async function classifyAssistQuery(
   const virtualQuery = followUp && ctx?.lastQuery ? `${ctx.lastQuery} ${raw}` : raw;
 
   // 4. Fuzzy match — runs BEFORE embeddings, on the *original* raw text
-  const fuzzy = fuzzyToolMatch(raw);
+  // 4. Fuzzy match — runs BEFORE embeddings, on the *original* raw text.
+  //    Skip when this is a follow-up so common words in short replies
+  //    ("more info", "adjust") don't hijack the sticky subject.
+  const fuzzy = followUp ? [] : fuzzyToolMatch(raw);
   const CONFIDENT = 0.88;
   if (fuzzy.length > 0) {
     const top = fuzzy[0];
