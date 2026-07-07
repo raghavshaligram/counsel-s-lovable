@@ -23,6 +23,7 @@ import {
   GripVertical,
   X,
   Files as FilesIcon,
+  FileStack,
   KeyRound,
   Eye,
   EyeOff,
