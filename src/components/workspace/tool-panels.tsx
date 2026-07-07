@@ -1257,6 +1257,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     if (!file || !docId) return;
     const ownerFile = file;
     const ownerDocId = docId;
+    setActiveScanMode(mode);
     setFindings(null);
     setUsedOcr(false);
     setScannedPages([]);
