@@ -1780,18 +1780,68 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       </p>
 
 
-      <button
-        type="button"
-        onClick={() => void runScan()}
-        disabled={!file || scanning}
-        className={cn(
-          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2.5 py-1.5 text-[12px] font-medium text-vault transition-colors hover:bg-vault/15",
-          (!file || scanning) && "cursor-not-allowed opacity-60",
-        )}
-      >
-        <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
-        {scanning ? progress || "Scanning…" : findings ? "Re-scan document" : "Scan for sensitive info"}
-      </button>
+      {scanning ? (
+        <div className="rounded-md border border-vault/40 bg-vault/10 px-2.5 py-2 text-[11.5px] text-vault">
+          <div className="flex items-center gap-1.5 font-medium">
+            <Sparkles className="h-3.5 w-3.5 animate-pulse" strokeWidth={2.5} />
+            {progress || "Scanning…"}
+          </div>
+          {capability && activeScanMode === "full" && capability.tier !== "fast" && (
+            <p className="mt-1.5 text-[10.5px] leading-snug text-text-2">
+              The names/organizations step runs slower on your device because
+              GPU acceleration isn't available in this browser. Everything
+              still stays fully private and on-device — nothing is sent to a
+              server.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {capability && pageCount > 0 && (
+            <p className="text-[10.5px] text-text-muted">
+              This document has {pageCount.toLocaleString()} page{pageCount === 1 ? "" : "s"}.
+              {" "}Estimated on your device
+              {capability.tier !== "fast" ? ` (${tierLabel(capability.tier).toLowerCase()})` : ""}:
+              {" "}Quick {formatEstimate(estimateScan(capability, pageCount, "quick"))}
+              {" · "}Full {formatEstimate(estimateScan(capability, pageCount, "full"))}.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => void runScan("quick")}
+              disabled={!file}
+              className={cn(
+                "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] font-medium text-text-1 transition-colors hover:bg-surface-2/70",
+                !file && "cursor-not-allowed opacity-60",
+              )}
+              title="Structured data + hidden document info only. Fast."
+            >
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Quick scan
+            </button>
+            <button
+              type="button"
+              onClick={() => void runScan("full")}
+              disabled={!file}
+              className={cn(
+                "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2 py-1.5 text-[11.5px] font-medium text-vault transition-colors hover:bg-vault/15",
+                !file && "cursor-not-allowed opacity-60",
+              )}
+              title="Also finds unmarked names and organizations. Slower."
+            >
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Full scan
+            </button>
+          </div>
+          <p className="text-[10px] leading-snug text-text-muted">
+            <strong className="text-text-2">Quick</strong> finds SSNs, cards, emails, phones, form fields, and hidden metadata.
+            {" "}
+            <strong className="text-text-2">Full</strong> adds on-device name/organization recognition.
+            {" "}You can keep working while it runs.
+          </p>
+        </div>
+      )}
 
       {findings && (
         <div className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
