@@ -1161,6 +1161,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
+  const [capability, setCapability] = useState<DeviceCapability | null>(null);
+  const [activeScanMode, setActiveScanMode] = useState<"quick" | "full" | null>(null);
+  const pageCount = editorState?.doc?.pages.length ?? 0;
+  useEffect(() => {
+    let alive = true;
+    getDeviceCapability().then((c) => { if (alive) setCapability(c); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const docId = ctxDocId ?? (file ? `${file.name}:${file.size}` : "");
   const scanRecord = usePiiScanResultsStore((s) => (docId ? s.scans[docId] : undefined));
   const beginScan = usePiiScanResultsStore((s) => s.beginScan);
