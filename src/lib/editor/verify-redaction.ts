@@ -185,21 +185,30 @@ export async function verifySideChannelVectors(
   bytes: Uint8Array,
   sensitiveStrings: string[],
 ): Promise<VerifyLeak[]> {
-  const leaks: VerifyLeak[] = [];
   let doc: PDFDocument;
   try {
     doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   } catch {
-    return leaks; // can't introspect — page check still ran above
+    return [];
   }
+  return verifySideChannelVectorsWithDoc(doc, sensitiveStrings);
+}
+
+/** Same as `verifySideChannelVectors` but reuses an already-parsed
+ *  PDFDocument and walks `enumerateIndirectObjects` exactly ONCE.
+ *  The previous impl walked it three times (form/OCG/attachments),
+ *  which is O(n) work triplicated on huge docs. */
+export function verifySideChannelVectorsWithDoc(
+  doc: PDFDocument,
+  sensitiveStrings: string[],
+): VerifyLeak[] {
+  const leaks: VerifyLeak[] = [];
   const ctx = doc.context;
   const catalog = doc.catalog;
 
   const sensitiveHit = (s: string | undefined | null): string | null => {
     if (!s) return null;
     if (sensitiveStrings.length === 0) {
-      // No specific strings supplied — flag presence only (callers can
-      // still pass these as leaks to refuse export).
       return s.length > 0 ? s : null;
     }
     const hay = s.toLowerCase();
@@ -209,7 +218,7 @@ export async function verifySideChannelVectors(
     return null;
   };
 
-  // -- Form-field values (AcroForm tree + any orphaned /FT dict) -------
+  // -- AcroForm tree (structured walk) --------------------------------
   const acroForm = catalog.lookupMaybe(PDFName.of("AcroForm"), PDFDict);
   if (acroForm) {
     const fieldsArr = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
@@ -217,9 +226,6 @@ export async function verifySideChannelVectors(
       walkFormTree(ctx, fieldsArr.asArray(), (field, ref) => {
         const v = extractText(field.get(PDFName.of("V")));
         if (v) {
-          // If sensitive strings supplied, only flag matches; otherwise
-          // flag every non-empty form value — they should have been
-          // cleared by sanitize/redaction.
           const hit = sensitiveHit(v);
           if (hit) {
             leaks.push({
@@ -234,22 +240,8 @@ export async function verifySideChannelVectors(
       });
     }
   }
-  // Orphan field dicts (descendants not in /AcroForm /Fields).
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    if (!obj.has(PDFName.of("FT")) || !obj.has(PDFName.of("V"))) continue;
-    const v = extractText(obj.get(PDFName.of("V")));
-    const hit = sensitiveHit(v);
-    if (hit) {
-      leaks.push({
-        vector: "form-field",
-        text: `Orphan form field: "${truncate(v)}" (matched "${truncate(hit)}")`,
-        ref: refStr(ref),
-      });
-    }
-  }
 
-  // -- Annotation text on every page ----------------------------------
+  // -- Annotation text (per-page walk, no full-heap scan) --------------
   for (let pageIdx = 0; pageIdx < doc.getPageCount(); pageIdx++) {
     const page = doc.getPage(pageIdx);
     const annotsArr = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
@@ -272,53 +264,60 @@ export async function verifySideChannelVectors(
     }
   }
 
-  // -- Hidden layer (OCG) content -------------------------------------
-  if (catalog.has(PDFName.of("OCProperties"))) {
-    // Presence of OCProperties means optional content layers exist.
-    // Scan every XObject/annotation gated by /OC for the sensitive
-    // strings — any hit means redacted content is hiding in a layer.
-    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-      if (obj instanceof PDFDict && obj.has(PDFName.of("OC"))) {
-        if (sensitiveStrings.length === 0) {
-          leaks.push({
-            vector: "hidden-layer",
-            text: "Optional-content object remains in document",
-            ref: refStr(ref),
-          });
-        }
-        // We can't decode arbitrary content streams cheaply here; the
-        // export pipeline should have stripped OCG-gated content during
-        // sanitize. Presence alone is reported above.
-      }
-    }
-  }
-
-  // -- Embedded file attachments --------------------------------------
+  // -- Attachments discoverable from catalog Names --------------------
   const names = catalog.lookupMaybe(PDFName.of("Names"), PDFDict);
   if (names && names.has(PDFName.of("EmbeddedFiles"))) {
     leaks.push({ vector: "attachment", text: "Catalog /Names /EmbeddedFiles tree present" });
   }
+
+  const hasOCG = catalog.has(PDFName.of("OCProperties"));
+
+  // -- SINGLE enumerateIndirectObjects walk: orphan form fields,
+  //    hidden-layer objects, filespecs, embedded file streams.
+  //    Previously three separate walks over the entire object graph.
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const type = nameStr(obj.get(PDFName.of("Type")));
-    if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
-      const fname = extractText(obj.get(PDFName.of("F"))) || extractText(obj.get(PDFName.of("UF")));
-      leaks.push({
-        vector: "attachment",
-        text: `Embedded file present${fname ? ` (${truncate(fname)})` : ""}`,
-        ref: refStr(ref),
-      });
+    if (obj instanceof PDFDict) {
+      // Orphan form field with /FT + /V outside the AcroForm /Fields tree.
+      if (obj.has(PDFName.of("FT")) && obj.has(PDFName.of("V"))) {
+        const v = extractText(obj.get(PDFName.of("V")));
+        const hit = sensitiveHit(v);
+        if (hit) {
+          leaks.push({
+            vector: "form-field",
+            text: `Orphan form field: "${truncate(v)}" (matched "${truncate(hit)}")`,
+            ref: refStr(ref),
+          });
+        }
+      }
+      // Optional-content gated object.
+      if (hasOCG && obj.has(PDFName.of("OC")) && sensitiveStrings.length === 0) {
+        leaks.push({
+          vector: "hidden-layer",
+          text: "Optional-content object remains in document",
+          ref: refStr(ref),
+        });
+      }
+      // Filespec / embedded-file dict.
+      const type = nameStr(obj.get(PDFName.of("Type")));
+      if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
+        const fname = extractText(obj.get(PDFName.of("F"))) || extractText(obj.get(PDFName.of("UF")));
+        leaks.push({
+          vector: "attachment",
+          text: `Embedded file present${fname ? ` (${truncate(fname)})` : ""}`,
+          ref: refStr(ref),
+        });
+      }
+    } else if (obj instanceof PDFStream) {
+      const d = obj.dict;
+      if (d instanceof PDFDict && nameStr(d.get(PDFName.of("Subtype"))) === "/EmbeddedFile") {
+        leaks.push({ vector: "attachment", text: "Embedded-file stream present", ref: refStr(ref) });
+      }
     }
   }
-  // Stream objects whose /Subtype is /EmbeddedFile carry the bytes.
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFStream)) continue;
-    const d = obj.dict;
-    if (!(d instanceof PDFDict)) continue;
-    if (nameStr(d.get(PDFName.of("Subtype"))) === "/EmbeddedFile") {
-      leaks.push({ vector: "attachment", text: "Embedded-file stream present", ref: refStr(ref) });
-    }
-  }
+
+  return leaks;
+}
+
 
   return leaks;
 }
