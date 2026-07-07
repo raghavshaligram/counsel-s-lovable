@@ -116,12 +116,19 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       }
 
       if (batesOn) {
-        const { addBates } = await importChunk(() => import("@/lib/batch/ops/bates"));
-        bytes = await addBates(bytes, {
-          prefix: bates.prefix, suffix: bates.suffix, startAt: bates.startAt,
-          digits: bates.digits, position: bates.position,
-          fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
-        });
+        if (batesAlreadyStamped) {
+          // eslint-disable-next-line no-console
+          console.info("[bates] export: skipping addBates — fingerprint matches already-applied stamp", {
+            fingerprint: currentBatesFingerprint,
+          });
+        } else {
+          const { addBates } = await importChunk(() => import("@/lib/batch/ops/bates"));
+          bytes = await addBates(bytes, {
+            prefix: bates.prefix, suffix: bates.suffix, startAt: bates.startAt,
+            digits: bates.digits, position: bates.position,
+            fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
+          });
+        }
       }
 
       const redactionTargets = doc.annotations.flatMap((a) => {
