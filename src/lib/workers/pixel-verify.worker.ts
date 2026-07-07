@@ -91,34 +91,21 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
         try { page.cleanup(); } catch { /* noop */ }
 
         for (const t of items) {
-          // Inset the sample region by 2px on each side to tolerate JPEG
-          // ringing along the burn-rect edges. The rasterizer pads the
-          // painted rect by ≥1pt on each side (see rasterize.worker.ts), so
-          // a 2px inset at scale ≥2 is still entirely inside truly-black
-          // pixels. Without this inset, 92%-quality JPEG DCT artifacts on
-          // the black-rect border cause thousands of false "burn incomplete"
-          // reports on large form-heavy documents.
-          const INSET = 2;
-          const cx = Math.max(0, Math.floor(t.rect.x * scale) + INSET);
-          const cy = Math.max(0, Math.floor(t.rect.y * scale) + INSET);
-          const cw = Math.min(canvas.width - cx, Math.ceil(t.rect.w * scale) - INSET * 2);
-          const ch = Math.min(canvas.height - cy, Math.ceil(t.rect.h * scale) - INSET * 2);
+          const cx = Math.max(0, Math.floor(t.rect.x * scale));
+          const cy = Math.max(0, Math.floor(t.rect.y * scale));
+          const cw = Math.min(canvas.width - cx, Math.ceil(t.rect.w * scale));
+          const ch = Math.min(canvas.height - cy, Math.ceil(t.rect.h * scale));
           if (cw < 2 || ch < 2) continue;
           const img = ctx.getImageData(cx, cy, cw, ch);
           const data = img.data;
           let dark = 0;
           const px = (data.length / 4) | 0;
-          // Threshold: R+G+B < 120 ≈ "near-black" (JPEG-of-#000 stays under 60
-          // even at q=0.85; 120 tolerates aggressive resampling without
-          // accepting real text pixels).
+          // Threshold: R+G+B < 90 ≈ "near-black" (typical JPEG-of-#000 stays under 30).
           for (let i = 0; i < data.length; i += 4) {
-            if (data[i] + data[i + 1] + data[i + 2] < 120) dark++;
+            if (data[i] + data[i + 1] + data[i + 2] < 90) dark++;
           }
           const coverage = px > 0 ? dark / px : 1;
-          // 98% coverage — still forensically strict (98%+ of the interior
-          // MUST be black) while tolerating JPEG edge noise on the 2%
-          // perimeter that INSET could not fully skip on tiny rects.
-          if (coverage < 0.98) {
+          if (coverage < 0.995) {
             leaks.push({ page: pageIdx, rect: t.rect, coverage });
           }
         }

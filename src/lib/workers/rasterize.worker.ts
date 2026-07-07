@@ -142,19 +142,8 @@ async function rasterize(
       await renderTask.promise;
 
       ctx.fillStyle = "#000000";
-      // Pad each burn rect by 1.5pt on every side. Covers glyph anti-alias
-      // tails that extend past the layout rect on narrow serif/italic
-      // characters, and — critically — gives the pixel-verify pass a
-      // guaranteed-black margin so JPEG edge ringing at the black/white
-      // border can't fail the coverage check. See pixel-verify.worker.ts.
-      const PAD_PT = 1.5;
       for (const r of rects) {
-        ctx.fillRect(
-          (r.x - PAD_PT) * scale,
-          (r.y - PAD_PT) * scale,
-          (r.w + PAD_PT * 2) * scale,
-          (r.h + PAD_PT * 2) * scale,
-        );
+        ctx.fillRect(r.x * scale, r.y * scale, r.w * scale, r.h * scale);
       }
       try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* noop */ }
 
