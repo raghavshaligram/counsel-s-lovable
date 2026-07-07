@@ -3196,8 +3196,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         throw new Error(`${result.leaks.length} redaction region${result.leaks.length === 1 ? " still contains" : "s still contain"} extractable text`);
       }
     } catch (err) {
-      console.error("[redact] export failed", err);
-      toast.error("Redaction export failed", { id: tid, description: (err as Error).message });
+      console.error(`[redact] ${mode} failed`, err);
+      toast.error(mode === "commit" ? "Redaction commit failed" : "Redaction export failed", { id: tid, description: (err as Error).message });
       try {
         window.dispatchEvent(new CustomEvent("agent:redact-complete", {
           detail: { ok: false, error: (err as Error).message },
@@ -3206,7 +3206,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally {
       setBusy(false);
     }
-  }, [file, editorState?.doc, targets, totalBoxes, maxSecurity]);
+  }, [file, editorState?.doc, editorDispatch, targets, totalBoxes, maxSecurity]);
 
 
   const downloadCertificate = useCallback(async () => {
