@@ -7,9 +7,18 @@ import { useEffect, useRef, useState } from "react";
 import { X, LifeBuoy, Lightbulb, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { submitSupportRequest } from "@/lib/support.functions";
+import { submitSupportRequest, type HelpCategory } from "@/lib/support.functions";
 
 export type SupportMode = "help" | "feature";
+
+const HELP_CATEGORY_OPTIONS: Array<{ value: HelpCategory; label: string }> = [
+  { value: "billing", label: "Billing & subscription" },
+  { value: "bug", label: "Something's broken" },
+  { value: "account", label: "Account & sign-in" },
+  { value: "how-to", label: "How do I…?" },
+  { value: "performance", label: "Slow / stuck" },
+  { value: "other", label: "Other" },
+];
 
 interface Props {
   open: boolean;
@@ -24,6 +33,7 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
   const submit = useServerFn(submitSupportRequest);
   const [name, setName] = useState(defaultName ?? "");
   const [email, setEmail] = useState(defaultEmail ?? "");
+  const [category, setCategory] = useState<HelpCategory>("how-to");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,6 +44,7 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
     if (!open) return;
     setName(defaultName ?? "");
     setEmail(defaultEmail ?? "");
+    setCategory("how-to");
     setTitle("");
     setMessage("");
     setBusy(false);
@@ -70,6 +81,7 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
       await submit({
         data: {
           type: mode,
+          category: isHelp ? category : undefined,
           title: title.trim(),
           message: message.trim(),
           name: name.trim(),
@@ -160,6 +172,24 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
                 />
               </label>
             </div>
+
+            {isHelp && (
+              <label className="text-[11px] text-text-muted">
+                What's this about?
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as HelpCategory)}
+                  className="mt-1 h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[12.5px] text-foreground focus:border-vault focus:outline-none"
+                >
+                  {HELP_CATEGORY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
 
             {!isHelp && (
               <label className="text-[11px] text-text-muted">

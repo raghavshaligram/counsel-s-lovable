@@ -24,8 +24,19 @@ const requireOwner = createMiddleware({ type: "function" })
     return next();
   });
 
+export const HELP_CATEGORIES = [
+  "billing",
+  "bug",
+  "account",
+  "how-to",
+  "performance",
+  "other",
+] as const;
+export type HelpCategory = (typeof HELP_CATEGORIES)[number];
+
 const submitSchema = z.object({
   type: z.enum(["help", "feature"]),
+  category: z.enum(HELP_CATEGORIES).optional(),
   title: z.string().trim().max(120).optional().default(""),
   message: z.string().trim().min(10, "Add at least a sentence").max(2000),
   name: z.string().trim().max(120).optional().default(""),
@@ -39,6 +50,7 @@ export type SubmitSupportInput = z.infer<typeof submitSchema>;
 export type SupportRow = {
   id: string;
   type: "help" | "feature";
+  category: string | null;
   title: string | null;
   message: string;
   name: string | null;
@@ -86,6 +98,7 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
 
     const insert = {
       type: data.type,
+      category: data.category ?? null,
       title: data.title || null,
       message: data.message,
       name: data.name || null,
@@ -97,7 +110,7 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
     };
 
     try {
-      const { error } = await supabaseAdmin.from("support_requests").insert(insert);
+      const { error } = await supabaseAdmin.from("support_requests").insert(insert as never);
       if (error) {
         console.error("[support] insert failed", error);
       }
@@ -116,10 +129,11 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
         if (ownerEmail) {
           const subject =
             data.type === "help"
-              ? `[CounselPDF] Help request from ${data.name || data.email || "user"}`
+              ? `[CounselPDF] Help (${data.category ?? "general"}) from ${data.name || data.email || "user"}`
               : `[CounselPDF] Feature request — ${data.title || "(no title)"}`;
-          const rows = [
+          const rows: Array<[string, string]> = [
             ["Type", data.type],
+            ["Category", data.category ?? "(none)"],
             ["From", `${data.name || "(anon)"} <${data.email || "(no email)"}>`],
             ["Plan", plan ?? "(unknown)"],
             ["Page", data.page || "(unknown)"],
@@ -179,7 +193,7 @@ export const hqListSupportRequests = createServerFn({ method: "POST" })
     const { data, error } = await supabaseAdmin
       .from("support_requests")
       .select(
-        "id, type, title, message, name, email, plan, page, user_agent, status, user_id, created_at",
+        "id, type, category, title, message, name, email, plan, page, user_agent, status, user_id, created_at",
       )
       .order("created_at", { ascending: false })
       .limit(500);

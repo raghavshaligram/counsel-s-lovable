@@ -320,6 +320,7 @@ export type Database = {
       }
       support_requests: {
         Row: {
+          category: string | null
           created_at: string
           email: string | null
           id: string
@@ -335,6 +336,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          category?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -350,6 +352,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          category?: string | null
           created_at?: string
           email?: string | null
           id?: string

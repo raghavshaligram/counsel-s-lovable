@@ -921,6 +921,7 @@ function SupportTab() {
           <thead className="bg-surface-1 text-left text-text-2">
             <tr>
               <th className="px-3 py-2 font-medium">Type</th>
+              <th className="px-3 py-2 font-medium">Category</th>
               <th className="px-3 py-2 font-medium">From</th>
               <th className="px-3 py-2 font-medium">Message</th>
               <th className="px-3 py-2 font-medium">Plan</th>
@@ -946,6 +947,7 @@ function SupportTab() {
                     {r.type}
                   </span>
                 </td>
+                <td className="px-3 py-2 text-[11.5px] text-text-2">{r.category ?? "—"}</td>
                 <td className="px-3 py-2">
                   <div className="font-medium">{r.name || "(anon)"}</div>
                   <div className="text-[11px] text-text-2">{r.email || "—"}</div>
@@ -982,7 +984,7 @@ function SupportTab() {
             ))}
             {rows && filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-text-2">
+                <td colSpan={7} className="px-3 py-6 text-center text-text-2">
                   No support requests match these filters
                 </td>
               </tr>
@@ -1025,6 +1027,8 @@ function SupportTab() {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px] text-text-2">
               <dt>From</dt>
               <dd className="text-foreground">{selected.name || "(anon)"} · {selected.email || "—"}</dd>
+              <dt>Category</dt>
+              <dd className="text-foreground">{selected.category ?? "—"}</dd>
               <dt>Plan</dt>
               <dd className="text-foreground">{selected.plan ?? "—"}</dd>
               <dt>Page</dt>
