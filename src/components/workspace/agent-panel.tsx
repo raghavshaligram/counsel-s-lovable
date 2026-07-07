@@ -20,6 +20,8 @@ import {
   ArrowRight,
   Send,
   Lock,
+  FileText,
+  ChevronDown,
 } from "lucide-react";
 
 import { importChunk } from "@/lib/chunk-import";
