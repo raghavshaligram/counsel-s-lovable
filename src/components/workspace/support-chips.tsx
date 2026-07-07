@@ -25,13 +25,25 @@ export function SupportChips() {
       const { data } = await supabase.auth.getUser();
       if (cancelled) return;
       const u = data.user;
-      if (u) {
-        setDefaults({
-          name: (u.user_metadata?.full_name as string | undefined) ?? "",
-          email: u.email ?? "",
-          signedIn: true,
-        });
+      if (!u) return;
+      let name =
+        (u.user_metadata?.full_name as string | undefined) ??
+        (u.user_metadata?.name as string | undefined) ??
+        "";
+      if (!name) {
+        try {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", u.id)
+            .maybeSingle();
+          if (cancelled) return;
+          name = (prof?.full_name as string | undefined) ?? "";
+        } catch {
+          /* ignore */
+        }
       }
+      setDefaults({ name, email: u.email ?? "", signedIn: true });
     })();
     return () => {
       cancelled = true;
