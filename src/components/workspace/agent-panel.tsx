@@ -182,9 +182,15 @@ export function AgentPanel({
   totalPages,
   openTool,
   onAnswerQuery,
+  initialTab = "ask",
+  initialTabNonce = 0,
+  pdfDoc = null,
 }: AgentPanelProps) {
   const [steps, setSteps] = useState<Step[]>([]);
   const [input, setInput] = useState("");
+  const [tab, setTab] = useState<"ask" | "do" | "learn">(initialTab);
+  const askInputRef = useRef<HTMLInputElement | null>(null);
+  const followUpRef = useRef<HTMLInputElement | null>(null);
   const [currentFlow, setCurrentFlow] = useState<AgentFlow | null>(null);
   const cachedFindingsRef = useRef<Detection[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
