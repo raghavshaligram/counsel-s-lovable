@@ -2573,13 +2573,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
 
-      <Section title="Export & verify" icon={<ShieldCheck className="h-3 w-3" />}>
-        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
-          <div className="font-semibold mb-0.5">⚠ Review carefully before export</div>
-          Automatic detection finds structured data (SSNs, accounts, cards) but <strong>misses names
-          in prose, party names, and context-dependent secrets</strong>. Confirm completeness yourself —
-          manual redaction is the primary safeguard.
-        </div>
+      <Section title="Commit" icon={<ShieldCheck className="h-3 w-3" />}>
         <label className={cn(
           "mb-2 flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
           reviewedSignOff ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
@@ -2610,9 +2604,12 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
           {busy ? "Working…" : `Redact & verify${totalBoxes > 0 ? ` (${totalBoxes.toLocaleString()} item${totalBoxes === 1 ? "" : "s"})` : ""}`}
         </button>
-        <p className="mt-1.5 text-[10.5px] text-text-muted">
-          Exports a redacted PDF, then re-parses the exported file and confirms no
-          extractable text remains inside each redaction region.
+        <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-text-muted">
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-1.5 rounded-full bg-vault"
+          />
+          Processed on your device. Nothing uploads. Exports a redacted PDF, then re-parses it to confirm no extractable text remains.
         </p>
       </Section>
 
