@@ -1399,6 +1399,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // ⌘P / Ctrl+P — overrides the browser's default print dialog so users
   // get the baked-in document (not the app chrome) every time.
   useHotkey("mod+p", () => { void onPrint(); }, !!editorState.doc && !printing);
+  useHotkey("mod+f", () => {
+    setAgentInitialTab("ask");
+    setAgentTabNonce((n) => n + 1);
+    setAgentOpen(true);
+  });
 
 
 
