@@ -7325,12 +7325,29 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
     if (!file) return;
     setBusy(true);
     const tid = "wsx-bates";
-    toast.loading("Stamping Bates numbers…", { id: tid });
+    const abort = new AbortController();
+    toast.loading("Stamping Bates numbers…", {
+      id: tid,
+      action: { label: "Cancel", onClick: () => abort.abort() },
+    });
     try {
-      const { addBates } = await importChunk(() => import("@/lib/batch/ops/bates"));
-      const out = await addBates(new Uint8Array(await file.arrayBuffer()), {
+      const { stampBatesInWorker } = await importChunk(
+        () => import("@/lib/workers/bates-client"),
+      );
+      const opts = {
         prefix: s.prefix, suffix: s.suffix, startAt: s.startAt, digits: s.digits,
         position: s.position, fontSize: s.fontSize, color: s.color, margin: s.margin,
+      };
+      const source = new Uint8Array(await file.arrayBuffer());
+      const { bytes: out, pageCount } = await stampBatesInWorker(source, opts, {
+        signal: abort.signal,
+        onProgress: ({ done, total }) => {
+          // Throttle toast updates — worker already coalesces every 64 pages.
+          toast.loading(
+            `Stamping Bates numbers… (${done.toLocaleString()} / ${total.toLocaleString()} pages)`,
+            { id: tid, action: { label: "Cancel", onClick: () => abort.abort() } },
+          );
+        },
       });
       if (apply === "download") {
         await downloadPdf(out, file.name.replace(/\.pdf$/i, "") + "-bates.pdf");
@@ -7338,17 +7355,20 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
       } else {
         replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
         toast.success("Bates applied to active tab", { id: tid });
+        // Mark this document as already-stamped with the current settings so
+        // the export dialog doesn't silently stamp a second row on top.
+        update({
+          appliedAt: Date.now(),
+          appliedFingerprint: computeBatesFingerprint({ ...s, on: s.on }),
+        });
       }
 
-      // Offer a Discovery Production Audit Log — only reflect this run's actual numbers.
+      // Offer a Discovery Production Audit Log — pageCount comes from the
+      // worker so we don't re-parse the stamped bytes with pdf.js just to
+      // read numPages (that second full parse is what hung 5000-page runs).
       try {
         const { requestCertificate } = await import("@/components/workspace/certificate-gate");
         const { buildBatesCertificate } = await import("@/lib/pdf/certificates");
-        const { loadPdfjs } = await import("@/lib/pdf/worker");
-        const pdfjs = await loadPdfjs();
-        const probe = await pdfjs.getDocument({ data: new Uint8Array(out as unknown as Uint8Array).slice() }).promise;
-        const pageCount = probe.numPages;
-        try { (probe as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
         const fmtNum = (n: number) =>
           `${s.prefix}${String(n).padStart(s.digits, "0")}${s.suffix ?? ""}`;
         const endAt = s.startAt + pageCount - 1;
@@ -7372,12 +7392,17 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         console.warn("[bates] cert gate failed", gateErr);
       }
     } catch (err) {
-      console.error("[bates] failed", err);
-      toast.error("Failed to stamp Bates", { id: tid, description: (err as Error).message });
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      if (aborted) {
+        toast.message("Bates stamping canceled", { id: tid });
+      } else {
+        console.error("[bates] failed", err);
+        toast.error("Failed to stamp Bates", { id: tid, description: (err as Error).message });
+      }
     } finally {
       setBusy(false);
     }
-  }, [file, s, replaceFile]);
+  }, [file, s, replaceFile, update]);
 
   const positions: Array<{ id: typeof s.position; row: "top" | "bottom"; col: "left" | "center" | "right" }> = [
     { id: "tl", row: "top", col: "left" },
