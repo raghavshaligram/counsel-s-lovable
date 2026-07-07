@@ -319,8 +319,6 @@ export function verifySideChannelVectorsWithDoc(
 }
 
 
-  return leaks;
-}
 
 // ---------------------------------------------------------------------------
 // helpers
