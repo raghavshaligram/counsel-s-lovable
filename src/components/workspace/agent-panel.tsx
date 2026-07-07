@@ -20,6 +20,8 @@ import {
   ArrowRight,
   Send,
   Lock,
+  FileText,
+  ChevronDown,
 } from "lucide-react";
 
 import { importChunk } from "@/lib/chunk-import";
@@ -73,6 +75,14 @@ type Step =
       featureName: string;
       body: string;
       onUpgrade: () => void;
+    }
+  | {
+      kind: "find-results";
+      id: string;
+      term: string;
+      matches: Array<{ page: number; snippet: string }>;
+      caveat?: string;
+      actions?: Action[];
     }
   | { kind: "error"; id: string; title: string; body: string };
 
@@ -457,29 +467,31 @@ export function AgentPanel({
         actions.push(...alternateActions(seedSteps, classified.alternates, classified.term));
         actions.push({ label: "Close", tone: "ghost", onClick: () => onClose() });
 
-        const body =
-          matches.length === 0
-            ? `No matches for “${classified.term}” in this document.`
-            : matches
-                .slice(0, 8)
-                .map((m) => `• Page ${m.page} — ${m.snippet}`)
-                .join("\n") +
-              (matches.length > 8 ? `\n…and ${matches.length - 8} more.` : "");
-
-        setSteps([
-          ...seedSteps,
-          {
-            kind: "result",
-            id: nextId(),
-            title:
-              matches.length === 0
-                ? `Literal search — no matches`
-                : `Literal search — ${matches.length} match${matches.length === 1 ? "" : "es"}`,
-            body,
-            caveat: classified.reason,
-            actions,
-          },
-        ]);
+        if (matches.length === 0) {
+          setSteps([
+            ...seedSteps,
+            {
+              kind: "result",
+              id: nextId(),
+              title: `No matches for “${classified.term}”`,
+              body: "Nothing in this document contains that text. Try a different spelling, drop quotes, or switch to meaning-based search.",
+              caveat: classified.reason,
+              actions,
+            },
+          ]);
+        } else {
+          setSteps([
+            ...seedSteps,
+            {
+              kind: "find-results",
+              id: nextId(),
+              term: classified.term,
+              matches: matches.map((m) => ({ page: m.page, snippet: m.snippet })),
+              caveat: classified.reason,
+              actions,
+            },
+          ]);
+        }
         assistCtxRef.current = {
           lastLane: "literal",
           lastFindTerm: classified.term,
@@ -1436,6 +1448,9 @@ function StepCard({ step, onDismiss }: { step: Step; onDismiss: () => void }) {
         </div>
       );
 
+    case "find-results":
+      return <FindResultsCard step={step} />;
+
     case "error":
       return (
         <div className="rounded-lg border border-red-500/40 bg-red-500/[0.06] p-2.5">
@@ -1490,6 +1505,110 @@ function ActionRow({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* ---------------- literal find results ---------------- */
+
+function highlightTerm(snippet: string, term: string) {
+  if (!term) return snippet;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(${escaped})`, "ig");
+  const parts = snippet.split(re);
+  return parts.map((p, i) =>
+    re.test(p) && p.toLowerCase() === term.toLowerCase()
+      ? (
+          <mark
+            key={i}
+            className="rounded-sm bg-vault/25 px-0.5 py-px text-foreground"
+          >
+            {p}
+          </mark>
+        )
+      : (
+          <span key={i}>{p}</span>
+        ),
+  );
+}
+
+function FindResultsCard({
+  step,
+}: {
+  step: Extract<Step, { kind: "find-results" }>;
+}) {
+  const INITIAL = 4;
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? step.matches : step.matches.slice(0, INITIAL);
+  const remaining = step.matches.length - visible.length;
+
+  // group by page for a tidier layout when many matches share a page
+  const byPage = new Map<number, string[]>();
+  for (const m of visible) {
+    const arr = byPage.get(m.page) ?? [];
+    arr.push(m.snippet);
+    byPage.set(m.page, arr);
+  }
+  const pages = [...byPage.keys()].sort((a, b) => a - b);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-1 p-2.5">
+      <div className="flex items-center gap-2">
+        <Search className="h-3.5 w-3.5 shrink-0 text-vault" />
+        <div className="text-[12px] font-medium text-foreground">
+          {step.matches.length} match{step.matches.length === 1 ? "" : "es"} for{" "}
+          <span className="text-vault">“{step.term}”</span>
+        </div>
+      </div>
+
+      <div className="mt-2 space-y-1.5">
+        {pages.map((page) => {
+          const snips = byPage.get(page)!;
+          return (
+            <div
+              key={page}
+              className="overflow-hidden rounded-md border border-border/60 bg-surface-2/40"
+            >
+              <div className="flex items-center gap-1.5 border-b border-border/50 bg-surface-2/60 px-2 py-1 text-[10.5px] font-medium text-text-2">
+                <FileText className="h-3 w-3 text-vault" />
+                Page {page}
+                {snips.length > 1 && (
+                  <span className="ml-1 text-text-muted">· {snips.length}</span>
+                )}
+              </div>
+              <ul className="divide-y divide-border/40">
+                {snips.map((s, i) => (
+                  <li
+                    key={i}
+                    className="border-l-2 border-vault/30 px-2 py-1.5 text-[11.5px] leading-relaxed text-text-2"
+                  >
+                    {highlightTerm(s, step.term)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-md border border-border bg-transparent px-2 py-1 text-[11px] font-medium text-text-2 transition-colors hover:bg-surface-2"
+        >
+          <ChevronDown className="h-3 w-3" />
+          Show {remaining} more
+        </button>
+      )}
+
+      {step.caveat && (
+        <div className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1 text-[10.5px] text-amber-500/90">
+          {step.caveat}
+        </div>
+      )}
+
+      {step.actions && <ActionRow actions={step.actions} />}
     </div>
   );
 }
