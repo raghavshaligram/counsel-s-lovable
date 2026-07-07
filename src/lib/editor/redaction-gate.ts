@@ -121,7 +121,7 @@ export async function enforceRedactionGate(
     } else {
       opts.onProgress?.("sanitize");
       const { sanitizeInWorker } = await importChunk(() => import("@/lib/workers/sanitize-client"));
-      const sanitized = await sanitizeInWorker(bytes, { signal: opts.signal });
+      const sanitized = await sanitizeInWorker(bytes, { signal: opts.signal, stealBytes: true });
       // Drop the pre-sanitize buffer immediately — worker owns its own copy now.
       bytes = sanitized.bytes;
     }
