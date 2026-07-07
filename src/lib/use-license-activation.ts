@@ -155,9 +155,14 @@ function bootstrap() {
 export function useLicenseActivation(): LicenseSnapshot | null {
   useEffect(() => {
     bootstrap();
+    // Re-fetch on every mount so a plan grant made while the tab was closed
+    // (or missed by realtime) surfaces the moment the user navigates back
+    // into any gated surface, instead of waiting for focus/6h.
+    void activate("mount");
   }, []);
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
+
 
 /** Manual revalidate — call after actions that should refresh entitlement. */
 export function refreshLicense(): Promise<void> {
