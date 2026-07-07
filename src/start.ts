@@ -1,4 +1,4 @@
-import { createStart, createMiddleware } from "@tanstack/react-start";
+import { createStart, createMiddleware, type CustomFetch } from "@tanstack/react-start";
 
 import { renderErrorPage } from "./lib/error-page";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
@@ -18,7 +18,24 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
   }
 });
 
+const noStoreServerFnFetch = createMiddleware({ type: "function" }).client(async ({ next }) => {
+  const noStoreFetch: CustomFetch = (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set("cache-control", "no-store");
+    headers.set("pragma", "no-cache");
+    return fetch(input, { ...init, cache: "no-store", headers });
+  };
+
+  return next({
+    fetch: noStoreFetch,
+    headers: {
+      "cache-control": "no-store",
+      pragma: "no-cache",
+    },
+  });
+});
+
 export const startInstance = createStart(() => ({
-  functionMiddleware: [attachSupabaseAuth],
+  functionMiddleware: [noStoreServerFnFetch, attachSupabaseAuth],
   requestMiddleware: [errorMiddleware],
 }));
