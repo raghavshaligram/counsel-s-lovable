@@ -84,11 +84,21 @@ export async function verifyRedactionRemoval(
     leaks.push(...pageLeaks);
   }
 
-  const vectorLeaks = await verifySideChannelVectors(bytes, sensitiveStrings);
-  leaks.push(...vectorLeaks);
+  // Single pdf-lib parse shared between side-channel + rasterized-page skip
+  // computation. Falls back gracefully if the file can't be parsed.
+  let sharedDoc: PDFDocument | null = null;
+  try {
+    sharedDoc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  } catch { /* keep sharedDoc null — vector scans skip */ }
+
+  if (sharedDoc) {
+    const vectorLeaks = verifySideChannelVectorsWithDoc(sharedDoc, sensitiveStrings);
+    leaks.push(...vectorLeaks);
+  }
 
   if (sensitiveStrings.length > 0) {
-    const rawLeaks = await verifyRawStreams(bytes, sensitiveStrings, opts.rasterizedPages, opts.signal);
+    const skipRefs = sharedDoc ? collectRasterizedPageStreamRefs(sharedDoc, opts.rasterizedPages) : new Set<string>();
+    const rawLeaks = await verifyRawStreamsFast(bytes, sensitiveStrings, skipRefs, opts.signal);
     leaks.push(...rawLeaks);
   }
 
