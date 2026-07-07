@@ -2168,6 +2168,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={active.file}
             totalPages={editorState.doc?.pages.length ?? 0}
             openTool={(id, opts) => openTool(id, opts)}
+            onJumpToPage={(page1Based) => {
+              // Match FindMatch.page (1-based from pdf-extract); SET_PAGE is 0-based.
+              const n = Math.max(0, page1Based - 1);
+              editorDispatch({ type: "SELECT_ANNO", id: null });
+              editorDispatch({ type: "SET_PAGE", n });
+            }}
             onAnswerQuery={(query) => {
               openTool("pre-discovery");
               setTimeout(() => {

@@ -39,6 +39,7 @@ import type { AssistToolEntry, AssistTopicEntry } from "@/lib/assist/knowledge-b
 import { useIsPro } from "@/lib/pro-gate";
 import { useUpgradeModal } from "@/components/upgrade-modal";
 import { useNavigate } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 
 type Action = {
@@ -149,6 +150,8 @@ export interface AgentPanelProps {
   file: File | null;
   totalPages: number;
   openTool: (id: string, opts?: { focusSection?: string }) => void;
+  /** Jump the editor canvas to a 1-based page number. */
+  onJumpToPage?: (page: number) => void;
   /** Dispatches a query into the Pre-Discovery / AI Assist panel. */
   onAnswerQuery: (query: string) => void;
 }
@@ -186,6 +189,7 @@ export function AgentPanel({
   file,
   totalPages,
   openTool,
+  onJumpToPage,
   onAnswerQuery,
 }: AgentPanelProps) {
   const [steps, setSteps] = useState<Step[]>([]);
@@ -1368,7 +1372,7 @@ export function AgentPanel({
         className="flex-1 space-y-2 overflow-y-auto px-3 py-3"
       >
         {steps.map((s) => (
-          <StepCard key={s.id} step={s} onDismiss={() => removeStep(s.id)} />
+          <StepCard key={s.id} step={s} onDismiss={() => removeStep(s.id)} onJumpToPage={onJumpToPage} />
         ))}
         {steps.length === 0 && (
           <div className="rounded-lg border border-border/60 bg-surface-1 p-3 text-[11.5px] text-text-muted">
@@ -1406,7 +1410,7 @@ export function AgentPanel({
 
 /* ---------------- step card ---------------- */
 
-function StepCard({ step, onDismiss }: { step: Step; onDismiss: () => void }) {
+function StepCard({ step, onDismiss, onJumpToPage }: { step: Step; onDismiss: () => void; onJumpToPage?: (page: number) => void }) {
   switch (step.kind) {
     case "note":
       return (
@@ -1533,7 +1537,7 @@ function StepCard({ step, onDismiss }: { step: Step; onDismiss: () => void }) {
       );
 
     case "find-results":
-      return <FindResultsCard step={step} />;
+      return <FindResultsCard step={step} onJumpToPage={onJumpToPage} />;
 
     case "error":
       return (
@@ -1618,8 +1622,10 @@ function highlightTerm(snippet: string, term: string) {
 
 function FindResultsCard({
   step,
+  onJumpToPage,
 }: {
   step: Extract<Step, { kind: "find-results" }>;
+  onJumpToPage?: (page: number) => void;
 }) {
   const INITIAL = 4;
   const [expanded, setExpanded] = useState(false);
@@ -1648,25 +1654,42 @@ function FindResultsCard({
       <div className="mt-2 space-y-1.5">
         {pages.map((page) => {
           const snips = byPage.get(page)!;
+          const jump = onJumpToPage ? () => onJumpToPage(page) : undefined;
           return (
             <div
               key={page}
               className="overflow-hidden rounded-md border border-border/60 bg-surface-2/40"
             >
-              <div className="flex items-center gap-1.5 border-b border-border/50 bg-surface-2/60 px-2 py-1 text-[10.5px] font-medium text-text-2">
+              <button
+                type="button"
+                onClick={jump}
+                disabled={!jump}
+                title={jump ? `Jump to page ${page}` : undefined}
+                className={cn(
+                  "flex w-full items-center gap-1.5 border-b border-border/50 bg-surface-2/60 px-2 py-1 text-left text-[10.5px] font-medium text-text-2",
+                  jump && "cursor-pointer hover:bg-surface-2 hover:text-foreground",
+                )}
+              >
                 <FileText className="h-3 w-3 text-vault" />
                 Page {page}
                 {snips.length > 1 && (
                   <span className="ml-1 text-text-muted">· {snips.length}</span>
                 )}
-              </div>
+              </button>
               <ul className="divide-y divide-border/40">
                 {snips.map((s, i) => (
-                  <li
-                    key={i}
-                    className="border-l-2 border-vault/30 px-2 py-1.5 text-[11.5px] leading-relaxed text-text-2"
-                  >
-                    {highlightTerm(s, step.term)}
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={jump}
+                      disabled={!jump}
+                      className={cn(
+                        "block w-full border-l-2 border-vault/30 px-2 py-1.5 text-left text-[11.5px] leading-relaxed text-text-2",
+                        jump && "cursor-pointer hover:bg-surface-2/60 hover:text-foreground",
+                      )}
+                    >
+                      {highlightTerm(s, step.term)}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -1674,6 +1697,7 @@ function FindResultsCard({
           );
         })}
       </div>
+
 
       {remaining > 0 && (
         <button
