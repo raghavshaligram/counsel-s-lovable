@@ -2072,6 +2072,47 @@ function sanitizeStageLabel(stage: string): string {
     return { parts, total: findings.length };
   }, [findings, categoryIds, grouped]);
 
+  // Category tabs — quick filter so users can zero in on e.g. Form fields.
+  type TabEntry = { key: string; label: string; count: number };
+  const tabList = useMemo<TabEntry[]>(() => {
+    const tabs: TabEntry[] = [];
+    if (grouped) {
+      for (const [cat, groups] of grouped) {
+        const total = groups.reduce((n, g) => n + g.dets.length, 0);
+        const loCount = categoryIds.lo.get(cat as Cat2)?.length ?? 0;
+        tabs.push({
+          key: String(cat),
+          label: meta?.[cat]?.label ?? String(cat),
+          count: total + loCount,
+        });
+      }
+    }
+    if (sideChannelGrouped) {
+      for (const [vector, list] of sideChannelGrouped) {
+        tabs.push({
+          key: vector,
+          label:
+            vector === "form-field"
+              ? "Form fields"
+              : vector === "annotation"
+              ? "Comments"
+              : "Metadata",
+          count: list.length,
+        });
+      }
+    }
+    return tabs;
+  }, [grouped, sideChannelGrouped, categoryIds, meta]);
+
+  // Reset tab if it no longer exists after a re-scan.
+  useEffect(() => {
+    if (activeTab === "all") return;
+    if (!tabList.some((t) => t.key === activeTab)) setActiveTab("all");
+  }, [tabList, activeTab]);
+
+  const showPageCat = (cat: string) => activeTab === "all" || activeTab === cat;
+  const showSideVector = (v: string) => activeTab === "all" || activeTab === v;
+
 
 
 
