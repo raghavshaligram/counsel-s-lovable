@@ -1755,18 +1755,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
               />
               {selected.size} / {redactableFindings.length} selected
             </label>
-            <button
-              type="button"
-              onClick={redactSelected}
-              disabled={selected.size === 0}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90",
-                selected.size === 0 && "cursor-not-allowed opacity-50",
-              )}
-            >
-              <Shield className="h-3 w-3" strokeWidth={2.5} />
-              Redact selected
-            </button>
+            {(() => {
+              const sideSelected = sideChannelFindings.filter((d) => selected.has(d.id)).length;
+              if (sideSelected === 0) {
+                return (
+                  <span className="text-[10px] text-text-muted">
+                    Checked items stage live
+                  </span>
+                );
+              }
+              return (
+                <button
+                  type="button"
+                  onClick={redactSelected}
+                  className="inline-flex items-center gap-1 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90"
+                  title="Wipe selected form fields, comments, and metadata from the working document now"
+                >
+                  <Shield className="h-3 w-3" strokeWidth={2.5} />
+                  Wipe {sideSelected} hidden item{sideSelected === 1 ? "" : "s"}
+                </button>
+              );
+            })()}
           </div>
           <ul className="max-h-[280px] overflow-y-auto py-1">
             {grouped?.map(([cat, groups]) => {
