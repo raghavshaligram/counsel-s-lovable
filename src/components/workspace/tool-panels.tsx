@@ -2466,13 +2466,16 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="How it works">
-        <p className="text-[11.5px] leading-snug text-text-2">
-          Drag a box over text or an image to mark it for redaction. On export, the
-          text under every box is <strong className="text-foreground">removed from the PDF&apos;s content stream</strong> —
-          not just covered with a black rectangle.
-        </p>
-      </Section>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <Shield className="h-3.5 w-3.5 text-vault" strokeWidth={2.5} />
+          <span className="text-[12px] font-semibold text-foreground">Redact</span>
+        </div>
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <strong className="text-amber-100">Redaction permanently removes content.</strong>{" "}
+          Auto-detection finds structured data and names but may miss some — review before committing.
+        </div>
+      </div>
 
       <ProRedactSection ctx={ctx} />
 
