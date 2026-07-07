@@ -1,92 +1,90 @@
-Use this prompt for the rebuild:
+# Conversational Assist — my recommendation
 
-```text
-Rebuild the AI Assist behavior around a single, consistent training document and semantic intent router. Fix the current issue where the first Pro-feature question triggers the AI/model download UI, leaves a stale message/card in AI Assist, and prevents later queries from being answered.
+From a user's perspective, the failure mode we must avoid is *silent* misrouting: the assistant guessed "semantic search" when you meant "literal find" and you had no way to tell. Slash commands (`/find`, `/ask`, `/do`) fix that but ask users to learn syntax — nobody does. Pure rulebooks are brittle at edges.
 
-Scope:
-- Build/restore the AI Assist training document / knowledge base, likely under src/lib/assist/knowledge-base.ts or the closest existing assist/command location.
-- Wire that knowledge base into AI Assist so user questions about tools work for both Free and Pro users.
-- Do not reimplement PDF tools. AI Assist must only explain, classify, route, and hand off to existing verified tools/panels.
-- Preserve the existing lazy-loading model behavior: MiniLM/embedding model downloads only when AI Assist/semantic matching is actually used, never on app load.
+The right pattern is **transparent routing with cheap correction**: the assistant picks one lane, *says* which lane in one line, and offers one-click switches to the other lanes when a query could plausibly mean more than one thing. This is how ChatGPT, Raycast, and Perplexity all handle the same problem — and it slots directly into the follow-up context we just shipped.
 
-Training document requirements:
-Create a structured tool-help knowledge base with one entry per tool/flow. Each entry should include:
-- toolId / panelId used by existing workspace inspector routing
-- displayName
-- category/rail group
-- aliases and natural-language examples for semantic matching
-- short answer/help text for questions about what the tool does
-- capability summary
-- free/pro availability metadata
-- whether the tool can be opened immediately for the current user
-- upgrade copy for Pro-only tools
-- action buttons to show when relevant: Open tool, Upgrade, View plans, Cancel/Close
-- any known synonym collisions, e.g. “dollar amounts” should map to search/answer/redaction help, not Page Numbers
+## Scope
 
-AI Assist behavior:
-- Treat AI Assist as a conversational command center in the right-side inspector region.
-- It must be mutually exclusive with normal tool inspector panels: opening AI Assist closes any tool panel; opening any tool panel closes AI Assist.
-- State resets for every new submitted query: clear stale answer, stale Pro card, stale loading state, stale selected flow, stale pending action, and stale error.
-- New query must always start a fresh flow and must not keep the previous Pro-feature message/card.
-- Escape closes AI Assist. Tab navigation and Enter/Space activation must work for buttons.
+- **AI Assist panel only.** Workspace command bar (`classifyCommandSemantic`) is untouched.
+- **Literal search: open document only.** Uses existing PDF text extraction.
+- **No new AI model.** MiniLM stays the only embedder; NER stays the only detector.
+- Hard guardrails from prior turn still hold: PDF viewer, tab lifecycle, editor canvas, `samplePageBg`, verified redaction — off limits.
 
-Intent classification:
-- Use semantic matching with the existing MiniLM embeddings for AI Assist/tool intent. Do not rely on keyword-only detection for tool help.
-- Keyword/regex flow detection may remain only as a fast deterministic pre-check if it does not override semantic correctness, but semantic matching is the source of truth for ambiguous tool questions.
-- AI Assist must classify into these response types:
-  1. Answer/help about a tool or workflow
-  2. Open/route to an allowed tool panel
-  3. Pro feature explanation + upgrade actions for Free users
-  4. Clarifying question when confidence is too low or multiple tools are close
-- “watermark” opens/answers Watermark.
-- “split” maps to Split and should expose free modes when available.
-- “dollar amounts” semantically maps to search/answer/redaction-style assistance, not Page Numbers.
-- Pro-only tool questions from Free users should still be answered. The assistant should explain what the tool does and then show a Pro card with upgrade/action buttons if the user tries to use/open the Pro feature.
+## The four lanes
 
-Free vs Pro rules:
-- Questions about any tool are allowed for Free and Pro users.
-- Free user asking “what does [Pro tool] do?” gets a useful answer, not a blocked state.
-- Free user asking to run/open/use a Pro-only capability gets:
-  - explanation that it is a Pro feature
-  - clear upgrade card
-  - action buttons: Upgrade/View plans and Cancel/Close
-  - no stuck state
-- If the Free user then types a new query, the Pro card disappears and the new query starts cleanly.
-- Pro users should route/open tools directly when confidence is high.
+Every submit resolves to exactly one of these, and the assistant tells you which one it picked:
 
-Model download / caching UX:
-- If MiniLM must download for semantic matching, show a one-time setup indicator with progress, e.g. “Setting up AI (one-time download)…”.
-- If the model is already cached, suppress the setup UI and answer quickly.
-- Ensure the model download does not replace the final answer and does not leave AI Assist stuck on the setup/pro message.
-- Log the model load trigger with the user action, e.g. ai-assist:submit-query.
-- Do not download NER or other models for ordinary tool-help questions unless the selected feature specifically requires that model.
+1. **Literal find** — exact/whole-word/regex text search inside the open PDF. Free. Results are page+snippet chips that jump the viewer.
+2. **Semantic search / Q&A** — meaning-based, routed to the existing Private AI assist surface (Pre-Discovery). Pro-gated as today.
+3. **Tool action** — opens/uses a verified tool (Redact, Sanitize, Bates, etc.). Existing routing.
+4. **Help / topic** — tool explanation or cross-cutting topic (pricing, offline, privacy). Existing.
 
-Implementation guidance:
-- Inspect existing files before editing, especially:
-  - src/components/workspace/agent-panel.tsx
-  - src/components/workspace/workspace-shell.tsx
-  - src/lib/agent/flows.ts
-  - src/lib/command/intent.ts
-  - src/lib/discovery/client.ts
-  - existing entitlement/plan/pro gating utilities
-- Add the knowledge base in a client-safe lib path. Do not put client-imported code under src/server.
-- Keep deterministic tool execution in existing tools/panels. AI Assist should dispatch/open panels using current workspace state/actions.
-- Use a requestId or abort/cancel guard so late async embedding/model responses cannot overwrite a newer query.
-- Keep panel placement at the default right inspector width and do not add another rail/panel.
-- Follow project design tokens only; no ad-hoc colors, fonts, spacing, or extra accent colors.
+## Routing rules (transparent, not brittle)
 
-Acceptance tests:
-- Load workspace: no AI model download.
-- Do non-AI work such as manual redact/Bates/view: no AI model download.
-- Ask first AI Assist tool question: if MiniLM is uncached, one-time setup indicator appears with progress, then the answer appears.
-- Ask another query after first setup: no stuck setup message; cached model is reused; answer appears quickly.
-- Free user asks about a Pro feature: receives answer + Pro card/actions, not a broken/stale message.
-- Free user asks a new query after Pro card: previous card clears and new flow works.
-- Pro user asks to open a Pro tool: tool opens, AI Assist closes if appropriate.
-- “watermark” opens Watermark and closes AI Assist.
-- “split” routes to Split with free modes available.
-- “dollar amounts” routes to search/answer-style help, not Page Numbers.
-- Assistant and inspector are never open at the same time.
-- Escape closes, Tab moves between buttons, Enter/Space activates.
-- No loops, no stale content, no repeated model download after cache.
-```
+Applied in order; first match wins. Each rule is a *reason* the panel can show to the user.
+
+| # | Signal | Lane | Confidence |
+|---|--------|------|------------|
+| 1 | Quoted text: `find "contract"`, `search 'John Smith'` | Literal | High |
+| 2 | Explicit literal cue: `the word X`, `the phrase X`, `exact match X`, `regex /…/` | Literal | High |
+| 3 | Existing exact tool/topic match (already shipped) | Action / Topic | High |
+| 4 | Action verb + noun (`redact SSNs`, `stamp bates`, `sanitize this`) | Action | High |
+| 5 | Help language (`what is X`, `how do I`, `why`) | Help/Topic | High |
+| 6 | Content descriptor (`find sensitive contracts`, `passages about damages`, `clauses that mention X`) | Semantic | Medium |
+| 7 | Bare noun / short phrase (`contracts`, `payment amounts`) | **Ambiguous** — literal is default, semantic and Redact offered as chips | Low |
+| 8 | Fuzzy tool typo (already shipped) | Action | Medium |
+| 9 | Nothing matches with confidence | Ambiguous — chip row with top 2 lanes | — |
+
+The user always sees a one-line explanation of which lane fired ("Searching for the exact word *contract*…", "Interpreting as a meaning-based search…") plus a chip row to switch lanes.
+
+## Conversational memory (extends prior work)
+
+`AssistCtx` already tracks `lastEntryId` / `lastTopicId` / `lastQuery`. Add:
+
+- `lastFindTerm?: string` and `lastFindMatches?: { page: number; snippet: string }[]`
+- `lastLane?: "literal" | "semantic" | "action" | "help"`
+
+This enables follow-ups the user has been asking for:
+
+- After literal find "contract" → "now redact them" stages those matches into Redact (Pro gate applies for bulk).
+- After semantic "find sensitive contracts" → "which pages" summarises pages from the previous answer.
+- After "what is Redact" → "how do I do that" opens Redact (already works from the last turn).
+
+Context resets on: explicit new subject in a different lane, panel close, or the "Ask something else" chip.
+
+## Panel additions (no layout change)
+
+- New `find-results` step kind: title + N chips (`Page 3 · "…this contract shall…"`) that call `openTool` with a page jump, plus a "Redact all matches" action (Pro-gated, hands off to Redact staging).
+- Every answer keeps the existing meta chip ("Free • Runs offline • Nothing leaves your device").
+- Existing `clarify` / `clarify-typo` step kinds absorb the new "which lane?" case — no new UI primitive.
+
+## Files touched
+
+- `src/lib/assist/router.ts` — add lane detection (rules 1, 2, 6, 7), extend `AssistClassification` with `kind: "literal" | "semantic"` and `lane` reason strings; extend `AssistCtx` with the fields above; add cross-lane sticky logic (if last was literal and follow-up starts with "redact" / "them" / "these" → action on last matches).
+- `src/lib/assist/knowledge-base.ts` — no schema change; add anchor examples covering literal-vs-semantic phrasing so the embedding path stays honest.
+- `src/lib/assist/find.ts` — **new**. Thin wrapper around existing `src/lib/chat/pdf-extract.ts` producing `{ page, snippet }[]` for a plain string, with whole-word and regex options.
+- `src/components/workspace/agent-panel.tsx` — new `find-results` step; `showFindAnswer` / `showSemanticAnswer` handlers; pass extended `AssistCtx`; render lane reason line; wire "Redact all matches" to the existing Redact staging events (`redact:unstage-det` sibling — a `redact:stage-matches` event, or reuse pattern-bulk-redact flow).
+- `scripts/verify-assist-router.ts` — extend with lane cases: `find "contract"` → literal; `find sensitive contracts` → semantic; `contracts` → ambiguous; `redact them` after literal → action with staged term.
+
+## What this deliberately does NOT do
+
+- No slash-command syntax. No hidden modes.
+- No new gating. Semantic still Pro. Bulk Redact still Pro. Everything else free.
+- No touching the workspace command bar, viewer, or canvas.
+- No cloud LLM. On-device only, per project constitution.
+
+## Verification
+
+Node classifier script (extends existing) asserts:
+
+- `find "contract"` → literal, term=`contract`
+- `search for the word John` → literal, term=`John`
+- `find sensitive contracts` → semantic
+- `contracts` → ambiguous, top options include literal + semantic
+- `redact SSNs` → action `redact`
+- Follow-ups (ctx.lane=literal, term=`contract`): `now redact them` → action `redact` with `contextFrom` carrying the term; `which pages` → summary of previous matches; `more info` → sticky Redact help (regression from last turn)
+
+All 20 prior cases must still pass.
+
+Ship after typecheck + all classifier cases green.
