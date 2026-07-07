@@ -1530,6 +1530,22 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     [findings],
   );
 
+  // Publish current staging state to the module-level bridge so RedactPanel's
+  // unified ledger can show a "Staged from AI scan" row + one-click commit.
+  // On unmount we reset to zero so the row disappears when the panel closes.
+  useEffect(() => {
+    publishStagedRedact({
+      selected: selected.size,
+      total: redactableFindings.length,
+      commit: redactableFindings.length > 0 ? redactSelected : null,
+    });
+  }, [selected, redactableFindings, redactSelected]);
+  useEffect(() => {
+    return () => {
+      publishStagedRedact({ selected: 0, total: 0, commit: null });
+    };
+  }, []);
+
   const grouped = useMemo(() => {
     if (!pageRedactableFindings.length) return null;
     // Category → snippet-key → detections. Collapsing identical matched-text
