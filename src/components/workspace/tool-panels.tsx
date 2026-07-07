@@ -1689,42 +1689,93 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                               </button>
                             )}
                           </div>
-                          {!isSingle && isExpanded && (
-                            <ul className="ml-6 border-l border-border/60">
-                              {g.dets.map((d) => {
-                                const checked = selected.has(d.id);
-                                return (
-                                  <li key={d.id}>
-                                    <div className="group flex items-center gap-1.5 px-2.5 py-0.5 hover:bg-surface-2">
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={(e) => {
-                                          setSelected((prev) => {
-                                            const next = new Set(prev);
-                                            if (e.target.checked) next.add(d.id);
-                                            else next.delete(d.id);
-                                            return next;
-                                          });
-                                        }}
-                                        className="h-3 w-3 shrink-0 accent-vault"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => jumpToFinding(d)}
-                                        className="min-w-0 flex-1 text-left text-[10px] text-text-2 hover:text-foreground"
-                                      >
-                                        Page {d.page}
-                                        {!d.source && (
-                                          <span className="ml-1 text-amber-400/80">· visual-only</span>
-                                        )}
-                                      </button>
-                                    </div>
+                          {!isSingle && isExpanded && (() => {
+                            const allKey = `${groupKey}::all`;
+                            const showAll = expandedGroups.has(allKey);
+                            const SAMPLE = 10;
+                            const visible = showAll ? g.dets : g.dets.slice(0, SAMPLE);
+                            const hidden = g.dets.length - visible.length;
+                            const last = g.dets[g.dets.length - 1];
+                            return (
+                              <ul className="ml-6 border-l border-border/60">
+                                {visible.map((d) => {
+                                  const checked = selected.has(d.id);
+                                  return (
+                                    <li key={d.id}>
+                                      <div className="group flex items-center gap-1.5 px-2.5 py-0.5 hover:bg-surface-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={(e) => {
+                                            setSelected((prev) => {
+                                              const next = new Set(prev);
+                                              if (e.target.checked) next.add(d.id);
+                                              else next.delete(d.id);
+                                              return next;
+                                            });
+                                          }}
+                                          className="h-3 w-3 shrink-0 accent-vault"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => jumpToFinding(d)}
+                                          className="min-w-0 flex-1 text-left text-[10px] text-text-2 hover:text-foreground"
+                                        >
+                                          Page {d.page}
+                                          {!d.source && (
+                                            <span className="ml-1 text-amber-400/80">· visual-only</span>
+                                          )}
+                                        </button>
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                                {hidden > 0 && (
+                                  <li className="flex items-center gap-2 px-2.5 py-1 text-[10px] text-text-muted">
+                                    <span>and {hidden.toLocaleString()} more</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => jumpToFinding(last)}
+                                      className="rounded px-1 py-0.5 text-text-2 hover:bg-surface-3 hover:text-foreground"
+                                      title="Jump to last occurrence"
+                                    >
+                                      jump to last
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedGroups((prev) => {
+                                          const next = new Set(prev);
+                                          next.add(allKey);
+                                          return next;
+                                        });
+                                      }}
+                                      className="rounded px-1 py-0.5 text-text-2 hover:bg-surface-3 hover:text-foreground"
+                                    >
+                                      show all
+                                    </button>
                                   </li>
-                                );
-                              })}
-                            </ul>
-                          )}
+                                )}
+                                {showAll && g.dets.length > SAMPLE && (
+                                  <li className="px-2.5 py-1 text-[10px] text-text-muted">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedGroups((prev) => {
+                                          const next = new Set(prev);
+                                          next.delete(allKey);
+                                          return next;
+                                        });
+                                      }}
+                                      className="rounded px-1 py-0.5 hover:bg-surface-3 hover:text-foreground"
+                                    >
+                                      show fewer
+                                    </button>
+                                  </li>
+                                )}
+                              </ul>
+                            );
+                          })()}
                         </li>
                       );
                     })}
