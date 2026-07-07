@@ -173,6 +173,24 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
               </label>
             </div>
 
+            {isHelp && (
+              <label className="text-[11px] text-text-muted">
+                What's this about?
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as HelpCategory)}
+                  className="mt-1 h-8 w-full rounded-md border border-border bg-surface-2 px-2 text-[12.5px] text-foreground focus:border-vault focus:outline-none"
+                >
+                  {HELP_CATEGORY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+
             {!isHelp && (
               <label className="text-[11px] text-text-muted">
                 Title
