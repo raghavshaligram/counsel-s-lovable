@@ -23,6 +23,7 @@ import {
   GripVertical,
   X,
   Files as FilesIcon,
+  FileStack,
   KeyRound,
   Eye,
   EyeOff,
@@ -176,6 +177,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RedactPanel ctx={ctx} />;
     case "sign":
       return <SignFillPanel ctx={ctx} />;
+    case "mail-merge":
+      return <MailMergePanel ctx={ctx} />;
     case "merge":
       return <MergePanel ctx={ctx} />;
     case "split":
@@ -783,8 +786,123 @@ function CsvFillSection({
   );
 }
 
+/* ============================== Mail Merge ============================== */
+
+/**
+ * Mail Merge inspector — batch-fills the active tab's PDF template with rows
+ * from a CSV and downloads a ZIP of named PDFs. Reuses CsvFillSection for the
+ * mapping + generation logic (same code path as Sign & Fill's batch section)
+ * so there's exactly one implementation of the merge flow. On-device only.
+ */
+function MailMergePanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const fileKey = file ? `${file.name}::${file.size}::${file.lastModified}` : "";
+  const [fields, setFields] = useState<FormFieldInfo[] | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [flatten, setFlatten] = useState(true);
+
+  const rescan = useCallback(async () => {
+    if (!file) {
+      setFields([]);
+      return;
+    }
+    setScanning(true);
+    try {
+      const info = await detectFormFields(file);
+      setFields(info);
+    } catch (err) {
+      console.error("[mail-merge] field scan failed", err);
+      setFields([]);
+      toast.error("Couldn't read form fields", { description: (err as Error).message });
+    } finally {
+      setScanning(false);
+    }
+  }, [file]);
+
+  useEffect(() => {
+    void rescan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileKey]);
+
+  if (!file) {
+    return (
+      <InspectorEmpty>
+        Open a fillable PDF template to run Mail Merge. One row of your CSV = one filled, named PDF.
+      </InspectorEmpty>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Section title="Template" icon={<FileStack className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+          <div className="truncate text-[12px] text-foreground" title={file.name}>
+            {file.name}
+          </div>
+          <div className="mt-0.5 text-[10.5px] text-text-muted">
+            {scanning || fields === null
+              ? "Scanning for form fields…"
+              : fields.length === 0
+                ? "No AcroForm fields detected in this PDF."
+                : `${fields.length} fillable field${fields.length === 1 ? "" : "s"} detected`}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={rescan}
+          disabled={scanning}
+          className="mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+        >
+          <RefreshCw className={cn("h-3 w-3", scanning && "animate-spin")} />
+          Rescan
+        </button>
+      </Section>
+
+      {fields !== null && fields.length === 0 && !scanning && (
+        <div className="flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">
+          <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+          <span>
+            Mail Merge currently requires a PDF with AcroForm fields. Use{" "}
+            <strong className="text-amber-100">Sign & Fill</strong> to add fields, or export a
+            fillable PDF from Acrobat / LibreOffice.
+          </span>
+        </div>
+      )}
+
+      {fields !== null && fields.length > 0 && (
+        <>
+          <Section title="Options" icon={<FileText className="h-3 w-3" />}>
+            <label className="flex items-start gap-2 text-[11.5px] text-foreground">
+              <input
+                type="checkbox"
+                checked={flatten}
+                onChange={(e) => setFlatten(e.target.checked)}
+                className="mt-0.5 h-3 w-3 accent-[var(--vault)]"
+              />
+              <span>
+                <span className="block">Flatten output</span>
+                <span className="block text-[10.5px] text-text-muted">
+                  Lock the fields so recipients can't edit. Recommended for sending.
+                </span>
+              </span>
+            </label>
+          </Section>
+
+          <CsvFillSection file={file} fields={fields} flatten={flatten} />
+        </>
+      )}
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
 
 /* ------------------------------ Redact ------------------------------ */
+
 
 /**
  * Redact staging bridge — Stage 2 unification.
