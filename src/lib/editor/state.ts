@@ -47,6 +47,7 @@ export type Action =
   | { type: "SET_FILL"; v: boolean }
   | { type: "SELECT_ANNO"; id: string | null }
   | { type: "ADD_ANNO"; a: Anno }
+  | { type: "ADD_ANNOS"; list: Anno[] }
   | { type: "UPDATE_ANNO"; id: string; patch: Partial<Anno> }
   | { type: "DELETE_ANNO"; id: string }
   | { type: "REORDER_PAGE"; from: number; to: number }
