@@ -3046,19 +3046,46 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           const gatedRasterizedPages = gated.rasterizedPages;
           const vresult = gated.verify;
 
-          // Pixel-level re-OCR check for burned pages. Outside the gate's
+          // Pixel-coverage check for burned pages. Outside the gate's
           // scope: the gate proves NO extractable text remains; this proves
-          // the raster pixels are unreadable to OCR too.
+          // the raster pixels are truly black (not just "text-cleared").
+          // On leak: auto-escalate once — re-rasterize ONLY the leaked
+          // pages in max-security mode at higher DPI, then re-verify.
+          // Only fail if the second pass still leaks (a genuine burn bug).
           if (gatedRasterizedPages.length > 0) {
-            onProgress({ fraction: 0.9, step: "Re-OCR check on burned pages…" });
-            toast.loading("Re-OCR check on burned pages…", { id: tid });
+            onProgress({ fraction: 0.9, step: "Pixel-coverage check on burned pages…" });
+            toast.loading("Pixel-coverage check on burned pages…", { id: tid });
             const { verifyPixelRedaction } = await importChunk(() => import("@/lib/editor/verify-pixel-redaction"));
             const pixelTargets = targets.filter((t) => !!t.rect).map((t) => ({ page: t.page, rect: t.rect! }));
-            const pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(gatedRasterizedPages));
+            let pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(gatedRasterizedPages));
             if (!pixelResult.ok) {
-              throw new Error(
-                `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still show recognizable text after pixel burn — refusing to download.`,
-              );
+              // Auto-escalate: force max-security raster on the leaked pages
+              // at scale 3.0 (was 2.5), then re-verify.
+              const leakedPageIdxs = Array.from(new Set(pixelResult.leaks.map((l) => l.page)));
+              onProgress({ fraction: 0.93, step: `Re-burning ${leakedPageIdxs.length} page(s) at higher DPI…` });
+              toast.loading(`Re-burning ${leakedPageIdxs.length} page(s) at higher DPI…`, { id: tid });
+              const escalatePageRedactions = new Map<number, { x: number; y: number; w: number; h: number }[]>();
+              for (const p of leakedPageIdxs) {
+                const rects = pageRedactions.get(p);
+                if (rects) escalatePageRedactions.set(p, rects);
+              }
+              if (escalatePageRedactions.size > 0) {
+                const escalated = await rasterizeRedactedPagesInWorker(outBytes, escalatePageRedactions, {
+                  mode: "always",
+                  scale: 3.0,
+                  signal,
+                });
+                outBytes = escalated.bytes;
+                onProgress({ fraction: 0.96, step: "Re-verifying re-burned pages…" });
+                toast.loading("Re-verifying re-burned pages…", { id: tid });
+                pixelResult = await verifyPixelRedaction(outBytes, pixelTargets, new Set(gatedRasterizedPages));
+              }
+              if (!pixelResult.ok) {
+                const pages = Array.from(new Set(pixelResult.leaks.map((l) => l.page + 1))).slice(0, 8).join(", ");
+                throw new Error(
+                  `${pixelResult.leaks.length} redaction region${pixelResult.leaks.length === 1 ? "" : "s"} still not fully burned on page${pixelResult.leaks.length === 1 ? "" : "s"} ${pages}${pixelResult.leaks.length > 8 ? "…" : ""} — refusing to download.`,
+                );
+              }
             }
           }
 
