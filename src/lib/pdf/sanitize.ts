@@ -222,23 +222,26 @@ export async function sanitizePdfBytesWithReport(
     }
     catalog.delete(PDFName.of("OCProperties"));
   }
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    // Annotation with /OC dict → was layer-gated → drop the whole thing.
-    if (obj instanceof PDFDict && obj.has(PDFName.of("OC")) && obj.has(PDFName.of("Subtype"))) {
-      removeRef(ctx, ref);
-      report.hiddenLayerContent++;
-      continue;
-    }
-    // XObject with /OC → wipe its contents so any layer-hidden glyphs go.
-    if (obj instanceof PDFStream) {
-      const d = obj.dict;
-      if (d instanceof PDFDict && d.has(PDFName.of("OC"))) {
-        // Replace with an empty stream of the same kind.
-        try {
-          const empty = ctx.stream(new Uint8Array(0));
-          ctx.assign(ref, empty);
-          report.hiddenLayerContent++;
-        } catch { /* ignore */ }
+  {
+    let i = 0;
+    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "hidden-layers", 0);
+      // Annotation with /OC dict → was layer-gated → drop the whole thing.
+      if (obj instanceof PDFDict && obj.has(PDFName.of("OC")) && obj.has(PDFName.of("Subtype"))) {
+        removeRef(ctx, ref);
+        report.hiddenLayerContent++;
+        continue;
+      }
+      // XObject with /OC → wipe its contents so any layer-hidden glyphs go.
+      if (obj instanceof PDFStream) {
+        const d = obj.dict;
+        if (d instanceof PDFDict && d.has(PDFName.of("OC"))) {
+          try {
+            const empty = ctx.stream(new Uint8Array(0));
+            ctx.assign(ref, empty);
+            report.hiddenLayerContent++;
+          } catch { /* ignore */ }
+        }
       }
     }
   }
