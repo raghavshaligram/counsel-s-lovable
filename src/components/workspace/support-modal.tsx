@@ -44,6 +44,7 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
     if (!open) return;
     setName(defaultName ?? "");
     setEmail(defaultEmail ?? "");
+    setCategory("how-to");
     setTitle("");
     setMessage("");
     setBusy(false);
