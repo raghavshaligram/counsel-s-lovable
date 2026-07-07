@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
-import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
+import { useBatesSettings, docKey as batesDocKey, computeBatesFingerprint } from "@/lib/workspace/bates-store";
 import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk-import";
 import { downloadPdf } from "@/lib/pdf/download";
 import { ExportFormatRow } from "./export-format-row";
