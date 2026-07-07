@@ -1617,14 +1617,16 @@ function sanitizeStageLabel(stage: string): string {
 }
 
 
-  const redactSelected = useCallback(async () => {
-    if (!findings || selected.size === 0) return;
+  const redactSelected = useCallback(async (overrideIds?: ReadonlySet<string>) => {
+    const activeIds = overrideIds ?? selected;
+    if (!findings || activeIds.size === 0) return;
     let added = 0;
     let skipped = 0;
     const sideChannelDets: Det[] = [];
     const toAdd: Anno[] = [];
     for (const d of findings) {
-      if (!selected.has(d.id)) continue;
+      if (!activeIds.has(d.id)) continue;
+
       // Side-channel findings (form fields, annotations, metadata) have no
       // page rect. They used to be queued for the export pipeline, which
       // failed silently (form-field/annotation content was leaking around
