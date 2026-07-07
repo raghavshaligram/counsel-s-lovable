@@ -1799,10 +1799,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     );
   }, [sideChannelFindings]);
 
-
+  // Precompute selection counts per group ONCE per (grouped, selected) change.
+  // Without this every checkbox toggle would re-run g.dets.reduce for every
+  // group in the tree — O(N*K) per render — which is the source of the lag
+  // when a 5000-page doc produces thousands of groups.
+  const selectionByGroup = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!grouped) return map;
+    for (const [cat, groups] of grouped) {
+      for (const g of groups) {
+        const key = `${cat}::${g.key}`;
+        let n = 0;
+        for (const d of g.dets) if (selected.has(d.id)) n++;
+        map.set(key, n);
+      }
+    }
+    return map;
+  }, [grouped, selected]);
 
   const allSelected =
     redactableFindings.length > 0 && selected.size === redactableFindings.length;
+
 
   return (
     <div className="flex flex-col gap-2">
