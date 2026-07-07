@@ -1173,6 +1173,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setUnderDetectedOcrPages([]);
       setTotalPagesScanned(0);
       setSelected(new Set());
+      autoSelectedRef.current = new Set();
       return;
     }
     setFindings(scanRecord.findings);
@@ -1181,11 +1182,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setLowConfOcrPages(scanRecord.lowConfidenceOcrPages);
     setUnderDetectedOcrPages(scanRecord.ocrUnderDetectedPages);
     setTotalPagesScanned(scanRecord.totalPagesScanned);
-    if (scanRecord.status === "completed" && scanRecord.findings) {
-      const autoSelect = scanRecord.findings.filter((d) => d.confidence !== "low");
-      setSelected(new Set(autoSelect.map((d) => d.id)));
-    } else if (scanRecord.status === "queued" || scanRecord.status === "running") {
-      setSelected(new Set());
+    // Progressive auto-select: while running OR on completion, add newly-
+    // arrived high-confidence findings to the current selection without
+    // wiping user toggles. Tracking auto-selected IDs in a ref means an
+    // item the user manually unchecks stays unchecked on subsequent ticks.
+    if (
+      (scanRecord.status === "running" ||
+        scanRecord.status === "queued" ||
+        scanRecord.status === "completed") &&
+      scanRecord.findings
+    ) {
+      const highConf = scanRecord.findings.filter((d) => d.confidence !== "low");
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const d of highConf) {
+          if (!autoSelectedRef.current.has(d.id)) {
+            next.add(d.id);
+            autoSelectedRef.current.add(d.id);
+          }
+        }
+        return next;
+      });
     }
   }, [docId, scanRecord]);
 
