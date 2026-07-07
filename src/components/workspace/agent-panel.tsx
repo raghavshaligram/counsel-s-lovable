@@ -76,6 +76,14 @@ type Step =
       body: string;
       onUpgrade: () => void;
     }
+  | {
+      kind: "find-results";
+      id: string;
+      term: string;
+      matches: Array<{ page: number; snippet: string }>;
+      caveat?: string;
+      actions?: Action[];
+    }
   | { kind: "error"; id: string; title: string; body: string };
 
 /** Flow → Pro feature descriptor. Free flows return null. */
