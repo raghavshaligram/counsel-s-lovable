@@ -56,39 +56,28 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const docKey = file ? `${file.name}::${file.size}::${file.lastModified}` : "";
   const capability = useMemo(() => capabilityCheck(), []);
 
-  const [modelReady, setModelReady] = useState(false);
-  const [loadStage, setLoadStage] = useState<string>("");
-  const [loadPct, setLoadPct] = useState<number | null>(null);
-  const [indexed, setIndexed] = useState<boolean>(() =>
-    docKey ? hasIndex(docKey) : false,
-  );
-  const [indexing, setIndexing] = useState(false);
-  const [indexProgress, setIndexProgress] = useState<{ done: number; total: number } | null>(null);
+  const [statusLabel, setStatusLabel] = useState<string>("");
 
   const [query, setQuery] = useState("");
   const [querying, setQuerying] = useState(false);
-  const [hits, setHits] = useState<Hit[]>([]);
+  const [hits, setHits] = useState<SemanticHit[]>([]);
   const [lastQuery, setLastQuery] = useState("");
   const [debugLines, setDebugLines] = useState<string[]>(() => getDiscoveryDebugLines());
 
-  const indexedKeyRef = useRef<string>("");
+  const docKeyRef = useRef<string>("");
   useEffect(() => subscribeDiscoveryDebug(setDebugLines), []);
 
   useEffect(() => {
-    if (indexedKeyRef.current !== docKey) {
-      indexedKeyRef.current = docKey;
-      setIndexed(docKey ? hasIndex(docKey) : false);
+    if (docKeyRef.current !== docKey) {
+      docKeyRef.current = docKey;
       setHits([]);
       setLastQuery("");
+      setStatusLabel("");
     }
   }, [docKey]);
 
   /**
    * Prefill + auto-run when the unified command bar routes a query here.
-   * The event fires just after the panel mounts (see workspace-shell).
-   * Uses a ref-callback pattern so `runQuery` (declared below) is captured
-   * at call time, not at bind time — the panel would otherwise fire an
-   * empty search.
    */
   const runQueryRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
@@ -97,138 +86,33 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const q = (detail?.query ?? "").trim();
       if (!q) return;
       setQuery(q);
-      // Give React a tick to flush the query state, then invoke.
       setTimeout(() => void runQueryRef.current(), 30);
     };
     window.addEventListener("commandbar:query", onCmd as EventListener);
     return () => window.removeEventListener("commandbar:query", onCmd as EventListener);
   }, []);
 
-  const ensureModel = useCallback(async (): Promise<boolean> => {
-    if (modelReady) return true;
-    setLoadStage("Preparing on-device model…");
-    try {
-      await loadModel((p: LoadProgress) => {
-        setLoadStage(
-          p.stage === "progress"
-            ? `Downloading model${p.file ? ` — ${p.file}` : ""}`
-            : p.stage[0].toUpperCase() + p.stage.slice(1),
-        );
-        if (typeof p.progress === "number") setLoadPct(Math.round(p.progress));
-      }, "pre-discovery-panel:user-opened-panel");
-      setModelReady(true);
-      setLoadStage("");
-      setLoadPct(null);
-      return true;
-    } catch (err) {
-      console.error("[pre-discovery] model load failed", err);
-      toast.error("Couldn't load the on-device model", {
-        description: err instanceof Error ? err.message : String(err),
-      });
-      setLoadStage("");
-      setLoadPct(null);
-      return false;
-    }
-  }, [modelReady]);
-
-  const buildIndex = useCallback(async (): Promise<boolean> => {
-    if (!file) return false;
-    if (!requirePro("Pre-Discovery Review")) return false;
-    // Duplicate-start guard: if the worker is already indexing this
-    // doc, join the in-flight run instead of stacking a second pass.
-    if (isIndexing(docKey)) {
-      console.info("[pre-discovery] indexDocument already running — joining");
-      setIndexing(true);
-      return true;
-    }
-    if (!(await ensureModel())) return false;
-    setIndexing(true);
-    setIndexProgress({ done: 0, total: 0 });
-    try {
-      const { extractPdfParagraphChunks } = await import("@/lib/chat/pdf-extract");
-      // Paragraph-level ~300-char chunks give MiniLM sharper score separation.
-      const raw = await extractPdfParagraphChunks(file, 300, 120);
-      // extractPdfChunks emits 1-based pages; the editor uses 0-based.
-      const chunks = raw.map((c, i) => ({
-        ...c,
-        page: c.page - 1,
-        id: `${c.page - 1}:${i}`,
-      }));
-      if (chunks.length === 0) {
-        toast.error("No extractable text — run Make Searchable (OCR) first.");
-        setIndexing(false);
-        setIndexProgress(null);
-        return false;
-      }
-      const sample = [chunks[0], chunks[Math.floor(chunks.length / 2)], chunks[chunks.length - 1]];
-      console.log(
-        "[pre-discovery] chunk/page sample",
-        sample.map((c) => ({ page0: c.page, page1: c.page + 1, textHead: c.text.slice(0, 60) })),
-      );
-      addDiscoveryDebug("chunk/page sample", sample.map((c) => ({
-        page0: c.page,
-        page1: c.page + 1,
-        textHead: c.text.slice(0, 120),
-      })));
-      setIndexProgress({ done: 0, total: chunks.length });
-      await indexDocument(docKey, chunks, (done, total) =>
-        setIndexProgress({ done, total }),
-      );
-      setIndexed(true);
-      toast.success(`Indexed ${chunks.length} passages — search anything.`);
-      return true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg === "aborted") {
-        toast.message("Indexing paused", {
-          description: "You can resume by running a search again.",
-        });
-        return false;
-      }
-      console.error("[pre-discovery] index failed", err);
-      toast.error("Indexing failed", { description: msg });
-      return false;
-    } finally {
-      setIndexing(false);
-      setIndexProgress(null);
-    }
-  }, [file, docKey, ensureModel, requirePro]);
-
-  const cancelIndexing = useCallback(() => {
-    const hit = abortIndex(docKey);
-    if (hit) {
-      setIndexing(false);
-      setIndexProgress(null);
-      toast.message("Indexing paused", {
-        description: "You can resume by running a search again.",
-      });
-    }
-  }, [docKey]);
-
-
   const runQuery = useCallback(async () => {
     if (!file || !query.trim()) return;
     if (!requirePro("Pre-Discovery Review")) return;
-    if (!indexed) {
-      const ok = await buildIndex();
-      if (!ok) return;
-    } else if (!(await ensureModel())) return;
+    const q = query.trim();
     setQuerying(true);
+    setStatusLabel("Searching…");
     try {
-      // Embed the FULL original query — stopword stripping loses phrasal
-      // context ("who are the attorneys" → "attorneys" tanks recall).
-      // Embeddings handle common words natively; we only need thresholds
-      // to keep unrelated chunks out.
-      const q = query.trim();
-      const results = await queryIndex(docKey, q, 20);
-      // Pure cosine ranking on MiniLM (L2-normalised → dot product).
-      // MiniLM scores are absolute-low for short queries (2-word queries
-      // can top out around 0.20 even when semantically correct), so we
-      // don't gate on an absolute floor alone. Rule:
-      //   1. Drop anything below MIN_ABS (pure noise).
-      //   2. Always keep the top hit if it clearly dominates the runner-up
-      //      (gap ≥ MIN_GAP OR ratio ≥ DOMINANCE).
-      //   3. Keep additional hits only if within REL_GAP of the top.
+      const results = await searchDocument(file, docKey, q, {
+        topK: 20,
+        shortlistSize: 80,
+        onStage: (stage, info) => {
+          if (stage === "extract") setStatusLabel("Reading document…");
+          else if (stage === "keyword") setStatusLabel("Searching…");
+          else if (stage === "semantic")
+            setStatusLabel(
+              `Ranking most relevant passages${info?.candidates ? ` (${info.candidates})` : ""}…`,
+            );
+        },
+      });
+
+      // Cosine-based confidence filter, matches previous behaviour.
       const MIN_ABS = 0.15;
       const MIN_GAP = 0.05;
       const DOMINANCE = 1.5;
@@ -246,49 +130,19 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
         })
         .slice(0, 8);
 
-      console.log(
-        "[pre-discovery] query",
-        JSON.stringify(q),
-        "ranking=cosine(MiniLM)",
-        "top",
-        top.toFixed(3),
-        "floor",
-        floor.toFixed(3),
-        "kept",
-        filtered.length,
-        "of",
-        results.length,
-        "sampleScores",
-        results.slice(0, 5).map((r) => r.score.toFixed(3)),
-      );
-      addDiscoveryDebug("query filtered results", {
-        query: q,
-        ranking: "cosine(MiniLM embeddings)",
-        top: +top.toFixed(3),
-        floor: +floor.toFixed(3),
-        kept: filtered.length,
-        returned: results.length,
-        top5: results.slice(0, 5).map((r) => ({
-          page0: r.page,
-          page1: r.page + 1,
-          score: +r.score.toFixed(3),
-          textHead: r.text.slice(0, 120),
-        })),
-      });
       setHits(filtered);
-      setLastQuery(query.trim());
+      setLastQuery(q);
     } catch (err) {
-      console.error("[pre-discovery] query failed", err);
+      console.error("[pre-discovery] search failed", err);
       toast.error("Search failed", {
         description: err instanceof Error ? err.message : String(err),
       });
     } finally {
       setQuerying(false);
+      setStatusLabel("");
     }
-  }, [file, query, docKey, indexed, buildIndex, ensureModel, requirePro]);
+  }, [file, query, docKey, requirePro]);
 
-  // Keep the ref pointed at the current runQuery so the commandbar
-  // listener always invokes the latest closure (with current `query`).
   useEffect(() => {
     runQueryRef.current = runQuery;
   }, [runQuery]);
