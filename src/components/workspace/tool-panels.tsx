@@ -1551,7 +1551,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           signal: abort.signal,
           onProgress: ({ stage, done }) => {
             if (done > 0 && done % 4000 === 0) {
-              toast.loading(`Wiping hidden data… (${stage} · ${done.toLocaleString()} objects)`, {
+              toast.loading(`Wiping ${sanitizeStageLabel(stage)}… (${done.toLocaleString()} objects)`, {
                 id: tid,
                 action: { label: "Cancel", onClick: () => abort.abort() },
               });
