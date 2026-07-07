@@ -3358,23 +3358,43 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
 
-      <Section title="Commit" icon={<ShieldCheck className="h-3 w-3" />}>
+      <Section title="Commit & Export" icon={<ShieldCheck className="h-3 w-3" />}>
         {(() => {
           // Total items awaiting commit = manual/AI page annotations + ticked
           // side-channel items (form fields, comments, metadata). Either can
           // drive a commit on its own.
           const totalStaged = totalBoxes + (staged.sideStaged || 0);
           const canCommit = totalStaged > 0;
+          const canExport = committedOnce || canCommit; // export always runs the pipeline on current staged+committed state
           const onCommit = async () => {
-            // Prefer the page-burn path when any page box is staged — the
-            // gate inside `exportRedacted` scrubs side-channels too, so ticked
-            // form-field/annotation/metadata items are covered by the same
-            // pass. Side-channel-only stages fall back to the sanitize+swap
-            // path published by AutoDetectSection.
+            // Commit in place: burn + verify, then swap srcBytes and clear
+            // committed annotations. No download. Enables the multi-round
+            // workflow (redact SSNs → redact phones → … → export once).
             if (totalBoxes > 0) {
-              await exportRedacted();
+              await exportRedacted({ mode: "commit" });
             } else if (staged.sideCommit) {
               await staged.sideCommit();
+              setCommittedOnce(true);
+            }
+          };
+          const onExport = async () => {
+            // Export path: if there's still staged content, commit+download
+            // in one shot; otherwise re-export the already-cleaned srcBytes.
+            if (totalBoxes > 0) {
+              await exportRedacted({ mode: "export" });
+            } else if (staged.sideCommit) {
+              // Rare: side-channel-only pending. Sanitize then trigger a
+              // plain PDF download of the current srcBytes.
+              await staged.sideCommit();
+              setCommittedOnce(true);
+              // Fall through: user can hit Export again for the download.
+            } else if (committedOnce && editorState?.doc?.srcBytes) {
+              // Nothing new to burn — just download the current cleaned bytes.
+              await downloadPdf(
+                editorState.doc.srcBytes,
+                (file?.name ?? "document").replace(/\.pdf$/i, "") + "-redacted.pdf",
+              );
+              toast.success("Downloaded redacted PDF");
             }
           };
           return (
@@ -3392,23 +3412,48 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
                   className="mt-0.5 h-3 w-3 accent-vault"
                 />
                 <span className="text-foreground">
-                  I have reviewed every page of this document and confirm the redaction set is complete.
+                  I have reviewed every page of this document and confirm the staged redactions are correct.
                   I understand auto-detection only flags structured patterns and that I am responsible
                   for catching names and context-dependent secrets.
                 </span>
               </label>
-              <button
-                type="button"
-                onClick={onCommit}
-                disabled={busy || !canCommit || !reviewedSignOff}
-                className={cn(
-                  "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-                  (busy || !canCommit || !reviewedSignOff) && "cursor-not-allowed opacity-60",
-                )}
-              >
-                <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-                {busy ? "Working…" : `Redact & verify${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
-              </button>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  onClick={onCommit}
+                  disabled={busy || !canCommit || !reviewedSignOff}
+                  className={cn(
+                    "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/60 bg-surface-2 px-2.5 py-1.5 text-[12px] font-medium text-vault hover:bg-accent-soft",
+                    (busy || !canCommit || !reviewedSignOff) && "cursor-not-allowed opacity-60",
+                  )}
+                  title="Burn & verify staged items in place. Doesn't download — stage more categories, then hit Export."
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  {busy ? "Working…" : `Commit staged${canCommit ? ` (${totalStaged.toLocaleString()})` : ""}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={onExport}
+                  disabled={busy || (!canExport)}
+                  className={cn(
+                    "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+                    (busy || !canExport) && "cursor-not-allowed opacity-60",
+                  )}
+                  title="Verify & download the redacted PDF. Runs commit first if anything is still staged."
+                >
+                  <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  {busy
+                    ? "Working…"
+                    : canCommit
+                      ? `Commit & export (${totalStaged.toLocaleString()})`
+                      : "Export redacted PDF"}
+                </button>
+              </div>
+              {!canCommit && !committedOnce && (
+                <p className="mt-1.5 text-[10.5px] text-text-muted">
+                  Tick items in the categories above, then Commit. Repeat for other categories. Hit Export when done.
+                </p>
+              )}
             </>
           );
         })()}
@@ -3417,7 +3462,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             aria-hidden
             className="inline-block h-1.5 w-1.5 rounded-full bg-vault"
           />
-          Processed on your device. Nothing uploads. Exports a redacted PDF, then re-parses it to confirm no extractable text remains.
+          Processed on your device. Nothing uploads. Every commit re-parses the burned bytes to confirm no extractable text remains.
         </p>
       </Section>
 
