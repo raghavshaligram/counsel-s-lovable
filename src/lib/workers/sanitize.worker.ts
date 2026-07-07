@@ -6,14 +6,15 @@
  * indirect-object graph in memory).
  */
 import { sanitizePdfBytesWithReport, type SanitizeReport } from "@/lib/pdf/sanitize";
+import type { VerifyLeak } from "@/lib/editor/verify-redaction";
 
 type InboundMsg =
-  | { kind: "sanitize"; id: string; bytes: ArrayBuffer }
+  | { kind: "sanitize"; id: string; bytes: ArrayBuffer; sideVerifyStrings?: string[] }
   | { kind: "cancel"; id: string };
 
 type OutboundMsg =
   | { kind: "progress"; id: string; stage: string; done: number; total: number }
-  | { kind: "result"; id: string; bytes: ArrayBuffer; report: SanitizeReport; pageCount: number }
+  | { kind: "result"; id: string; bytes: ArrayBuffer; report: SanitizeReport; pageCount: number; sideLeaks?: VerifyLeak[] }
   | { kind: "error"; id: string; message: string };
 
 const active = new Map<string, { canceled: boolean }>();
@@ -42,9 +43,18 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
         shouldAbort: () => entry.canceled,
       });
       if (entry.canceled) throw new DOMException("Canceled", "AbortError");
+      let sideLeaks: VerifyLeak[] | undefined;
+      const sideVerifyStrings = Array.from(new Set((m.sideVerifyStrings ?? []).map((s) => s.trim()).filter((s) => s.length >= 3)));
+      if (sideVerifyStrings.length > 0) {
+        const { verifySideChannelVectors } = await import("@/lib/editor/verify-redaction");
+        post({ kind: "progress", id: m.id, stage: "verify-side-channel", done: 0, total: 1 });
+        sideLeaks = await verifySideChannelVectors(out, sideVerifyStrings);
+        if (entry.canceled) throw new DOMException("Canceled", "AbortError");
+        post({ kind: "progress", id: m.id, stage: "verify-side-channel", done: 1, total: 1 });
+      }
       // Transfer the output buffer back to the main thread; do not keep a copy here.
       const outBuf = out.buffer as ArrayBuffer;
-      post({ kind: "result", id: m.id, bytes: outBuf, report, pageCount }, [outBuf]);
+      post({ kind: "result", id: m.id, bytes: outBuf, report, pageCount, sideLeaks }, [outBuf]);
     } catch (err) {
       post({
         kind: "error",

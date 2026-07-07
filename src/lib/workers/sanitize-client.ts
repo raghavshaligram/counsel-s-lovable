@@ -4,6 +4,8 @@
  * documents don't lock the UI or OOM the tab.
  */
 import type { SanitizeReport } from "@/lib/pdf/sanitize";
+import type { VerifyLeak } from "@/lib/editor/verify-redaction";
+import { toTransferable } from "./release";
 
 export interface SanitizeProgress {
   stage: string;
@@ -15,6 +17,7 @@ export interface SanitizeResult {
   bytes: Uint8Array;
   report: SanitizeReport;
   pageCount: number;
+  sideLeaks?: VerifyLeak[];
 }
 
 let reqCounter = 0;
@@ -35,6 +38,7 @@ interface OutboundMsg {
   bytes?: ArrayBuffer;
   report?: SanitizeReport;
   pageCount?: number;
+  sideLeaks?: VerifyLeak[];
   message?: string;
 }
 
@@ -43,6 +47,13 @@ export function sanitizeInWorker(
   opts: {
     onProgress?: (p: SanitizeProgress) => void;
     signal?: AbortSignal;
+    /** Optional same-worker side-channel verification. Keeps the sanitized
+     *  PDF from being copied into a second worker for another full parse. */
+    sideVerifyStrings?: string[];
+    /** Transfer the caller's ArrayBuffer to the worker (zero-copy).
+     *  After the call, the caller's Uint8Array is empty. Use only when the
+     *  caller will not read that byte buffer again. */
+    stealBytes?: boolean;
   } = {},
 ): Promise<SanitizeResult> {
   return new Promise<SanitizeResult>((resolve, reject) => {
@@ -61,7 +72,7 @@ export function sanitizeInWorker(
         w.removeEventListener("message", handler);
         opts.signal?.removeEventListener("abort", onAbort);
         w.terminate();
-        resolve({ bytes: new Uint8Array(m.bytes), report: m.report, pageCount: m.pageCount });
+        resolve({ bytes: new Uint8Array(m.bytes), report: m.report, pageCount: m.pageCount, sideLeaks: m.sideLeaks });
       } else if (m.kind === "error") {
         if (settled) return;
         settled = true;
@@ -83,12 +94,10 @@ export function sanitizeInWorker(
     opts.signal?.addEventListener("abort", onAbort);
     w.addEventListener("message", handler);
 
-    // Copy the source bytes into a fresh transferable buffer so we neuter
-    // only the copy — the caller's Uint8Array (often srcBytes still owned
-    // by the editor) stays intact until we swap it.
-    const copy = new Uint8Array(sourceBytes.byteLength);
-    copy.set(sourceBytes);
-    const buf = copy.buffer;
-    w.postMessage({ kind: "sanitize", id, bytes: buf }, [buf]);
+    // Default is safe-copy so editor-owned srcBytes stay intact. Pipeline
+    // callers can opt into zero-copy transfer with stealBytes to avoid
+    // holding two full copies of a huge PDF during redaction export.
+    const buf = toTransferable(sourceBytes, { steal: opts.stealBytes });
+    w.postMessage({ kind: "sanitize", id, bytes: buf, sideVerifyStrings: opts.sideVerifyStrings ?? [] }, [buf]);
   });
 }

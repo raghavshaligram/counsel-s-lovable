@@ -1719,10 +1719,23 @@ function sanitizeStageLabel(stage: string): string {
         const sourceBytes = editorState.doc.srcBytes.byteLength > 0
           ? editorState.doc.srcBytes
           : new Uint8Array(await file!.arrayBuffer());
-        const { bytes: cleaned, report } = await sanitizeInWorker(sourceBytes, {
+        const sensitiveStrings = Array.from(new Set(
+          sideChannelDets.flatMap((d) => {
+            const full = (d.sensitiveText || "").trim();
+            const snip = (d.snippet || "").replace(/…$/, "").trim();
+            return [full, snip].filter((s) => s.length >= 3);
+          }),
+        ));
+        const { bytes: cleaned, report, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
           signal: abort.signal,
-          onProgress: ({ stage, done }) => {
-            if (done > 0 && done % 4000 === 0) {
+          sideVerifyStrings: sensitiveStrings,
+          onProgress: ({ stage, done, total }) => {
+            if (stage === "verify-side-channel") {
+              toast.loading(`Verifying hidden-vector wipe… (${done}/${Math.max(1, total)})`, {
+                id: tid,
+                action: { label: "Cancel", onClick: () => abort.abort() },
+              });
+            } else if (done > 0 && done % 4000 === 0) {
               toast.loading(`Cleaning ${sanitizeStageLabel(stage)}… (checked ${done.toLocaleString()} items)`, {
                 id: tid,
                 action: { label: "Cancel", onClick: () => abort.abort() },
@@ -1737,44 +1750,14 @@ function sanitizeStageLabel(stage: string): string {
           flattened: false,
           order: "field values/AP cleared now; flatten/PDF-A can only run later",
         });
-        // Targeted verification only — the wipe has no page-rect targets,
-        // so a full-doc raw-stream scan would just re-parse every page for
-        // nothing. Sanitize already removed the containing indirect objects;
-        // verifySideChannelVectors reads the remaining side-channel dicts
-        // and confirms no sensitive string survived.
-        const sensitiveStrings = Array.from(new Set(
-          sideChannelDets.flatMap((d) => {
-            const full = (d.sensitiveText || "").trim();
-            const snip = (d.snippet || "").replace(/…$/, "").trim();
-            return [full, snip].filter((s) => s.length >= 3);
-          }),
-        ));
-        if (sensitiveStrings.length > 0) {
-          const { verifySideChannelInWorker } = await importChunk(
-            () => import("@/lib/workers/verify-client"),
+        // Targeted verification only — the wipe has no page-rect targets.
+        // It now runs inside the SAME sanitize worker after save, so the
+        // cleaned 5000-page PDF is not copied into a second worker and parsed
+        // again. Same fail-closed guarantee: any leak blocks the commit.
+        if (sideLeaks.length > 0) {
+          throw new Error(
+            `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
           );
-          // Off-main-thread now. Previously `verifySideChannelVectors` ran
-          // synchronously on the main thread, doing a full pdf-lib parse +
-          // AcroForm walk + per-page Annots walk + full
-          // enumerateIndirectObjects over the whole 5000-page graph. That
-          // was the "Page Unresponsive" freeze. Same guarantee: any leak
-          // returned still fails the redaction, exactly as before.
-          const sideLeaks = await verifySideChannelInWorker(cleaned, sensitiveStrings, {
-            signal: abort.signal,
-            onProgress: (_stage, done, total) => {
-              if (total > 0) {
-                toast.loading(`Verifying hidden-vector wipe… (${done}/${total})`, {
-                  id: tid,
-                  action: { label: "Cancel", onClick: () => abort.abort() },
-                });
-              }
-            },
-          });
-          if (sideLeaks.length > 0) {
-            throw new Error(
-              `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
-            );
-          }
         }
         // Hot-swap srcBytes in place. Previously this dispatched
         // `LOAD { doc: { ...doc, srcBytes: cleaned } }` — which reset
@@ -2900,12 +2883,12 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       // source strings (see src/lib/editor/text-rewrite.ts). Prefer the
       // live editor bytes because apply-now side-channel redaction mutates
       // them immediately; fall back to File only if the buffer was detached.
-      const { exportEditedPdf } = await importChunk(() => import("@/lib/editor/export"));
+      const { exportEditedPdfInWorker } = await importChunk(() => import("@/lib/workers/export-client"));
       const freshBytes = editorState.doc.srcBytes.byteLength > 0
         ? editorState.doc.srcBytes
         : new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
-      let bytes = await exportEditedPdf(exportDoc);
+      let bytes = await exportEditedPdfInWorker(exportDoc);
 
       // Region-rasterize redacted pages. Default ("always") rasterizes every
       // page with a redaction — text inside the box is physically replaced
