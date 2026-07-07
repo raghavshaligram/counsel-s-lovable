@@ -15,7 +15,7 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "counselpdf-v5-offline";
+const VERSION = "counselpdf-v6-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;
@@ -101,6 +101,18 @@ function isHashedAssetPath(pathname) {
   );
 }
 
+function isLiveDataRequest(url) {
+  // TanStack server functions and Lovable Cloud Data API responses are
+  // identity-dependent live data. Never cache them: plan/admin reads must
+  // reflect the database source of truth immediately instead of replaying a
+  // previous "free" response while the offline shell is installed.
+  if (url.pathname.startsWith("/_serverFn")) return true;
+  if (url.pathname.startsWith("/api/")) return true;
+  if (url.hostname.endsWith(".supabase.co") && url.pathname.startsWith("/rest/v1/")) return true;
+  if (url.hostname.endsWith(".supabase.co") && url.pathname.startsWith("/auth/v1/")) return true;
+  return false;
+}
+
 async function cacheFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(req);
@@ -143,6 +155,11 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
+
+  if (isLiveDataRequest(url)) {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   // HTML navigations — NetworkFirst with offline shell fallback.
   if (req.mode === "navigate") {
