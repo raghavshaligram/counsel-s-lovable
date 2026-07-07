@@ -48,6 +48,14 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const [bates, updateBates] = useBatesSettings(batesDocKey(file));
   const batesOn = bates.on;
   const setBatesOn = (on: boolean) => updateBates({ on });
+  // "Already stamped" = the current stamp settings match the fingerprint of
+  // whatever was burned into the tab bytes via "Apply to active tab". Export
+  // must NOT layer a second identical stamp on top. Editing any stamp field
+  // invalidates the fingerprint automatically (see bates-store), so the user
+  // can always re-stamp by changing a setting.
+  const currentBatesFingerprint = computeBatesFingerprint(bates);
+  const batesAlreadyStamped =
+    !!bates.appliedFingerprint && bates.appliedFingerprint === currentBatesFingerprint;
 
   // Light, sensible defaults for the three ops.
   const [pnFormat, setPnFormat] = useState<"n" | "page-n" | "n-of-m">("n-of-m");
