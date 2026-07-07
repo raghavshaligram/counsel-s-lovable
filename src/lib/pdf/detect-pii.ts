@@ -370,6 +370,12 @@ export type DetectPiiOpts = {
    * / caller can react without waiting for the entire document to finish.
    */
   shouldAbort?: () => boolean;
+  /**
+   * "Quick scan" mode — skip the NER pass entirely. Regex + privilege +
+   * OCR still run. Used when the user wants structured-data-only detection
+   * with a much faster completion on low-end devices.
+   */
+  skipNer?: boolean;
 };
 
 export async function detectPiiInPdf(
