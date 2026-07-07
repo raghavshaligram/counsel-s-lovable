@@ -402,59 +402,81 @@ function walkFormTree(
 // even when the text layer extraction misses it.
 // ---------------------------------------------------------------------------
 
-async function verifyRawStreams(
-  bytes: Uint8Array,
+async function verifyRawStreamsFast(
+  doc: PDFDocument,
   sensitiveStrings: string[],
-  rasterizedPages?: number[],
+  skipRefs: Set<string>,
   signal?: AbortSignal,
 ): Promise<VerifyLeak[]> {
   const leaks: VerifyLeak[] = [];
-  let doc: PDFDocument;
-  try {
-    doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
-  } catch {
-    return leaks;
-  }
   const ctx = doc.context;
   const needles = sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3);
   if (needles.length === 0) return leaks;
 
-  // Collect refs reachable from FULLY rasterized pages — /Contents streams
-  // and Resources/XObject entries (the burned JPEG). We skip ONLY these:
-  // partially-rasterized or text-retaining pages are still scanned. Err
-  // toward verifying — never skip on doubt.
-  const skipRefs = collectRasterizedPageStreamRefs(doc, rasterizedPages);
+  // Precompute hex-encoded needle variants once (previously computed per stream).
+  const needleHex = needles.map((n) => ({
+    literal: n,
+    lowerHex: asciiToHex(n),
+    utf16Hex: asciiToUtf16BeHex(n),
+  }));
+
+  // Cap for what we're willing to inflate. Streams above this are almost
+  // always image data (JPEG/CCITT/JBIG2) or huge form XObjects — sensitive
+  // literal text won't sit inside those as searchable characters, and the
+  // pixel-verify OCR pass catches burned-text-in-image cases.
+  const INFLATE_CAP = 4 * 1024 * 1024;
 
   let i = 0;
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (i++ % 200 === 199) {
+    i++;
+    if ((i & 31) === 0) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      // Yield every 200 objects so the main thread stays responsive on
-      // thousands-of-pages docs.
+      // Yield every 32 objects so the worker can process a cancel message
+      // and V8 can GC intermediate buffers before we allocate the next.
       await new Promise<void>((r) => setTimeout(r, 0));
     }
     if (!(obj instanceof PDFStream)) continue;
     if (skipRefs.has(refKey(ref))) continue;
-    const decoded = decodeStreamBytes(obj);
-    if (!decoded || decoded.length === 0) continue;
+
+    // Skip image / form XObject subtypes — never carry searchable text.
+    const d = obj.dict;
+    if (d instanceof PDFDict) {
+      const subtype = nameStr(d.get(PDFName.of("Subtype")));
+      if (subtype === "/Image" || subtype === "/Form") continue;
+    }
+
+    const raw = (obj as unknown as { contents?: Uint8Array }).contents
+      ?? (obj as unknown as { getContents?: () => Uint8Array }).getContents?.();
+    if (!raw || raw.length === 0) continue;
+    if (raw.length > INFLATE_CAP) continue;
+
+    let decoded: Uint8Array | null = decodeStreamBytes(obj);
+    if (!decoded || decoded.length === 0) { decoded = null; continue; }
+
+    // Scan on the raw bytes without holding two full string copies. We
+    // decode once into latin1 (byte-preserving) and match all needle
+    // variants against it, then drop the string.
     const text = new TextDecoder("latin1").decode(decoded);
     const utf16 = tryUtf16Be(decoded);
-    for (const needle of needles) {
-      const hexAscii = asciiToHex(needle);
-      const hexUtf16 = asciiToUtf16BeHex(needle);
+    // Release the decoded buffer before any string work that follows.
+    decoded = null;
+
+    let hit: string | null = null;
+    const lowerText = text.toLowerCase();
+    for (const n of needleHex) {
       if (
-        text.includes(needle)
-        || (utf16 && utf16.includes(needle))
-        || text.toLowerCase().includes(hexAscii)
-        || text.toLowerCase().includes(hexUtf16)
-      ) {
-        leaks.push({
-          vector: "raw-stream",
-          text: `Sensitive literal "${truncate(needle)}" found in stream bytes`,
-          ref: refStr(ref),
-        });
-        break;
-      }
+        text.includes(n.literal)
+        || (utf16 && utf16.includes(n.literal))
+        || lowerText.includes(n.lowerHex)
+        || lowerText.includes(n.utf16Hex)
+      ) { hit = n.literal; break; }
+    }
+    if (hit) {
+      leaks.push({
+        vector: "raw-stream",
+        text: `Sensitive literal "${truncate(hit)}" found in stream bytes`,
+        ref: refStr(ref),
+      });
     }
   }
   return leaks;
