@@ -2480,7 +2480,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     }
     return out;
   }, [redactAnnos]);
-  const boxesWithoutText = redactAnnos.filter((a) => a.kind === "redact" && !a.sources?.length).length;
+  
 
   // Stage 2 unification: read the AI-detect flow's current staging state
   // so the "Marked for removal" section can show BOTH committed boxes and
