@@ -122,12 +122,16 @@ export async function sanitizePdfBytesWithReport(
   // Belt and braces: even if /AcroForm was already missing, individual
   // field dicts can linger as orphans. Walk every indirect object and
   // clear any /FT /Tx-style field value we find.
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const isFieldOrWidget = obj.has(PDFName.of("FT")) || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget";
-    if (!isFieldOrWidget) continue;
-    const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan");
-    report.acroFormFields += cleared;
+  {
+    let i = 0;
+    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "orphan-fields", 0);
+      if (!(obj instanceof PDFDict)) continue;
+      const isFieldOrWidget = obj.has(PDFName.of("FT")) || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget";
+      if (!isFieldOrWidget) continue;
+      const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan");
+      report.acroFormFields += cleared;
+    }
   }
   // Also drop /Widget annotations on every page — the parent form fields
   // were just deleted, so the widgets are now orphans whose only purpose
