@@ -62,15 +62,16 @@ async function seedFromStoredLicense() {
     if (current?.userId === stored.userId) setCurrent(null);
     return;
   }
-  // Discard stored snapshots older than 15 min — an admin plan grant made
+  // Discard stored snapshots older than 60s — an admin plan grant made
   // while this tab was closed would otherwise be masked by the pre-grant
   // "free" seed until the network fetch resolves (or forever if it fails).
-  const STALE_MS = 15 * 60_000;
+  const STALE_MS = 60_000;
   const seededAt = stored.validatedAt ? Date.parse(stored.validatedAt) : 0;
   if (!seededAt || Date.now() - seededAt > STALE_MS) {
     await clearLicense();
     return;
   }
+
   if (!current) setCurrent(stored);
 }
 
@@ -154,9 +155,14 @@ function bootstrap() {
 export function useLicenseActivation(): LicenseSnapshot | null {
   useEffect(() => {
     bootstrap();
+    // Re-fetch on every mount so a plan grant made while the tab was closed
+    // (or missed by realtime) surfaces the moment the user navigates back
+    // into any gated surface, instead of waiting for focus/6h.
+    void activate("mount");
   }, []);
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
+
 
 /** Manual revalidate — call after actions that should refresh entitlement. */
 export function refreshLicense(): Promise<void> {
