@@ -57,6 +57,7 @@ export function detectPiiInPdfViaWorker(
   onProgress?: (p: DetectProgress) => void,
   signal?: AbortSignal,
   onPartial?: (detections: Detection[], meta: { page: number; pass: "regex" | "ner" | "ocr" }) => void,
+  opts?: { skipNer?: boolean },
 ): Promise<DetectResult> {
   return new Promise<DetectResult>((resolve, reject) => {
     (async () => {
