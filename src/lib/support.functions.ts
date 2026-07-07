@@ -97,6 +97,7 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
 
     const insert = {
       type: data.type,
+      category: data.category ?? null,
       title: data.title || null,
       message: data.message,
       name: data.name || null,
@@ -108,7 +109,7 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
     };
 
     try {
-      const { error } = await supabaseAdmin.from("support_requests").insert(insert);
+      const { error } = await supabaseAdmin.from("support_requests").insert(insert as never);
       if (error) {
         console.error("[support] insert failed", error);
       }
