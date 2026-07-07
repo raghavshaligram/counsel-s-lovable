@@ -185,8 +185,10 @@ export function AgentPanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortedRef = useRef(false);
   const querySeqRef = useRef(0);
+  const assistCtxRef = useRef<AssistCtx>({});
   const isPro = useIsPro();
   const openUpgradeModal = useUpgradeModal((s) => s.openModal);
+  const navigate = useNavigate();
 
 
   const pushStep = useCallback((s: Step) => {
