@@ -3,7 +3,7 @@
  * single Inspector container at any time. No outer card/wrapper here: the
  * Inspector already provides the header, border, and scroll area.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Sparkles,
   Search,
