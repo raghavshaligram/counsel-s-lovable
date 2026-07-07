@@ -14,6 +14,10 @@ export interface RasterizeWorkerOptions {
   scale?: number;
   signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
+  /** Transfer the caller's ArrayBuffer to the worker (zero-copy). After the
+   *  call, the caller's Uint8Array is empty. Only use when the caller drops
+   *  its reference to sourceBytes immediately. */
+  stealBytes?: boolean;
 }
 
 export interface RasterizeWorkerResult {
@@ -77,7 +81,7 @@ export function rasterizeRedactedPagesInWorker(
     opts.signal?.addEventListener("abort", onAbort);
     w.addEventListener("message", handler);
 
-    const buf = toTransferable(sourceBytes);
+    const buf = toTransferable(sourceBytes, { steal: opts.stealBytes });
     w.postMessage(
       {
         kind: "rasterize",

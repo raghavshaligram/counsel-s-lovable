@@ -84,11 +84,21 @@ export async function verifyRedactionRemoval(
     leaks.push(...pageLeaks);
   }
 
-  const vectorLeaks = await verifySideChannelVectors(bytes, sensitiveStrings);
-  leaks.push(...vectorLeaks);
+  // Single pdf-lib parse shared between side-channel + rasterized-page skip
+  // computation. Falls back gracefully if the file can't be parsed.
+  let sharedDoc: PDFDocument | null = null;
+  try {
+    sharedDoc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  } catch { /* keep sharedDoc null — vector scans skip */ }
 
-  if (sensitiveStrings.length > 0) {
-    const rawLeaks = await verifyRawStreams(bytes, sensitiveStrings, opts.rasterizedPages, opts.signal);
+  if (sharedDoc) {
+    const vectorLeaks = verifySideChannelVectorsWithDoc(sharedDoc, sensitiveStrings);
+    leaks.push(...vectorLeaks);
+  }
+
+  if (sensitiveStrings.length > 0 && sharedDoc) {
+    const skipRefs = collectRasterizedPageStreamRefs(sharedDoc, opts.rasterizedPages);
+    const rawLeaks = await verifyRawStreamsFast(sharedDoc, sensitiveStrings, skipRefs, opts.signal);
     leaks.push(...rawLeaks);
   }
 
@@ -121,7 +131,11 @@ async function verifyPageGeometry(
   regionTargets: RedactionTarget[],
 ): Promise<VerifyLeak[]> {
   const pdfjs = await loadPdfjs();
+  // pdf.js may neuter/adopt the buffer; slice keeps the caller's bytes intact
+  // for the raw-stream + side-channel scans that run after this pass.
   const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+
+
 
   const byPage = new Map<number, RedactionTarget[]>();
   for (const t of regionTargets) {
@@ -171,21 +185,30 @@ export async function verifySideChannelVectors(
   bytes: Uint8Array,
   sensitiveStrings: string[],
 ): Promise<VerifyLeak[]> {
-  const leaks: VerifyLeak[] = [];
   let doc: PDFDocument;
   try {
     doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   } catch {
-    return leaks; // can't introspect — page check still ran above
+    return [];
   }
+  return verifySideChannelVectorsWithDoc(doc, sensitiveStrings);
+}
+
+/** Same as `verifySideChannelVectors` but reuses an already-parsed
+ *  PDFDocument and walks `enumerateIndirectObjects` exactly ONCE.
+ *  The previous impl walked it three times (form/OCG/attachments),
+ *  which is O(n) work triplicated on huge docs. */
+export function verifySideChannelVectorsWithDoc(
+  doc: PDFDocument,
+  sensitiveStrings: string[],
+): VerifyLeak[] {
+  const leaks: VerifyLeak[] = [];
   const ctx = doc.context;
   const catalog = doc.catalog;
 
   const sensitiveHit = (s: string | undefined | null): string | null => {
     if (!s) return null;
     if (sensitiveStrings.length === 0) {
-      // No specific strings supplied — flag presence only (callers can
-      // still pass these as leaks to refuse export).
       return s.length > 0 ? s : null;
     }
     const hay = s.toLowerCase();
@@ -195,7 +218,7 @@ export async function verifySideChannelVectors(
     return null;
   };
 
-  // -- Form-field values (AcroForm tree + any orphaned /FT dict) -------
+  // -- AcroForm tree (structured walk) --------------------------------
   const acroForm = catalog.lookupMaybe(PDFName.of("AcroForm"), PDFDict);
   if (acroForm) {
     const fieldsArr = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
@@ -203,9 +226,6 @@ export async function verifySideChannelVectors(
       walkFormTree(ctx, fieldsArr.asArray(), (field, ref) => {
         const v = extractText(field.get(PDFName.of("V")));
         if (v) {
-          // If sensitive strings supplied, only flag matches; otherwise
-          // flag every non-empty form value — they should have been
-          // cleared by sanitize/redaction.
           const hit = sensitiveHit(v);
           if (hit) {
             leaks.push({
@@ -220,22 +240,8 @@ export async function verifySideChannelVectors(
       });
     }
   }
-  // Orphan field dicts (descendants not in /AcroForm /Fields).
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    if (!obj.has(PDFName.of("FT")) || !obj.has(PDFName.of("V"))) continue;
-    const v = extractText(obj.get(PDFName.of("V")));
-    const hit = sensitiveHit(v);
-    if (hit) {
-      leaks.push({
-        vector: "form-field",
-        text: `Orphan form field: "${truncate(v)}" (matched "${truncate(hit)}")`,
-        ref: refStr(ref),
-      });
-    }
-  }
 
-  // -- Annotation text on every page ----------------------------------
+  // -- Annotation text (per-page walk, no full-heap scan) --------------
   for (let pageIdx = 0; pageIdx < doc.getPageCount(); pageIdx++) {
     const page = doc.getPage(pageIdx);
     const annotsArr = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
@@ -258,56 +264,61 @@ export async function verifySideChannelVectors(
     }
   }
 
-  // -- Hidden layer (OCG) content -------------------------------------
-  if (catalog.has(PDFName.of("OCProperties"))) {
-    // Presence of OCProperties means optional content layers exist.
-    // Scan every XObject/annotation gated by /OC for the sensitive
-    // strings — any hit means redacted content is hiding in a layer.
-    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-      if (obj instanceof PDFDict && obj.has(PDFName.of("OC"))) {
-        if (sensitiveStrings.length === 0) {
-          leaks.push({
-            vector: "hidden-layer",
-            text: "Optional-content object remains in document",
-            ref: refStr(ref),
-          });
-        }
-        // We can't decode arbitrary content streams cheaply here; the
-        // export pipeline should have stripped OCG-gated content during
-        // sanitize. Presence alone is reported above.
-      }
-    }
-  }
-
-  // -- Embedded file attachments --------------------------------------
+  // -- Attachments discoverable from catalog Names --------------------
   const names = catalog.lookupMaybe(PDFName.of("Names"), PDFDict);
   if (names && names.has(PDFName.of("EmbeddedFiles"))) {
     leaks.push({ vector: "attachment", text: "Catalog /Names /EmbeddedFiles tree present" });
   }
+
+  const hasOCG = catalog.has(PDFName.of("OCProperties"));
+
+  // -- SINGLE enumerateIndirectObjects walk: orphan form fields,
+  //    hidden-layer objects, filespecs, embedded file streams.
+  //    Previously three separate walks over the entire object graph.
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const type = nameStr(obj.get(PDFName.of("Type")));
-    if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
-      const fname = extractText(obj.get(PDFName.of("F"))) || extractText(obj.get(PDFName.of("UF")));
-      leaks.push({
-        vector: "attachment",
-        text: `Embedded file present${fname ? ` (${truncate(fname)})` : ""}`,
-        ref: refStr(ref),
-      });
-    }
-  }
-  // Stream objects whose /Subtype is /EmbeddedFile carry the bytes.
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFStream)) continue;
-    const d = obj.dict;
-    if (!(d instanceof PDFDict)) continue;
-    if (nameStr(d.get(PDFName.of("Subtype"))) === "/EmbeddedFile") {
-      leaks.push({ vector: "attachment", text: "Embedded-file stream present", ref: refStr(ref) });
+    if (obj instanceof PDFDict) {
+      // Orphan form field with /FT + /V outside the AcroForm /Fields tree.
+      if (obj.has(PDFName.of("FT")) && obj.has(PDFName.of("V"))) {
+        const v = extractText(obj.get(PDFName.of("V")));
+        const hit = sensitiveHit(v);
+        if (hit) {
+          leaks.push({
+            vector: "form-field",
+            text: `Orphan form field: "${truncate(v)}" (matched "${truncate(hit)}")`,
+            ref: refStr(ref),
+          });
+        }
+      }
+      // Optional-content gated object.
+      if (hasOCG && obj.has(PDFName.of("OC")) && sensitiveStrings.length === 0) {
+        leaks.push({
+          vector: "hidden-layer",
+          text: "Optional-content object remains in document",
+          ref: refStr(ref),
+        });
+      }
+      // Filespec / embedded-file dict.
+      const type = nameStr(obj.get(PDFName.of("Type")));
+      if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
+        const fname = extractText(obj.get(PDFName.of("F"))) || extractText(obj.get(PDFName.of("UF")));
+        leaks.push({
+          vector: "attachment",
+          text: `Embedded file present${fname ? ` (${truncate(fname)})` : ""}`,
+          ref: refStr(ref),
+        });
+      }
+    } else if (obj instanceof PDFStream) {
+      const d = obj.dict;
+      if (d instanceof PDFDict && nameStr(d.get(PDFName.of("Subtype"))) === "/EmbeddedFile") {
+        leaks.push({ vector: "attachment", text: "Embedded-file stream present", ref: refStr(ref) });
+      }
     }
   }
 
   return leaks;
 }
+
+
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -391,59 +402,81 @@ function walkFormTree(
 // even when the text layer extraction misses it.
 // ---------------------------------------------------------------------------
 
-async function verifyRawStreams(
-  bytes: Uint8Array,
+async function verifyRawStreamsFast(
+  doc: PDFDocument,
   sensitiveStrings: string[],
-  rasterizedPages?: number[],
+  skipRefs: Set<string>,
   signal?: AbortSignal,
 ): Promise<VerifyLeak[]> {
   const leaks: VerifyLeak[] = [];
-  let doc: PDFDocument;
-  try {
-    doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
-  } catch {
-    return leaks;
-  }
   const ctx = doc.context;
   const needles = sensitiveStrings.map((s) => s.trim()).filter((s) => s.length >= 3);
   if (needles.length === 0) return leaks;
 
-  // Collect refs reachable from FULLY rasterized pages — /Contents streams
-  // and Resources/XObject entries (the burned JPEG). We skip ONLY these:
-  // partially-rasterized or text-retaining pages are still scanned. Err
-  // toward verifying — never skip on doubt.
-  const skipRefs = collectRasterizedPageStreamRefs(doc, rasterizedPages);
+  // Precompute hex-encoded needle variants once (previously computed per stream).
+  const needleHex = needles.map((n) => ({
+    literal: n,
+    lowerHex: asciiToHex(n),
+    utf16Hex: asciiToUtf16BeHex(n),
+  }));
+
+  // Cap for what we're willing to inflate. Streams above this are almost
+  // always image data (JPEG/CCITT/JBIG2) or huge form XObjects — sensitive
+  // literal text won't sit inside those as searchable characters, and the
+  // pixel-verify OCR pass catches burned-text-in-image cases.
+  const INFLATE_CAP = 4 * 1024 * 1024;
 
   let i = 0;
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (i++ % 200 === 199) {
+    i++;
+    if ((i & 31) === 0) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-      // Yield every 200 objects so the main thread stays responsive on
-      // thousands-of-pages docs.
+      // Yield every 32 objects so the worker can process a cancel message
+      // and V8 can GC intermediate buffers before we allocate the next.
       await new Promise<void>((r) => setTimeout(r, 0));
     }
     if (!(obj instanceof PDFStream)) continue;
     if (skipRefs.has(refKey(ref))) continue;
-    const decoded = decodeStreamBytes(obj);
-    if (!decoded || decoded.length === 0) continue;
+
+    // Skip image / form XObject subtypes — never carry searchable text.
+    const d = obj.dict;
+    if (d instanceof PDFDict) {
+      const subtype = nameStr(d.get(PDFName.of("Subtype")));
+      if (subtype === "/Image" || subtype === "/Form") continue;
+    }
+
+    const raw = (obj as unknown as { contents?: Uint8Array }).contents
+      ?? (obj as unknown as { getContents?: () => Uint8Array }).getContents?.();
+    if (!raw || raw.length === 0) continue;
+    if (raw.length > INFLATE_CAP) continue;
+
+    let decoded: Uint8Array | null = decodeStreamBytes(obj);
+    if (!decoded || decoded.length === 0) { decoded = null; continue; }
+
+    // Scan on the raw bytes without holding two full string copies. We
+    // decode once into latin1 (byte-preserving) and match all needle
+    // variants against it, then drop the string.
     const text = new TextDecoder("latin1").decode(decoded);
     const utf16 = tryUtf16Be(decoded);
-    for (const needle of needles) {
-      const hexAscii = asciiToHex(needle);
-      const hexUtf16 = asciiToUtf16BeHex(needle);
+    // Release the decoded buffer before any string work that follows.
+    decoded = null;
+
+    let hit: string | null = null;
+    const lowerText = text.toLowerCase();
+    for (const n of needleHex) {
       if (
-        text.includes(needle)
-        || (utf16 && utf16.includes(needle))
-        || text.toLowerCase().includes(hexAscii)
-        || text.toLowerCase().includes(hexUtf16)
-      ) {
-        leaks.push({
-          vector: "raw-stream",
-          text: `Sensitive literal "${truncate(needle)}" found in stream bytes`,
-          ref: refStr(ref),
-        });
-        break;
-      }
+        text.includes(n.literal)
+        || (utf16 && utf16.includes(n.literal))
+        || lowerText.includes(n.lowerHex)
+        || lowerText.includes(n.utf16Hex)
+      ) { hit = n.literal; break; }
+    }
+    if (hit) {
+      leaks.push({
+        vector: "raw-stream",
+        text: `Sensitive literal "${truncate(hit)}" found in stream bytes`,
+        ref: refStr(ref),
+      });
     }
   }
   return leaks;

@@ -32,6 +32,9 @@ export function verifyRedactionRemovalInWorker(
     rasterizedPages?: number[];
     signal?: AbortSignal;
     onProgress?: (stage: string, done: number, total: number) => void;
+    /** Transfer the caller's ArrayBuffer to the worker (zero-copy).
+     *  After the call, the caller's Uint8Array is empty. */
+    stealBytes?: boolean;
   } = {},
 ): Promise<VerifyResult> {
   return new Promise<VerifyResult>((resolve, reject) => {
@@ -66,7 +69,7 @@ export function verifyRedactionRemovalInWorker(
     opts.signal?.addEventListener("abort", onAbort);
     w.addEventListener("message", handler);
 
-    const buf = toTransferable(bytes);
+    const buf = toTransferable(bytes, { steal: opts.stealBytes });
     w.postMessage(
       {
         kind: "verify",
