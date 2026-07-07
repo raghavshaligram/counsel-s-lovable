@@ -5,6 +5,45 @@
 type PdfjsModule = typeof import("pdfjs-dist");
 let cached: PdfjsModule | null = null;
 
+function installPdfjsCompatShims() {
+  const mapProto = Map.prototype as Map<unknown, unknown> & {
+    getOrInsert?: (key: unknown, value: unknown) => unknown;
+    getOrInsertComputed?: (key: unknown, compute: (key: unknown) => unknown) => unknown;
+  };
+
+  mapProto.getOrInsert ??= function getOrInsert(this: Map<unknown, unknown>, key: unknown, value: unknown) {
+    if (!this.has(key)) this.set(key, value);
+    return this.get(key);
+  };
+
+  mapProto.getOrInsertComputed ??= function getOrInsertComputed(
+    this: Map<unknown, unknown>,
+    key: unknown,
+    compute: (key: unknown) => unknown,
+  ) {
+    if (!this.has(key)) this.set(key, compute(key));
+    return this.get(key);
+  };
+
+  const promiseCtor = Promise as PromiseConstructor & {
+    withResolvers?: <T>() => {
+      promise: Promise<T>;
+      resolve: (value: T | PromiseLike<T>) => void;
+      reject: (reason?: unknown) => void;
+    };
+  };
+
+  promiseCtor.withResolvers ??= function withResolvers<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
 export async function loadPdfjs(): Promise<PdfjsModule> {
   if (cached) return cached;
   // Allow both window (main thread) and WorkerGlobalScope (web workers).
@@ -16,6 +55,7 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
   if (!hasWindow && !hasWorker) {
     throw new Error("pdfjs can only be loaded in the browser");
   }
+  installPdfjsCompatShims();
   const [pdfjs, workerUrlMod] = await Promise.all([
     import("pdfjs-dist"),
     import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
