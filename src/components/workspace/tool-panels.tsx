@@ -1582,6 +1582,26 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     };
   }, []);
 
+  // STAGE 5 — reversible staging.
+  // Every AI-detect annotation is stamped `redact-det-<detId>`. When the
+  // user unchecks an item (or a whole group) in the list, the corresponding
+  // annotation is removed from the ledger LIVE so the staged count updates
+  // immediately and the canvas mark disappears. Nothing here is destructive:
+  // it just removes the pre-commit draft. The final burn only happens when
+  // the user clicks "Redact & verify".
+  useEffect(() => {
+    const annos = editorState?.doc?.annotations ?? [];
+    for (const a of annos) {
+      if (a.kind !== "redact") continue;
+      if (!a.id.startsWith("redact-det-")) continue;
+      const detId = a.id.slice("redact-det-".length);
+      if (!selected.has(detId)) {
+        editorDispatch({ type: "DELETE_ANNO", id: a.id });
+      }
+    }
+  }, [selected, editorState?.doc?.annotations, editorDispatch]);
+
+
   const grouped = useMemo(() => {
     if (!pageRedactableFindings.length) return null;
     // Category → snippet-key → detections. Collapsing identical matched-text
