@@ -165,8 +165,8 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         const { promise } = runAsJob(
           { kind: "redact-export", docId, docLabel },
           async ({ signal, onProgress }) => {
-            const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
-            const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+            const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
+            const rasterResult = await rasterizeRedactedPagesInWorker(bytes, pageRedactions, {
               mode: "always",
               scale: 2.5,
               signal,

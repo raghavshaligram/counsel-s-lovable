@@ -1560,7 +1560,7 @@ function sanitizeStageLabel(stage: string): string {
     if (sideChannelDets.length > 0 && editorState?.doc?.srcBytes) {
       const tid = "wsx-redact-apply-side";
       const abort = new AbortController();
-      toast.loading("Wiping form fields, comments, metadata…", {
+      toast.loading("Cleaning form fields, comments, and metadata…", {
         id: tid,
         action: {
           label: "Cancel",
@@ -2564,8 +2564,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const jobRun = runAsJob(
         { kind: "redact-export", docId: jobDocId, docLabel: file.name },
         async ({ signal, onProgress }) => {
-          const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
-          const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+          const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
+          const rasterResult = await rasterizeRedactedPagesInWorker(bytes, pageRedactions, {
             mode: maxSecurity ? "always" : "fallback",
             scale: 2.5,
             signal,
