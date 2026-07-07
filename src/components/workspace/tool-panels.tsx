@@ -177,6 +177,8 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RedactPanel ctx={ctx} />;
     case "sign":
       return <SignFillPanel ctx={ctx} />;
+    case "mail-merge":
+      return <MailMergePanel ctx={ctx} />;
     case "merge":
       return <MergePanel ctx={ctx} />;
     case "split":
