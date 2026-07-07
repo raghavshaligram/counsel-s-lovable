@@ -188,6 +188,7 @@ export function AgentPanel({
   file,
   totalPages,
   openTool,
+  onJumpToPage,
   onAnswerQuery,
 }: AgentPanelProps) {
   const [steps, setSteps] = useState<Step[]>([]);
