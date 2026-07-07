@@ -17,7 +17,7 @@ export type LicenseSnapshot = {
  * Runs in the TanStack server runtime — never trust client-side state for
  * entitlement decisions.
  */
-export const getLicense = createServerFn({ method: "GET" })
+export const getLicense = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<LicenseSnapshot> => {
     const { supabase, userId, claims } = context;

@@ -37,7 +37,7 @@ export const hqAmOwner = createServerFn({ method: "GET" })
     return { isOwner: context.userId === process.env.OWNER_USER_ID };
   });
 
-export const hqListUsers = createServerFn({ method: "GET" })
+export const hqListUsers = createServerFn({ method: "POST" })
   .middleware([requireOwner])
   .handler(async ({ context }): Promise<HqUserRow[]> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -153,6 +153,13 @@ export const hqSetPlan = createServerFn({ method: "POST" })
       .select("plan, status")
       .single();
     if (error) throw new Error(error.message);
+
+    // Keep the legacy profile mirror in sync so no stale admin surface can
+    // display a different plan than the subscription source of truth.
+    const { error: profileErr } = await supabaseAdmin
+      .from("profiles")
+      .upsert({ user_id: data.userId, plan: subRow?.plan ?? data.plan }, { onConflict: "user_id" });
+    if (profileErr) throw new Error(profileErr.message);
     // Echo persisted values so the UI binds to the DB truth, not the
     // optimistic guess. Also lets the admin verify the write round-tripped.
     // eslint-disable-next-line no-console
@@ -184,7 +191,7 @@ export type HqSubsSnapshot = {
 
 const PLAN_PRICE_CENTS: Record<string, number> = { free: 0, solo: 1900, firm: 9900 };
 
-export const hqListSubscriptions = createServerFn({ method: "GET" })
+export const hqListSubscriptions = createServerFn({ method: "POST" })
   .middleware([requireOwner])
   .handler(async (): Promise<HqSubsSnapshot> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
