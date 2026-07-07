@@ -122,6 +122,13 @@ import { TableOfAuthoritiesPanel } from "./toa-panel";
 import { DocumentHashPanel } from "./document-hash-panel";
 import { PreDiscoveryPanel } from "./pre-discovery-panel";
 import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
+import {
+  getDeviceCapability,
+  estimateScan,
+  formatEstimate,
+  tierLabel,
+  type DeviceCapability,
+} from "@/lib/device/capability";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
