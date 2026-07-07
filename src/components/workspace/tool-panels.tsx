@@ -2015,6 +2015,60 @@ function sanitizeStageLabel(stage: string): string {
   const allSelected =
     redactableFindings.length > 0 && selected.size === redactableFindings.length;
 
+  // Per-category id sets (split high-confidence vs low-confidence). Used for
+  // the master-checkbox toggles and the "Review to include" subsections. One
+  // pass over findings; category-level toggles are O(1) after this.
+  type Cat2 = Cat | "form-field" | "annotation" | "metadata";
+  const categoryIds = useMemo(() => {
+    const hi = new Map<Cat2, string[]>();
+    const lo = new Map<Cat2, string[]>();
+    if (!findings) return { hi, lo };
+    for (const d of findings) {
+      if (d.category === "privilegeContext") continue;
+      const key: Cat2 =
+        d.vector && d.vector !== "page" ? (d.vector as Cat2) : (d.category as Cat2);
+      const bucket = d.confidence === "low" ? lo : hi;
+      const arr = bucket.get(key) ?? [];
+      arr.push(d.id);
+      bucket.set(key, arr);
+    }
+    return { hi, lo };
+  }, [findings]);
+
+  // Scan summary — one at-a-glance line "what's in this document".
+  const scanSummary = useMemo(() => {
+    if (!findings) return null;
+    const count = (cat: Cat2) => (categoryIds.hi.get(cat)?.length ?? 0) + (categoryIds.lo.get(cat)?.length ?? 0);
+    // Distinct-value count for names & orgs uses the collapsed `grouped` shape.
+    const distinctFor = (cat: Cat) => {
+      const row = grouped?.find(([c]) => c === cat);
+      return row ? row[1].length : 0;
+    };
+    const nameOrgTotal = count("name") + count("org");
+    const nameOrgDistinct = distinctFor("name") + distinctFor("org");
+    const parts: string[] = [];
+    const push = (n: number, singular: string, plural?: string) => {
+      if (n > 0) parts.push(`${n.toLocaleString()} ${n === 1 ? singular : plural ?? singular + "s"}`);
+    };
+    push(count("ssn"), "SSN");
+    push(count("creditCard"), "credit card");
+    push(count("email"), "email");
+    push(count("phone"), "phone number");
+    push(count("iban"), "IBAN");
+    push(count("date"), "date");
+    if (nameOrgTotal > 0) {
+      parts.push(
+        `${nameOrgTotal.toLocaleString()} name${nameOrgTotal === 1 ? "" : "s"} & organization${nameOrgTotal === 1 ? "" : "s"}${nameOrgDistinct > 0 ? ` (${nameOrgDistinct.toLocaleString()} distinct)` : ""}`,
+      );
+    }
+    push(count("form-field"), "form field");
+    push(count("annotation"), "comment/annotation");
+    if (count("metadata") > 0) parts.push("metadata");
+    return { parts, total: findings.length };
+  }, [findings, categoryIds, grouped]);
+
+
+
 
   return (
     <div className="flex flex-col gap-2">
