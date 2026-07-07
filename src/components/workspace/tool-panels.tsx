@@ -1813,8 +1813,17 @@ function sanitizeStageLabel(stage: string): string {
       // the source of truth. Does NOT affect what's queued for burn or
       // the verification gate — those read from annotations, not findings.
       setFindings(null);
-      setSelected(new Set());
+      if (overrideIds) {
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const id of overrideIds) next.delete(id);
+          return next;
+        });
+      } else {
+        setSelected(new Set());
+      }
       setExpandedGroups(new Set());
+
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
