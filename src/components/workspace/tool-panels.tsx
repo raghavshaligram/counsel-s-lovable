@@ -1146,6 +1146,12 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [underDetectedOcrPages, setUnderDetectedOcrPages] = useState<number[]>([]);
   const [totalPagesScanned, setTotalPagesScanned] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // IDs we've already auto-selected this scan. Lets us progressively add
+  // newly-arrived high-confidence findings during a running scan WITHOUT
+  // clobbering the user's manual toggles — the old code called
+  // setSelected(new Set()) on every scanRecord tick while running, which
+  // made "Commit staged" impossible mid-scan (selection kept resetting).
+  const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const docId = ctxDocId ?? (file ? `${file.name}:${file.size}` : "");
