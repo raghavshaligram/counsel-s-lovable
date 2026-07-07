@@ -420,7 +420,35 @@ export function AgentPanel({
           return;
         }
 
-        const { entry, mode, corrected, followUp } = classified;
+        if (classified.kind === "literal") {
+          void showLiteralFind(classified, [echo], text);
+          return;
+        }
+
+        if (classified.kind === "semantic") {
+          showSemanticPitch(classified, [echo], text);
+          return;
+        }
+
+        const { entry, mode, corrected, followUp, stagedTerm } = classified;
+
+        // Cross-lane follow-up: "redact them" after a literal find →
+        // hand off to Redact's Find & Redact section with the term.
+        if (stagedTerm && entry.id === "redact") {
+          const gate = proGateForEntry(entry);
+          const blocked = !!gate && !isPro;
+          if (!blocked) {
+            try {
+              window.dispatchEvent(
+                new CustomEvent("agent:redact-pattern", { detail: { term: stagedTerm } }),
+              );
+            } catch { /* ignore */ }
+            openTool("redact");
+            onClose();
+            return;
+          }
+        }
+
         const gate = proGateForEntry(entry);
         const blocked = !!gate && !isPro;
 
@@ -432,6 +460,24 @@ export function AgentPanel({
 
         showEntryHelp(entry, mode, [echo], { corrected, followUp, originalQuery: text });
       } catch (err) {
+        if (seq !== querySeqRef.current || abortedRef.current) return;
+        setSteps([
+          echo,
+          {
+            kind: "error",
+            id: runId,
+            title: "Assistant error",
+            body: err instanceof Error ? err.message : String(err),
+          },
+        ]);
+      }
+    },
+    // Deps intentionally include the show* helpers; they're declared below
+    // and are stable useCallback refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isPro, onClose, openTool, showEntryHelp, showTopicAnswer],
+  );
+
         if (seq !== querySeqRef.current || abortedRef.current) return;
         setSteps([
           echo,
