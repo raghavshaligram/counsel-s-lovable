@@ -207,3 +207,10 @@
     display: none;
   }
 }
+
+/* Ask-tab basic-search page flash. Applied by AgentPanel; non-invasive. */
+[data-search-flash="1"] {
+  outline: 2px solid var(--vault);
+  outline-offset: 2px;
+  transition: outline-color 0.9s ease-out;
+}

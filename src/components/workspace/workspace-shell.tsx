@@ -452,6 +452,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [agentFlow, setAgentFlow] = useState<AgentFlow | null>(null);
   const [agentQuery, setAgentQuery] = useState<{ id: number; text: string } | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentInitialTab, setAgentInitialTab] = useState<"ask" | "do" | "learn">("ask");
+  const [agentTabNonce, setAgentTabNonce] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
@@ -1397,6 +1399,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // ⌘P / Ctrl+P — overrides the browser's default print dialog so users
   // get the baked-in document (not the app chrome) every time.
   useHotkey("mod+p", () => { void onPrint(); }, !!editorState.doc && !printing);
+  useHotkey("mod+f", () => {
+    setAgentInitialTab("ask");
+    setAgentTabNonce((n) => n + 1);
+    setAgentOpen(true);
+  });
 
 
 
@@ -2166,6 +2173,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={active.file}
             totalPages={editorState.doc?.pages.length ?? 0}
             openTool={(id, opts) => openTool(id, opts)}
+            initialTab={agentInitialTab}
+            initialTabNonce={agentTabNonce}
+            pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
             onAnswerQuery={(query) => {
               openTool("pre-discovery");
               setTimeout(() => {
