@@ -1582,24 +1582,89 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     };
   }, []);
 
-  // STAGE 5 — reversible staging.
-  // Every AI-detect annotation is stamped `redact-det-<detId>`. When the
-  // user unchecks an item (or a whole group) in the list, the corresponding
-  // annotation is removed from the ledger LIVE so the staged count updates
-  // immediately and the canvas mark disappears. Nothing here is destructive:
-  // it just removes the pre-commit draft. The final burn only happens when
-  // the user clicks "Redact & verify".
+  // STAGE 5 — reversible LIVE staging.
+  // Every AI-detect annotation is stamped `redact-det-<detId>`. Checking an
+  // item in the list stages it in the ledger immediately; unchecking removes
+  // it. No separate commit step — the final destructive burn only happens
+  // when the user clicks "Redact & verify".
   useEffect(() => {
+    if (!findings || findings.length === 0) return;
     const annos = editorState?.doc?.annotations ?? [];
+    const stagedDetIds = new Set<string>();
     for (const a of annos) {
       if (a.kind !== "redact") continue;
       if (!a.id.startsWith("redact-det-")) continue;
-      const detId = a.id.slice("redact-det-".length);
+      stagedDetIds.add(a.id.slice("redact-det-".length));
+    }
+    // Uncheck → remove annotation.
+    for (const detId of stagedDetIds) {
       if (!selected.has(detId)) {
-        editorDispatch({ type: "DELETE_ANNO", id: a.id });
+        editorDispatch({ type: "DELETE_ANNO", id: `redact-det-${detId}` });
       }
     }
-  }, [selected, editorState?.doc?.annotations, editorDispatch]);
+    // Check → add annotation (page findings only; side-channel uses its own flow).
+    const byId = new Map(findings.map((d) => [d.id, d]));
+    for (const detId of selected) {
+      if (stagedDetIds.has(detId)) continue;
+      const d = byId.get(detId);
+      if (!d) continue;
+      if (d.vector && d.vector !== "page") continue;
+      const rect =
+        d.pdfRect ?? { x: d.x / 1.5, y: d.y / 1.5, w: d.w / 1.5, h: d.h / 1.5 };
+      editorDispatch({
+        type: "ADD_ANNO",
+        a: {
+          id: `redact-det-${d.id}`,
+          kind: "redact",
+          page: d.page - 1,
+          x: rect.x,
+          y: rect.y,
+          w: rect.w,
+          h: rect.h,
+          color: { r: 0, g: 0, b: 0 },
+          opacity: 1,
+          category: d.category,
+          sources: d.source?.originalString
+            ? [{
+                originalString: d.source.originalString,
+                redactText: d.source.redactText,
+                matchStart: d.source.matchStart,
+                matchLength: d.source.matchLength,
+                transform: d.source.transform,
+                fontName: d.source.fontName,
+                bounds: d.source.bounds,
+              }]
+            : undefined,
+        },
+      });
+    }
+  }, [selected, findings, editorState?.doc?.annotations, editorDispatch]);
+
+  // Bridge events from the "Staged for redaction" panel so unstaging a single
+  // AI item or Clear-all from there also purges the selection set here — else
+  // the live-stage effect would immediately re-add them.
+  useEffect(() => {
+    const onUnstage = (e: Event) => {
+      const detId = (e as CustomEvent<{ detId: string }>).detail?.detId;
+      if (!detId) return;
+      setSelected((prev) => {
+        if (!prev.has(detId)) return prev;
+        const next = new Set(prev);
+        next.delete(detId);
+        return next;
+      });
+    };
+    const onClear = () => {
+      setSelected(new Set());
+      autoSelectedRef.current = new Set();
+    };
+    window.addEventListener("redact:unstage-det", onUnstage as EventListener);
+    window.addEventListener("redact:clear-selection", onClear);
+    return () => {
+      window.removeEventListener("redact:unstage-det", onUnstage as EventListener);
+      window.removeEventListener("redact:clear-selection", onClear);
+    };
+  }, []);
 
 
   const grouped = useMemo(() => {
@@ -1716,18 +1781,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
               />
               {selected.size} / {redactableFindings.length} selected
             </label>
-            <button
-              type="button"
-              onClick={redactSelected}
-              disabled={selected.size === 0}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90",
-                selected.size === 0 && "cursor-not-allowed opacity-50",
-              )}
-            >
-              <Shield className="h-3 w-3" strokeWidth={2.5} />
-              Redact selected
-            </button>
+            {(() => {
+              const sideSelected = sideChannelFindings.filter((d) => selected.has(d.id)).length;
+              if (sideSelected === 0) {
+                return (
+                  <span className="text-[10px] text-text-muted">
+                    Checked items stage live
+                  </span>
+                );
+              }
+              return (
+                <button
+                  type="button"
+                  onClick={redactSelected}
+                  className="inline-flex items-center gap-1 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90"
+                  title="Wipe selected form fields, comments, and metadata from the working document now"
+                >
+                  <Shield className="h-3 w-3" strokeWidth={2.5} />
+                  Wipe {sideSelected} hidden item{sideSelected === 1 ? "" : "s"}
+                </button>
+              );
+            })()}
           </div>
           <ul className="max-h-[280px] overflow-y-auto py-1">
             {grouped?.map(([cat, groups]) => {
@@ -2501,39 +2575,18 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
 
-      <Section title="Marked for removal" icon={<Shield className="h-3 w-3" />}>
-        <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2.5 text-[12px]">
-          <div className="flex items-center justify-between">
-            <span className="text-text-2">Boxes on this document</span>
-            <span className="font-mono tabular-nums text-foreground">{totalBoxes}</span>
-          </div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="text-text-2">Text fragments captured</span>
-            <span className="font-mono tabular-nums text-foreground">{targets.length}</span>
-          </div>
-          {boxesWithoutText > 0 && (
-            <p className="mt-2 text-[10.5px] leading-snug text-text-muted">
-              {boxesWithoutText} box{boxesWithoutText === 1 ? "" : "es"} covers an image or untextured region —
-              still painted opaque black on export, but nothing to verify.
-            </p>
-          )}
-          {staged.total > 0 && (
-            <div className="mt-2.5 border-t border-border/60 pt-2">
-              <div className="text-text-2">
-                Staged from AI scan
-                <span className="ml-1.5 text-[10.5px] text-text-muted">
-                  ({staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected — uncheck any item above to unstage it)
-                </span>
-              </div>
-            </div>
-          )}
-          <p className="mt-2 text-[10.5px] leading-snug text-text-muted">
-            Staged marks are drafts. Click any box on the page and use the toolbar
-            Delete to remove it, or clear everything below. Nothing is permanent
-            until <strong className="text-foreground">Redact &amp; verify</strong>.
+      <Section title={`Staged for redaction · ${totalBoxes.toLocaleString()}`} icon={<Shield className="h-3 w-3" />}>
+        {totalBoxes === 0 ? (
+          <p className="rounded-md border border-border/60 bg-surface-2/40 px-3 py-2.5 text-[11.5px] leading-snug text-text-muted">
+            Nothing staged yet. Use <strong className="text-foreground">Find</strong> above, draw
+            a box on the page, or run a keyword search — every match lands here first for review.
           </p>
-          {totalBoxes > 0 && (
-            <div className="mt-2 flex justify-end">
+        ) : (
+          <div className="rounded-md border border-border bg-surface-2/60">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5 text-[11px]">
+              <span className="text-text-2">
+                {totalBoxes.toLocaleString()} draft box{totalBoxes === 1 ? "" : "es"} · reversible
+              </span>
               <button
                 type="button"
                 onClick={async () => {
@@ -2543,7 +2596,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
                       <>
                         This removes all <span className="font-medium text-foreground">{totalBoxes.toLocaleString()}</span> staged
                         redaction{totalBoxes === 1 ? "" : "s"} from this document. Nothing is burned — you can re-stage
-                        any of them again. This does not affect any file you&apos;ve already exported.
+                        any of them again.
                       </>
                     ),
                     confirmText: "Clear staged",
@@ -2551,18 +2604,74 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
                     tone: "danger",
                   });
                   if (!ok) return;
+                  // Also clear the AI-detect selection so its live-stage effect
+                  // doesn't immediately re-add anything.
+                  window.dispatchEvent(new CustomEvent("redact:clear-selection"));
                   for (const a of redactAnnos) {
                     editorDispatch({ type: "DELETE_ANNO", id: a.id });
                   }
                 }}
-                className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[11px] text-text-2 hover:border-vault/40 hover:bg-surface-3 hover:text-foreground"
+                className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[10.5px] text-text-2 hover:border-vault/40 hover:bg-surface-3 hover:text-foreground"
                 title="Remove every staged redaction (does not burn the file)"
               >
-                Clear all staged
+                Clear all
               </button>
             </div>
-          )}
-        </div>
+            <ul className="max-h-[260px] overflow-y-auto py-1">
+              {redactAnnos.map((a) => {
+                const label = a.sources?.map((s) => (s.redactText || s.originalString || "").trim()).find(Boolean);
+                const isAi = a.id.startsWith("redact-det-");
+                const sourceLabel = isAi
+                  ? ((a as { category?: string }).category ?? "AI scan")
+                  : label
+                    ? "Keyword / pattern"
+                    : "Manual box";
+                return (
+                  <li key={a.id}>
+                    <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
+                      <button
+                        type="button"
+                        onClick={() => editorDispatch({ type: "SET_PAGE", n: a.page })}
+                        className="min-w-0 flex-1 text-left"
+                        title="Jump to this box"
+                      >
+                        <div className="font-mono text-[11px] text-foreground truncate">
+                          {label || <span className="text-text-muted italic">no text captured</span>}
+                        </div>
+                        <div className="text-[10px] text-text-2">
+                          Page {a.page + 1} · {sourceLabel}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isAi) {
+                            const detId = a.id.slice("redact-det-".length);
+                            window.dispatchEvent(new CustomEvent("redact:unstage-det", { detail: { detId } }));
+                          }
+                          editorDispatch({ type: "DELETE_ANNO", id: a.id });
+                        }}
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-text-2 opacity-0 hover:bg-surface-3 hover:text-foreground group-hover:opacity-100"
+                        title="Remove this staged box"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {boxesWithoutText > 0 && (
+              <p className="border-t border-border/60 px-2.5 py-1.5 text-[10px] leading-snug text-text-muted">
+                {boxesWithoutText} box{boxesWithoutText === 1 ? "" : "es"} covers an image or untextured region — painted opaque black on export, nothing to verify.
+              </p>
+            )}
+          </div>
+        )}
+        <p className="mt-1.5 text-[10.5px] leading-snug text-text-muted">
+          Drafts stay reversible until <strong className="text-foreground">Redact &amp; verify</strong>.
+          Click a box on the page to select it, then use the toolbar Delete for pixel-perfect adjustments.
+        </p>
       </Section>
 
 
