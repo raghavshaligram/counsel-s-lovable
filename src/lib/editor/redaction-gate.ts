@@ -130,19 +130,12 @@ export async function enforceRedactionGate(
 
   opts.onProgress?.("verify");
   const { verifyRedactionRemovalInWorker } = await importChunk(() => import("@/lib/workers/verify-client"));
+  // First verify: DO NOT steal — if page leaks are found we need `bytes`
+  // again to feed the raster-fallback stage.
   let result = await verifyRedactionRemovalInWorker(bytes!, targets, {
     rasterizedPages: [...rasterizedPages],
     signal: opts.signal,
-    stealBytes: true,
   });
-  // The verify worker holds its own bytes; ours were transferred + neutered.
-  // Reads on `bytes` from here would throw, so we must re-source it below.
-  // We only re-need bytes if there are page-geometry leaks — otherwise
-  // we're done and the OUTPUT is the sanitize output, which the caller
-  // already receives via `bytes` before the transfer neutered it (see the
-  // no-op guard: if bytes is neutered we fall back to keeping a copy).
-  // To avoid that hazard we DO NOT steal bytes when we might need them.
-  // Recompute here without steal for the leak path.
 
   const pageLeaks = result.leaks.filter((l: VerifyLeak) => l.vector === "page" && l.rect && l.page !== undefined);
   if (pageLeaks.length > 0) {
