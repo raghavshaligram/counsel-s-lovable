@@ -926,15 +926,30 @@ function MailMergePanel({ ctx }: { ctx: ToolPanelCtx }) {
 type StagedRedactBridge = {
   selected: number;
   total: number;
+  /** Count of ticked side-channel items (form fields / comments / metadata). */
+  sideStaged: number;
   commit: (() => void) | null;
+  /**
+   * Side-channel-only commit — wipes ticked form fields / annotations /
+   * metadata via the sanitize worker and hot-swaps `srcBytes` in place.
+   * Used by RedactPanel when the user has staged side-channel items but no
+   * page-text redactions (page burn would be a no-op in that case).
+   */
+  sideCommit: (() => Promise<void>) | null;
 };
 const stagedRedactBridge: { current: StagedRedactBridge } = {
-  current: { selected: 0, total: 0, commit: null },
+  current: { selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null },
 };
 const stagedRedactListeners = new Set<() => void>();
 function publishStagedRedact(next: StagedRedactBridge) {
   const cur = stagedRedactBridge.current;
-  if (cur.selected === next.selected && cur.total === next.total && cur.commit === next.commit) return;
+  if (
+    cur.selected === next.selected &&
+    cur.total === next.total &&
+    cur.sideStaged === next.sideStaged &&
+    cur.commit === next.commit &&
+    cur.sideCommit === next.sideCommit
+  ) return;
   stagedRedactBridge.current = next;
   for (const l of stagedRedactListeners) l();
 }
