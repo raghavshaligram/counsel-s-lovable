@@ -1,64 +1,79 @@
+## Plan — split heavy work into dedicated workers + aggressive memory release
 
-# Fix: Bates Hangs on 5000-Page Apply + Double-Stamps on Export
+### Goals
+- Each heavy redaction step runs in its OWN dedicated Web Worker (isolated address space, terminated when done → OS reclaims memory immediately).
+- No large PDF byte buffer stays in main-thread memory once a worker owns it.
+- The freeze on select-all 13,000 findings + the confusing wipe message both get fixed.
 
-Two separate root causes, one behind each symptom.
+### 1. One worker per task (isolation = free memory on terminate)
 
-## 1. Why "Apply to active tab" hangs on 5000 pages
+Today there’s a sanitize worker, a Bates worker, and a PII scan worker. Redact export still runs on the main thread. I’ll add small, single-purpose workers and reuse the ones we have. Each worker is spawned per job and **terminated the moment it returns**, so its entire heap is released.
 
-Three main-thread passes over the whole document happen back-to-back:
+New workers:
+- `rasterize.worker.ts` — page-by-page rasterization of redacted pages (pdf.js render + black rects + JPEG encode + pdf-lib page swap). Streams one page at a time and frees canvas/JPEG after each page.
+- `verify.worker.ts` — `verifyRedactionRemoval` (page geometry + raw stream + side-channel scan).
+- `pixel-verify.worker.ts` — only spawned when pages were rasterized. Does the burned-pixel check (deterministic black-pixel coverage, no Tesseract) then terminates.
+- `export.worker.ts` — runs `exportEditedPdf` (pdf-lib copyPages + annotation draw + text-rewrite surgery).
 
-1. `addBates` in `src/lib/batch/ops/bates.ts` — pdf-lib parses all 5000 pages, draws a rectangle + text on each, then `doc.save()` re-serializes. Yields only every 16 pages.
-2. `replaceFile(new File([out], …))` swaps the tab's file, which retriggers the workspace's open/parse pipeline for the new 5000-page bytes.
-3. **The certificate probe** at `BatesSection.run` (tool-panels.tsx line 7347–7351) does *another* full parse: `pdfjs.getDocument({ data: new Uint8Array(out).slice() })` just to read `numPages` — and it clones the entire byte array first. On 5000 pages this alone is multi-second, main-thread, no yields.
+Reuse existing:
+- `sanitize.worker.ts` (already exists) — called by the gate.
+- `bates.worker.ts` (already exists).
+- `detect-pii.worker.ts` (already exists).
 
-Steps 1 + 2 are unavoidable work but should not lock the UI. Step 3 is pure waste — we already know the page count without opening the file.
+Orchestrator:
+- New `redaction-pipeline-client.ts` on the main thread runs the sequence: export → rasterize → sanitize → verify → (if leaks) rasterize-fallback → verify-again → (if any pages rasterized) pixel-verify. Between steps it transfers the `ArrayBuffer` to the next worker and **immediately terminates the previous one** so memory drops before the next step starts.
 
-**Fix.**
+### 2. Memory release rules (applied everywhere)
 
-- **Kill the redundant pdf.js probe.** Replace it with the page count we already have from the loaded editor doc (`editorState.doc.pages.length`) or, on the download path, from pdf-lib's `PDFDocument.load().getPageCount()` — which is basically free because it doesn't hydrate pages. Have `addBates` return `{ bytes, pageCount }` so we never re-parse.
-- **Move `addBates` off the main thread.** Add `src/lib/workers/bates.worker.ts` + `src/lib/workers/bates-client.ts` mirroring the sanitize worker pattern we already ship. `addBates` accepts a signal + `onProgress`; the client shows a `toast.loading` with Cancel and updates progress every ~200 pages.
-- **Yield more aggressively inside the loop.** Change `maybeYield(i, 16)` → `maybeYield(i, 64)` (worker + yield keeps UI responsive without a big cost per yield).
-- **Guard the tab swap.** `replaceFile` after a big stamp should show a "Loading stamped document…" state so the user knows the tab is intentionally re-opening.
+- Always send bytes with `postMessage(msg, [buffer])` transfer — never structured-clone copy.
+- After receiving bytes back from a worker, `worker.terminate()` inside the same tick before starting the next step.
+- Never keep two full copies of the PDF alive at once (no `bytes.slice()` unless the next step truly needs the original — and if it does, drop the original reference right after).
+- Inside each worker: after `pdf-lib` save, null out the doc reference; after pdf.js `getDocument`, call `destroy()` in a `finally`.
+- Rasterize worker: null the canvas + JPEG bytes at end of each page loop iteration (already done — keep and audit).
+- Main-thread editor: when the redaction commit completes, drop `lastBytes` state to `null` after the download starts so the browser can GC the redacted copy.
+- Add a small `releaseBytes(u8)` helper that zero-length-slices and nulls references, used at every hand-off boundary.
 
-## 2. Why export stamps Bates a second time
+### 3. Pixel verification: stop doing 13,000 OCR passes
 
-In `src/components/workspace/export-dialog.tsx` (lines 48, 110–115) the "Bates" toggle in the export dialog is read from the shared bates store (`useBatesSettings`) and unconditionally stamps if `bates.on` is true — regardless of whether the tab bytes were **already stamped** via "Apply to active tab."
+Replace the Tesseract per-region OCR with a deterministic black-pixel check inside `pixel-verify.worker.ts`:
+- For each rasterized page, sample the pixels inside every redaction rect (via `OffscreenCanvas.getImageData`).
+- Pass if ≥ 99.5% of pixels are near-black. Fail otherwise.
+- No Tesseract worker, no model download, O(pixels) not O(rects × OCR).
+- The existing raw-stream + side-channel verification in the verify worker still proves no extractable text remains, so this is the right complement.
 
-There is no "already applied" flag. So the flow is:
+### 4. Fix the confusing wipe toast
 
-1. User applies to active tab → bytes now contain Bates numbers.
-2. Bates store still has `on: true` (or the toggle is on in the export dialog).
-3. Export dialog runs `addBates` again → second row of numbers layered over the first.
+- Rewrite `sanitizeStageLabel` to plain legal language: “form fields”, “comments”, “metadata”, “attachments”, “hidden layers”, “auto-open triggers”. Never say “javascript”, “scripts”, or “objects”.
+- Change `(4,000 objects)` to `(checked 4,000 items)`.
+- Change the bottom line to `Cleaning hidden document data…` when the specific stage isn’t known.
 
-**Fix.**
+### 5. Keep the safety contract intact
 
-- **Track applied state per document.** Add `appliedAt?: number` (timestamp) and `appliedFingerprint?: string` to the bates settings record in `src/lib/workspace/bates-store.ts`. Fingerprint = a hash of the settings that were applied (prefix + suffix + startAt + digits + position + fontSize + color + margin).
-- **Set it in `BatesSection.run`** after a successful "Apply to active tab" and clear it whenever the user edits any setting (settings change → fingerprint mismatch → allowed to stamp again).
-- **In the export dialog:**
-  - If `appliedAt` is set AND the current settings fingerprint matches, **default `batesOn` to false** and show a small note: *"Bates already stamped on this document — enable to stamp again."*
-  - If the user explicitly re-enables the toggle after that note, we still stamp (their call, e.g., to add a second series). No silent double-stamps.
-- **Belt and braces on the export path.** When `batesOn` is true and `appliedFingerprint` matches the settings we're about to stamp with, skip the `addBates` call and log a `console.info` line so the behavior is auditable.
+- Staging still uses `ADD_ANNOS` batch (unchanged).
+- Dedupe against existing redaction keys still runs before staging (unchanged).
+- The final commit still goes through the SAME verified gate; the only change is that each stage of the gate now runs in its own worker with the previous worker terminated.
+- If any verification step fails, download is blocked exactly as before.
 
-## Files touched
+### Files
 
-- `src/lib/batch/ops/bates.ts` — return `{ bytes, pageCount }`; loosen yield cadence.
-- `src/lib/workers/bates.worker.ts` (new), `src/lib/workers/bates-client.ts` (new) — off-main-thread runner with progress + cancel.
-- `src/components/workspace/tool-panels.tsx` `BatesSection.run` — use worker client; remove the pdf.js probe; use returned `pageCount`; set `appliedAt`/`appliedFingerprint` on success.
-- `src/lib/workspace/bates-store.ts` — add `appliedAt`, `appliedFingerprint`; helper `computeBatesFingerprint(settings)`; clear the applied state when relevant settings change.
-- `src/components/workspace/export-dialog.tsx` — read applied state; default toggle off + show note when fingerprint matches; skip stamping when fingerprint matches AND toggle wasn't manually re-enabled.
+New:
+- `src/lib/workers/rasterize.worker.ts` + `rasterize-client.ts`
+- `src/lib/workers/verify.worker.ts` + `verify-client.ts`
+- `src/lib/workers/pixel-verify.worker.ts` + `pixel-verify-client.ts`
+- `src/lib/workers/export.worker.ts` + `export-client.ts`
+- `src/lib/editor/redaction-pipeline-client.ts` (orchestrator)
+- `src/lib/workers/release.ts` (`releaseBytes` helper)
 
-## Not doing
+Edited:
+- `src/components/workspace/tool-panels.tsx` — `RedactPanel.exportRedacted` calls the new orchestrator; updates `sanitizeStageLabel` + toast wording.
+- `src/components/workspace/export-dialog.tsx` — same orchestrator for redaction path.
+- `src/lib/editor/redaction-gate.ts` — thin wrapper that delegates to the workers (kept as the single chokepoint).
+- `src/lib/editor/verify-pixel-redaction.ts` — swap OCR for black-pixel check (moved into worker).
 
-- Not touching the PDF viewer, tab lifecycle, editor-canvas, or samplePageBg (per project constitution).
-- Not changing the standalone `/bates` route or multi-file Bates flow — the fix is scoped to the workspace inspector + workspace export.
-- No cloud offload. Everything stays on-device, in a Web Worker.
+### Why this fixes the freeze
+- No PDF parsing, rasterization, sanitize, or verify runs on the main thread — UI stays responsive.
+- Each worker is terminated after its step, so peak memory is one worker’s heap at a time instead of accumulating across steps.
+- Removing Tesseract from the pixel check kills the biggest CPU/memory cost for large selections.
 
-## Verification
-
-- 5000-page PDF: "Apply to active tab" completes without a UI hang; progress toast counts up; Cancel actually cancels.
-- Immediately after apply, opening the export dialog shows the "already stamped" note and Bates toggle off by default.
-- Export with defaults → output has exactly one row of Bates numbers.
-- Change any Bates setting → note disappears, toggle re-enables, export re-stamps as expected.
-- Small doc (10 pages): behavior unchanged.
-
-Approve and I'll implement.
+### What the current bottom message means
+`Wiping embedded scripts… (4,000 objects)` is the sanitizer walking internal PDF structures to remove hidden triggers — not a JavaScript app error and not a memory-freeing message. The new wording will make that obvious.
