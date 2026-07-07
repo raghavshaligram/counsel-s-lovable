@@ -2268,8 +2268,38 @@ function sanitizeStageLabel(stage: string): string {
                 : "Tick a category or item to stage"}
             </span>
           </div>
+          {tabList.length > 1 && (
+            <div className="flex flex-wrap gap-1 border-b border-border/60 px-2 py-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab("all")}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  activeTab === "all"
+                    ? "bg-vault text-white"
+                    : "bg-surface-3 text-text-2 hover:text-foreground"
+                }`}
+              >
+                All · {redactableFindings.length.toLocaleString()}
+              </button>
+              {tabList.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    activeTab === t.key
+                      ? "bg-vault text-white"
+                      : "bg-surface-3 text-text-2 hover:text-foreground"
+                  }`}
+                  title={`Show only ${t.label}`}
+                >
+                  {t.label} · {t.count.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          )}
           <ul className="max-h-[280px] overflow-y-auto py-1">
-            {grouped?.map(([cat, allGroups]) => {
+            {grouped?.filter(([cat]) => showPageCat(String(cat))).map(([cat, allGroups]) => {
               // Split groups into high-conf and low-conf. A group is
               // "low-conf" when *every* detection inside it is low-conf
               // (otherwise it stays with the main list and its low-conf
