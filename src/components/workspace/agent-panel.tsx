@@ -467,29 +467,31 @@ export function AgentPanel({
         actions.push(...alternateActions(seedSteps, classified.alternates, classified.term));
         actions.push({ label: "Close", tone: "ghost", onClick: () => onClose() });
 
-        const body =
-          matches.length === 0
-            ? `No matches for “${classified.term}” in this document.`
-            : matches
-                .slice(0, 8)
-                .map((m) => `• Page ${m.page} — ${m.snippet}`)
-                .join("\n") +
-              (matches.length > 8 ? `\n…and ${matches.length - 8} more.` : "");
-
-        setSteps([
-          ...seedSteps,
-          {
-            kind: "result",
-            id: nextId(),
-            title:
-              matches.length === 0
-                ? `Literal search — no matches`
-                : `Literal search — ${matches.length} match${matches.length === 1 ? "" : "es"}`,
-            body,
-            caveat: classified.reason,
-            actions,
-          },
-        ]);
+        if (matches.length === 0) {
+          setSteps([
+            ...seedSteps,
+            {
+              kind: "result",
+              id: nextId(),
+              title: `No matches for “${classified.term}”`,
+              body: "Nothing in this document contains that text. Try a different spelling, drop quotes, or switch to meaning-based search.",
+              caveat: classified.reason,
+              actions,
+            },
+          ]);
+        } else {
+          setSteps([
+            ...seedSteps,
+            {
+              kind: "find-results",
+              id: nextId(),
+              term: classified.term,
+              matches: matches.map((m) => ({ page: m.page, snippet: m.snippet })),
+              caveat: classified.reason,
+              actions,
+            },
+          ]);
+        }
         assistCtxRef.current = {
           lastLane: "literal",
           lastFindTerm: classified.term,
