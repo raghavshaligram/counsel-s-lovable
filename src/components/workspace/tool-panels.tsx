@@ -122,6 +122,13 @@ import { TableOfAuthoritiesPanel } from "./toa-panel";
 import { DocumentHashPanel } from "./document-hash-panel";
 import { PreDiscoveryPanel } from "./pre-discovery-panel";
 import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
+import {
+  getDeviceCapability,
+  estimateScan,
+  formatEstimate,
+  tierLabel,
+  type DeviceCapability,
+} from "@/lib/device/capability";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -1154,6 +1161,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
+  const [capability, setCapability] = useState<DeviceCapability | null>(null);
+  const [activeScanMode, setActiveScanMode] = useState<"quick" | "full" | null>(null);
+  const pageCount = editorState?.doc?.pages.length ?? 0;
+  useEffect(() => {
+    let alive = true;
+    getDeviceCapability().then((c) => { if (alive) setCapability(c); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const docId = ctxDocId ?? (file ? `${file.name}:${file.size}` : "");
   const scanRecord = usePiiScanResultsStore((s) => (docId ? s.scans[docId] : undefined));
   const beginScan = usePiiScanResultsStore((s) => s.beginScan);
@@ -1238,10 +1253,11 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     return set;
   }, [editorState?.doc?.annotations]);
 
-  const runScan = useCallback(async () => {
+  const runScan = useCallback(async (mode: "quick" | "full" = "full") => {
     if (!file || !docId) return;
     const ownerFile = file;
     const ownerDocId = docId;
+    setActiveScanMode(mode);
     setFindings(null);
     setUsedOcr(false);
     setScannedPages([]);
@@ -1260,50 +1276,75 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         await importChunk(() => import("@/lib/workers/detect-pii-client"));
       const { runAsJob } = await import("@/lib/jobs/registry");
       const streamingDetections: import("@/lib/pdf/detect-pii").Detection[] = [];
+      // Live timing: recalibrate estimate every ~500 pages using real per-page
+      // ms observed from the current scan so the ETA converges on this device.
+      const scanStart = performance.now();
+      let lastRecalibPage = 0;
+      let currentPass: "regex" | "ner" | "ocr" = "regex";
       const { jobId, promise } = runAsJob(
         { kind: "detect-pii", docId: ownerDocId, docLabel: ownerFile.name },
         async ({ signal, onProgress }) => {
           await Promise.resolve();
-          updateScanProgress(ownerDocId, "Reading text layer…");
+          updateScanProgress(ownerDocId, "Reading document text…");
           const result = await detectPiiInPdfViaWorker(
             ownerFile,
             1.5,
             (p) => {
               const total = p.totalPages || 1;
+              currentPass = p.pass ?? "regex";
               const step = p.stage === "ocr" ? `OCR ${p.page}/${total}` : `${p.pass ?? "text"} ${p.page}/${total}`;
               onProgress({
                 fraction: total ? p.page / total : 0,
                 step,
               });
               const found = p.foundSoFar ?? streamingDetections.length;
-              updateScanProgress(ownerDocId,
+              // Recalibrate ETA every ~500 pages using observed time.
+              let etaSuffix = "";
+              if (p.page - lastRecalibPage >= 500 && p.page > 0) {
+                lastRecalibPage = p.page;
+                const elapsed = performance.now() - scanStart;
+                const perPage = elapsed / p.page;
+                const remainingMs = perPage * Math.max(0, total - p.page);
+                etaSuffix = ` · ETA ${formatEstimate(remainingMs)}`;
+              }
+              // Narrated phase-by-phase status (plain language).
+              const msg =
                 p.stage === "ocr"
-                  ? `OCR ${p.page}/${p.totalPages} · ${found} findings`
+                  ? `Reading scanned pages with OCR — page ${p.page} of ${total} · ${found} found${etaSuffix}`
                   : p.pass === "ner"
-                    ? `Names ${p.page}/${p.totalPages} · ${found} findings`
-                    : `Scanning ${p.page}/${p.totalPages} · ${found} findings`,
-              );
+                    ? `Looking for names and organizations — page ${p.page} of ${total} · ${found} recognized${etaSuffix}`
+                    : `Checking for SSNs, cards, emails, phone numbers — page ${p.page} of ${total} · ${found} found${etaSuffix}`;
+              updateScanProgress(ownerDocId, msg);
             },
             signal,
             (dets) => {
               streamingDetections.push(...dets);
               appendScanFindings(ownerDocId, dets);
             },
+            { skipNer: mode === "quick" },
           );
-          updateScanProgress(ownerDocId, "Scanning form fields, comments, metadata…");
+          updateScanProgress(ownerDocId, "Checking form fields, comments, and hidden document info…");
           let sideFindings: import("@/lib/pdf/detect-pii").SideChannelFinding[] = [];
           try {
             sideFindings = (await detectPiiInSideChannelsViaWorker(
               ownerFile,
               signal,
             )) as typeof sideFindings;
+            if (sideFindings.length > 0) {
+              updateScanProgress(
+                ownerDocId,
+                `Checking form fields, comments, and hidden document info… (${sideFindings.length} found)`,
+              );
+            }
           } catch (e) {
             console.warn("[auto-detect] side-channel scan failed", e);
           }
+          void currentPass;
           return { ...result, detections: [...result.detections, ...sideFindings] };
         },
       );
       beginScan({ docId: ownerDocId, docLabel: ownerFile.name, jobId });
+
 
       const { detections, usedOcr, scannedPages: scanned, totalPages, lowConfidenceOcrPages, ocrUnderDetectedPages } = await promise;
       const merged = detections;
@@ -1739,18 +1780,68 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       </p>
 
 
-      <button
-        type="button"
-        onClick={() => void runScan()}
-        disabled={!file || scanning}
-        className={cn(
-          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2.5 py-1.5 text-[12px] font-medium text-vault transition-colors hover:bg-vault/15",
-          (!file || scanning) && "cursor-not-allowed opacity-60",
-        )}
-      >
-        <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
-        {scanning ? progress || "Scanning…" : findings ? "Re-scan document" : "Scan for sensitive info"}
-      </button>
+      {scanning ? (
+        <div className="rounded-md border border-vault/40 bg-vault/10 px-2.5 py-2 text-[11.5px] text-vault">
+          <div className="flex items-center gap-1.5 font-medium">
+            <Sparkles className="h-3.5 w-3.5 animate-pulse" strokeWidth={2.5} />
+            {progress || "Scanning…"}
+          </div>
+          {capability && activeScanMode === "full" && capability.tier !== "fast" && (
+            <p className="mt-1.5 text-[10.5px] leading-snug text-text-2">
+              The names/organizations step runs slower on your device because
+              GPU acceleration isn't available in this browser. Everything
+              still stays fully private and on-device — nothing is sent to a
+              server.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {capability && pageCount > 0 && (
+            <p className="text-[10.5px] text-text-muted">
+              This document has {pageCount.toLocaleString()} page{pageCount === 1 ? "" : "s"}.
+              {" "}Estimated on your device
+              {capability.tier !== "fast" ? ` (${tierLabel(capability.tier).toLowerCase()})` : ""}:
+              {" "}Quick {formatEstimate(estimateScan(capability, pageCount, "quick"))}
+              {" · "}Full {formatEstimate(estimateScan(capability, pageCount, "full"))}.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => void runScan("quick")}
+              disabled={!file}
+              className={cn(
+                "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] font-medium text-text-1 transition-colors hover:bg-surface-2/70",
+                !file && "cursor-not-allowed opacity-60",
+              )}
+              title="Structured data + hidden document info only. Fast."
+            >
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Quick scan
+            </button>
+            <button
+              type="button"
+              onClick={() => void runScan("full")}
+              disabled={!file}
+              className={cn(
+                "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2 py-1.5 text-[11.5px] font-medium text-vault transition-colors hover:bg-vault/15",
+                !file && "cursor-not-allowed opacity-60",
+              )}
+              title="Also finds unmarked names and organizations. Slower."
+            >
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Full scan
+            </button>
+          </div>
+          <p className="text-[10px] leading-snug text-text-muted">
+            <strong className="text-text-2">Quick</strong> finds SSNs, cards, emails, phones, form fields, and hidden metadata.
+            {" "}
+            <strong className="text-text-2">Full</strong> adds on-device name/organization recognition.
+            {" "}You can keep working while it runs.
+          </p>
+        </div>
+      )}
 
       {findings && (
         <div className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-snug text-amber-200">

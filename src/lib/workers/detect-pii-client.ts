@@ -57,6 +57,7 @@ export function detectPiiInPdfViaWorker(
   onProgress?: (p: DetectProgress) => void,
   signal?: AbortSignal,
   onPartial?: (detections: Detection[], meta: { page: number; pass: "regex" | "ner" | "ocr" }) => void,
+  opts?: { skipNer?: boolean },
 ): Promise<DetectResult> {
   return new Promise<DetectResult>((resolve, reject) => {
     (async () => {
@@ -143,7 +144,7 @@ export function detectPiiInPdfViaWorker(
         // Transfer the ArrayBuffer so the main thread doesn't hold a
         // second copy of a large PDF in memory during the scan.
         w.postMessage(
-          { kind: "detect", id, bytes, filename: file.name, scale },
+          { kind: "detect", id, bytes, filename: file.name, scale, skipNer: opts?.skipNer === true },
           [bytes],
         );
       } catch (err) {
