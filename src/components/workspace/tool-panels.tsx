@@ -2895,6 +2895,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [verify, setVerify] = useState<Verify | null>(null);
   const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
   const [reviewedSignOff, setReviewedSignOff] = useState(false);
+  // Flips true after the first successful in-place commit — enables the
+  // "Export redacted PDF" button even when the user has staged nothing new
+  // (they just want the file with everything committed so far).
+  const [committedOnce, setCommittedOnce] = useState(false);
   // "always" = rasterize every page that carries a redaction (default, safest).
   // "fallback" = attempt content-stream surgery first, rasterize only pages
   // where text still intersects a redaction rect after verification.
