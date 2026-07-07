@@ -3221,36 +3221,59 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
       <Section title="Commit" icon={<ShieldCheck className="h-3 w-3" />}>
-        <label className={cn(
-          "mb-2 flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
-          reviewedSignOff ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
-          totalBoxes === 0 && "cursor-not-allowed opacity-60",
-        )}>
-          <input
-            type="checkbox"
-            checked={reviewedSignOff}
-            disabled={totalBoxes === 0}
-            onChange={(e) => setReviewedSignOff(e.target.checked)}
-            className="mt-0.5 h-3 w-3 accent-vault"
-          />
-          <span className="text-foreground">
-            I have reviewed every page of this document and confirm the redaction set is complete.
-            I understand auto-detection only flags structured patterns and that I am responsible
-            for catching names and context-dependent secrets.
-          </span>
-        </label>
-        <button
-          type="button"
-          onClick={exportRedacted}
-          disabled={busy || totalBoxes === 0 || !reviewedSignOff}
-          className={cn(
-            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-            (busy || totalBoxes === 0 || !reviewedSignOff) && "cursor-not-allowed opacity-60",
-          )}
-        >
-          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {busy ? "Working…" : `Redact & verify${totalBoxes > 0 ? ` (${totalBoxes.toLocaleString()} item${totalBoxes === 1 ? "" : "s"})` : ""}`}
-        </button>
+        {(() => {
+          // Total items awaiting commit = manual/AI page annotations + ticked
+          // side-channel items (form fields, comments, metadata). Either can
+          // drive a commit on its own.
+          const totalStaged = totalBoxes + (staged.sideStaged || 0);
+          const canCommit = totalStaged > 0;
+          const onCommit = async () => {
+            // Prefer the page-burn path when any page box is staged — the
+            // gate inside `exportRedacted` scrubs side-channels too, so ticked
+            // form-field/annotation/metadata items are covered by the same
+            // pass. Side-channel-only stages fall back to the sanitize+swap
+            // path published by AutoDetectSection.
+            if (totalBoxes > 0) {
+              await exportRedacted();
+            } else if (staged.sideCommit) {
+              await staged.sideCommit();
+            }
+          };
+          return (
+            <>
+              <label className={cn(
+                "mb-2 flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+                reviewedSignOff ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+                !canCommit && "cursor-not-allowed opacity-60",
+              )}>
+                <input
+                  type="checkbox"
+                  checked={reviewedSignOff}
+                  disabled={!canCommit}
+                  onChange={(e) => setReviewedSignOff(e.target.checked)}
+                  className="mt-0.5 h-3 w-3 accent-vault"
+                />
+                <span className="text-foreground">
+                  I have reviewed every page of this document and confirm the redaction set is complete.
+                  I understand auto-detection only flags structured patterns and that I am responsible
+                  for catching names and context-dependent secrets.
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={onCommit}
+                disabled={busy || !canCommit || !reviewedSignOff}
+                className={cn(
+                  "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+                  (busy || !canCommit || !reviewedSignOff) && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+                {busy ? "Working…" : `Redact & verify${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
+              </button>
+            </>
+          );
+        })()}
         <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-text-muted">
           <span
             aria-hidden
