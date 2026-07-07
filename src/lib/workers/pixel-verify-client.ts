@@ -5,7 +5,10 @@
  * check releases all memory immediately after use.
  */
 import { toTransferable } from "./release";
-import type { PixelVerifyTarget, PixelLeak } from "./pixel-verify.worker";
+
+export interface PixelRectTL { x: number; y: number; w: number; h: number }
+export interface PixelVerifyTarget { page: number; rect: PixelRectTL; label?: string }
+export interface PixelLeak { page: number; rect: PixelRectTL; coverage: number }
 
 export interface PixelVerifyClientResult {
   ok: boolean;
