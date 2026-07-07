@@ -870,6 +870,7 @@ export function AgentPanel({
     // Clean up any in-flight scan when the panel closes.
     abortedRef.current = true;
     querySeqRef.current += 1;
+    assistCtxRef.current = {};
   }, [open]);
 
   // Auto-scroll transcript.
