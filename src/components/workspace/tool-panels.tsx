@@ -906,8 +906,10 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
     return s;
   }, [editorState?.doc?.annotations]);
 
-  const runFind = useCallback(async () => {
-    if (!file || !query.trim()) return;
+  const runFind = useCallback(async (overrideTerm?: string) => {
+    const q = (overrideTerm ?? query).trim();
+    if (!file || !q) return;
+    if (overrideTerm !== undefined) setQuery(overrideTerm);
     setBusy(true);
     setError(null);
     setMatches(null);
@@ -919,7 +921,7 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
       // freeze the UI. pdf.js text extraction itself is already async.
       const found = await mod.findKeywordInPdf(
         file,
-        query,
+        q,
         {
           matchCase,
           wholeWord: regex ? false : wholeWord,
@@ -945,6 +947,20 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
       setProgress("");
     }
   }, [file, query, matchCase, wholeWord, regex]);
+
+  // Agent hand-off: the assistant's "Redact all matches" button dispatches
+  // `agent:redact-pattern` with a term. Pre-fill the field AND auto-run the
+  // scan so the user lands here with review-ready boxes, not an empty form.
+  useEffect(() => {
+    const onPattern = (e: Event) => {
+      const ce = e as CustomEvent<{ term?: string }>;
+      const term = ce.detail?.term?.trim();
+      if (!term) return;
+      void runFind(term);
+    };
+    window.addEventListener("agent:redact-pattern", onPattern as EventListener);
+    return () => window.removeEventListener("agent:redact-pattern", onPattern as EventListener);
+  }, [runFind]);
 
   const stageSelected = useCallback(() => {
     if (!matches || selected.size === 0) return;
