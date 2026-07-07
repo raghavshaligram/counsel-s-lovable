@@ -41,6 +41,11 @@ const TEXT_ANNOT_SUBTYPES = new Set([
   "/RichMedia", "/Movie",
 ]);
 
+export interface SanitizeOptions {
+  onProgress?: (stage: string, done: number, total: number) => void;
+  shouldAbort?: () => boolean;
+}
+
 export async function sanitizePdfBytes(bytes: Uint8Array): Promise<Uint8Array> {
   const { bytes: out } = await sanitizePdfBytesWithReport(bytes);
   return out;
@@ -48,14 +53,29 @@ export async function sanitizePdfBytes(bytes: Uint8Array): Promise<Uint8Array> {
 
 export async function sanitizePdfBytesWithReport(
   bytes: Uint8Array,
+  opts: SanitizeOptions = {},
 ): Promise<{ bytes: Uint8Array; report: SanitizeReport; pageCount: number }> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+
+  const throwIfAborted = () => {
+    if (opts.shouldAbort?.()) throw new DOMException("Canceled", "AbortError");
+  };
+  const yieldEvery = 2000;
+  const maybeYield = async (i: number, stage: string, total: number) => {
+    if (i > 0 && i % yieldEvery === 0) {
+      opts.onProgress?.(stage, i, total);
+      throwIfAborted();
+      // Cooperative yield — works in worker (setTimeout) and main thread.
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
+  };
 
   const report: SanitizeReport = {
     documentInfo: 0, xmpMetadata: 0, embeddedFiles: 0, javascript: 0,
     acroForm: 0, acroFormFields: 0, annotations: 0,
     hiddenLayers: 0, hiddenLayerContent: 0, additionalActions: 0,
   };
+
 
   // 1) Document info ----------------------------------------------------
   const had = (v: string | undefined | string[]) =>
