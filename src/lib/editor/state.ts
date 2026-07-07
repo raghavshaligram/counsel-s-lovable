@@ -51,6 +51,7 @@ export type Action =
   | { type: "ADD_ANNOS"; list: Anno[] }
   | { type: "UPDATE_ANNO"; id: string; patch: Partial<Anno> }
   | { type: "DELETE_ANNO"; id: string }
+  | { type: "DELETE_ANNOS"; ids: string[] }
   | { type: "REORDER_PAGE"; from: number; to: number }
   | { type: "DELETE_PAGE"; n: number }
   | { type: "INSERT_BLANK"; after: number; width: number; height: number }
