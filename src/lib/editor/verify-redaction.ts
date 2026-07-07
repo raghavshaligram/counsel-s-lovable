@@ -131,7 +131,8 @@ async function verifyPageGeometry(
   regionTargets: RedactionTarget[],
 ): Promise<VerifyLeak[]> {
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ data: bytes }).promise;
+
 
   const byPage = new Map<number, RedactionTarget[]>();
   for (const t of regionTargets) {
