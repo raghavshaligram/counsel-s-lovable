@@ -122,7 +122,7 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
             <div className="min-w-0">
               <div className="truncate text-[12.5px] font-medium text-foreground">{email}</div>
               <div className="text-[11px] font-normal text-text-2">
-                {planLabel(license?.plan)} · {statusLabel(license?.status) || "—"}
+                {license ? `${planLabel(license.plan)} · ${statusLabel(license.status) || "—"}` : "Checking plan…"}
               </div>
             </div>
           </div>
