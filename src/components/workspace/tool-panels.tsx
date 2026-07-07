@@ -1507,7 +1507,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     let sideChannelApplied = 0;
     if (sideChannelDets.length > 0 && editorState?.doc?.srcBytes) {
       const tid = "wsx-redact-apply-side";
-      toast.loading("Wiping form fields, comments, metadata…", { id: tid });
+      const abort = new AbortController();
+      toast.loading("Wiping form fields, comments, metadata…", {
+        id: tid,
+        action: {
+          label: "Cancel",
+          onClick: () => abort.abort(),
+        },
+      });
       try {
         const formFieldFindings = sideChannelDets.filter((d) => d.vector === "form-field");
         // eslint-disable-next-line no-console
@@ -1521,13 +1528,23 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           })),
           order: "sanitize/clear fields before any flatten, PDF/A conversion, or download",
         });
-        const { sanitizePdfBytesWithReport } = await importChunk(
-          () => import("@/lib/pdf/sanitize"),
+        const { sanitizeInWorker } = await importChunk(
+          () => import("@/lib/workers/sanitize-client"),
         );
         const sourceBytes = editorState.doc.srcBytes.byteLength > 0
           ? editorState.doc.srcBytes
           : new Uint8Array(await file!.arrayBuffer());
-        const { bytes: cleaned, report } = await sanitizePdfBytesWithReport(sourceBytes);
+        const { bytes: cleaned, report } = await sanitizeInWorker(sourceBytes, {
+          signal: abort.signal,
+          onProgress: ({ stage, done }) => {
+            if (done > 0 && done % 4000 === 0) {
+              toast.loading(`Wiping hidden data… (${stage} · ${done.toLocaleString()} objects)`, {
+                id: tid,
+                action: { label: "Cancel", onClick: () => abort.abort() },
+              });
+            }
+          },
+        });
         // eslint-disable-next-line no-console
         console.info("[redact:form-field] apply-now sanitize report", {
           acroForm: report.acroForm,
@@ -1535,23 +1552,28 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           flattened: false,
           order: "field values/AP cleared now; flatten/PDF-A can only run later",
         });
-        const { verifyRedactionRemoval } = await importChunk(
-          () => import("@/lib/editor/verify-redaction"),
-        );
-        const sideTargets = sideChannelDets.flatMap((d) => {
-          const full = (d.sensitiveText || "").trim();
-          const snip = (d.snippet || "").replace(/…$/, "").trim();
-          return Array.from(new Set([full, snip].filter(Boolean))).map((text) => ({
-            page: 0,
-            text,
-            label: d.sourceLabel,
-          }));
-        });
-        const verify = await verifyRedactionRemoval(cleaned, sideTargets);
-        if (!verify.ok) {
-          throw new Error(
-            `Immediate hidden-vector redaction failed — ${verify.leaks.length} value${verify.leaks.length === 1 ? "" : "s"} still recoverable.`,
+        // Targeted verification only — the wipe has no page-rect targets,
+        // so a full-doc raw-stream scan would just re-parse every page for
+        // nothing. Sanitize already removed the containing indirect objects;
+        // verifySideChannelVectors reads the remaining side-channel dicts
+        // and confirms no sensitive string survived.
+        const sensitiveStrings = Array.from(new Set(
+          sideChannelDets.flatMap((d) => {
+            const full = (d.sensitiveText || "").trim();
+            const snip = (d.snippet || "").replace(/…$/, "").trim();
+            return [full, snip].filter((s) => s.length >= 3);
+          }),
+        ));
+        if (sensitiveStrings.length > 0) {
+          const { verifySideChannelVectors } = await importChunk(
+            () => import("@/lib/editor/verify-redaction"),
           );
+          const sideLeaks = await verifySideChannelVectors(cleaned, sensitiveStrings);
+          if (sideLeaks.length > 0) {
+            throw new Error(
+              `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
+            );
+          }
         }
         // Replace srcBytes in-place; preserve annotations + page ops + ocr.
         editorDispatch({
@@ -1581,12 +1603,18 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           },
         );
       } catch (e) {
-        toast.error("Failed to wipe hidden findings", {
-          id: tid,
-          description: e instanceof Error ? e.message : String(e),
-        });
+        const aborted = e instanceof DOMException && e.name === "AbortError";
+        if (aborted) {
+          toast.info("Wipe cancelled", { id: tid, description: "Document is unchanged." });
+        } else {
+          toast.error("Failed to wipe hidden findings", {
+            id: tid,
+            description: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
     }
+
 
     if (added > 0) {
       toast.success(`${added} redaction box${added === 1 ? "" : "es"} added`, {
