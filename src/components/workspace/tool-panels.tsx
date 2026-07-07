@@ -2605,7 +2605,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           )}
         >
           <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {busy ? "Working…" : "Redact, export & verify"}
+          {busy ? "Working…" : `Redact & verify${totalBoxes > 0 ? ` (${totalBoxes.toLocaleString()} item${totalBoxes === 1 ? "" : "s"})` : ""}`}
         </button>
         <p className="mt-1.5 text-[10.5px] text-text-muted">
           Exports a redacted PDF, then re-parses the exported file and confirms no
