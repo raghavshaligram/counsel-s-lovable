@@ -3,7 +3,7 @@
  * single Inspector container at any time. No outer card/wrapper here: the
  * Inspector already provides the header, border, and scroll area.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Sparkles,
   Search,
@@ -780,6 +780,53 @@ function CsvFillSection({
 /* ------------------------------ Redact ------------------------------ */
 
 /**
+ * Redact staging bridge — Stage 2 unification.
+ *
+ * The AI-detect flow keeps its own selected-findings state internally
+ * (findings staged in memory until the user hits "Redact selected"), while
+ * manual boxes / pattern matches commit to `editorState.doc.annotations`
+ * immediately. That's an asymmetry the user sees in the ledger: committed
+ * boxes appear, staged AI selections don't.
+ *
+ * Rather than restructure both flows, `AutoDetectSensitive` publishes its
+ * current "selected of total" and a `commit()` callback into this
+ * module-level singleton. `RedactPanel` reads it via `useSyncExternalStore`
+ * and renders a single "Staged" row alongside the committed ledger, with
+ * a "Commit staged" button that calls the SAME `redactSelected` logic —
+ * no divergent code path, no change to the burn pipeline.
+ *
+ * If AI detect is unmounted (non-Pro, or panel not open), the bridge
+ * resets to zeros and the row hides itself.
+ */
+type StagedRedactBridge = {
+  selected: number;
+  total: number;
+  commit: (() => void) | null;
+};
+const stagedRedactBridge: { current: StagedRedactBridge } = {
+  current: { selected: 0, total: 0, commit: null },
+};
+const stagedRedactListeners = new Set<() => void>();
+function publishStagedRedact(next: StagedRedactBridge) {
+  const cur = stagedRedactBridge.current;
+  if (cur.selected === next.selected && cur.total === next.total && cur.commit === next.commit) return;
+  stagedRedactBridge.current = next;
+  for (const l of stagedRedactListeners) l();
+}
+function subscribeStagedRedact(cb: () => void) {
+  stagedRedactListeners.add(cb);
+  return () => { stagedRedactListeners.delete(cb); };
+}
+function useStagedRedact(): StagedRedactBridge {
+  return useSyncExternalStore(
+    subscribeStagedRedact,
+    () => stagedRedactBridge.current,
+    () => stagedRedactBridge.current,
+  );
+}
+
+
+/**
  * Pro capabilities that live INSIDE the (free) Redact tool. Manual redact
  * stays free for everyone; AI sensitive-data detection and pattern/bulk
  * redaction require a Pro subscription. For non-Pro users the buttons show
@@ -1483,6 +1530,22 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     [findings],
   );
 
+  // Publish current staging state to the module-level bridge so RedactPanel's
+  // unified ledger can show a "Staged from AI scan" row + one-click commit.
+  // On unmount we reset to zero so the row disappears when the panel closes.
+  useEffect(() => {
+    publishStagedRedact({
+      selected: selected.size,
+      total: redactableFindings.length,
+      commit: redactableFindings.length > 0 ? redactSelected : null,
+    });
+  }, [selected, redactableFindings, redactSelected]);
+  useEffect(() => {
+    return () => {
+      publishStagedRedact({ selected: 0, total: 0, commit: null });
+    };
+  }, []);
+
   const grouped = useMemo(() => {
     if (!pageRedactableFindings.length) return null;
     // Category → snippet-key → detections. Collapsing identical matched-text
@@ -2071,6 +2134,14 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   }, [redactAnnos]);
   const boxesWithoutText = redactAnnos.filter((a) => a.kind === "redact" && !a.sources?.length).length;
 
+  // Stage 2 unification: read the AI-detect flow's current staging state
+  // so the "Marked for removal" section can show BOTH committed boxes and
+  // pending (selected but not yet committed) AI findings in one place,
+  // with a single "Commit staged" button that calls the SAME code path
+  // as the in-list "Redact selected" button (no divergent burn logic).
+  const staged = useStagedRedact();
+
+
 
   const exportRedacted = useCallback(async () => {
     if (!file || !editorState?.doc) return;
@@ -2400,8 +2471,34 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               still painted opaque black on export, but nothing to verify.
             </p>
           )}
+          {staged.total > 0 && (
+            <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+              <div className="min-w-0">
+                <div className="text-text-2">
+                  Staged from AI scan
+                  <span className="ml-1.5 text-[10.5px] text-text-muted">(not yet committed)</span>
+                </div>
+                <div className="mt-0.5 font-mono text-[10.5px] tabular-nums text-text-muted">
+                  {staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => staged.commit?.()}
+                disabled={!staged.commit || staged.selected === 0}
+                className={cn(
+                  "shrink-0 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90",
+                  (!staged.commit || staged.selected === 0) && "cursor-not-allowed opacity-50",
+                )}
+                title="Move selected AI findings into the committed ledger below"
+              >
+                Commit staged
+              </button>
+            </div>
+          )}
         </div>
       </Section>
+
 
       <Section title="Audit ledger" icon={<Shield className="h-3 w-3" />}>
         <RedactionAuditLedger
