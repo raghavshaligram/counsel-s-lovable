@@ -259,12 +259,16 @@ export async function sanitizePdfBytesWithReport(
       names.delete(PDFName.of("JavaScript"));
     }
   }
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const type = nameStr(obj.get(PDFName.of("Type")));
-    if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
-      removeRef(ctx, ref);
-      report.embeddedFiles++;
+  {
+    let i = 0;
+    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "attachments", 0);
+      if (!(obj instanceof PDFDict)) continue;
+      const type = nameStr(obj.get(PDFName.of("Type")));
+      if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
+        removeRef(ctx, ref);
+        report.embeddedFiles++;
+      }
     }
   }
 
@@ -283,14 +287,18 @@ export async function sanitizePdfBytesWithReport(
       page.node.delete(PDFName.of("AA"));
     }
   }
-  for (const [, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const s = nameStr(obj.get(PDFName.of("S")));
-    if (s === "/JavaScript") {
-      report.javascript++;
-      obj.set(PDFName.of("S"), PDFName.of("GoTo"));
-      for (const k of ["JS", "F"]) {
-        if (obj.has(PDFName.of(k))) obj.delete(PDFName.of(k));
+  {
+    let i = 0;
+    for (const [, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "javascript", 0);
+      if (!(obj instanceof PDFDict)) continue;
+      const s = nameStr(obj.get(PDFName.of("S")));
+      if (s === "/JavaScript") {
+        report.javascript++;
+        obj.set(PDFName.of("S"), PDFName.of("GoTo"));
+        for (const k of ["JS", "F"]) {
+          if (obj.has(PDFName.of(k))) obj.delete(PDFName.of(k));
+        }
       }
     }
   }
