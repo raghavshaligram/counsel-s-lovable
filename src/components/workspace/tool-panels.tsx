@@ -2134,6 +2134,14 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   }, [redactAnnos]);
   const boxesWithoutText = redactAnnos.filter((a) => a.kind === "redact" && !a.sources?.length).length;
 
+  // Stage 2 unification: read the AI-detect flow's current staging state
+  // so the "Marked for removal" section can show BOTH committed boxes and
+  // pending (selected but not yet committed) AI findings in one place,
+  // with a single "Commit staged" button that calls the SAME code path
+  // as the in-list "Redact selected" button (no divergent burn logic).
+  const staged = useStagedRedact();
+
+
 
   const exportRedacted = useCallback(async () => {
     if (!file || !editorState?.doc) return;
