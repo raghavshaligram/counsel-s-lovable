@@ -894,7 +894,7 @@ export function AgentPanel({
     (term: string) => {
       const t = term.trim();
       if (!t) return;
-      safeRunFlow({ kind: "search", term: t });
+      safeRunFlow({ kind: "search", term: t, raw: t });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -904,7 +904,7 @@ export function AgentPanel({
     (q: string) => {
       const t = q.trim();
       if (!t) return;
-      safeRunFlow({ kind: "answer", query: t });
+      safeRunFlow({ kind: "answer", query: t, raw: t });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
