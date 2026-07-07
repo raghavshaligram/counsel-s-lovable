@@ -96,9 +96,9 @@ export async function verifyRedactionRemoval(
     leaks.push(...vectorLeaks);
   }
 
-  if (sensitiveStrings.length > 0) {
-    const skipRefs = sharedDoc ? collectRasterizedPageStreamRefs(sharedDoc, opts.rasterizedPages) : new Set<string>();
-    const rawLeaks = await verifyRawStreamsFast(bytes, sensitiveStrings, skipRefs, opts.signal);
+  if (sensitiveStrings.length > 0 && sharedDoc) {
+    const skipRefs = collectRasterizedPageStreamRefs(sharedDoc, opts.rasterizedPages);
+    const rawLeaks = await verifyRawStreamsFast(sharedDoc, sensitiveStrings, skipRefs, opts.signal);
     leaks.push(...rawLeaks);
   }
 
