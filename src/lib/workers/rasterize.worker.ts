@@ -174,7 +174,7 @@ async function rasterize(
   }
 
   if (rasterizedPages.length === 0) return { bytes, rasterizedPages: [] };
-  const outBytes = await outDoc.save();
+  const outBytes = await outDoc.save({ useObjectStreams: false, updateFieldAppearances: false });
   return { bytes: outBytes, rasterizedPages: rasterizedPages.slice().sort((a, b) => a - b) };
 }
 
