@@ -299,14 +299,65 @@ function isFollowUp(raw: string): boolean {
 }
 
 /* ------------------------------------------------------------------ */
-/* Classifier                                                          */
+/* Literal vs semantic detection                                       */
 /* ------------------------------------------------------------------ */
+
+/** Extract a quoted term. Handles both straight and smart quotes. */
+function extractQuoted(raw: string): string | null {
+  const m = raw.match(/["“'‘]([^"”'’]{1,120})["”'’]/);
+  return m ? m[1].trim() : null;
+}
+
+/** "the word X" / "the phrase X" / "exact match X" / "word 'X'" cues. */
+function extractLiteralCue(raw: string): string | null {
+  const m = raw.match(/\b(?:the\s+)?(?:word|phrase|term|string|text|exact(?:\s+match)?)\s+["“'‘]?([\w'\-.]{2,60})["”'’]?/i);
+  return m ? m[1].trim() : null;
+}
+
+/** /regex/flags syntax. */
+function extractRegex(raw: string): string | null {
+  const m = raw.match(/\bregex\s+\/([^/]+)\//i) || raw.match(/^\/([^/]+)\/[gimsuy]*$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Content-descriptor phrases that suggest semantic search rather than
+ * literal find. "find sensitive contracts", "passages about damages",
+ * "clauses that mention X", "everything related to Y".
+ */
+const SEMANTIC_CUE_RE = /\b(passages?|clauses?|sections?|paragraphs?|mentions?|references?|discussions?|topics?)\s+(?:about|on|regarding|related\s+to|that|which)\b/i;
+const ABOUT_RE = /\b(?:about|regarding|related\s+to|concerning|dealing\s+with)\b/i;
+const FIND_VERB_RE = /^\s*(?:find|show|list|search(?:\s+for)?|look\s+for|locate|get\s+me)\b/i;
+/** Adjective before noun in "find <adj> <noun>" is a strong semantic signal. */
+const SEMANTIC_DESCRIPTOR_RE = /\b(?:sensitive|confidential|privileged|important|relevant|risky|financial|personal|private|key|critical|material)\s+\w+/i;
 
 export async function classifyAssistQuery(
   input: string,
   ctx?: AssistCtx,
 ): Promise<AssistClassification> {
   const raw = input.trim();
+
+  // Cross-lane follow-up: after a literal find, "redact them" / "now redact those"
+  // should reuse the last found term as a Redact staging trigger.
+  if (
+    ctx?.lastLane === "literal" &&
+    ctx.lastFindTerm &&
+    /\bredact\b/i.test(raw) &&
+    /\b(them|those|these|it|all|matches|results)\b/i.test(raw)
+  ) {
+    const redactEntry = ASSIST_KNOWLEDGE_BASE.find((e) => e.id === "redact");
+    if (redactEntry) {
+      return {
+        kind: "tool",
+        entry: redactEntry,
+        mode: "use",
+        score: 1,
+        followUp: true,
+        contextFrom: "literal",
+        stagedTerm: ctx.lastFindTerm,
+      };
+    }
+  }
 
   // 1. Exact tool match
   const exact = exactToolMatch(raw);
@@ -322,9 +373,44 @@ export async function classifyAssistQuery(
     return { kind: "topic", topic: topicExact, score: 1 };
   }
 
-  // 3. Follow-up: sticky-bias to previous subject if the query is clearly a follow-up
+  // 3. Literal-find lane (rules 1 & 2 from the plan)
+  const quoted = extractQuoted(raw);
+  if (quoted) {
+    return {
+      kind: "literal",
+      term: quoted,
+      wholeWord: false,
+      regex: false,
+      reason: `Searching for the exact text “${quoted}” in this document.`,
+    };
+  }
+  const regexTerm = extractRegex(raw);
+  if (regexTerm) {
+    return {
+      kind: "literal",
+      term: regexTerm,
+      wholeWord: false,
+      regex: true,
+      reason: `Searching this document with the regular expression /${regexTerm}/.`,
+    };
+  }
+  const cued = extractLiteralCue(raw);
+  if (cued) {
+    return {
+      kind: "literal",
+      term: cued,
+      wholeWord: true,
+      regex: false,
+      reason: `Searching for the exact word “${cued}” in this document.`,
+      alternates: [{ lane: "semantic", label: `Search by meaning instead` }],
+    };
+  }
+
+  // 4. Follow-up: sticky-bias to previous subject if the query is clearly a follow-up
   const followUp = isFollowUp(raw) && (ctx?.lastEntryId || ctx?.lastTopicId);
   const virtualQuery = followUp && ctx?.lastQuery ? `${ctx.lastQuery} ${raw}` : raw;
+
+
 
   // 4. Fuzzy match — runs BEFORE embeddings, on the *original* raw text
   // 4. Fuzzy match — runs BEFORE embeddings, on the *original* raw text.
