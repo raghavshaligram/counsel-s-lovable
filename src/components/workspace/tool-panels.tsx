@@ -2164,6 +2164,33 @@ function sanitizeStageLabel(stage: string): string {
         </div>
       )}
 
+      {/* Scan-summary card — at-a-glance "what's in this document". */}
+      {scanSummary && !scanning && (
+        <div className="mt-1 rounded-md border border-vault/30 bg-vault/[0.06] px-2.5 py-2 text-[11.5px] leading-relaxed text-text-1">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-vault mb-1">
+            Scan summary
+          </div>
+          {scanSummary.parts.length === 0 ? (
+            <div className="text-text-2">
+              Reviewed {totalPagesScanned.toLocaleString()} page{totalPagesScanned === 1 ? "" : "s"}. No built-in patterns matched — still review names and prose secrets manually.
+            </div>
+          ) : (
+            <div>
+              Reviewed <strong className="text-foreground">{totalPagesScanned.toLocaleString()} page{totalPagesScanned === 1 ? "" : "s"}</strong>. Found:{" "}
+              {scanSummary.parts.map((p, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="text-text-muted"> · </span>}
+                  <span className="text-foreground">{p}</span>
+                </span>
+              ))}
+              .
+            </div>
+          )}
+        </div>
+      )}
+
+
+
       {findings && findings.length > 0 && (
         <div className="mt-1 rounded-md border border-border bg-surface-2/60">
           <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
