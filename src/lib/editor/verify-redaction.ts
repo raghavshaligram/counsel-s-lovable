@@ -131,7 +131,10 @@ async function verifyPageGeometry(
   regionTargets: RedactionTarget[],
 ): Promise<VerifyLeak[]> {
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: bytes }).promise;
+  // pdf.js may neuter/adopt the buffer; slice keeps the caller's bytes intact
+  // for the raw-stream + side-channel scans that run after this pass.
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+
 
 
   const byPage = new Map<number, RedactionTarget[]>();
