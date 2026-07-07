@@ -1640,6 +1640,32 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [selected, findings, editorState?.doc?.annotations, editorDispatch]);
 
+  // Bridge events from the "Staged for redaction" panel so unstaging a single
+  // AI item or Clear-all from there also purges the selection set here — else
+  // the live-stage effect would immediately re-add them.
+  useEffect(() => {
+    const onUnstage = (e: Event) => {
+      const detId = (e as CustomEvent<{ detId: string }>).detail?.detId;
+      if (!detId) return;
+      setSelected((prev) => {
+        if (!prev.has(detId)) return prev;
+        const next = new Set(prev);
+        next.delete(detId);
+        return next;
+      });
+    };
+    const onClear = () => {
+      setSelected(new Set());
+      autoSelectedRef.current = new Set();
+    };
+    window.addEventListener("redact:unstage-det", onUnstage as EventListener);
+    window.addEventListener("redact:clear-selection", onClear);
+    return () => {
+      window.removeEventListener("redact:unstage-det", onUnstage as EventListener);
+      window.removeEventListener("redact:clear-selection", onClear);
+    };
+  }, []);
+
 
   const grouped = useMemo(() => {
     if (!pageRedactableFindings.length) return null;
