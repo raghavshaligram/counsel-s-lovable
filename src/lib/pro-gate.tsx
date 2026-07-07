@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { Lock } from "lucide-react";
 import { useRouterState } from "@tanstack/react-router";
-import { useLicenseActivation } from "@/lib/use-license-activation";
+import { useLicenseStatus } from "@/lib/use-license-activation";
 import { useUpgradeModal } from "@/components/upgrade-modal";
 import { cn } from "@/lib/utils";
 
@@ -40,8 +40,8 @@ export type PaidFeatureId = keyof typeof PAID_FEATURES;
 
 /** True if the active license is a paid, currently-entitled plan. */
 export function useIsPro(): boolean {
-  const license = useLicenseActivation();
-  if (!license) return false;
+  const { license, checking } = useLicenseStatus();
+  if (!license) return checking;
   return license.entitled;
 }
 
