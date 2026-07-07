@@ -1,12 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import {
   CreditCard, ArrowLeft, ExternalLink, ShieldCheck, Users, Loader2, FileText, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMyBilling, openMyBillingPortal, createMyCheckout } from "@/lib/billing.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { refreshLicense } from "@/lib/use-license-activation";
 
 export const Route = createFileRoute("/_authenticated/billing")({
   head: () => ({
@@ -27,10 +30,44 @@ function statusLabel(s: string) {
 
 function BillingPage() {
   const fetchBilling = useServerFn(getMyBilling);
+  const qc = useQueryClient();
   const { data: b, isPending } = useQuery({
     queryKey: ["my-billing"],
     queryFn: () => fetchBilling(),
   });
+
+  // Realtime: any change to THIS user's subscription row (admin grant, Stripe
+  // webhook, cancellation) invalidates the billing query AND refreshes the
+  // shared license snapshot so the Account menu badge and Billing card
+  // update at the same moment. Previously only the license hook subscribed,
+  // so the Billing page stayed "Free" until a hard reload.
+  useEffect(() => {
+    let cleanup = () => {};
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.auth.getSession();
+      const uid = data.session?.user.id;
+      if (!uid || cancelled) return;
+      const ch = supabase
+        .channel(`billing-sub:${uid}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${uid}` },
+          () => {
+            void qc.invalidateQueries({ queryKey: ["my-billing"] });
+            void refreshLicense();
+          },
+        )
+        .subscribe();
+      cleanup = () => {
+        void supabase.removeChannel(ch);
+      };
+    })();
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, [qc]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
