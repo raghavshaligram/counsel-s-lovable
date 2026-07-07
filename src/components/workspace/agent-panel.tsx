@@ -433,7 +433,6 @@ export function AgentPanel({
           regex: classified.regex,
           maxMatches: 30,
         });
-        const findEntry = ASSIST_KNOWLEDGE_BASE_lookup("redact");
         const actions: Action[] = [];
         if (matches.length > 0) {
           const canRedact = isPro; // pattern-bulk-redact is Pro
@@ -481,7 +480,6 @@ export function AgentPanel({
             actions,
           },
         ]);
-        void findEntry;
         assistCtxRef.current = {
           lastLane: "literal",
           lastFindTerm: classified.term,
