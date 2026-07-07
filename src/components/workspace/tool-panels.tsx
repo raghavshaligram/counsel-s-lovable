@@ -1864,6 +1864,10 @@ function sanitizeStageLabel(stage: string): string {
   // item in the list stages it in the ledger immediately; unchecking removes
   // it. No separate commit step — the final destructive burn only happens
   // when the user clicks "Redact & verify".
+  //
+  // BATCHED: uses ADD_ANNOS / DELETE_ANNOS in a single dispatch each so a
+  // 13k-item "select all" doesn't dispatch 13k times. Per-item dispatch was
+  // the source of the "Page Unresponsive" freeze on large scans.
   useEffect(() => {
     if (!findings || findings.length === 0) return;
     const annos = editorState?.doc?.annotations ?? [];
@@ -1873,14 +1877,14 @@ function sanitizeStageLabel(stage: string): string {
       if (!a.id.startsWith("redact-det-")) continue;
       stagedDetIds.add(a.id.slice("redact-det-".length));
     }
-    // Uncheck → remove annotation.
+    // Batch removals (unchecked items).
+    const toRemove: string[] = [];
     for (const detId of stagedDetIds) {
-      if (!selected.has(detId)) {
-        editorDispatch({ type: "DELETE_ANNO", id: `redact-det-${detId}` });
-      }
+      if (!selected.has(detId)) toRemove.push(`redact-det-${detId}`);
     }
-    // Check → add annotation (page findings only; side-channel uses its own flow).
+    // Batch adds (newly checked page-vector items).
     const byId = new Map(findings.map((d) => [d.id, d]));
+    const toAdd: import("@/lib/editor/state").Anno[] = [];
     for (const detId of selected) {
       if (stagedDetIds.has(detId)) continue;
       const d = byId.get(detId);
@@ -1888,33 +1892,32 @@ function sanitizeStageLabel(stage: string): string {
       if (d.vector && d.vector !== "page") continue;
       const rect =
         d.pdfRect ?? { x: d.x / 1.5, y: d.y / 1.5, w: d.w / 1.5, h: d.h / 1.5 };
-      editorDispatch({
-        type: "ADD_ANNO",
-        a: {
-          id: `redact-det-${d.id}`,
-          kind: "redact",
-          page: d.page - 1,
-          x: rect.x,
-          y: rect.y,
-          w: rect.w,
-          h: rect.h,
-          color: { r: 0, g: 0, b: 0 },
-          opacity: 1,
-          category: d.category,
-          sources: d.source?.originalString
-            ? [{
-                originalString: d.source.originalString,
-                redactText: d.source.redactText,
-                matchStart: d.source.matchStart,
-                matchLength: d.source.matchLength,
-                transform: d.source.transform,
-                fontName: d.source.fontName,
-                bounds: d.source.bounds,
-              }]
-            : undefined,
-        },
-      });
+      toAdd.push({
+        id: `redact-det-${d.id}`,
+        kind: "redact",
+        page: d.page - 1,
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+        color: { r: 0, g: 0, b: 0 },
+        opacity: 1,
+        category: d.category,
+        sources: d.source?.originalString
+          ? [{
+              originalString: d.source.originalString,
+              redactText: d.source.redactText,
+              matchStart: d.source.matchStart,
+              matchLength: d.source.matchLength,
+              transform: d.source.transform,
+              fontName: d.source.fontName,
+              bounds: d.source.bounds,
+            }]
+          : undefined,
+      } as import("@/lib/editor/state").Anno);
     }
+    if (toRemove.length > 0) editorDispatch({ type: "DELETE_ANNOS", ids: toRemove });
+    if (toAdd.length > 0) editorDispatch({ type: "ADD_ANNOS", list: toAdd });
   }, [selected, findings, editorState?.doc?.annotations, editorDispatch]);
 
   // Bridge events from the "Staged for redaction" panel so unstaging a single
