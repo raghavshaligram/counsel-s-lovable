@@ -2937,44 +2937,48 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     const mode = opts?.mode ?? "export";
     if (!file || !editorState?.doc) return;
     // Two-phase commit: marks are drafts up to this point. Confirm before
-    // we permanently remove the underlying content.
+    // we permanently remove the underlying content — but only in EXPORT
+    // mode. Commit-mode is triggered by a per-category "Redact" button that
+    // already carries its own confirmation UX; a second modal would double-
+    // gate every category action.
     const n = totalBoxes;
-    const ok = await confirmDialog({
-      title: "Apply redactions?",
-      description: (
-        <>
-          This will permanently remove the content under{" "}
-          <span className="font-medium text-foreground">
-            {n} redaction{n === 1 ? "" : "s"}
-          </span>
-          . The original text and images beneath each mark will be deleted from
-          the document — this cannot be undone.
-        </>
-      ),
-      body: (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            <span
-              aria-hidden
-              className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--vault,#4C7FB8)]"
-            />
-            Processed on your device. Nothing uploads.
+    if (mode === "export") {
+      const ok = await confirmDialog({
+        title: "Export redacted PDF?",
+        description: (
+          <>
+            This will permanently remove the content under{" "}
+            <span className="font-medium text-foreground">
+              {n} redaction{n === 1 ? "" : "s"}
+            </span>{" "}
+            and download the redacted file. Cannot be undone.
+          </>
+        ),
+        body: (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <span
+                aria-hidden
+                className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--vault,#4C7FB8)]"
+              />
+              Processed on your device. Nothing uploads.
+            </div>
+            <div className="text-xs text-muted-foreground">
+              A Certificate of Redaction will be generated after verification.
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            A Certificate of Redaction will be generated after verification.
-          </div>
-        </div>
-      ),
-      confirmText: "Apply & burn",
-      cancelText: "Cancel",
-      tone: "danger",
-    });
-    if (!ok) return;
+        ),
+        confirmText: "Export",
+        cancelText: "Cancel",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     setVerify(null);
     setLastBytes(null);
     const tid = "wsx-redact-export";
-    toast.loading("Building redacted PDF…", { id: tid });
+    toast.loading(mode === "commit" ? "Committing redactions…" : "Building redacted PDF…", { id: tid });
     try {
       // Reuse the editor's exporter — it already runs the destructive
       // content-stream rewrite for every redact annotation that captured
