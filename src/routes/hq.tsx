@@ -948,7 +948,7 @@ function SupportTab() {
                   </span>
                 </td>
                 <td className="px-3 py-2 text-[11.5px] text-text-2">{r.category ?? "—"}</td>
-                <td className="px-3 py-2>
+                <td className="px-3 py-2">
                   <div className="font-medium">{r.name || "(anon)"}</div>
                   <div className="text-[11px] text-text-2">{r.email || "—"}</div>
                 </td>
