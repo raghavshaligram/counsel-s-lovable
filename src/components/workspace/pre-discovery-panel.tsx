@@ -142,6 +142,13 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const buildIndex = useCallback(async (): Promise<boolean> => {
     if (!file) return false;
     if (!requirePro("Pre-Discovery Review")) return false;
+    // Duplicate-start guard: if the worker is already indexing this
+    // doc, join the in-flight run instead of stacking a second pass.
+    if (isIndexing(docKey)) {
+      console.info("[pre-discovery] indexDocument already running — joining");
+      setIndexing(true);
+      return true;
+    }
     if (!(await ensureModel())) return false;
     setIndexing(true);
     setIndexProgress({ done: 0, total: 0 });
@@ -150,8 +157,6 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       // Paragraph-level ~300-char chunks give MiniLM sharper score separation.
       const raw = await extractPdfParagraphChunks(file, 300, 120);
       // extractPdfChunks emits 1-based pages; the editor uses 0-based.
-      // Normalise to 0-based here so jumpTo and the "Page N" label both
-      // agree with the actual page the passage came from.
       const chunks = raw.map((c, i) => ({
         ...c,
         page: c.page - 1,
@@ -181,16 +186,33 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       toast.success(`Indexed ${chunks.length} passages — search anything.`);
       return true;
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "aborted") {
+        toast.message("Indexing paused", {
+          description: "You can resume by running a search again.",
+        });
+        return false;
+      }
       console.error("[pre-discovery] index failed", err);
-      toast.error("Indexing failed", {
-        description: err instanceof Error ? err.message : String(err),
-      });
+      toast.error("Indexing failed", { description: msg });
       return false;
     } finally {
       setIndexing(false);
       setIndexProgress(null);
     }
   }, [file, docKey, ensureModel, requirePro]);
+
+  const cancelIndexing = useCallback(() => {
+    const hit = abortIndex(docKey);
+    if (hit) {
+      setIndexing(false);
+      setIndexProgress(null);
+      toast.message("Indexing paused", {
+        description: "You can resume by running a search again.",
+      });
+    }
+  }, [docKey]);
+
 
   const runQuery = useCallback(async () => {
     if (!file || !query.trim()) return;
