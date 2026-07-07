@@ -31,11 +31,16 @@ export function formatBates(n: number, opts: Pick<BatesOpts, "prefix" | "suffix"
   return `${opts.prefix ?? ""}${String(n).padStart(opts.digits, "0")}${opts.suffix ?? ""}`;
 }
 
+export interface BatesRunResult {
+  bytes: Uint8Array;
+  pageCount: number;
+}
+
 export async function addBates(
   bytes: Uint8Array,
   opts: BatesOpts,
   run: BatesRunOpts = {},
-): Promise<Uint8Array> {
+): Promise<BatesRunResult> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const font = await embedStandardFont(doc, "HelveticaBold");
   const fill =
@@ -67,7 +72,8 @@ export async function addBates(
     });
     page.drawText(stamp, { x, y, size: opts.fontSize, font, color: fill });
     run.onProgress?.(i + 1, pages.length);
-    await maybeYield(i, 16);
+    await maybeYield(i, 64);
   }
-  return doc.save();
+  const outBytes = await doc.save();
+  return { bytes: outBytes, pageCount: pages.length };
 }
