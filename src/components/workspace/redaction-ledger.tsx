@@ -83,6 +83,25 @@ export function RedactionAuditLedger({ sourceName, redactions }: Props) {
       }));
   }, [redactions]);
 
+  // Group rows by category label for a scannable summary; each group can be
+  // expanded to a sampled list. Sorted by count (largest first) so the
+  // biggest sources are at the top.
+  const groups = useMemo(() => {
+    const m = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const arr = m.get(r.category) ?? [];
+      arr.push(r);
+      m.set(r.category, arr);
+    }
+    return Array.from(m.entries())
+      .map(([label, items]) => ({ label, items }))
+      .sort((a, b) => b.items.length - a.items.length);
+  }, [rows]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState<Set<string>>(new Set());
+  const SAMPLE = 10;
+
   const buildCsv = useCallback(() => {
     const header = ["#", "Page", "Type", "Region (PDF pts)"];
     const lines = [header.map(csvEscape).join(",")];
@@ -142,25 +161,88 @@ export function RedactionAuditLedger({ sourceName, redactions }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-hidden rounded-md border border-border bg-surface-2/40 text-[11.5px]">
-        <div className="grid grid-cols-[28px_1fr_1.4fr] gap-2 border-b border-border/60 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-text-muted">
-          <span>#</span>
-          <span>Page · Type</span>
-          <span>Region</span>
+        <div className="border-b border-border/60 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-text-muted">
+          {rows.length.toLocaleString()} committed redaction{rows.length === 1 ? "" : "s"} · {groups.length} type{groups.length === 1 ? "" : "s"}
         </div>
-        <ul className="max-h-[180px] overflow-y-auto">
-          {rows.map((r) => (
-            <li
-              key={r.idx}
-              className="grid grid-cols-[28px_1fr_1.4fr] items-start gap-2 border-b border-border/40 px-2.5 py-1.5 last:border-b-0"
-            >
-              <span className="font-mono tabular-nums text-text-muted">{r.idx}</span>
-              <span className="text-foreground">
-                <span className="font-mono">p.{r.page}</span>{" "}
-                <span className="text-text-2">· {r.category}</span>
-              </span>
-              <span className="font-mono text-text-2">{r.region}</span>
-            </li>
-          ))}
+        <ul className="max-h-[240px] overflow-y-auto">
+          {groups.map((g) => {
+            const isOpen = expanded.has(g.label);
+            const seeAll = showAll.has(g.label);
+            const items = seeAll ? g.items : g.items.slice(0, SAMPLE);
+            const hidden = g.items.length - items.length;
+            const pages = new Set(g.items.map((r) => r.page));
+            return (
+              <li key={g.label} className="border-b border-border/40 last:border-b-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpanded((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(g.label)) next.delete(g.label);
+                      else next.add(g.label);
+                      return next;
+                    })
+                  }
+                  className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left hover:bg-surface-2"
+                >
+                  <span className="text-foreground">{g.label}</span>
+                  <span className="text-[10.5px] text-text-2">
+                    {g.items.length.toLocaleString()} · {pages.size} page{pages.size === 1 ? "" : "s"}
+                    <span className="ml-1.5 text-text-muted">{isOpen ? "▾" : "▸"}</span>
+                  </span>
+                </button>
+                {isOpen && (
+                  <ul>
+                    {items.map((r) => (
+                      <li
+                        key={r.idx}
+                        className="grid grid-cols-[28px_1fr_1.4fr] items-start gap-2 border-t border-border/30 px-2.5 py-1 text-[11px]"
+                      >
+                        <span className="font-mono tabular-nums text-text-muted">{r.idx}</span>
+                        <span className="font-mono text-foreground">p.{r.page}</span>
+                        <span className="font-mono text-text-2">{r.region}</span>
+                      </li>
+                    ))}
+                    {hidden > 0 && (
+                      <li className="border-t border-border/30 px-2.5 py-1 text-[10.5px] text-text-muted">
+                        and {hidden.toLocaleString()} more ·{" "}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowAll((prev) => {
+                              const next = new Set(prev);
+                              next.add(g.label);
+                              return next;
+                            })
+                          }
+                          className="rounded px-1 py-0.5 text-text-2 hover:bg-surface-3 hover:text-foreground"
+                        >
+                          show all
+                        </button>
+                      </li>
+                    )}
+                    {seeAll && g.items.length > SAMPLE && (
+                      <li className="border-t border-border/30 px-2.5 py-1 text-[10.5px] text-text-muted">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowAll((prev) => {
+                              const next = new Set(prev);
+                              next.delete(g.label);
+                              return next;
+                            })
+                          }
+                          className="rounded px-1 py-0.5 hover:bg-surface-3 hover:text-foreground"
+                        >
+                          show fewer
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
       <p className="text-[10.5px] leading-snug text-text-muted">

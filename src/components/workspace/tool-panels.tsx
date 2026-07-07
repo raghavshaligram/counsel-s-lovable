@@ -1689,42 +1689,93 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                               </button>
                             )}
                           </div>
-                          {!isSingle && isExpanded && (
-                            <ul className="ml-6 border-l border-border/60">
-                              {g.dets.map((d) => {
-                                const checked = selected.has(d.id);
-                                return (
-                                  <li key={d.id}>
-                                    <div className="group flex items-center gap-1.5 px-2.5 py-0.5 hover:bg-surface-2">
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={(e) => {
-                                          setSelected((prev) => {
-                                            const next = new Set(prev);
-                                            if (e.target.checked) next.add(d.id);
-                                            else next.delete(d.id);
-                                            return next;
-                                          });
-                                        }}
-                                        className="h-3 w-3 shrink-0 accent-vault"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => jumpToFinding(d)}
-                                        className="min-w-0 flex-1 text-left text-[10px] text-text-2 hover:text-foreground"
-                                      >
-                                        Page {d.page}
-                                        {!d.source && (
-                                          <span className="ml-1 text-amber-400/80">· visual-only</span>
-                                        )}
-                                      </button>
-                                    </div>
+                          {!isSingle && isExpanded && (() => {
+                            const allKey = `${groupKey}::all`;
+                            const showAll = expandedGroups.has(allKey);
+                            const SAMPLE = 10;
+                            const visible = showAll ? g.dets : g.dets.slice(0, SAMPLE);
+                            const hidden = g.dets.length - visible.length;
+                            const last = g.dets[g.dets.length - 1];
+                            return (
+                              <ul className="ml-6 border-l border-border/60">
+                                {visible.map((d) => {
+                                  const checked = selected.has(d.id);
+                                  return (
+                                    <li key={d.id}>
+                                      <div className="group flex items-center gap-1.5 px-2.5 py-0.5 hover:bg-surface-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={(e) => {
+                                            setSelected((prev) => {
+                                              const next = new Set(prev);
+                                              if (e.target.checked) next.add(d.id);
+                                              else next.delete(d.id);
+                                              return next;
+                                            });
+                                          }}
+                                          className="h-3 w-3 shrink-0 accent-vault"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => jumpToFinding(d)}
+                                          className="min-w-0 flex-1 text-left text-[10px] text-text-2 hover:text-foreground"
+                                        >
+                                          Page {d.page}
+                                          {!d.source && (
+                                            <span className="ml-1 text-amber-400/80">· visual-only</span>
+                                          )}
+                                        </button>
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                                {hidden > 0 && (
+                                  <li className="flex items-center gap-2 px-2.5 py-1 text-[10px] text-text-muted">
+                                    <span>and {hidden.toLocaleString()} more</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => jumpToFinding(last)}
+                                      className="rounded px-1 py-0.5 text-text-2 hover:bg-surface-3 hover:text-foreground"
+                                      title="Jump to last occurrence"
+                                    >
+                                      jump to last
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedGroups((prev) => {
+                                          const next = new Set(prev);
+                                          next.add(allKey);
+                                          return next;
+                                        });
+                                      }}
+                                      className="rounded px-1 py-0.5 text-text-2 hover:bg-surface-3 hover:text-foreground"
+                                    >
+                                      show all
+                                    </button>
                                   </li>
-                                );
-                              })}
-                            </ul>
-                          )}
+                                )}
+                                {showAll && g.dets.length > SAMPLE && (
+                                  <li className="px-2.5 py-1 text-[10px] text-text-muted">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedGroups((prev) => {
+                                          const next = new Set(prev);
+                                          next.delete(allKey);
+                                          return next;
+                                        });
+                                      }}
+                                      className="rounded px-1 py-0.5 hover:bg-surface-3 hover:text-foreground"
+                                    >
+                                      show fewer
+                                    </button>
+                                  </li>
+                                )}
+                              </ul>
+                            );
+                          })()}
                         </li>
                       );
                     })}
@@ -1791,41 +1842,94 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
               </ul>
             </div>
           )}
-          {privilegeFindings.length > 0 && (
-            <div className="border-t border-border/60 px-2.5 py-2">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300/90">
-                <Info className="h-3 w-3" />
-                Context flags — review nearby content for privilege
+          {privilegeFindings.length > 0 && (() => {
+            const CTX_KEY = "__privilege_ctx__";
+            const CTX_ALL = "__privilege_ctx_all__";
+            const isOpen = expandedGroups.has(CTX_KEY);
+            const showAll = expandedGroups.has(CTX_ALL);
+            const SAMPLE = 10;
+            const pageSet = new Set(privilegeFindings.map((d) => d.page));
+            const visible = showAll ? privilegeFindings : privilegeFindings.slice(0, SAMPLE);
+            const hidden = privilegeFindings.length - visible.length;
+            const toggle = (k: string) => setExpandedGroups((prev) => {
+              const next = new Set(prev);
+              if (next.has(k)) next.delete(k); else next.add(k);
+              return next;
+            });
+            return (
+              <div className="border-t border-border/60 px-2.5 py-2">
+                <button
+                  type="button"
+                  onClick={() => toggle(CTX_KEY)}
+                  className="flex w-full items-center justify-between gap-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300/90 hover:text-amber-200"
+                  title="Not auto-redacted — informational only"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Info className="h-3 w-3" />
+                    Context flags · {privilegeFindings.length.toLocaleString()} on {pageSet.size.toLocaleString()} page{pageSet.size === 1 ? "" : "s"}
+                  </span>
+                  <span className="normal-case tracking-normal text-text-2">{isOpen ? "hide" : "review"}</span>
+                </button>
+                {!isOpen && (
+                  <p className="mt-1 text-[10px] leading-snug text-text-muted">
+                    Not auto-redacted. Review nearby content for privilege before committing.
+                  </p>
+                )}
+                {isOpen && (
+                  <ul className="mt-1.5">
+                    {visible.map((d) => (
+                      <li key={d.id}>
+                        <div className="group flex items-start gap-1.5 px-0.5 py-1 hover:bg-surface-2">
+                          <Info className="mt-[3px] h-3 w-3 shrink-0 text-amber-300/70" />
+                          <button
+                            type="button"
+                            onClick={() => jumpToFinding(d)}
+                            className="min-w-0 flex-1 text-left"
+                            title="Jump to this context flag"
+                          >
+                            <div className="text-[11px] text-foreground">
+                              {d.snippet}
+                            </div>
+                            <div className="text-[10px] text-text-2">
+                              Page {d.page}
+                              {!d.source && (
+                                <span className="ml-1 text-amber-400/80">
+                                  · visual-only (scanned)
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                    {hidden > 0 && (
+                      <li className="px-0.5 py-1 text-[10px] text-text-muted">
+                        and {hidden.toLocaleString()} more ·{" "}
+                        <button
+                          type="button"
+                          onClick={() => toggle(CTX_ALL)}
+                          className="rounded px-1 py-0.5 text-text-2 hover:bg-surface-3 hover:text-foreground"
+                        >
+                          show all
+                        </button>
+                      </li>
+                    )}
+                    {showAll && privilegeFindings.length > SAMPLE && (
+                      <li className="px-0.5 py-1 text-[10px] text-text-muted">
+                        <button
+                          type="button"
+                          onClick={() => toggle(CTX_ALL)}
+                          className="rounded px-1 py-0.5 hover:bg-surface-3 hover:text-foreground"
+                        >
+                          show fewer
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                )}
               </div>
-              <ul>
-                {privilegeFindings.map((d) => (
-                  <li key={d.id}>
-                    <div className="group flex items-start gap-1.5 px-2.5 py-1 hover:bg-surface-2">
-                      <Info className="mt-[3px] h-3 w-3 shrink-0 text-amber-300/70" />
-                      <button
-                        type="button"
-                        onClick={() => jumpToFinding(d)}
-                        className="min-w-0 flex-1 text-left"
-                        title="Jump to this context flag"
-                      >
-                        <div className="text-[11px] text-foreground">
-                          {d.snippet}
-                        </div>
-                        <div className="text-[10px] text-text-2">
-                          Page {d.page}
-                          {!d.source && (
-                            <span className="ml-1 text-amber-400/80">
-                              · visual-only (scanned)
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
