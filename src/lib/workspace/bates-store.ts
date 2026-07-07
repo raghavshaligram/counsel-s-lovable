@@ -9,7 +9,13 @@
 import { useEffect, useState, useCallback } from "react";
 import type { BatesOpts, BatesPosition, BatesColor } from "@/lib/batch/ops/bates";
 
-export type BatesSettings = BatesOpts & { on: boolean };
+export type BatesSettings = BatesOpts & {
+  on: boolean;
+  /** Set when "Apply to active tab" successfully burned Bates into the tab bytes. */
+  appliedAt?: number;
+  /** Fingerprint of the settings at the moment they were applied. */
+  appliedFingerprint?: string;
+};
 
 export const BATES_DEFAULT: BatesSettings = {
   on: false,
@@ -22,6 +28,27 @@ export const BATES_DEFAULT: BatesSettings = {
   color: "black",
   margin: 24,
 };
+
+/**
+ * Deterministic fingerprint of the settings that affect the *stamp itself*.
+ * Used to detect whether the current settings would produce a different
+ * stamp than the one already applied to the tab, so the export dialog can
+ * suppress a second (identical) stamp but still allow re-stamping when the
+ * user has changed something.
+ */
+export function computeBatesFingerprint(s: BatesSettings): string {
+  const parts: (string | number)[] = [
+    s.prefix ?? "",
+    s.suffix ?? "",
+    s.startAt,
+    s.digits,
+    s.position,
+    s.fontSize,
+    s.color,
+    s.margin ?? 24,
+  ];
+  return parts.join("|");
+}
 
 const LS_KEY = "counselpdf:bates-settings";
 
