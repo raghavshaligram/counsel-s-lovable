@@ -1923,11 +1923,18 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                 type="checkbox"
                 checked={allSelected}
                 onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelected(new Set(redactableFindings.map((d) => d.id)));
-                  } else {
-                    setSelected(new Set());
-                  }
+                  // Wrap in startTransition so the checkbox flips instantly
+                  // and the (potentially huge) tree re-renders in the
+                  // background — otherwise select-all on 100k findings
+                  // freezes the panel until React finishes.
+                  const checked = e.target.checked;
+                  startTransition(() => {
+                    if (checked) {
+                      setSelected(new Set(redactableFindings.map((d) => d.id)));
+                    } else {
+                      setSelected(new Set());
+                    }
+                  });
                 }}
                 className="h-3 w-3 accent-vault"
               />
