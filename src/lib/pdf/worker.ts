@@ -56,11 +56,17 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
     throw new Error("pdfjs can only be loaded in the browser");
   }
   installPdfjsCompatShims();
-  const [pdfjs, workerUrlMod] = await Promise.all([
-    import("pdfjs-dist"),
-    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
-  ]);
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
+  const pdfjs = await import("pdfjs-dist");
+  if (hasWorker) {
+    // Redaction already runs inside our own dedicated workers. Letting pdf.js
+    // spawn another nested worker bypasses these shims in that nested global
+    // and crashes on browsers without `Map#getOrInsertComputed`. Fake-worker
+    // mode stays inside this redaction worker, so the shimmed APIs are present.
+    pdfjs.GlobalWorkerOptions.workerSrc = undefined as unknown as string;
+  } else {
+    const workerUrlMod = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+    pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
+  }
   cached = pdfjs;
   return pdfjs;
 }
