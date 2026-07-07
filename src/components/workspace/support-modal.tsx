@@ -81,6 +81,7 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
       await submit({
         data: {
           type: mode,
+          category: isHelp ? category : undefined,
           title: title.trim(),
           message: message.trim(),
           name: name.trim(),
