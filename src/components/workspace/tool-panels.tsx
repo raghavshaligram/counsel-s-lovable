@@ -2612,7 +2612,7 @@ function sanitizeStageLabel(stage: string): string {
             })}
           </ul>
 
-          {sideChannelGrouped && sideChannelGrouped.length > 0 && (
+          {sideChannelGrouped && sideChannelGrouped.length > 0 && (activeTab === "all" || sideChannelGrouped.some(([v]) => v === activeTab)) && (
             <div className="border-t border-border/60">
               <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-vault">
                 Hidden in document · {sideChannelFindings.length}
@@ -2623,16 +2623,40 @@ function sanitizeStageLabel(stage: string): string {
                 misses these. Click Redact to wipe them from the document now.
               </p>
               <ul className="max-h-[200px] overflow-y-auto pb-1">
-                {sideChannelGrouped.map(([vector, list]) => (
+                {sideChannelGrouped.filter(([vector]) => showSideVector(vector)).map(([vector, list]) => {
+                  const vecIds = list.map((d) => d.id);
+                  const vecSelCount = vecIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0);
+                  const vecAll = vecIds.length > 0 && vecSelCount === vecIds.length;
+                  const vecSome = vecSelCount > 0 && !vecAll;
+                  const toggleVec = (checked: boolean) => {
+                    startTransition(() => {
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (checked) for (const id of vecIds) next.add(id);
+                        else for (const id of vecIds) next.delete(id);
+                        return next;
+                      });
+                    });
+                  };
+                  return (
                   <li key={vector}>
-                    <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                      {vector === "form-field"
-                        ? "Form fields"
-                        : vector === "annotation"
-                        ? "Comments / annotations"
-                        : "Document metadata"}{" "}
-                      · {list.length}
-                    </div>
+                    <label className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted cursor-pointer hover:bg-surface-2">
+                      <input
+                        type="checkbox"
+                        checked={vecAll}
+                        ref={(el) => { if (el) el.indeterminate = vecSome; }}
+                        onChange={(e) => toggleVec(e.target.checked)}
+                        className="h-3 w-3 shrink-0 accent-vault"
+                      />
+                      <span>
+                        {vector === "form-field"
+                          ? "Form fields"
+                          : vector === "annotation"
+                          ? "Comments / annotations"
+                          : "Document metadata"}{" "}
+                        · {list.length}
+                      </span>
+                    </label>
                     <ul>
                       {list.map((d) => {
                         const checked = selected.has(d.id);
