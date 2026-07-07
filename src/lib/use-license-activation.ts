@@ -62,6 +62,15 @@ async function seedFromStoredLicense() {
     if (current?.userId === stored.userId) setCurrent(null);
     return;
   }
+  // Discard stored snapshots older than 15 min — an admin plan grant made
+  // while this tab was closed would otherwise be masked by the pre-grant
+  // "free" seed until the network fetch resolves (or forever if it fails).
+  const STALE_MS = 15 * 60_000;
+  const seededAt = stored.validatedAt ? Date.parse(stored.validatedAt) : 0;
+  if (!seededAt || Date.now() - seededAt > STALE_MS) {
+    await clearLicense();
+    return;
+  }
   if (!current) setCurrent(stored);
 }
 
