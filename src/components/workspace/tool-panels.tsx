@@ -1444,37 +1444,41 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     [editorDispatch],
   );
 
-// Map raw sanitizer phase names to user-friendly labels for the wipe toast.
-// The sanitizer emits stage names like "javascript" / "acroForm" which read
-// like error jargon in a progress toast; translate them here so the user sees
-// what's actually being cleaned.
+// Map sanitizer phase names to plain, legal-friendly wording for the
+// wipe toast. The sanitizer emits internal phase names like "javascript"
+// / "acroForm" which read like scary error jargon — translate to what
+// the paralegal actually cares about (what's being cleaned from the doc).
 function sanitizeStageLabel(stage: string): string {
   switch (stage) {
     case "acroForm":
     case "form-fields":
     case "formFields":
+    case "orphan-fields":
       return "form fields";
     case "annotations":
-      return "comments & markup";
+      return "comments and markup";
     case "javascript":
     case "js":
-      return "embedded scripts";
+      return "auto-open triggers";
     case "openAction":
     case "additionalActions":
     case "aa":
-      return "auto-run triggers";
+      return "auto-open triggers";
     case "names":
     case "names-tree":
       return "hidden name entries";
     case "embeddedFiles":
     case "embedded-files":
-      return "embedded files";
+    case "attachments":
+      return "file attachments";
+    case "hidden-layers":
+      return "hidden layers";
     case "metadata":
     case "xmp":
     case "documentInfo":
-      return "metadata";
+      return "document metadata";
     default:
-      return "hidden data";
+      return "hidden document data";
   }
 }
 
@@ -1556,7 +1560,7 @@ function sanitizeStageLabel(stage: string): string {
     if (sideChannelDets.length > 0 && editorState?.doc?.srcBytes) {
       const tid = "wsx-redact-apply-side";
       const abort = new AbortController();
-      toast.loading("Wiping form fields, comments, metadata…", {
+      toast.loading("Cleaning form fields, comments, and metadata…", {
         id: tid,
         action: {
           label: "Cancel",
@@ -1586,7 +1590,7 @@ function sanitizeStageLabel(stage: string): string {
           signal: abort.signal,
           onProgress: ({ stage, done }) => {
             if (done > 0 && done % 4000 === 0) {
-              toast.loading(`Wiping ${sanitizeStageLabel(stage)}… (${done.toLocaleString()} objects)`, {
+              toast.loading(`Cleaning ${sanitizeStageLabel(stage)}… (checked ${done.toLocaleString()} items)`, {
                 id: tid,
                 action: { label: "Cancel", onClick: () => abort.abort() },
               });
@@ -2560,8 +2564,8 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       const jobRun = runAsJob(
         { kind: "redact-export", docId: jobDocId, docLabel: file.name },
         async ({ signal, onProgress }) => {
-          const { rasterizeRedactedPages } = await importChunk(() => import("@/lib/editor/rasterize-redacted-pages"));
-          const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
+          const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
+          const rasterResult = await rasterizeRedactedPagesInWorker(bytes, pageRedactions, {
             mode: maxSecurity ? "always" : "fallback",
             scale: 2.5,
             signal,

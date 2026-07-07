@@ -79,16 +79,22 @@ export async function enforceRedactionGate(
   let bytes = inputBytes;
   const rasterizedPages = new Set<number>(opts.rasterizedPages ?? []);
 
+  // Each stage below runs in its OWN dedicated Web Worker. When a stage's
+  // client resolves it terminates the worker, releasing that stage's heap
+  // (pdf-lib indirect-object graph, pdf.js doc, canvas buffers) before the
+  // next stage starts. This is how we keep peak memory bounded to one
+  // stage at a time on 13k-rect / 5000-page redactions.
   if (!opts.alreadySanitized) {
     opts.onProgress?.("sanitize");
-    const { sanitizePdfBytes } = await importChunk(() => import("@/lib/pdf/sanitize"));
-    bytes = await sanitizePdfBytes(bytes);
+    const { sanitizeInWorker } = await importChunk(() => import("@/lib/workers/sanitize-client"));
+    const sanitized = await sanitizeInWorker(bytes, { signal: opts.signal });
+    bytes = sanitized.bytes;
   }
   if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
   opts.onProgress?.("verify");
-  const { verifyRedactionRemoval } = await importChunk(() => import("./verify-redaction"));
-  let result = await verifyRedactionRemoval(bytes, targets, {
+  const { verifyRedactionRemovalInWorker } = await importChunk(() => import("@/lib/workers/verify-client"));
+  let result = await verifyRedactionRemovalInWorker(bytes, targets, {
     rasterizedPages: [...rasterizedPages],
     signal: opts.signal,
   });
@@ -96,7 +102,7 @@ export async function enforceRedactionGate(
   const pageLeaks = result.leaks.filter((l: VerifyLeak) => l.vector === "page" && l.rect && l.page !== undefined);
   if (pageLeaks.length > 0) {
     opts.onProgress?.("raster-fallback");
-    const { rasterizeRedactedPages } = await importChunk(() => import("./rasterize-redacted-pages"));
+    const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
     const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
     const rectsByPage = new Map<number, { x: number; y: number; w: number; h: number }[]>();
     for (const t of targets) {
@@ -109,7 +115,7 @@ export async function enforceRedactionGate(
       const pageRects = rectsByPage.get(leak.page!) ?? [leak.rect!];
       leakedPages.set(leak.page!, pageRects);
     }
-    const forced = await rasterizeRedactedPages(bytes, leakedPages, {
+    const forced = await rasterizeRedactedPagesInWorker(bytes, leakedPages, {
       mode: "always",
       scale: 2.5,
       signal: opts.signal,
@@ -118,7 +124,7 @@ export async function enforceRedactionGate(
     for (const p of forced.rasterizedPages) rasterizedPages.add(p);
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     opts.onProgress?.("verify-again");
-    result = await verifyRedactionRemoval(bytes, targets, {
+    result = await verifyRedactionRemovalInWorker(bytes, targets, {
       rasterizedPages: [...rasterizedPages],
       signal: opts.signal,
     });
