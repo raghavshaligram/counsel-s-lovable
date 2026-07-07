@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { exportEditedPdf } from "@/lib/editor/export";
 import type { EditorDoc } from "@/lib/editor/types";
-import { useBatesSettings, docKey as batesDocKey } from "@/lib/workspace/bates-store";
+import { useBatesSettings, docKey as batesDocKey, computeBatesFingerprint } from "@/lib/workspace/bates-store";
 import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk-import";
 import { downloadPdf } from "@/lib/pdf/download";
 import { ExportFormatRow } from "./export-format-row";
@@ -48,6 +48,14 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const [bates, updateBates] = useBatesSettings(batesDocKey(file));
   const batesOn = bates.on;
   const setBatesOn = (on: boolean) => updateBates({ on });
+  // "Already stamped" = the current stamp settings match the fingerprint of
+  // whatever was burned into the tab bytes via "Apply to active tab". Export
+  // must NOT layer a second identical stamp on top. Editing any stamp field
+  // invalidates the fingerprint automatically (see bates-store), so the user
+  // can always re-stamp by changing a setting.
+  const currentBatesFingerprint = computeBatesFingerprint(bates);
+  const batesAlreadyStamped =
+    !!bates.appliedFingerprint && bates.appliedFingerprint === currentBatesFingerprint;
 
   // Light, sensible defaults for the three ops.
   const [pnFormat, setPnFormat] = useState<"n" | "page-n" | "n-of-m">("n-of-m");
@@ -108,12 +116,19 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       }
 
       if (batesOn) {
-        const { addBates } = await importChunk(() => import("@/lib/batch/ops/bates"));
-        bytes = await addBates(bytes, {
-          prefix: bates.prefix, suffix: bates.suffix, startAt: bates.startAt,
-          digits: bates.digits, position: bates.position,
-          fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
-        });
+        if (batesAlreadyStamped) {
+          // eslint-disable-next-line no-console
+          console.info("[bates] export: skipping addBates — fingerprint matches already-applied stamp", {
+            fingerprint: currentBatesFingerprint,
+          });
+        } else {
+          const { addBates } = await importChunk(() => import("@/lib/batch/ops/bates"));
+          bytes = await addBates(bytes, {
+            prefix: bates.prefix, suffix: bates.suffix, startAt: bates.startAt,
+            digits: bates.digits, position: bates.position,
+            fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
+          });
+        }
       }
 
       const redactionTargets = doc.annotations.flatMap((a) => {
@@ -204,7 +219,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, pnFormat, headerText, footerText, onOpenChange]);
+  }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, batesAlreadyStamped, currentBatesFingerprint, pnFormat, headerText, footerText, onOpenChange]);
 
   const anyOn = pnOn || hfOn || flOn || batesOn;
 
@@ -319,6 +334,11 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
             <p className="text-[10.5px] text-text-muted">
               Preview: <span className="font-mono text-foreground">{batesPreview}</span> · sequential on every page. Full options in Document Settings.
             </p>
+            {batesAlreadyStamped ? (
+              <p className="rounded-md border border-vault/30 bg-accent-soft px-2 py-1.5 text-[10.5px] text-vault">
+                Bates already stamped on this document with these settings — export will skip stamping. Change any Bates setting to re-stamp.
+              </p>
+            ) : null}
           </OptionRow>
 
 

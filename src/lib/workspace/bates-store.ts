@@ -9,7 +9,13 @@
 import { useEffect, useState, useCallback } from "react";
 import type { BatesOpts, BatesPosition, BatesColor } from "@/lib/batch/ops/bates";
 
-export type BatesSettings = BatesOpts & { on: boolean };
+export type BatesSettings = BatesOpts & {
+  on: boolean;
+  /** Set when "Apply to active tab" successfully burned Bates into the tab bytes. */
+  appliedAt?: number;
+  /** Fingerprint of the settings at the moment they were applied. */
+  appliedFingerprint?: string;
+};
 
 export const BATES_DEFAULT: BatesSettings = {
   on: false,
@@ -22,6 +28,27 @@ export const BATES_DEFAULT: BatesSettings = {
   color: "black",
   margin: 24,
 };
+
+/**
+ * Deterministic fingerprint of the settings that affect the *stamp itself*.
+ * Used to detect whether the current settings would produce a different
+ * stamp than the one already applied to the tab, so the export dialog can
+ * suppress a second (identical) stamp but still allow re-stamping when the
+ * user has changed something.
+ */
+export function computeBatesFingerprint(s: BatesSettings): string {
+  const parts: (string | number)[] = [
+    s.prefix ?? "",
+    s.suffix ?? "",
+    s.startAt,
+    s.digits,
+    s.position,
+    s.fontSize,
+    s.color,
+    s.margin ?? 24,
+  ];
+  return parts.join("|");
+}
 
 const LS_KEY = "counselpdf:bates-settings";
 
@@ -82,7 +109,19 @@ export function useBatesSettings(
   }, [key]);
   const update = useCallback(
     (patch: Partial<BatesSettings>) => {
-      const merged = { ...getBatesSettings(key), ...patch };
+      const current = getBatesSettings(key);
+      const merged = { ...current, ...patch };
+      // If the caller is editing stamp-affecting settings (not just `on` or
+      // the applied-state fields), invalidate the applied fingerprint so
+      // export knows this is a different stamp now and will stamp again.
+      const stampChanged =
+        computeBatesFingerprint(current) !== computeBatesFingerprint(merged);
+      const isApplyingPatch =
+        patch.appliedAt !== undefined || patch.appliedFingerprint !== undefined;
+      if (stampChanged && !isApplyingPatch) {
+        merged.appliedAt = undefined;
+        merged.appliedFingerprint = undefined;
+      }
       setBatesSettings(key, merged);
     },
     [key],

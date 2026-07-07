@@ -1,53 +1,64 @@
-# Fix large-doc crashes and lag in the Redact panel
 
-Two separate performance bugs to fix. Neither touches the PDF viewer / open-tab lifecycle / editor-canvas / samplePageBg.
+# Fix: Bates Hangs on 5000-Page Apply + Double-Stamps on Export
 
-## 1) Crash: "Wipe form fields" + "Apply redact" on a 5000-page PDF
+Two separate root causes, one behind each symptom.
 
-**What happens today** (`tool-panels.tsx` apply-now branch, ~L1508–1588):
-1. `sanitizePdfBytesWithReport(srcBytes)` — pdf-lib parses the whole 5000-page document on the main thread, walks `enumerateIndirectObjects()` three separate times, then re-saves the whole file.
-2. Immediately after, `verifyRedactionRemoval(cleaned, sideTargets)` runs. Because the wipe has no page-rect targets, it skips geometry but still calls `verifyRawStreams` on the entire cleaned document (another full parse of all 5000 pages).
-3. Both live buffers (`srcBytes` + `cleaned`) plus pdf-lib's parsed object graph are held in memory simultaneously → main-thread lockup → tab OOM.
+## 1. Why "Apply to active tab" hangs on 5000 pages
 
-**Fix**
+Three main-thread passes over the whole document happen back-to-back:
 
-1. **Move sanitize off the main thread.** Add `src/lib/workers/sanitize.worker.ts` that hosts `sanitizePdfBytesWithReport` (bytes in, `{bytes, report}` out, `Transferable` on both ends). Add a thin `src/lib/workers/sanitize-client.ts` wrapper mirroring `detect-pii-client.ts`. Replace the direct import in `tool-panels.tsx` with the client. Show a `toast.loading` with a Cancel button that terminates the worker.
-2. **Free memory eagerly.** Before dispatching `LOAD` with `cleaned`, null out the local reference to the old `srcBytes` and use `postMessage(bytes, [bytes.buffer])` so the worker gets the buffer via transfer rather than structured clone.
-3. **Skip full-doc verification for side-channel-only wipes.** In `tool-panels.tsx`, when `regionTargets.length === 0` and the wipe is form-fields / annotations / metadata only, replace the current `verifyRedactionRemoval(cleaned, sideTargets)` with a targeted check that reads only the `SanitizeReport` counters + a small `verifySideChannelVectors(cleaned, sensitiveStrings)` call (already exists in `verify-redaction.ts`). Don't re-parse every page. Full raw-stream verification is unnecessary here because sanitize deletes the containing indirect objects.
-4. **Chunk the pdf-lib object walks.** In `sanitize.ts`, wrap the three `enumerateIndirectObjects()` loops (widget purge, hidden-layer/OC scan, JS/filespec scan) in a shared helper that `await yieldToUI()` (already in `src/lib/pdf/yield.ts`) every ~2 000 objects — inside the worker this simply relinquishes the microtask queue but also lets a Cancel signal short-circuit.
-5. **Progress + cancel.** Worker emits `{kind:"progress", stage, done, total}`. UI shows `Wiping hidden data — N/M objects` and a Cancel button. On cancel the worker throws `AbortError` and the UI leaves `srcBytes` untouched.
+1. `addBates` in `src/lib/batch/ops/bates.ts` — pdf-lib parses all 5000 pages, draws a rectangle + text on each, then `doc.save()` re-serializes. Yields only every 16 pages.
+2. `replaceFile(new File([out], …))` swaps the tab's file, which retriggers the workspace's open/parse pipeline for the new 5000-page bytes.
+3. **The certificate probe** at `BatesSection.run` (tool-panels.tsx line 7347–7351) does *another* full parse: `pdfjs.getDocument({ data: new Uint8Array(out).slice() })` just to read `numPages` — and it clones the entire byte array first. On 5000 pages this alone is multi-second, main-thread, no yields.
 
-## 2) Lag: clicking "Select all" then expanding the pages panel
+Steps 1 + 2 are unavoidable work but should not lock the UI. Step 3 is pure waste — we already know the page count without opening the file.
 
-**What happens today** (`tool-panels.tsx` ~L1873–2086):
-- The findings list renders every group inline; each row calls `selected.has(d.id)` and recomputes `selCount = g.dets.reduce(…)` on every render.
-- Toggling any checkbox rebuilds `selected` with `new Set(prev)`, which re-renders the whole tree; on 5000 pages / thousands of groups every keystroke re-walks every group.
-- The "expanded pages" list under a group renders every occurrence in one flat `<ul>` — with a few thousand occurrences the browser stalls on layout.
+**Fix.**
 
-**Fix**
+- **Kill the redundant pdf.js probe.** Replace it with the page count we already have from the loaded editor doc (`editorState.doc.pages.length`) or, on the download path, from pdf-lib's `PDFDocument.load().getPageCount()` — which is basically free because it doesn't hydrate pages. Have `addBates` return `{ bytes, pageCount }` so we never re-parse.
+- **Move `addBates` off the main thread.** Add `src/lib/workers/bates.worker.ts` + `src/lib/workers/bates-client.ts` mirroring the sanitize worker pattern we already ship. `addBates` accepts a signal + `onProgress`; the client shows a `toast.loading` with Cancel and updates progress every ~200 pages.
+- **Yield more aggressively inside the loop.** Change `maybeYield(i, 16)` → `maybeYield(i, 64)` (worker + yield keeps UI responsive without a big cost per yield).
+- **Guard the tab swap.** `replaceFile` after a big stamp should show a "Loading stamped document…" state so the user knows the tab is intentionally re-opening.
 
-1. **Memoize the derived selection state.** Compute a `selectionByGroup: Map<groupKey, {sel:number, total:number}>` inside a `useMemo` keyed on `[grouped, selected]`. Rows read from the map instead of reducing.
-2. **Split rows into `React.memo` components.** `GroupRow` and `OccurrenceRow` receive only their own detection + a `checked` boolean + stable `onToggle`. Toggling one row no longer re-renders siblings.
-3. **Virtualize the two long lists.** Use `react-window`'s `FixedSizeList` for (a) the main grouped `<ul>` when total groups > 200 and (b) the "expanded pages" occurrence list when `g.dets.length > 50`. Keep the small-list rendering path unchanged so nothing regresses on typical docs.
-4. **Cap the initial expansion.** Keep the existing `SAMPLE = 10` behaviour but move "show all" behind a virtualized list — no more mounting 5 000 `<li>`s at once.
-5. **Cancel-safe select-all.** `setSelected(new Set(redactableFindings.map(...)))` on 100 K findings is fine, but wrap it in `startTransition` so the checkbox flip feels immediate and the tree re-renders in the background.
+## 2. Why export stamps Bates a second time
+
+In `src/components/workspace/export-dialog.tsx` (lines 48, 110–115) the "Bates" toggle in the export dialog is read from the shared bates store (`useBatesSettings`) and unconditionally stamps if `bates.on` is true — regardless of whether the tab bytes were **already stamped** via "Apply to active tab."
+
+There is no "already applied" flag. So the flow is:
+
+1. User applies to active tab → bytes now contain Bates numbers.
+2. Bates store still has `on: true` (or the toggle is on in the export dialog).
+3. Export dialog runs `addBates` again → second row of numbers layered over the first.
+
+**Fix.**
+
+- **Track applied state per document.** Add `appliedAt?: number` (timestamp) and `appliedFingerprint?: string` to the bates settings record in `src/lib/workspace/bates-store.ts`. Fingerprint = a hash of the settings that were applied (prefix + suffix + startAt + digits + position + fontSize + color + margin).
+- **Set it in `BatesSection.run`** after a successful "Apply to active tab" and clear it whenever the user edits any setting (settings change → fingerprint mismatch → allowed to stamp again).
+- **In the export dialog:**
+  - If `appliedAt` is set AND the current settings fingerprint matches, **default `batesOn` to false** and show a small note: *"Bates already stamped on this document — enable to stamp again."*
+  - If the user explicitly re-enables the toggle after that note, we still stamp (their call, e.g., to add a second series). No silent double-stamps.
+- **Belt and braces on the export path.** When `batesOn` is true and `appliedFingerprint` matches the settings we're about to stamp with, skip the `addBates` call and log a `console.info` line so the behavior is auditable.
 
 ## Files touched
 
-- `src/lib/workers/sanitize.worker.ts` (new)
-- `src/lib/workers/sanitize-client.ts` (new)
-- `src/lib/pdf/sanitize.ts` — add `onProgress` + `shouldAbort` hooks + `yieldToUI` yield points
-- `src/components/workspace/tool-panels.tsx` — apply-now branch uses worker + targeted verify; findings list refactor + `react-window`
-- `bun add react-window @types/react-window` (only if not already installed — verify first)
+- `src/lib/batch/ops/bates.ts` — return `{ bytes, pageCount }`; loosen yield cadence.
+- `src/lib/workers/bates.worker.ts` (new), `src/lib/workers/bates-client.ts` (new) — off-main-thread runner with progress + cancel.
+- `src/components/workspace/tool-panels.tsx` `BatesSection.run` — use worker client; remove the pdf.js probe; use returned `pageCount`; set `appliedAt`/`appliedFingerprint` on success.
+- `src/lib/workspace/bates-store.ts` — add `appliedAt`, `appliedFingerprint`; helper `computeBatesFingerprint(settings)`; clear the applied state when relevant settings change.
+- `src/components/workspace/export-dialog.tsx` — read applied state; default toggle off + show note when fingerprint matches; skip stamping when fingerprint matches AND toggle wasn't manually re-enabled.
+
+## Not doing
+
+- Not touching the PDF viewer, tab lifecycle, editor-canvas, or samplePageBg (per project constitution).
+- Not changing the standalone `/bates` route or multi-file Bates flow — the fix is scoped to the workspace inspector + workspace export.
+- No cloud offload. Everything stays on-device, in a Web Worker.
 
 ## Verification
 
-- Open a 5 000-page test PDF, run Redact scan, click "Wipe hidden items" — main thread stays responsive, toast shows progress, no OOM, srcBytes swapped.
-- Cancel mid-wipe — document unchanged, no half-written state.
-- Same doc: "Select all" → expand a group with thousands of occurrences → no visible lag, scrolling smooth.
-- Small doc (≤ 50 pages): unchanged UI, identical behaviour (virtualization off, no worker overhead visible).
+- 5000-page PDF: "Apply to active tab" completes without a UI hang; progress toast counts up; Cancel actually cancels.
+- Immediately after apply, opening the export dialog shows the "already stamped" note and Bates toggle off by default.
+- Export with defaults → output has exactly one row of Bates numbers.
+- Change any Bates setting → note disappears, toggle re-enables, export re-stamps as expected.
+- Small doc (10 pages): behavior unchanged.
 
-## Explicit non-goals
-
-- No changes to the PDF viewer, tab lifecycle, editor-canvas, or `samplePageBg`.
-- Destructive page-rect redaction path is untouched — this only fixes the hidden-vector wipe + list rendering.
+Approve and I'll implement.

@@ -31,11 +31,31 @@ export function formatBates(n: number, opts: Pick<BatesOpts, "prefix" | "suffix"
   return `${opts.prefix ?? ""}${String(n).padStart(opts.digits, "0")}${opts.suffix ?? ""}`;
 }
 
+export interface BatesRunResult {
+  bytes: Uint8Array;
+  pageCount: number;
+}
+
 export async function addBates(
   bytes: Uint8Array,
   opts: BatesOpts,
   run: BatesRunOpts = {},
 ): Promise<Uint8Array> {
+  const { bytes: out } = await addBatesWithMeta(bytes, opts, run);
+  return out;
+}
+
+/**
+ * Same as addBates but also returns the page count. Preferred by callers
+ * that would otherwise re-parse the stamped bytes with pdf.js just to read
+ * numPages (e.g. certificate audit logs) — that extra parse is what hangs
+ * the workspace on 5000-page documents.
+ */
+export async function addBatesWithMeta(
+  bytes: Uint8Array,
+  opts: BatesOpts,
+  run: BatesRunOpts = {},
+): Promise<BatesRunResult> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const font = await embedStandardFont(doc, "HelveticaBold");
   const fill =
@@ -67,7 +87,8 @@ export async function addBates(
     });
     page.drawText(stamp, { x, y, size: opts.fontSize, font, color: fill });
     run.onProgress?.(i + 1, pages.length);
-    await maybeYield(i, 16);
+    await maybeYield(i, 64);
   }
-  return doc.save();
+  const outBytes = await doc.save();
+  return { bytes: outBytes, pageCount: pages.length };
 }
