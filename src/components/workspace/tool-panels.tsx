@@ -1315,8 +1315,20 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         ocrUnderDetectedPages: ocrUnderDetectedPages ?? [],
         totalPagesScanned: totalPages,
       });
+      // Preserve any mid-scan toggles: only auto-select IDs we haven't
+      // already auto-added, so items the user manually unchecked stay
+      // unchecked at completion.
       const autoSelect = merged.filter((d) => d.confidence !== "low");
-      setSelected(new Set(autoSelect.map((d) => d.id)));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const d of autoSelect) {
+          if (!autoSelectedRef.current.has(d.id)) {
+            next.add(d.id);
+            autoSelectedRef.current.add(d.id);
+          }
+        }
+        return next;
+      });
       const hasScanned = scanned.length > 0;
       // OCR "succeeded" on a scanned page when we ran it AND confidence was
       // not flagged low. Only the genuinely-failed pages get the hard
