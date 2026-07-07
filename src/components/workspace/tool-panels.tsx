@@ -2495,28 +2495,13 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </p>
           )}
           {staged.total > 0 && (
-            <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
-              <div className="min-w-0">
-                <div className="text-text-2">
-                  Staged from AI scan
-                  <span className="ml-1.5 text-[10.5px] text-text-muted">(not yet committed)</span>
-                </div>
-                <div className="mt-0.5 font-mono text-[10.5px] tabular-nums text-text-muted">
-                  {staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected
-                </div>
+            <div className="mt-2.5 border-t border-border/60 pt-2">
+              <div className="text-text-2">
+                Staged from AI scan
+                <span className="ml-1.5 text-[10.5px] text-text-muted">
+                  ({staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected — commits with the single Redact & verify button below)
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => staged.commit?.()}
-                disabled={!staged.commit || staged.selected === 0}
-                className={cn(
-                  "shrink-0 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90",
-                  (!staged.commit || staged.selected === 0) && "cursor-not-allowed opacity-50",
-                )}
-                title="Move selected AI findings into the committed ledger below"
-              >
-                Commit staged
-              </button>
             </div>
           )}
         </div>
