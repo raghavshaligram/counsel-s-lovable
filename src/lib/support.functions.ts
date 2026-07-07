@@ -24,8 +24,19 @@ const requireOwner = createMiddleware({ type: "function" })
     return next();
   });
 
+export const HELP_CATEGORIES = [
+  "billing",
+  "bug",
+  "account",
+  "how-to",
+  "performance",
+  "other",
+] as const;
+export type HelpCategory = (typeof HELP_CATEGORIES)[number];
+
 const submitSchema = z.object({
   type: z.enum(["help", "feature"]),
+  category: z.enum(HELP_CATEGORIES).optional(),
   title: z.string().trim().max(120).optional().default(""),
   message: z.string().trim().min(10, "Add at least a sentence").max(2000),
   name: z.string().trim().max(120).optional().default(""),
