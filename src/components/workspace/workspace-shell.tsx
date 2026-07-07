@@ -2173,6 +2173,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             file={active.file}
             totalPages={editorState.doc?.pages.length ?? 0}
             openTool={(id, opts) => openTool(id, opts)}
+            initialTab={agentInitialTab}
+            initialTabNonce={agentTabNonce}
+            pdfDoc={pdfDocsRef.current.get(active.id) ?? null}
             onAnswerQuery={(query) => {
               openTool("pre-discovery");
               setTimeout(() => {
