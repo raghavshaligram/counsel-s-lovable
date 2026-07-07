@@ -2223,20 +2223,57 @@ function sanitizeStageLabel(stage: string): string {
             </span>
           </div>
           <ul className="max-h-[280px] overflow-y-auto py-1">
-            {grouped?.map(([cat, groups]) => {
-              const catTotal = groups.reduce((s, g) => s + g.dets.length, 0);
+            {grouped?.map(([cat, allGroups]) => {
+              // Split groups into high-conf and low-conf. A group is
+              // "low-conf" when *every* detection inside it is low-conf
+              // (otherwise it stays with the main list and its low-conf
+              // occurrences are simply un-auto-selected). This keeps the
+              // group-collapsing behaviour intact while still surfacing
+              // "review to include" clearly.
+              const hiGroups: typeof allGroups = [];
+              const loGroups: typeof allGroups = [];
+              for (const g of allGroups) {
+                const allLow = g.dets.every((d) => d.confidence === "low");
+                (allLow ? loGroups : hiGroups).push(g);
+              }
+              const catHiIds = categoryIds.hi.get(cat as Cat2) ?? [];
+              const catLoIds = categoryIds.lo.get(cat as Cat2) ?? [];
+              const catTotal = catHiIds.length + catLoIds.length;
+              const catHiSelected = catHiIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0);
+              const catAllHiChecked = catHiIds.length > 0 && catHiSelected === catHiIds.length;
+              const catSomeHiChecked = catHiSelected > 0 && !catAllHiChecked;
+              const distinct = hiGroups.length;
+              const toggleCategory = (checked: boolean) => {
+                startTransition(() => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (checked) for (const id of catHiIds) next.add(id);
+                    else for (const id of catHiIds) next.delete(id);
+                    return next;
+                  });
+                });
+              };
               return (
                 <li key={cat}>
-                  <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                    {meta?.[cat]?.label ?? cat} · {catTotal.toLocaleString()}
-                    {groups.length !== catTotal && (
-                      <span className="ml-1 text-text-2 normal-case tracking-normal">
-                        ({groups.length.toLocaleString()} distinct)
-                      </span>
-                    )}
-                  </div>
+                  <label className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted cursor-pointer hover:bg-surface-2">
+                    <input
+                      type="checkbox"
+                      checked={catAllHiChecked}
+                      ref={(el) => { if (el) el.indeterminate = catSomeHiChecked; }}
+                      onChange={(e) => toggleCategory(e.target.checked)}
+                      className="h-3 w-3 shrink-0 accent-vault"
+                    />
+                    <span>
+                      {meta?.[cat]?.label ?? cat} · {catTotal.toLocaleString()}
+                      {distinct > 0 && distinct !== catHiIds.length && (
+                        <span className="ml-1 text-text-2 normal-case tracking-normal">
+                          ({distinct.toLocaleString()} distinct)
+                        </span>
+                      )}
+                    </span>
+                  </label>
                   <ul>
-                    {groups.map((g) => {
+                    {hiGroups.map((g) => {
                       const groupKey = `${cat}::${g.key}`;
                       const selCount = selectionByGroup.get(`${cat}::${g.key}`) ?? 0;
                       const allChecked = selCount === g.dets.length;
