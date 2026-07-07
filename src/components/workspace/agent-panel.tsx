@@ -1409,7 +1409,7 @@ export function AgentPanel({
 
 /* ---------------- step card ---------------- */
 
-function StepCard({ step, onDismiss }: { step: Step; onDismiss: () => void }) {
+function StepCard({ step, onDismiss, onJumpToPage }: { step: Step; onDismiss: () => void; onJumpToPage?: (page: number) => void }) {
   switch (step.kind) {
     case "note":
       return (
