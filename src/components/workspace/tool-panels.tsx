@@ -1582,24 +1582,63 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     };
   }, []);
 
-  // STAGE 5 — reversible staging.
-  // Every AI-detect annotation is stamped `redact-det-<detId>`. When the
-  // user unchecks an item (or a whole group) in the list, the corresponding
-  // annotation is removed from the ledger LIVE so the staged count updates
-  // immediately and the canvas mark disappears. Nothing here is destructive:
-  // it just removes the pre-commit draft. The final burn only happens when
-  // the user clicks "Redact & verify".
+  // STAGE 5 — reversible LIVE staging.
+  // Every AI-detect annotation is stamped `redact-det-<detId>`. Checking an
+  // item in the list stages it in the ledger immediately; unchecking removes
+  // it. No separate commit step — the final destructive burn only happens
+  // when the user clicks "Redact & verify".
   useEffect(() => {
+    if (!findings || findings.length === 0) return;
     const annos = editorState?.doc?.annotations ?? [];
+    const stagedDetIds = new Set<string>();
     for (const a of annos) {
       if (a.kind !== "redact") continue;
       if (!a.id.startsWith("redact-det-")) continue;
-      const detId = a.id.slice("redact-det-".length);
+      stagedDetIds.add(a.id.slice("redact-det-".length));
+    }
+    // Uncheck → remove annotation.
+    for (const detId of stagedDetIds) {
       if (!selected.has(detId)) {
-        editorDispatch({ type: "DELETE_ANNO", id: a.id });
+        editorDispatch({ type: "DELETE_ANNO", id: `redact-det-${detId}` });
       }
     }
-  }, [selected, editorState?.doc?.annotations, editorDispatch]);
+    // Check → add annotation (page findings only; side-channel uses its own flow).
+    const byId = new Map(findings.map((d) => [d.id, d]));
+    for (const detId of selected) {
+      if (stagedDetIds.has(detId)) continue;
+      const d = byId.get(detId);
+      if (!d) continue;
+      if (d.vector && d.vector !== "page") continue;
+      const rect =
+        d.pdfRect ?? { x: d.x / 1.5, y: d.y / 1.5, w: d.w / 1.5, h: d.h / 1.5 };
+      editorDispatch({
+        type: "ADD_ANNO",
+        a: {
+          id: `redact-det-${d.id}`,
+          kind: "redact",
+          page: d.page - 1,
+          x: rect.x,
+          y: rect.y,
+          w: rect.w,
+          h: rect.h,
+          color: { r: 0, g: 0, b: 0 },
+          opacity: 1,
+          category: d.category,
+          sources: d.source?.originalString
+            ? [{
+                originalString: d.source.originalString,
+                redactText: d.source.redactText,
+                matchStart: d.source.matchStart,
+                matchLength: d.source.matchLength,
+                transform: d.source.transform,
+                fontName: d.source.fontName,
+                bounds: d.source.bounds,
+              }]
+            : undefined,
+        },
+      });
+    }
+  }, [selected, findings, editorState?.doc?.annotations, editorDispatch]);
 
 
   const grouped = useMemo(() => {
