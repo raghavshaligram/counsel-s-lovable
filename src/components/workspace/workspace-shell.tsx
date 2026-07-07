@@ -452,6 +452,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [agentFlow, setAgentFlow] = useState<AgentFlow | null>(null);
   const [agentQuery, setAgentQuery] = useState<{ id: number; text: string } | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentInitialTab, setAgentInitialTab] = useState<"ask" | "do" | "learn">("ask");
+  const [agentTabNonce, setAgentTabNonce] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
