@@ -2436,10 +2436,106 @@ function sanitizeStageLabel(stage: string): string {
                       );
                     })}
                   </ul>
+                  {loGroups.length > 0 && (() => {
+                    const loKey = `${cat}::__low__`;
+                    const isOpen = expandedGroups.has(loKey);
+                    const loSelected = catLoIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0);
+                    const loAllChecked = loSelected === catLoIds.length;
+                    const loSomeChecked = loSelected > 0 && !loAllChecked;
+                    const toggleLow = (checked: boolean) => {
+                      startTransition(() => {
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (checked) for (const id of catLoIds) next.add(id);
+                          else for (const id of catLoIds) next.delete(id);
+                          return next;
+                        });
+                      });
+                    };
+                    return (
+                      <div className="mx-2 mb-1 rounded-md border border-amber-500/25 bg-amber-500/[0.06]">
+                        <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-300/90 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={loAllChecked}
+                            ref={(el) => { if (el) el.indeterminate = loSomeChecked; }}
+                            onChange={(e) => toggleLow(e.target.checked)}
+                            className="h-3 w-3 shrink-0 accent-amber-400"
+                          />
+                          <span className="flex-1">Review to include · {catLoIds.length.toLocaleString()}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setExpandedGroups((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(loKey)) next.delete(loKey); else next.add(loKey);
+                                return next;
+                              });
+                            }}
+                            className="normal-case tracking-normal text-text-2 hover:text-foreground rounded px-1"
+                          >
+                            {isOpen ? "hide" : "review"}
+                          </button>
+                        </label>
+                        {!isOpen && (
+                          <p className="px-2 pb-1 text-[10px] leading-snug text-text-muted">
+                            Low-confidence matches. Unchecked by default — expand to review.
+                          </p>
+                        )}
+                        {isOpen && (
+                          <ul className="pb-1">
+                            {loGroups.map((g) => {
+                              const groupKey = `${cat}::lo::${g.key}`;
+                              const selCount = g.dets.reduce((n, d) => n + (selected.has(d.id) ? 1 : 0), 0);
+                              const allChecked = selCount === g.dets.length;
+                              const someChecked = selCount > 0 && !allChecked;
+                              const first = g.dets[0];
+                              const isSingle = g.dets.length === 1;
+                              return (
+                                <li key={groupKey}>
+                                  <div className="group flex items-start gap-1.5 px-2 py-0.5 hover:bg-surface-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={allChecked}
+                                      ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                                      onChange={(e) => {
+                                        setSelected((prev) => {
+                                          const next = new Set(prev);
+                                          if (e.target.checked) for (const d of g.dets) next.add(d.id);
+                                          else for (const d of g.dets) next.delete(d.id);
+                                          return next;
+                                        });
+                                      }}
+                                      className="mt-[3px] h-3 w-3 shrink-0 accent-amber-400"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => jumpToFinding(first)}
+                                      className="min-w-0 flex-1 text-left"
+                                      title={isSingle ? "Jump to this finding" : "Jump to first occurrence"}
+                                    >
+                                      <div className="font-mono text-[11px] text-foreground truncate">
+                                        {maskPreview(first)}
+                                      </div>
+                                      <div className="text-[10px] text-text-2">
+                                        {isSingle ? `Page ${first.page}` : `${g.dets.length.toLocaleString()} occurrences`}
+                                      </div>
+                                    </button>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </li>
               );
             })}
           </ul>
+
           {sideChannelGrouped && sideChannelGrouped.length > 0 && (
             <div className="border-t border-border/60">
               <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-vault">
