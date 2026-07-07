@@ -14,11 +14,13 @@ import { cn } from "@/lib/utils";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import type { ToolPanelCtx } from "./tool-panels";
 import {
+  abortIndex,
   addDiscoveryDebug,
   capabilityCheck,
   getDiscoveryDebugLines,
   hasIndex,
   indexDocument,
+  isIndexing,
   loadModel,
   queryIndex,
   subscribeDiscoveryDebug,
@@ -140,6 +142,13 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const buildIndex = useCallback(async (): Promise<boolean> => {
     if (!file) return false;
     if (!requirePro("Pre-Discovery Review")) return false;
+    // Duplicate-start guard: if the worker is already indexing this
+    // doc, join the in-flight run instead of stacking a second pass.
+    if (isIndexing(docKey)) {
+      console.info("[pre-discovery] indexDocument already running — joining");
+      setIndexing(true);
+      return true;
+    }
     if (!(await ensureModel())) return false;
     setIndexing(true);
     setIndexProgress({ done: 0, total: 0 });
@@ -148,8 +157,6 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       // Paragraph-level ~300-char chunks give MiniLM sharper score separation.
       const raw = await extractPdfParagraphChunks(file, 300, 120);
       // extractPdfChunks emits 1-based pages; the editor uses 0-based.
-      // Normalise to 0-based here so jumpTo and the "Page N" label both
-      // agree with the actual page the passage came from.
       const chunks = raw.map((c, i) => ({
         ...c,
         page: c.page - 1,
@@ -179,16 +186,33 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
       toast.success(`Indexed ${chunks.length} passages — search anything.`);
       return true;
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "aborted") {
+        toast.message("Indexing paused", {
+          description: "You can resume by running a search again.",
+        });
+        return false;
+      }
       console.error("[pre-discovery] index failed", err);
-      toast.error("Indexing failed", {
-        description: err instanceof Error ? err.message : String(err),
-      });
+      toast.error("Indexing failed", { description: msg });
       return false;
     } finally {
       setIndexing(false);
       setIndexProgress(null);
     }
   }, [file, docKey, ensureModel, requirePro]);
+
+  const cancelIndexing = useCallback(() => {
+    const hit = abortIndex(docKey);
+    if (hit) {
+      setIndexing(false);
+      setIndexProgress(null);
+      toast.message("Indexing paused", {
+        description: "You can resume by running a search again.",
+      });
+    }
+  }, [docKey]);
+
 
   const runQuery = useCallback(async () => {
     if (!file || !query.trim()) return;
@@ -405,9 +429,18 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
             <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 px-2 py-1.5">
               <div className="flex items-center justify-between text-[11px] text-text-muted">
                 <span>Indexing passages…</span>
-                <span>
-                  {indexProgress.done} / {indexProgress.total}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span>
+                    {indexProgress.done} / {indexProgress.total}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={cancelIndexing}
+                    className="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-[10.5px] text-text-2 hover:bg-surface hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface">
                 <div

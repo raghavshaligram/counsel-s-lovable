@@ -1,90 +1,133 @@
-# Conversational Assist — my recommendation
+## What we're building (v2 — expanded)
 
-From a user's perspective, the failure mode we must avoid is *silent* misrouting: the assistant guessed "semantic search" when you meant "literal find" and you had no way to tell. Slash commands (`/find`, `/ask`, `/do`) fix that but ask users to learn syntax — nobody does. Pure rulebooks are brittle at edges.
+Four things, all constrained by the same guardrails: PDF viewer, open-tab lifecycle, editor canvas, and `samplePageBg` stay untouched. No changes to verified tool logic.
 
-The right pattern is **transparent routing with cheap correction**: the assistant picks one lane, *says* which lane in one line, and offers one-click switches to the other lanes when a query could plausibly mean more than one thing. This is how ChatGPT, Raycast, and Perplexity all handle the same problem — and it slots directly into the follow-up context we just shipped.
+1. **Smarter clarification** — when the router doesn't understand, ask a *specific* follow-up ("count them? find them? redact them?") instead of a bare "Did you mean…?". Never route unknown NL like "count the social security numbers" into Pre-Discovery.
+2. **On-device learning** — the assistant quietly remembers your picks (only in your browser) and stops asking the same question twice.
+3. **Need help? / Request a feature** — two chips above the command bar → modal → DB + email via Resend.
+4. **Pre-Discovery indexing fix** — no more "Indexing passages…" that never ends. Cache, cancel, ETA, and a progressive first-pass so search works fast.
 
-## Scope
+---
 
-- **AI Assist panel only.** Workspace command bar (`classifyCommandSemantic`) is untouched.
-- **Literal search: open document only.** Uses existing PDF text extraction.
-- **No new AI model.** MiniLM stays the only embedder; NER stays the only detector.
-- Hard guardrails from prior turn still hold: PDF viewer, tab lifecycle, editor canvas, `samplePageBg`, verified redaction — off limits.
+## Part 1 — Smarter clarification (assist router)
 
-## The four lanes
+**Problem:** today's fallback shows one guessed tool and a "Cancel" — that's how "count ssn" landed on Court Readiness in your screenshot, and how earlier phrasings leaked into Pre-Discovery.
 
-Every submit resolves to exactly one of these, and the assistant tells you which one it picked:
+**Change in `src/lib/assist/router.ts`:**
 
-1. **Literal find** — exact/whole-word/regex text search inside the open PDF. Free. Results are page+snippet chips that jump the viewer.
-2. **Semantic search / Q&A** — meaning-based, routed to the existing Private AI assist surface (Pre-Discovery). Pro-gated as today.
-3. **Tool action** — opens/uses a verified tool (Redact, Sanitize, Bates, etc.). Existing routing.
-4. **Help / topic** — tool explanation or cross-cutting topic (pricing, offline, privacy). Existing.
+Add a new `clarify-ask` classification that carries a short question + up to 4 lane chips derived from what the query *looks like*, not what a fuzzy match guessed:
 
-## Routing rules (transparent, not brittle)
+- If the query contains a **PII noun** (ssn, social security, phone, email, dob, credit card, address, name, dates) with **no clear verb**, ask:
+  > *"Do you want to **find**, **count**, or **redact** the SSNs in this document?"*
+  Chips: `Find matches` (literal), `Count matches` (literal + count summary), `Redact all` (Redact tool), `Ask something else`.
+- If the query contains a **verb** the router doesn't recognize (`analyze`, `summarize`, `extract`, `list`, `count`) with any noun, ask:
+  > *"I can do a few things with '{query}'. Which one?"* — chips built from the eligible lanes.
+- Only when no signal at all → the current typo/clarify path (existing `clarify-typo`).
 
-Applied in order; first match wins. Each rule is a *reason* the panel can show to the user.
+**New "count" affordance:** the literal-find lane already returns `matches[]`. When the user picks `Count matches`, the panel shows a compact card: "**N matches for 'SSN'** across pages {…}" with a chip to open Redact for those matches — no full page-by-page dump.
 
-| # | Signal | Lane | Confidence |
-|---|--------|------|------------|
-| 1 | Quoted text: `find "contract"`, `search 'John Smith'` | Literal | High |
-| 2 | Explicit literal cue: `the word X`, `the phrase X`, `exact match X`, `regex /…/` | Literal | High |
-| 3 | Existing exact tool/topic match (already shipped) | Action / Topic | High |
-| 4 | Action verb + noun (`redact SSNs`, `stamp bates`, `sanitize this`) | Action | High |
-| 5 | Help language (`what is X`, `how do I`, `why`) | Help/Topic | High |
-| 6 | Content descriptor (`find sensitive contracts`, `passages about damages`, `clauses that mention X`) | Semantic | Medium |
-| 7 | Bare noun / short phrase (`contracts`, `payment amounts`) | **Ambiguous** — literal is default, semantic and Redact offered as chips | Low |
-| 8 | Fuzzy tool typo (already shipped) | Action | Medium |
-| 9 | Nothing matches with confidence | Ambiguous — chip row with top 2 lanes | — |
+**Pre-Discovery gate:** semantic search (Pro) is proposed only when the query is genuinely open-ended ("who signed this", "arguments about jurisdiction"). PII-shaped queries never propose Pre-Discovery. This alone stops the accidental indexing trigger.
 
-The user always sees a one-line explanation of which lane fired ("Searching for the exact word *contract*…", "Interpreting as a meaning-based search…") plus a chip row to switch lanes.
+Router tests in `scripts/verify-assist-router.ts` extended with fixtures like `count ssn`, `count the social security numbers`, `find phone numbers`, `analyze this contract`, `list every date`.
 
-## Conversational memory (extends prior work)
+---
 
-`AssistCtx` already tracks `lastEntryId` / `lastTopicId` / `lastQuery`. Add:
+## Part 2 — On-device learning (localStorage only)
 
-- `lastFindTerm?: string` and `lastFindMatches?: { page: number; snippet: string }[]`
-- `lastLane?: "literal" | "semantic" | "action" | "help"`
+`src/lib/assist/learn.ts` (new). One localStorage key `vault.assist.learn.v1`, capped ~8 KB, time-decayed.
 
-This enables follow-ups the user has been asking for:
+Three signal maps:
 
-- After literal find "contract" → "now redact them" stages those matches into Redact (Pro gate applies for bulk).
-- After semantic "find sensitive contracts" → "which pages" summarises pages from the previous answer.
-- After "what is Redact" → "how do I do that" opens Redact (already works from the last turn).
+- `clarifyPicks[queryKey] → { toolId, count, lastAt }` — every "Did you mean…?" / "Which one?" answer bumps the winner. Confidence ≥ 2 → skip clarify next time, route straight to that lane.
+- `followUps[toolId__nextAction] → count` — after "what is redact" → if the user clicks "Open Redact", bump it. Next help answer promotes "Open Redact" to primary.
+- `lanePrefs[nounKey] → { literal, semantic, action }` — bare-noun ambiguity ("contract") learns the user's default lane over 2+ picks.
 
-Context resets on: explicit new subject in a different lane, panel close, or the "Ask something else" chip.
+Wired in `router.ts` (read) + `agent-panel.tsx` (write on every chip click). No account sync. A "Reset assistant learning" row in the account menu clears the key.
 
-## Panel additions (no layout change)
+Verification in `scripts/verify-assist-router.ts`: run the same fixtures with an empty `learn` snapshot (assert current behavior) and with a synthetic learned snapshot (assert honored).
 
-- New `find-results` step kind: title + N chips (`Page 3 · "…this contract shall…"`) that call `openTool` with a page jump, plus a "Redact all matches" action (Pro-gated, hands off to Redact staging).
-- Every answer keeps the existing meta chip ("Free • Runs offline • Nothing leaves your device").
-- Existing `clarify` / `clarify-typo` step kinds absorb the new "which lane?" case — no new UI primitive.
+---
 
-## Files touched
+## Part 3 — Need help? / Request a feature
 
-- `src/lib/assist/router.ts` — add lane detection (rules 1, 2, 6, 7), extend `AssistClassification` with `kind: "literal" | "semantic"` and `lane` reason strings; extend `AssistCtx` with the fields above; add cross-lane sticky logic (if last was literal and follow-up starts with "redact" / "them" / "these" → action on last matches).
-- `src/lib/assist/knowledge-base.ts` — no schema change; add anchor examples covering literal-vs-semantic phrasing so the embedding path stays honest.
-- `src/lib/assist/find.ts` — **new**. Thin wrapper around existing `src/lib/chat/pdf-extract.ts` producing `{ page, snippet }[]` for a plain string, with whole-word and regex options.
-- `src/components/workspace/agent-panel.tsx` — new `find-results` step; `showFindAnswer` / `showSemanticAnswer` handlers; pass extended `AssistCtx`; render lane reason line; wire "Redact all matches" to the existing Redact staging events (`redact:unstage-det` sibling — a `redact:stage-matches` event, or reuse pattern-bulk-redact flow).
-- `scripts/verify-assist-router.ts` — extend with lane cases: `find "contract"` → literal; `find sensitive contracts` → semantic; `contracts` → ambiguous; `redact them` after literal → action with staged term.
+**Placement:** two small chips directly above the workspace command bar in `workspace-shell.tsx`. Tokens only, no new palette. `?` opens Help.
 
-## What this deliberately does NOT do
+### Database — one migration
 
-- No slash-command syntax. No hidden modes.
-- No new gating. Semantic still Pro. Bulk Redact still Pro. Everything else free.
-- No touching the workspace command bar, viewer, or canvas.
-- No cloud LLM. On-device only, per project constitution.
+`public.support_requests`:
 
-## Verification
+- Columns: `id`, `user_id` (nullable, FK `auth.users`), `type` (`'help' | 'feature'`), `title`, `message`, `name`, `email`, `plan`, `page`, `user_agent`, `status` (`'new'` default), `created_at`, `updated_at`.
+- GRANTs: `INSERT` to `anon` + `authenticated` (so signed-out users can still ask); `SELECT/UPDATE/DELETE` to `authenticated` gated by owner-only RLS; `ALL` to `service_role`.
+- Owner check reuses the existing `OWNER_USER_ID` pattern from `hq.functions.ts` (no new admin model).
+- `updated_at` trigger reuses `public.set_updated_at()`.
 
-Node classifier script (extends existing) asserts:
+### Server functions & route
 
-- `find "contract"` → literal, term=`contract`
-- `search for the word John` → literal, term=`John`
-- `find sensitive contracts` → semantic
-- `contracts` → ambiguous, top options include literal + semantic
-- `redact SSNs` → action `redact`
-- Follow-ups (ctx.lane=literal, term=`contract`): `now redact them` → action `redact` with `contextFrom` carrying the term; `which pages` → summary of previous matches; `more info` → sticky Redact help (regression from last turn)
+- `src/lib/support.functions.ts`
+  - `submitSupportRequest` — `createServerFn`, no `requireSupabaseAuth` (works signed-out). Zod-validates, inserts the row via `supabaseAdmin` (dynamic import inside handler), then fires the email fetch. Always returns `{ ok: true }` even if email fails; DB failure surfaces as a soft toast but never traps the modal.
+  - `hqListSupportRequests`, `hqUpdateSupportRequestStatus` — owner-gated, mirror existing `hq*` pattern.
+- `src/routes/api/public/support-email.ts` — internal HMAC-verified POST route (secret `SUPPORT_INTERNAL_SECRET` generated via `generate_secret`). Sends via Resend using `RESEND_API_KEY` (I'll request via `add_secret` after approval), sender `onboarding@resend.dev`, recipient looked up server-side from `OWNER_USER_ID` (no separate admin-email secret needed).
 
-All 20 prior cases must still pass.
+Subjects: `[CounselPDF] Help request from {name}` / `[CounselPDF] Feature request — {title}`. Body: plain text + minimal HTML with name/email/plan/page/user-agent/message. No React Email.
 
-Ship after typecheck + all classifier cases green.
+### UI
+
+- `src/components/workspace/support-modal.tsx` — one component, two modes.
+  - Help: name/email read-only (from profile), message (10–2000 chars).
+  - Feature: name/email read-only, title (3–120), message (10–2000).
+  - Signed-out fallback: name/email become editable + required.
+- Single confirmation state ("Thanks — we've received your message and will get back to you"), Esc closes, never stuck.
+
+### /hq
+
+New fifth tab `Support`:
+- Columns: type badge · name · email · title/message preview · plan · page · created_at · status.
+- Filters: type (all/help/feature), status (all/new/in-progress/done).
+- Sort by `created_at` desc.
+- Row click → drawer with full message + status dropdown → `hqUpdateSupportRequestStatus`.
+
+---
+
+## Part 4 — Pre-Discovery indexing fix
+
+**Root cause (from reading `pre-discovery-panel.tsx` + `discovery/client.ts` + `embed.worker.ts`):**
+- Every open triggers a full MiniLM embedding pass over every ~300-char paragraph chunk in the doc.
+- Batch size is 8, all in one worker, on the main-thread request/response chain.
+- No cache across opens — re-opening the same PDF re-indexes from scratch.
+- No cancel button — once "Indexing passages…" starts, the user is trapped until it finishes or they refresh.
+- Large docs (500+ pages → 3–5k chunks) take multiple minutes on Basic-tier devices (no WebGPU / ≤ 4 cores).
+
+**Fixes (do NOT touch the PDF viewer, editor canvas, tab lifecycle, or `samplePageBg`):**
+
+1. **Persist the index per doc.** Cache `{ chunks, vectors }` keyed by `docKey` (already computed as `name::size::modified`) in IndexedDB. On open, if a valid cache exists, hydrate and skip the entire embedding pass. `discovery/client.ts` gains `loadIndex(docKey)` / `saveIndex(docKey, chunks, vectors)` helpers; the worker gains a `hydrate` message.
+2. **Progressive first pass.** Instead of blocking on all chunks, index the first N (default 200) chunks and unlock search immediately with a subtle "Indexing continues in background — {done}/{total}" chip. The remaining chunks stream in via the same worker at low priority (batch 8, 30 ms yield). Existing searches transparently re-rank as more vectors arrive.
+3. **Cancel button.** The indexing chip becomes an inline "Cancel" that posts a `{ kind: "abort", id }` to the worker, aborts the running batch loop, clears `indexed=false` and `indexProgress=null`, and toasts "Indexing paused — reopen the panel to resume".
+4. **Honest ETA.** Compute chunks/sec from the first two batches and show "~{X}s remaining" using the same device-capability tier plumbing already added for Redact scans (Fast / Standard / Basic).
+5. **Explicit opt-in for huge docs.** If `chunks.length > 1500` AND device is Basic tier, show a one-time confirm before starting: "This is a {N}-passage document. On this device semantic search will take about {est}. Continue?" with an "Index later" cancel that leaves the panel usable for the literal-only path.
+6. **Guard against duplicate index starts.** A queued `buildIndex` call while one is already running becomes a no-op instead of stacking a second worker pass (a common contributor to the "app goes into indexing mode" feeling).
+
+**Router side (ties back to Part 1):** semantic search is no longer proposed for PII-shaped queries, so "count ssn" never triggers Pre-Discovery indexing again. That path is reserved for genuinely open-ended questions.
+
+**Files touched:**
+- `src/lib/discovery/client.ts` — cache API, abort, progress hooks.
+- `src/lib/discovery/embed.worker.ts` — abort message, progressive batching, hydrate.
+- `src/components/workspace/pre-discovery-panel.tsx` — cache hydrate on mount, Cancel button, ETA chip, huge-doc confirm.
+
+---
+
+## Test plan
+
+1. `count ssn` → assistant asks "**find**, **count**, or **redact** SSNs?" → pick **Count** → shows "N matches across pages …" → pick **Redact all** → opens Redact tool with matches pre-staged. Nothing touches Pre-Discovery.
+2. Repeat `count ssn` next session → routes straight to the Count card (learned), no clarification.
+3. Reset learning from account menu → next `count ssn` shows the clarify chips again.
+4. "Need help?" chip → modal with name/email pre-filled → submit → confirmation → row in `/hq → Support` → owner receives Resend email. Same for "Request a feature" with title.
+5. Open a large PDF twice in a row → first open indexes with cancel + ETA visible; second open hydrates from IndexedDB in <1 s and semantic search works immediately.
+6. Start indexing → hit Cancel → "Indexing paused" toast, panel returns to idle, no zombie worker.
+
+## Explicitly out of scope
+
+- No changes to `classifyCommandSemantic` (workspace command bar itself).
+- No new AI model download. MiniLM stays.
+- No changes to canvas / viewer / open-tab lifecycle / `samplePageBg`.
+- No React Email — the admin notification is a hand-rolled minimal template next to the route.
+- No account-synced learning. Reset is the only knob.

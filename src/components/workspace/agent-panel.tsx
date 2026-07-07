@@ -589,6 +589,7 @@ export function AgentPanel({
         if (seq !== querySeqRef.current || abortedRef.current) return;
 
         if (classified.kind === "clarify") {
+          const clarifyKey = (await import("@/lib/assist/learn")).normalizeQueryKey(text);
           setSteps([
             echo,
             {
@@ -600,7 +601,13 @@ export function AgentPanel({
                 ...classified.options.map<Action>((entry) => ({
                   label: entry.displayName,
                   tone: "primary",
-                  onClick: () => showEntryHelp(entry, "help", [echo], { originalQuery: text }),
+                  onClick: async () => {
+                    try {
+                      const learn = await import("@/lib/assist/learn");
+                      learn.recordClarifyPick(clarifyKey, entry.toolId || entry.id);
+                    } catch { /* ignore */ }
+                    showEntryHelp(entry, "help", [echo], { originalQuery: text });
+                  },
                 })),
                 { label: "Cancel", tone: "ghost", onClick: () => onClose() },
               ],
@@ -630,6 +637,79 @@ export function AgentPanel({
           return;
         }
 
+        if (classified.kind === "clarify-ask") {
+          const askQueryKey = classified.queryKey;
+          const askNounKey = classified.nounKey;
+          setSteps([
+            echo,
+            {
+              kind: "propose",
+              id: runId,
+              title: classified.question,
+              body: classified.reason,
+              actions: [
+                ...classified.choices.map<Action>((choice) => ({
+                  label: choice.label,
+                  tone: "primary",
+                  onClick: async () => {
+                    // Learn: remember this pick for next time.
+                    try {
+                      const learn = await import("@/lib/assist/learn");
+                      if (choice.toolId) learn.recordClarifyPick(askQueryKey, choice.toolId);
+                      if (askNounKey && (choice.lane === "literal" || choice.lane === "semantic" || choice.lane === "action")) {
+                        learn.recordLanePick(askNounKey, choice.lane);
+                      }
+                    } catch { /* ignore */ }
+
+                    if (choice.lane === "action" && choice.actionToolId) {
+                      try {
+                        window.dispatchEvent(
+                          new CustomEvent("agent:redact-pattern", { detail: { term: choice.term ?? "" } }),
+                        );
+                      } catch { /* ignore */ }
+                      openTool(choice.actionToolId);
+                      onClose();
+                      return;
+                    }
+                    if (choice.lane === "literal" && choice.term) {
+                      void showLiteralFind(
+                        {
+                          kind: "literal",
+                          term: choice.term,
+                          wholeWord: false,
+                          regex: false,
+                          reason: choice.countOnly
+                            ? `Counting matches for "${choice.term}" in this document.`
+                            : `Searching for "${choice.term}" in this document.`,
+                        },
+                        [echo],
+                        text,
+                      );
+                      return;
+                    }
+                    if (choice.lane === "semantic") {
+                      showSemanticPitch(
+                        { kind: "semantic", query: text, reason: "Interpreting this as a meaning-based search." },
+                        [echo],
+                        text,
+                      );
+                      return;
+                    }
+                    if (choice.lane === "help" && choice.toolId) {
+                      const entry = (await import("@/lib/assist/knowledge-base")).ASSIST_KNOWLEDGE_BASE.find(
+                        (e) => e.id === choice.toolId || e.toolId === choice.toolId,
+                      );
+                      if (entry) showEntryHelp(entry, "help", [echo], { originalQuery: text });
+                    }
+                  },
+                })),
+                { label: "Ask something else", tone: "ghost", onClick: () => onClose() },
+              ],
+            },
+          ]);
+          return;
+        }
+
         if (classified.kind === "topic") {
           showTopicAnswer(classified.topic, [echo], {
             followUp: classified.followUp,
@@ -648,6 +728,10 @@ export function AgentPanel({
           return;
         }
 
+        // The remaining branch is the "tool" kind — narrow explicitly so
+        // TS can access entry/mode/etc without complaining about the
+        // clarify-ask/clarify-typo union members.
+        if (classified.kind !== "tool") return;
         const { entry, mode, corrected, followUp, stagedTerm } = classified;
 
         // Cross-lane follow-up: "redact them" after a literal find →

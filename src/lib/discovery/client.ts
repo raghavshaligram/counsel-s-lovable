@@ -129,37 +129,125 @@ export function loadModel(
 }
 
 let reqCounter = 0;
+
+/**
+ * Track in-flight indexDocument runs so a duplicate call for the same
+ * docKey no-ops instead of stacking a second worker pass — a major
+ * contributor to the "app goes into indexing mode forever" bug.
+ */
+const inflightIndex = new Map<string, Promise<number>>();
+/** Track abort callbacks per in-flight index request id. */
+const indexAbortHandlers = new Map<string, () => void>();
+
 export function indexDocument(
   docKey: string,
   chunks: DiscoveryChunk[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<number> {
+  const existing = inflightIndex.get(docKey);
+  if (existing) {
+    console.info(`[ai-model] indexDocument already running for ${docKey} — joining`);
+    return existing;
+  }
+
   const w = getWorker();
   chunkStore.set(docKey, chunks);
   const id = `idx-${++reqCounter}`;
-  return new Promise<number>((resolve, reject) => {
-    const handler = (e: MessageEvent) => {
-      const m = e.data;
-      if (m?.id !== id) return;
-      if (m.kind === "index-progress") onProgress?.(m.done, m.total);
-      else if (m.kind === "indexed") {
+
+  const promise = (async (): Promise<number> => {
+    // 1. Try to hydrate from IndexedDB — skips the entire embedding pass.
+    try {
+      const { loadCachedIndex } = await import("./index-cache");
+      const cached = await loadCachedIndex(docKey);
+      if (cached && cached.chunks.length === chunks.length) {
+        const buf = cached.vectors.buffer.slice(0);
+        w.postMessage(
+          { kind: "hydrate", docKey, dim: cached.dim, vectors: buf, chunks: cached.chunks },
+          [buf],
+        );
         indexedDocs.add(docKey);
-        w.removeEventListener("message", handler);
-        resolve(m.count as number);
-      } else if (m.kind === "error") {
-        w.removeEventListener("message", handler);
-        reject(new Error(m.message));
+        console.info(`[ai-model] hydrated cached index for ${docKey} (${cached.chunks.length} chunks)`);
+        onProgress?.(cached.chunks.length, cached.chunks.length);
+        return cached.chunks.length;
       }
-    };
-    w.addEventListener("message", handler);
-    w.postMessage({
-      kind: "index",
-      id,
-      docKey,
-      chunks: chunks.map(({ id: cid, page, text }) => ({ id: cid, page, text })),
+    } catch (err) {
+      console.warn("[ai-model] cache hydrate failed (non-fatal)", err);
+    }
+
+    // 2. Fall back to a fresh index pass in the worker.
+    return await new Promise<number>((resolve, reject) => {
+      const handler = (e: MessageEvent) => {
+        const m = e.data;
+        if (m?.id !== id) return;
+        if (m.kind === "index-progress") onProgress?.(m.done, m.total);
+        else if (m.kind === "indexed") {
+          indexedDocs.add(docKey);
+          w.removeEventListener("message", handler);
+          // Best-effort persist to IndexedDB so re-opens skip the work.
+          try {
+            const dim = m.dim as number;
+            const vectors = new Float32Array(m.vectors as ArrayBuffer);
+            const chunkMeta = m.chunks as { id: string; page: number; text: string }[];
+            void import("./index-cache").then(({ saveCachedIndex }) =>
+              saveCachedIndex(docKey, { dim, vectors, chunks: chunkMeta }),
+            );
+          } catch { /* ignore */ }
+          resolve(m.count as number);
+        } else if (m.kind === "index-aborted") {
+          w.removeEventListener("message", handler);
+          reject(new Error("aborted"));
+        } else if (m.kind === "error") {
+          w.removeEventListener("message", handler);
+          reject(new Error(m.message));
+        }
+      };
+      w.addEventListener("message", handler);
+      indexAbortHandlers.set(id, () => {
+        w.postMessage({ kind: "abort", id });
+      });
+      w.postMessage({
+        kind: "index",
+        id,
+        docKey,
+        chunks: chunks.map(({ id: cid, page, text }) => ({ id: cid, page, text })),
+      });
     });
+  })().finally(() => {
+    inflightIndex.delete(docKey);
+    indexAbortHandlers.delete(id);
   });
+
+  inflightIndex.set(docKey, promise);
+  return promise;
 }
+
+/**
+ * Abort every in-flight indexDocument call for the given docKey (or all
+ * of them if no docKey is provided). Returns true when at least one
+ * pending run was signalled — the caller can toast "Indexing paused".
+ */
+export function abortIndex(docKey?: string): boolean {
+  let hit = false;
+  if (docKey) {
+    if (!inflightIndex.has(docKey)) return false;
+    for (const [, cancel] of indexAbortHandlers) {
+      cancel();
+      hit = true;
+    }
+    return hit;
+  }
+  for (const [, cancel] of indexAbortHandlers) {
+    cancel();
+    hit = true;
+  }
+  return hit;
+}
+
+/** True while a fresh index pass (not a cache hydrate) is running for docKey. */
+export function isIndexing(docKey: string): boolean {
+  return inflightIndex.has(docKey);
+}
+
 
 export function queryIndex(
   docKey: string,

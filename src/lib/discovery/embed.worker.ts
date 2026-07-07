@@ -40,6 +40,10 @@ const cache = new Map<
   { dim: number; vectors: Float32Array; chunks: ChunkIn[] }
 >();
 
+// In-flight index runs — indexed by request id so the main thread can abort.
+const runningIndex = new Set<string>();
+const abortedIndex = new Set<string>();
+
 function post(msg: object, transfer: Transferable[] = []) {
   ctx.postMessage(msg, transfer);
 }
@@ -48,6 +52,7 @@ function debug(line: string, data?: unknown) {
   const suffix = data === undefined ? "" : ` ${JSON.stringify(data)}`;
   post({ kind: "debug", line: `[discovery-worker] ${line}${suffix}` });
 }
+
 
 async function getExtractor(): Promise<Extractor> {
   if (extractorPromise) return extractorPromise;
@@ -131,6 +136,8 @@ ctx.onmessage = async (e: MessageEvent) => {
   const msg = e.data as
     | { kind: "load" }
     | { kind: "index"; id: string; docKey: string; chunks: ChunkIn[] }
+    | { kind: "hydrate"; docKey: string; dim: number; vectors: ArrayBuffer; chunks: ChunkIn[] }
+    | { kind: "abort"; id: string }
     | { kind: "query"; id: string; docKey: string; text: string; topK: number }
     | { kind: "embed"; id: string; texts: string[] }
     | { kind: "drop"; docKey: string };
@@ -142,6 +149,21 @@ ctx.onmessage = async (e: MessageEvent) => {
     }
     if (msg.kind === "drop") {
       cache.delete(msg.docKey);
+      return;
+    }
+    if (msg.kind === "abort") {
+      // Mark the id aborted so the running index loop bails on its next batch.
+      if (runningIndex.has(msg.id)) {
+        abortedIndex.add(msg.id);
+        debug("index abort requested", { id: msg.id });
+      }
+      return;
+    }
+    if (msg.kind === "hydrate") {
+      // Rehydrate a previously-cached index from IndexedDB (main thread).
+      const { docKey, dim, vectors, chunks } = msg;
+      cache.set(docKey, { dim, vectors: new Float32Array(vectors), chunks });
+      debug("hydrated cached index", { docKey, count: chunks.length, dim });
       return;
     }
     if (msg.kind === "embed") {
@@ -167,17 +189,22 @@ ctx.onmessage = async (e: MessageEvent) => {
       await getExtractor();
       console.log("[discovery-worker] indexing", chunks.length, "chunks for", docKey);
       debug("indexing chunks", { count: chunks.length, docKey });
+      runningIndex.add(id);
       const BATCH = 8;
       let dim = 0;
       let vectors: Float32Array | null = null;
       let done = 0;
+      let aborted = false;
       for (let i = 0; i < chunks.length; i += BATCH) {
+        if (abortedIndex.has(id)) {
+          aborted = true;
+          break;
+        }
         const batch = chunks.slice(i, i + BATCH);
         const vecs = await embed(batch.map((c) => c.text));
         if (!vectors) {
           dim = vecs[0].length;
           vectors = new Float32Array(dim * chunks.length);
-          // Log first chunk vector shape + norm to prove embeddings ran.
           let sq = 0;
           for (let k = 0; k < dim; k++) sq += vecs[0][k] * vecs[0][k];
           console.log(
@@ -199,11 +226,26 @@ ctx.onmessage = async (e: MessageEvent) => {
         }
         done += batch.length;
         post({ kind: "index-progress", id, done, total: chunks.length });
+        // Yield to the event loop so incoming `abort` messages get processed.
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      runningIndex.delete(id);
+      abortedIndex.delete(id);
+      if (aborted) {
+        debug("index aborted", { id, done, total: chunks.length });
+        post({ kind: "index-aborted", id, done, total: chunks.length });
+        return;
       }
       console.log("[discovery-worker] ✓ indexed", chunks.length, "chunks, dim=", dim);
       debug("✓ indexed chunks", { count: chunks.length, dim });
       cache.set(docKey, { dim, vectors: vectors!, chunks });
-      post({ kind: "indexed", id, count: chunks.length });
+      // Emit a copy of the vector buffer so the main thread can persist
+      // it to IndexedDB without stealing our in-memory copy.
+      const buf = vectors!.buffer.slice(0);
+      post(
+        { kind: "indexed", id, count: chunks.length, dim, vectors: buf, chunks },
+        [buf],
+      );
       return;
     }
     if (msg.kind === "query") {

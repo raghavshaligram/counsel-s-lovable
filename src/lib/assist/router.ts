@@ -5,6 +5,11 @@ import {
   type AssistToolEntry,
   type AssistTopicEntry,
 } from "./knowledge-base";
+import {
+  normalizeQueryKey,
+  preferredToolFor,
+  preferredLaneFor,
+} from "./learn";
 
 export type AssistMode = "help" | "open" | "use";
 export type AssistLane = "literal" | "semantic" | "action" | "help";
@@ -63,7 +68,35 @@ export type AssistClassification =
       kind: "clarify-typo";
       original: string;
       suggestions: AssistToolEntry[];
+    }
+  | {
+      /**
+       * Directed follow-up: we recognized WHAT the user is talking about
+       * (a PII noun, an unhandled verb + noun) but not WHICH lane to run.
+       * The panel renders `question` + `choices` as chips.
+       */
+      kind: "clarify-ask";
+      reason: string;
+      question: string;
+      /** For learn: normalized query key + optional noun for lane-pref learning. */
+      queryKey: string;
+      nounKey?: string;
+      choices: Array<{
+        id: string;
+        label: string;
+        lane: AssistLane;
+        toolId?: string;
+        /** For literal lanes: the search term to prefill. */
+        term?: string;
+        /** For action lanes (e.g. "Redact all"): the tool to open. */
+        actionToolId?: string;
+        /** Countable mode for literal — show N matches summary card. */
+        countOnly?: boolean;
+      }>;
     };
+
+
+
 
 
 type AnchorIndex = {
@@ -331,6 +364,42 @@ const FIND_VERB_RE = /^\s*(?:find|show|list|search(?:\s+for)?|look\s+for|locate|
 /** Adjective before noun in "find <adj> <noun>" is a strong semantic signal. */
 const SEMANTIC_DESCRIPTOR_RE = /\b(?:sensitive|confidential|privileged|important|relevant|risky|financial|personal|private|key|critical|material)\s+\w+/i;
 
+/* ------------------------------------------------------------------ */
+/* Directed clarify — PII nouns + unhandled verbs                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * PII / patterned-value nouns the user often references without saying
+ * which lane they want. Each entry maps a matcher to a display label
+ * and a literal-search term. The router turns these into a directed
+ * "find / count / redact?" clarify prompt instead of a wrong guess or
+ * an accidental semantic-search index build.
+ */
+const PII_NOUNS: Array<{ re: RegExp; label: string; term: string }> = [
+  { re: /\b(ssn|social\s+security(?:\s+number)?s?)\b/i, label: "SSNs", term: "ssn" },
+  { re: /\bphone(?:\s+numbers?)?\b/i, label: "phone numbers", term: "phone" },
+  { re: /\bemail(?:\s+address(?:es)?)?\b/i, label: "email addresses", term: "email" },
+  { re: /\b(dob|dates?\s+of\s+birth|birthdays?)\b/i, label: "dates of birth", term: "dob" },
+  { re: /\b(credit\s+card|card\s+numbers?|cc\s+numbers?)\b/i, label: "credit card numbers", term: "credit card" },
+  { re: /\b(account\s+numbers?|bank\s+accounts?)\b/i, label: "account numbers", term: "account" },
+  { re: /\b(addresses?|street\s+addresses?|mailing\s+addresses?)\b/i, label: "addresses", term: "address" },
+];
+
+const COUNT_VERB_RE = /^\s*(?:count|how\s+many|number\s+of|tally)\b/i;
+/** Verbs the router doesn't have a direct lane for but that clearly need one. */
+const UNHANDLED_VERBS: Array<{ re: RegExp; label: string }> = [
+  { re: /^\s*(?:analy[sz]e|examine|review)\b/i, label: "analyze" },
+  { re: /^\s*summari[sz]e\b/i, label: "summarize" },
+  { re: /^\s*(?:extract|pull)\b/i, label: "extract" },
+];
+
+function detectPiiNoun(raw: string): { label: string; term: string } | null {
+  for (const p of PII_NOUNS) if (p.re.test(raw)) return { label: p.label, term: p.term };
+  return null;
+}
+
+
+
 export async function classifyAssistQuery(
   input: string,
   ctx?: AssistCtx,
@@ -359,6 +428,80 @@ export async function classifyAssistQuery(
     }
   }
 
+  const queryKey = normalizeQueryKey(raw);
+
+  // 0b. Learned short-circuit: user has picked the same tool ≥ 2 times for
+  //     this query — skip clarify entirely and route straight there.
+  const learnedToolId = preferredToolFor(queryKey);
+  if (learnedToolId) {
+    const learned = ASSIST_KNOWLEDGE_BASE.find(
+      (e) => e.id === learnedToolId || e.toolId === learnedToolId,
+    );
+    if (learned) {
+      console.info("[ai-assist] learned route", { query: raw, id: learned.id });
+      return { kind: "tool", entry: learned, mode: inferMode(raw), score: 1 };
+    }
+  }
+
+  // 0c. PII noun without an explicit lane verb → directed clarify.
+  //     "count the SSNs", "phone numbers", "redact ssn" all land here
+  //     UNLESS a specific tool verb pins the lane. We deliberately do
+  //     NOT route these into Pre-Discovery (semantic index build) —
+  //     that's the accidental-indexing bug the plan calls out.
+  const pii = detectPiiNoun(raw);
+  const hasExplicitRedact = /\bredact(?:s|ing|ion)?\b/i.test(raw);
+  const looksLikeCount = COUNT_VERB_RE.test(raw);
+  if (pii && !hasExplicitRedact) {
+    const nounKey = pii.term.toLowerCase();
+    const learnedLane = preferredLaneFor(nounKey);
+    if (learnedLane === "action") {
+      const redact = ASSIST_KNOWLEDGE_BASE.find((e) => e.id === "redact");
+      if (redact) return { kind: "tool", entry: redact, mode: "use", score: 1, stagedTerm: pii.term };
+    }
+    if (learnedLane === "literal") {
+      return {
+        kind: "literal",
+        term: pii.term,
+        wholeWord: false,
+        regex: false,
+        reason: `Searching for ${pii.label} in this document.`,
+      };
+    }
+    // No learned pref → ask the user, prefilled with count if they said "count".
+    return {
+      kind: "clarify-ask",
+      reason: `"${raw}" — do you want to find, count, or redact ${pii.label}?`,
+      question: `Do you want to find, count, or redact the ${pii.label} in this document?`,
+      queryKey,
+      nounKey,
+      choices: [
+        {
+          id: "count",
+          label: `Count ${pii.label}`,
+          lane: "literal",
+          term: pii.term,
+          countOnly: true,
+        },
+        {
+          id: "find",
+          label: `Find matches`,
+          lane: "literal",
+          term: pii.term,
+        },
+        {
+          id: "redact",
+          label: `Redact all`,
+          lane: "action",
+          actionToolId: "redact",
+          term: pii.term,
+        },
+      ],
+    };
+  }
+  // Deliberately not used in the clarify prompt but reserved for future
+  // "You said count — here's the count" shortcuts.
+  void looksLikeCount;
+
   // 1. Exact tool match
   const exact = exactToolMatch(raw);
   if (exact) {
@@ -371,6 +514,23 @@ export async function classifyAssistQuery(
   if (topicExact) {
     console.info("[ai-assist] topic lexical route", { query: raw, id: topicExact.id });
     return { kind: "topic", topic: topicExact, score: 1 };
+  }
+
+  // 2b. Unhandled verbs ("analyze this contract", "summarize it") → ask.
+  for (const v of UNHANDLED_VERBS) {
+    if (v.re.test(raw)) {
+      return {
+        kind: "clarify-ask",
+        reason: `I can do a few things with "${raw}". Which one?`,
+        question: `What should I do with this document?`,
+        queryKey,
+        choices: [
+          { id: "chat", label: "Ask AI Chat", lane: "help", toolId: "chat" },
+          { id: "search", label: "Search by meaning", lane: "semantic" },
+          { id: "find", label: "Find literal text", lane: "literal", term: raw.replace(v.re, "").trim() },
+        ],
+      };
+    }
   }
 
   // 3. Literal-find lane (rules 1 & 2 from the plan)

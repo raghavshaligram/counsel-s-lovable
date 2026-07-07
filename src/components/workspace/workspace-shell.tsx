@@ -111,6 +111,7 @@ import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
 
 bindGlobalCompletionToasts();
 import { CaseSessionSaveButton } from "./case-session-save";
+import { SupportChips } from "./support-chips";
 import { AnnouncementBanner } from "./announcement-banner";
 import { ExportFormatChip } from "./export-format-row";
 import { WelcomeModal } from "./welcome-modal";
@@ -2075,6 +2076,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 and searches open the Pre-Discovery panel with the query
                 prefilled and auto-executed. Destructive ops NEVER run
                 without explicit confirm. */}
+            <SupportChips />
             <div className="relative flex h-[56px] shrink-0 items-center justify-center px-3">
               <div className="relative w-full max-w-[520px]">
                 {pendingIntent && (
