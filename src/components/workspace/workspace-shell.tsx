@@ -101,7 +101,7 @@ import {
 } from "@/lib/workspace/persistence";
 
 import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/lib/editor/state";
-import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
+import type { Tool, RGB, EditorDoc, PageOp, Anno } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
@@ -4556,6 +4556,22 @@ function EditorPages({
   }, [state.current]);
 
 
+  // Bucket annotations by page ONCE per annotations-array reference.
+  // Previously `renderPage` did a full `.filter()` over `state.doc.annotations`
+  // for every page in the doc — at 5,000 pages × 13,000 annotations that's
+  // ~65M comparisons per render pass, on every dispatch. Bucketing turns
+  // that into a single 13k pass + O(1) lookup per page.
+  const annosByPage = useMemo(() => {
+    const m = new Map<number, Anno[]>();
+    for (const a of state.doc?.annotations ?? []) {
+      const arr = m.get(a.page);
+      if (arr) arr.push(a);
+      else m.set(a.page, [a]);
+    }
+    return m;
+  }, [state.doc?.annotations]);
+  const EMPTY_ANNOS = useMemo<Anno[]>(() => [], []);
+
   if (!state.doc) return null;
 
 
@@ -4564,7 +4580,7 @@ function EditorPages({
     const w = Math.ceil(meta.width * scale);
     const h = Math.ceil(meta.height * scale);
     const inView = visible.has(i);
-    const annosForPage = state.doc!.annotations.filter((a) => a.page === i);
+    const annosForPage = annosByPage.get(i) ?? EMPTY_ANNOS;
     const isOcrPage = !!ocrPages?.has(i);
     const isCopiedPage = !isOcrPage && !!ocrPagesCopied?.has(i);
     const showTag = showOcrTags && (isOcrPage || isCopiedPage);
