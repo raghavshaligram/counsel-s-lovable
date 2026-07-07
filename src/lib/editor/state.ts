@@ -139,6 +139,10 @@ export function reducer(s: State, a: Action): State {
       if (!s.doc) return s;
       return commit(s, { ...s.doc, annotations: [...s.doc.annotations, a.a] });
     }
+    case "ADD_ANNOS": {
+      if (!s.doc || a.list.length === 0) return s;
+      return commit(s, { ...s.doc, annotations: [...s.doc.annotations, ...a.list] });
+    }
 
     case "UPDATE_ANNO": {
       if (!s.doc) return s;
