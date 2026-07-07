@@ -32,10 +32,11 @@ import {
   targetToolForFlow,
   type AgentFlow,
 } from "@/lib/agent/flows";
-import { classifyAssistQuery } from "@/lib/assist/router";
-import type { AssistToolEntry } from "@/lib/assist/knowledge-base";
+import { classifyAssistQuery, type AssistCtx } from "@/lib/assist/router";
+import type { AssistToolEntry, AssistTopicEntry } from "@/lib/assist/knowledge-base";
 import { useIsPro } from "@/lib/pro-gate";
 import { useUpgradeModal } from "@/components/upgrade-modal";
+import { useNavigate } from "@tanstack/react-router";
 
 
 type Action = {
@@ -184,8 +185,10 @@ export function AgentPanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortedRef = useRef(false);
   const querySeqRef = useRef(0);
+  const assistCtxRef = useRef<AssistCtx>({});
   const isPro = useIsPro();
   const openUpgradeModal = useUpgradeModal((s) => s.openModal);
+  const navigate = useNavigate();
 
 
   const pushStep = useCallback((s: Step) => {
@@ -200,8 +203,34 @@ export function AgentPanel({
 
   /* ---------------- flow runners ---------------- */
 
+  const metaLineFor = useCallback((entry: AssistToolEntry): string | undefined => {
+    if (!entry.pricing && !entry.privacy && entry.runsOffline === undefined) return undefined;
+    const bits: string[] = [];
+    if (entry.availability === "free") bits.push("Free");
+    else if (entry.availability === "pro") bits.push("Pro");
+    else bits.push("Free + Pro");
+    if (entry.requiresNetwork === "never") bits.push("Runs offline");
+    else if (entry.requiresNetwork === "first-load") bits.push("Model downloads once, then offline");
+    bits.push("Nothing leaves your device");
+    return bits.join(" • ");
+  }, []);
+
+  const resetAssistCtxAction = useCallback((): Action => ({
+    label: "Ask something else",
+    tone: "ghost",
+    onClick: () => {
+      assistCtxRef.current = {};
+      setSteps([]);
+    },
+  }), []);
+
   const showEntryHelp = useCallback(
-    (entry: AssistToolEntry, mode: "help" | "open" | "use", seedSteps: Step[]) => {
+    (
+      entry: AssistToolEntry,
+      mode: "help" | "open" | "use",
+      seedSteps: Step[],
+      opts?: { corrected?: { from: string; to: string }; followUp?: boolean; originalQuery?: string },
+    ) => {
       const gate = proGateForEntry(entry);
       const isProEntryForFreeUser = !!gate && !isPro;
       const actions: Action[] = [];
@@ -216,7 +245,21 @@ export function AgentPanel({
           },
         });
       }
+      if (opts?.followUp) actions.push(resetAssistCtxAction());
       actions.push({ label: "Close", tone: "ghost", onClick: () => onClose() });
+
+      const caveatParts: string[] = [];
+      if (opts?.followUp) caveatParts.push(`Following up on ${entry.displayName}.`);
+      if (opts?.corrected) caveatParts.push(`Interpreted "${opts.corrected.from}" as "${opts.corrected.to}".`);
+      const availabilityCaveat =
+        entry.availability === "mixed"
+          ? entry.upgradeCopy
+          : entry.availability === "pro"
+            ? "This tool is a Pro feature. You can ask about what it does on any plan."
+            : undefined;
+      if (availabilityCaveat) caveatParts.push(availabilityCaveat);
+      const meta = metaLineFor(entry);
+      if (meta) caveatParts.push(meta);
 
       const nextSteps: Step[] = [
         ...seedSteps,
@@ -225,12 +268,7 @@ export function AgentPanel({
           id: nextId(),
           title: entry.displayName,
           body: answerForEntry(entry),
-          caveat:
-            entry.availability === "mixed"
-              ? entry.upgradeCopy
-              : entry.availability === "pro"
-                ? "This tool is a Pro feature. You can ask about what it does on any plan."
-                : undefined,
+          caveat: caveatParts.length ? caveatParts.join(" • ") : undefined,
           actions,
         },
       ];
@@ -249,8 +287,60 @@ export function AgentPanel({
       cachedFindingsRef.current = [];
       lastFlowRef.current = null;
       setCurrentFlow(null);
+      assistCtxRef.current = {
+        lastEntryId: entry.id,
+        lastQuery: opts?.originalQuery ?? entry.displayName,
+      };
     },
-    [isPro, onClose, openTool, openUpgradeModal],
+    [isPro, metaLineFor, onClose, openTool, openUpgradeModal, resetAssistCtxAction],
+  );
+
+  const showTopicAnswer = useCallback(
+    (
+      topic: AssistTopicEntry,
+      seedSteps: Step[],
+      opts?: { followUp?: boolean; originalQuery?: string },
+    ) => {
+      const actions: Action[] = [];
+      for (const a of topic.actions ?? []) {
+        if (a.kind === "open-upgrade") {
+          actions.push({ label: a.label, tone: "primary", onClick: () => openUpgradeModal({}) });
+        } else if (a.href) {
+          actions.push({
+            label: a.label,
+            tone: "primary",
+            onClick: () => {
+              navigate({ to: a.href! });
+              onClose();
+            },
+          });
+        }
+      }
+      if (opts?.followUp) actions.push(resetAssistCtxAction());
+      actions.push({ label: "Close", tone: "ghost", onClick: () => onClose() });
+
+      const caveat = opts?.followUp ? `Following up on ${topic.displayName}.` : undefined;
+
+      setSteps([
+        ...seedSteps,
+        {
+          kind: "result",
+          id: nextId(),
+          title: topic.displayName,
+          body: topic.answer,
+          caveat,
+          actions,
+        },
+      ]);
+      cachedFindingsRef.current = [];
+      lastFlowRef.current = null;
+      setCurrentFlow(null);
+      assistCtxRef.current = {
+        lastTopicId: topic.id,
+        lastQuery: opts?.originalQuery ?? topic.displayName,
+      };
+    },
+    [navigate, onClose, openUpgradeModal, resetAssistCtxAction],
   );
 
   const runAssistQuery = useCallback(
@@ -277,7 +367,7 @@ export function AgentPanel({
       abortedRef.current = false;
 
       try {
-        const classified = await classifyAssistQuery(text);
+        const classified = await classifyAssistQuery(text, assistCtxRef.current);
         if (seq !== querySeqRef.current || abortedRef.current) return;
 
         if (classified.kind === "clarify") {
@@ -292,7 +382,7 @@ export function AgentPanel({
                 ...classified.options.map<Action>((entry) => ({
                   label: entry.displayName,
                   tone: "primary",
-                  onClick: () => showEntryHelp(entry, "help", [echo]),
+                  onClick: () => showEntryHelp(entry, "help", [echo], { originalQuery: text }),
                 })),
                 { label: "Cancel", tone: "ghost", onClick: () => onClose() },
               ],
@@ -301,7 +391,36 @@ export function AgentPanel({
           return;
         }
 
-        const { entry, mode } = classified;
+        if (classified.kind === "clarify-typo") {
+          setSteps([
+            echo,
+            {
+              kind: "propose",
+              id: runId,
+              title: "Did you mean…?",
+              body: `I don't recognize "${classified.original}". Pick the closest match:`,
+              actions: [
+                ...classified.suggestions.map<Action>((entry) => ({
+                  label: entry.displayName,
+                  tone: "primary",
+                  onClick: () => showEntryHelp(entry, "help", [echo], { originalQuery: text }),
+                })),
+                { label: "Cancel", tone: "ghost", onClick: () => onClose() },
+              ],
+            },
+          ]);
+          return;
+        }
+
+        if (classified.kind === "topic") {
+          showTopicAnswer(classified.topic, [echo], {
+            followUp: classified.followUp,
+            originalQuery: text,
+          });
+          return;
+        }
+
+        const { entry, mode, corrected, followUp } = classified;
         const gate = proGateForEntry(entry);
         const blocked = !!gate && !isPro;
 
@@ -311,7 +430,7 @@ export function AgentPanel({
           return;
         }
 
-        showEntryHelp(entry, mode, [echo]);
+        showEntryHelp(entry, mode, [echo], { corrected, followUp, originalQuery: text });
       } catch (err) {
         if (seq !== querySeqRef.current || abortedRef.current) return;
         setSteps([
@@ -325,8 +444,10 @@ export function AgentPanel({
         ]);
       }
     },
-    [isPro, onClose, openTool, showEntryHelp],
+    [isPro, onClose, openTool, showEntryHelp, showTopicAnswer],
   );
+
+
 
   const runDetectRedact = useCallback(
     async (f: AgentFlow & { kind: "detect-redact" }) => {
@@ -749,6 +870,7 @@ export function AgentPanel({
     // Clean up any in-flight scan when the panel closes.
     abortedRef.current = true;
     querySeqRef.current += 1;
+    assistCtxRef.current = {};
   }, [open]);
 
   // Auto-scroll transcript.
