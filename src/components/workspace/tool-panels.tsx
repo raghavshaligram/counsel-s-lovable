@@ -1444,11 +1444,47 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     [editorDispatch],
   );
 
+// Map raw sanitizer phase names to user-friendly labels for the wipe toast.
+// The sanitizer emits stage names like "javascript" / "acroForm" which read
+// like error jargon in a progress toast; translate them here so the user sees
+// what's actually being cleaned.
+function sanitizeStageLabel(stage: string): string {
+  switch (stage) {
+    case "acroForm":
+    case "form-fields":
+    case "formFields":
+      return "form fields";
+    case "annotations":
+      return "comments & markup";
+    case "javascript":
+    case "js":
+      return "embedded scripts";
+    case "openAction":
+    case "additionalActions":
+    case "aa":
+      return "auto-run triggers";
+    case "names":
+    case "names-tree":
+      return "hidden name entries";
+    case "embeddedFiles":
+    case "embedded-files":
+      return "embedded files";
+    case "metadata":
+    case "xmp":
+    case "documentInfo":
+      return "metadata";
+    default:
+      return "hidden data";
+  }
+}
+
+
   const redactSelected = useCallback(async () => {
     if (!findings || selected.size === 0) return;
     let added = 0;
     let skipped = 0;
     const sideChannelDets: Det[] = [];
+    const toAdd: Anno[] = [];
     for (const d of findings) {
       if (!selected.has(d.id)) continue;
       // Side-channel findings (form fields, annotations, metadata) have no
@@ -1469,36 +1505,48 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         skipped++;
         continue;
       }
-      editorDispatch({
-        type: "ADD_ANNO",
-        a: {
-          id: `redact-det-${d.id}`,
-          kind: "redact",
-          page: d.page - 1,
-          x: rect.x,
-          y: rect.y,
-          w: rect.w,
-          h: rect.h,
-          color: { r: 0, g: 0, b: 0 },
-          opacity: 1,
-          category: d.category,
-          sources: d.source?.originalString
-            ? [
-                {
-                  originalString: d.source.originalString,
-                  redactText: d.source.redactText,
-                  matchStart: d.source.matchStart,
-                  matchLength: d.source.matchLength,
-                  transform: d.source.transform,
-                  fontName: d.source.fontName,
-                  bounds: d.source.bounds,
-                },
-              ]
-            : undefined,
-        },
+      toAdd.push({
+        id: `redact-det-${d.id}`,
+        kind: "redact",
+        page: d.page - 1,
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+        color: { r: 0, g: 0, b: 0 },
+        opacity: 1,
+        category: d.category,
+        sources: d.source?.originalString
+          ? [
+              {
+                originalString: d.source.originalString,
+                redactText: d.source.redactText,
+                matchStart: d.source.matchStart,
+                matchLength: d.source.matchLength,
+                transform: d.source.transform,
+                fontName: d.source.fontName,
+                bounds: d.source.bounds,
+              },
+            ]
+          : undefined,
       });
       added++;
     }
+    // Batch-dispatch all page-rect redactions in a single reducer pass so
+    // 13k+ selections don't trigger 13k re-renders + O(N^2) array spreads.
+    // The verified-export gate on commit is unchanged — these annotations
+    // flow through the same rasterize → sanitize → verify pipeline as any
+    // manually drawn redaction.
+    if (toAdd.length > 0) {
+      if (toAdd.length > 2000) {
+        toast.message(`Queuing ${toAdd.length.toLocaleString()} redactions…`);
+      }
+      startTransition(() => {
+        editorDispatch({ type: "ADD_ANNOS", list: toAdd });
+      });
+    }
+
+
 
     // -- Apply-NOW for side-channel vectors --------------------------
     // Run sanitize on the current bytes immediately so form-field /
@@ -1538,7 +1586,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           signal: abort.signal,
           onProgress: ({ stage, done }) => {
             if (done > 0 && done % 4000 === 0) {
-              toast.loading(`Wiping hidden data… (${stage} · ${done.toLocaleString()} objects)`, {
+              toast.loading(`Wiping ${sanitizeStageLabel(stage)}… (${done.toLocaleString()} objects)`, {
                 id: tid,
                 action: { label: "Cancel", onClick: () => abort.abort() },
               });
