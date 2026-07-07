@@ -851,3 +851,193 @@ function Select({
     </label>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Support requests (help + feature)
+// ─────────────────────────────────────────────────────────────────────────
+
+function SupportTab() {
+  const list = useServerFn(hqListSupportRequests);
+  const updateStatus = useServerFn(hqUpdateSupportRequestStatus);
+  const [rows, setRows] = useState<SupportRow[] | null>(null);
+  const [filterType, setFilterType] = useState<"all" | "help" | "feature">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "new" | "in-progress" | "done">("all");
+  const [selected, setSelected] = useState<SupportRow | null>(null);
+
+  const reload = useCallback(() => {
+    void list()
+      .then((r) => setRows(r as SupportRow[]))
+      .catch((err) => toast.error((err as Error).message));
+  }, [list]);
+  useEffect(reload, [reload]);
+
+  const filtered = useMemo(() => {
+    if (!rows) return [];
+    return rows.filter(
+      (r) =>
+        (filterType === "all" || r.type === filterType) &&
+        (filterStatus === "all" || r.status === filterStatus),
+    );
+  }, [rows, filterType, filterStatus]);
+
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1.5 text-[12px] text-text-2">
+          <span>Type</span>
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+            className="rounded border border-border bg-background px-2 py-1 text-[12px]"
+          >
+            <option value="all">All</option>
+            <option value="help">Help</option>
+            <option value="feature">Feature</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-1.5 text-[12px] text-text-2">
+          <span>Status</span>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+            className="rounded border border-border bg-background px-2 py-1 text-[12px]"
+          >
+            <option value="all">All</option>
+            <option value="new">New</option>
+            <option value="in-progress">In progress</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <button
+          onClick={reload}
+          className="ml-auto rounded border border-border bg-surface-1 px-2 py-1 text-[12px] hover:bg-surface-2"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-md border border-border">
+        <table className="w-full text-[12.5px]">
+          <thead className="bg-surface-1 text-left text-text-2">
+            <tr>
+              <th className="px-3 py-2 font-medium">Type</th>
+              <th className="px-3 py-2 font-medium">From</th>
+              <th className="px-3 py-2 font-medium">Message</th>
+              <th className="px-3 py-2 font-medium">Plan</th>
+              <th className="px-3 py-2 font-medium">Created</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((r) => (
+              <tr
+                key={r.id}
+                onClick={() => setSelected(r)}
+                className="cursor-pointer border-t border-border hover:bg-surface-1"
+              >
+                <td className="px-3 py-2">
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10.5px] uppercase tracking-wider ${
+                      r.type === "help"
+                        ? "bg-amber-500/15 text-amber-400"
+                        : "bg-vault/15 text-vault"
+                    }`}
+                  >
+                    {r.type}
+                  </span>
+                </td>
+                <td className="px-3 py-2">
+                  <div className="font-medium">{r.name || "(anon)"}</div>
+                  <div className="text-[11px] text-text-2">{r.email || "—"}</div>
+                </td>
+                <td className="px-3 py-2 max-w-md">
+                  {r.title && <div className="font-medium">{r.title}</div>}
+                  <div className="line-clamp-2 text-[11.5px] text-text-2">{r.message}</div>
+                </td>
+                <td className="px-3 py-2 text-[11.5px] text-text-2">{r.plan ?? "—"}</td>
+                <td className="px-3 py-2 text-[11.5px] text-text-2">
+                  {new Date(r.created_at).toLocaleString()}
+                </td>
+                <td className="px-3 py-2">
+                  <select
+                    value={r.status}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={async (e) => {
+                      const next = e.target.value as "new" | "in-progress" | "done";
+                      try {
+                        await updateStatus({ data: { id: r.id, status: next } });
+                        reload();
+                      } catch (err) {
+                        toast.error((err as Error).message);
+                      }
+                    }}
+                    className="rounded border border-border bg-background px-1.5 py-0.5 text-[11.5px]"
+                  >
+                    <option value="new">new</option>
+                    <option value="in-progress">in-progress</option>
+                    <option value="done">done</option>
+                  </select>
+                </td>
+              </tr>
+            ))}
+            {rows && filtered.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-text-2">
+                  No support requests match these filters
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {selected && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xl rounded-lg border border-border bg-surface-1 p-4"
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-[13px] font-medium capitalize">
+                  {selected.type} request
+                </div>
+                <div className="text-[11px] text-text-2">
+                  {new Date(selected.created_at).toLocaleString()}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelected(null)}
+                className="rounded border border-border px-2 py-1 text-[11.5px] hover:bg-surface-2"
+              >
+                Close
+              </button>
+            </div>
+            {selected.title && (
+              <div className="mb-2 text-[13px] font-medium">{selected.title}</div>
+            )}
+            <div className="mb-3 whitespace-pre-wrap rounded border border-border bg-background p-2 text-[12.5px]">
+              {selected.message}
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px] text-text-2">
+              <dt>From</dt>
+              <dd className="text-foreground">{selected.name || "(anon)"} · {selected.email || "—"}</dd>
+              <dt>Plan</dt>
+              <dd className="text-foreground">{selected.plan ?? "—"}</dd>
+              <dt>Page</dt>
+              <dd className="text-foreground break-all">{selected.page ?? "—"}</dd>
+              <dt>User agent</dt>
+              <dd className="text-foreground break-all">{selected.user_agent ?? "—"}</dd>
+              <dt>User id</dt>
+              <dd className="text-foreground break-all">{selected.user_id ?? "(anon)"}</dd>
+            </dl>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
