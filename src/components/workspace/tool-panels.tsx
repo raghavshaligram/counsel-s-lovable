@@ -1773,7 +1773,6 @@ function sanitizeStageLabel(stage: string): string {
         // via `editorState.doc.srcBytes` (see `exportEditedPdf`).
         editorDispatch({ type: "SET_SRC_BYTES", bytes: cleaned });
         replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
-        }
         // Drop wiped findings from the visible list so the user SEES them
         // gone (and a re-scan would confirm clean).
         const wipedIds = new Set(sideChannelDets.map((d) => d.id));
