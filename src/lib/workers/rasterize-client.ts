@@ -81,7 +81,7 @@ export function rasterizeRedactedPagesInWorker(
     opts.signal?.addEventListener("abort", onAbort);
     w.addEventListener("message", handler);
 
-    const buf = toTransferable(sourceBytes);
+    const buf = toTransferable(sourceBytes, { steal: opts.stealBytes });
     w.postMessage(
       {
         kind: "rasterize",
