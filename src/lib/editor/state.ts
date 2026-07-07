@@ -51,6 +51,7 @@ export type Action =
   | { type: "ADD_ANNOS"; list: Anno[] }
   | { type: "UPDATE_ANNO"; id: string; patch: Partial<Anno> }
   | { type: "DELETE_ANNO"; id: string }
+  | { type: "DELETE_ANNOS"; ids: string[] }
   | { type: "REORDER_PAGE"; from: number; to: number }
   | { type: "DELETE_PAGE"; n: number }
   | { type: "INSERT_BLANK"; after: number; width: number; height: number }
@@ -178,6 +179,11 @@ export function reducer(s: State, a: Action): State {
     case "DELETE_ANNO": {
       if (!s.doc) return s;
       return commit(s, { ...s.doc, annotations: s.doc.annotations.filter((x) => x.id !== a.id) });
+    }
+    case "DELETE_ANNOS": {
+      if (!s.doc || a.ids.length === 0) return s;
+      const kill = new Set(a.ids);
+      return commit(s, { ...s.doc, annotations: s.doc.annotations.filter((x) => !kill.has(x.id)) });
     }
     case "REORDER_PAGE": {
       if (!s.doc) return s;

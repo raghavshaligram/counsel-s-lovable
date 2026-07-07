@@ -926,15 +926,30 @@ function MailMergePanel({ ctx }: { ctx: ToolPanelCtx }) {
 type StagedRedactBridge = {
   selected: number;
   total: number;
+  /** Count of ticked side-channel items (form fields / comments / metadata). */
+  sideStaged: number;
   commit: (() => void) | null;
+  /**
+   * Side-channel-only commit — wipes ticked form fields / annotations /
+   * metadata via the sanitize worker and hot-swaps `srcBytes` in place.
+   * Used by RedactPanel when the user has staged side-channel items but no
+   * page-text redactions (page burn would be a no-op in that case).
+   */
+  sideCommit: (() => Promise<void>) | null;
 };
 const stagedRedactBridge: { current: StagedRedactBridge } = {
-  current: { selected: 0, total: 0, commit: null },
+  current: { selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null },
 };
 const stagedRedactListeners = new Set<() => void>();
 function publishStagedRedact(next: StagedRedactBridge) {
   const cur = stagedRedactBridge.current;
-  if (cur.selected === next.selected && cur.total === next.total && cur.commit === next.commit) return;
+  if (
+    cur.selected === next.selected &&
+    cur.total === next.total &&
+    cur.sideStaged === next.sideStaged &&
+    cur.commit === next.commit &&
+    cur.sideCommit === next.sideCommit
+  ) return;
   stagedRedactBridge.current = next;
   for (const l of stagedRedactListeners) l();
 }
@@ -1847,15 +1862,21 @@ function sanitizeStageLabel(stage: string): string {
   // unified ledger can show a "Staged from AI scan" row + one-click commit.
   // On unmount we reset to zero so the row disappears when the panel closes.
   useEffect(() => {
+    const sideStaged = sideChannelFindings.reduce(
+      (n, d) => n + (selected.has(d.id) ? 1 : 0),
+      0,
+    );
     publishStagedRedact({
       selected: selected.size,
       total: redactableFindings.length,
+      sideStaged,
       commit: redactableFindings.length > 0 ? redactSelected : null,
+      sideCommit: sideStaged > 0 ? redactSelected : null,
     });
-  }, [selected, redactableFindings, redactSelected]);
+  }, [selected, redactableFindings, sideChannelFindings, redactSelected]);
   useEffect(() => {
     return () => {
-      publishStagedRedact({ selected: 0, total: 0, commit: null });
+      publishStagedRedact({ selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null });
     };
   }, []);
 
@@ -1864,6 +1885,10 @@ function sanitizeStageLabel(stage: string): string {
   // item in the list stages it in the ledger immediately; unchecking removes
   // it. No separate commit step — the final destructive burn only happens
   // when the user clicks "Redact & verify".
+  //
+  // BATCHED: uses ADD_ANNOS / DELETE_ANNOS in a single dispatch each so a
+  // 13k-item "select all" doesn't dispatch 13k times. Per-item dispatch was
+  // the source of the "Page Unresponsive" freeze on large scans.
   useEffect(() => {
     if (!findings || findings.length === 0) return;
     const annos = editorState?.doc?.annotations ?? [];
@@ -1873,14 +1898,14 @@ function sanitizeStageLabel(stage: string): string {
       if (!a.id.startsWith("redact-det-")) continue;
       stagedDetIds.add(a.id.slice("redact-det-".length));
     }
-    // Uncheck → remove annotation.
+    // Batch removals (unchecked items).
+    const toRemove: string[] = [];
     for (const detId of stagedDetIds) {
-      if (!selected.has(detId)) {
-        editorDispatch({ type: "DELETE_ANNO", id: `redact-det-${detId}` });
-      }
+      if (!selected.has(detId)) toRemove.push(`redact-det-${detId}`);
     }
-    // Check → add annotation (page findings only; side-channel uses its own flow).
+    // Batch adds (newly checked page-vector items).
     const byId = new Map(findings.map((d) => [d.id, d]));
+    const toAdd: Anno[] = [];
     for (const detId of selected) {
       if (stagedDetIds.has(detId)) continue;
       const d = byId.get(detId);
@@ -1888,33 +1913,32 @@ function sanitizeStageLabel(stage: string): string {
       if (d.vector && d.vector !== "page") continue;
       const rect =
         d.pdfRect ?? { x: d.x / 1.5, y: d.y / 1.5, w: d.w / 1.5, h: d.h / 1.5 };
-      editorDispatch({
-        type: "ADD_ANNO",
-        a: {
-          id: `redact-det-${d.id}`,
-          kind: "redact",
-          page: d.page - 1,
-          x: rect.x,
-          y: rect.y,
-          w: rect.w,
-          h: rect.h,
-          color: { r: 0, g: 0, b: 0 },
-          opacity: 1,
-          category: d.category,
-          sources: d.source?.originalString
-            ? [{
-                originalString: d.source.originalString,
-                redactText: d.source.redactText,
-                matchStart: d.source.matchStart,
-                matchLength: d.source.matchLength,
-                transform: d.source.transform,
-                fontName: d.source.fontName,
-                bounds: d.source.bounds,
-              }]
-            : undefined,
-        },
-      });
+      toAdd.push({
+        id: `redact-det-${d.id}`,
+        kind: "redact",
+        page: d.page - 1,
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+        color: { r: 0, g: 0, b: 0 },
+        opacity: 1,
+        category: d.category,
+        sources: d.source?.originalString
+          ? [{
+              originalString: d.source.originalString,
+              redactText: d.source.redactText,
+              matchStart: d.source.matchStart,
+              matchLength: d.source.matchLength,
+              transform: d.source.transform,
+              fontName: d.source.fontName,
+              bounds: d.source.bounds,
+            }]
+          : undefined,
+      } as Anno);
     }
+    if (toRemove.length > 0) editorDispatch({ type: "DELETE_ANNOS", ids: toRemove });
+    if (toAdd.length > 0) editorDispatch({ type: "ADD_ANNOS", list: toAdd });
   }, [selected, findings, editorState?.doc?.annotations, editorDispatch]);
 
   // Bridge events from the "Staged for redaction" panel so unstaging a single
@@ -2012,6 +2036,60 @@ function sanitizeStageLabel(stage: string): string {
   const allSelected =
     redactableFindings.length > 0 && selected.size === redactableFindings.length;
 
+  // Per-category id sets (split high-confidence vs low-confidence). Used for
+  // the master-checkbox toggles and the "Review to include" subsections. One
+  // pass over findings; category-level toggles are O(1) after this.
+  type Cat2 = Cat | "form-field" | "annotation" | "metadata";
+  const categoryIds = useMemo(() => {
+    const hi = new Map<Cat2, string[]>();
+    const lo = new Map<Cat2, string[]>();
+    if (!findings) return { hi, lo };
+    for (const d of findings) {
+      if (d.category === "privilegeContext") continue;
+      const key: Cat2 =
+        d.vector && d.vector !== "page" ? (d.vector as Cat2) : (d.category as Cat2);
+      const bucket = d.confidence === "low" ? lo : hi;
+      const arr = bucket.get(key) ?? [];
+      arr.push(d.id);
+      bucket.set(key, arr);
+    }
+    return { hi, lo };
+  }, [findings]);
+
+  // Scan summary — one at-a-glance line "what's in this document".
+  const scanSummary = useMemo(() => {
+    if (!findings) return null;
+    const count = (cat: Cat2) => (categoryIds.hi.get(cat)?.length ?? 0) + (categoryIds.lo.get(cat)?.length ?? 0);
+    // Distinct-value count for names & orgs uses the collapsed `grouped` shape.
+    const distinctFor = (cat: Cat) => {
+      const row = grouped?.find(([c]) => c === cat);
+      return row ? row[1].length : 0;
+    };
+    const nameOrgTotal = count("name") + count("org");
+    const nameOrgDistinct = distinctFor("name") + distinctFor("org");
+    const parts: string[] = [];
+    const push = (n: number, singular: string, plural?: string) => {
+      if (n > 0) parts.push(`${n.toLocaleString()} ${n === 1 ? singular : plural ?? singular + "s"}`);
+    };
+    push(count("ssn"), "SSN");
+    push(count("creditCard"), "credit card");
+    push(count("email"), "email");
+    push(count("phone"), "phone number");
+    push(count("iban"), "IBAN");
+    push(count("date"), "date");
+    if (nameOrgTotal > 0) {
+      parts.push(
+        `${nameOrgTotal.toLocaleString()} name${nameOrgTotal === 1 ? "" : "s"} & organization${nameOrgTotal === 1 ? "" : "s"}${nameOrgDistinct > 0 ? ` (${nameOrgDistinct.toLocaleString()} distinct)` : ""}`,
+      );
+    }
+    push(count("form-field"), "form field");
+    push(count("annotation"), "comment/annotation");
+    if (count("metadata") > 0) parts.push("metadata");
+    return { parts, total: findings.length };
+  }, [findings, categoryIds, grouped]);
+
+
+
 
   return (
     <div className="flex flex-col gap-2">
@@ -2107,6 +2185,33 @@ function sanitizeStageLabel(stage: string): string {
         </div>
       )}
 
+      {/* Scan-summary card — at-a-glance "what's in this document". */}
+      {scanSummary && !scanning && (
+        <div className="mt-1 rounded-md border border-vault/30 bg-vault/[0.06] px-2.5 py-2 text-[11.5px] leading-relaxed text-text-1">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-vault mb-1">
+            Scan summary
+          </div>
+          {scanSummary.parts.length === 0 ? (
+            <div className="text-text-2">
+              Reviewed {totalPagesScanned.toLocaleString()} page{totalPagesScanned === 1 ? "" : "s"}. No built-in patterns matched — still review names and prose secrets manually.
+            </div>
+          ) : (
+            <div>
+              Reviewed <strong className="text-foreground">{totalPagesScanned.toLocaleString()} page{totalPagesScanned === 1 ? "" : "s"}</strong>. Found:{" "}
+              {scanSummary.parts.map((p, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="text-text-muted"> · </span>}
+                  <span className="text-foreground">{p}</span>
+                </span>
+              ))}
+              .
+            </div>
+          )}
+        </div>
+      )}
+
+
+
       {findings && findings.length > 0 && (
         <div className="mt-1 rounded-md border border-border bg-surface-2/60">
           <div className="flex items-center justify-between gap-2 border-b border-border px-2.5 py-1.5">
@@ -2132,43 +2237,64 @@ function sanitizeStageLabel(stage: string): string {
               />
               {selected.size} / {redactableFindings.length} selected
             </label>
-            {(() => {
-              const sideSelected = sideChannelFindings.filter((d) => selected.has(d.id)).length;
-              if (sideSelected === 0) {
-                return (
-                  <span className="text-[10px] text-text-muted">
-                    Checked items stage live
-                  </span>
-                );
-              }
-              return (
-                <button
-                  type="button"
-                  onClick={redactSelected}
-                  className="inline-flex items-center gap-1 rounded-md bg-vault px-2 py-1 text-[11px] font-medium text-vault-foreground hover:opacity-90"
-                  title="Wipe selected form fields, comments, and metadata from the working document now"
-                >
-                  <Shield className="h-3 w-3" strokeWidth={2.5} />
-                  Wipe {sideSelected} hidden item{sideSelected === 1 ? "" : "s"}
-                </button>
-              );
-            })()}
+            <span className="text-[10px] text-text-muted">
+              {selected.size > 0
+                ? `${selected.size.toLocaleString()} staged — commit below`
+                : "Tick a category or item to stage"}
+            </span>
           </div>
           <ul className="max-h-[280px] overflow-y-auto py-1">
-            {grouped?.map(([cat, groups]) => {
-              const catTotal = groups.reduce((s, g) => s + g.dets.length, 0);
+            {grouped?.map(([cat, allGroups]) => {
+              // Split groups into high-conf and low-conf. A group is
+              // "low-conf" when *every* detection inside it is low-conf
+              // (otherwise it stays with the main list and its low-conf
+              // occurrences are simply un-auto-selected). This keeps the
+              // group-collapsing behaviour intact while still surfacing
+              // "review to include" clearly.
+              const hiGroups: typeof allGroups = [];
+              const loGroups: typeof allGroups = [];
+              for (const g of allGroups) {
+                const allLow = g.dets.every((d) => d.confidence === "low");
+                (allLow ? loGroups : hiGroups).push(g);
+              }
+              const catHiIds = categoryIds.hi.get(cat as Cat2) ?? [];
+              const catLoIds = categoryIds.lo.get(cat as Cat2) ?? [];
+              const catTotal = catHiIds.length + catLoIds.length;
+              const catHiSelected = catHiIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0);
+              const catAllHiChecked = catHiIds.length > 0 && catHiSelected === catHiIds.length;
+              const catSomeHiChecked = catHiSelected > 0 && !catAllHiChecked;
+              const distinct = hiGroups.length;
+              const toggleCategory = (checked: boolean) => {
+                startTransition(() => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (checked) for (const id of catHiIds) next.add(id);
+                    else for (const id of catHiIds) next.delete(id);
+                    return next;
+                  });
+                });
+              };
               return (
                 <li key={cat}>
-                  <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                    {meta?.[cat]?.label ?? cat} · {catTotal.toLocaleString()}
-                    {groups.length !== catTotal && (
-                      <span className="ml-1 text-text-2 normal-case tracking-normal">
-                        ({groups.length.toLocaleString()} distinct)
-                      </span>
-                    )}
-                  </div>
+                  <label className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted cursor-pointer hover:bg-surface-2">
+                    <input
+                      type="checkbox"
+                      checked={catAllHiChecked}
+                      ref={(el) => { if (el) el.indeterminate = catSomeHiChecked; }}
+                      onChange={(e) => toggleCategory(e.target.checked)}
+                      className="h-3 w-3 shrink-0 accent-vault"
+                    />
+                    <span>
+                      {meta?.[cat]?.label ?? cat} · {catTotal.toLocaleString()}
+                      {distinct > 0 && distinct !== catHiIds.length && (
+                        <span className="ml-1 text-text-2 normal-case tracking-normal">
+                          ({distinct.toLocaleString()} distinct)
+                        </span>
+                      )}
+                    </span>
+                  </label>
                   <ul>
-                    {groups.map((g) => {
+                    {hiGroups.map((g) => {
                       const groupKey = `${cat}::${g.key}`;
                       const selCount = selectionByGroup.get(`${cat}::${g.key}`) ?? 0;
                       const allChecked = selCount === g.dets.length;
@@ -2331,10 +2457,106 @@ function sanitizeStageLabel(stage: string): string {
                       );
                     })}
                   </ul>
+                  {loGroups.length > 0 && (() => {
+                    const loKey = `${cat}::__low__`;
+                    const isOpen = expandedGroups.has(loKey);
+                    const loSelected = catLoIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0);
+                    const loAllChecked = loSelected === catLoIds.length;
+                    const loSomeChecked = loSelected > 0 && !loAllChecked;
+                    const toggleLow = (checked: boolean) => {
+                      startTransition(() => {
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (checked) for (const id of catLoIds) next.add(id);
+                          else for (const id of catLoIds) next.delete(id);
+                          return next;
+                        });
+                      });
+                    };
+                    return (
+                      <div className="mx-2 mb-1 rounded-md border border-amber-500/25 bg-amber-500/[0.06]">
+                        <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-300/90 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={loAllChecked}
+                            ref={(el) => { if (el) el.indeterminate = loSomeChecked; }}
+                            onChange={(e) => toggleLow(e.target.checked)}
+                            className="h-3 w-3 shrink-0 accent-amber-400"
+                          />
+                          <span className="flex-1">Review to include · {catLoIds.length.toLocaleString()}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setExpandedGroups((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(loKey)) next.delete(loKey); else next.add(loKey);
+                                return next;
+                              });
+                            }}
+                            className="normal-case tracking-normal text-text-2 hover:text-foreground rounded px-1"
+                          >
+                            {isOpen ? "hide" : "review"}
+                          </button>
+                        </label>
+                        {!isOpen && (
+                          <p className="px-2 pb-1 text-[10px] leading-snug text-text-muted">
+                            Low-confidence matches. Unchecked by default — expand to review.
+                          </p>
+                        )}
+                        {isOpen && (
+                          <ul className="pb-1">
+                            {loGroups.map((g) => {
+                              const groupKey = `${cat}::lo::${g.key}`;
+                              const selCount = g.dets.reduce((n, d) => n + (selected.has(d.id) ? 1 : 0), 0);
+                              const allChecked = selCount === g.dets.length;
+                              const someChecked = selCount > 0 && !allChecked;
+                              const first = g.dets[0];
+                              const isSingle = g.dets.length === 1;
+                              return (
+                                <li key={groupKey}>
+                                  <div className="group flex items-start gap-1.5 px-2 py-0.5 hover:bg-surface-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={allChecked}
+                                      ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                                      onChange={(e) => {
+                                        setSelected((prev) => {
+                                          const next = new Set(prev);
+                                          if (e.target.checked) for (const d of g.dets) next.add(d.id);
+                                          else for (const d of g.dets) next.delete(d.id);
+                                          return next;
+                                        });
+                                      }}
+                                      className="mt-[3px] h-3 w-3 shrink-0 accent-amber-400"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => jumpToFinding(first)}
+                                      className="min-w-0 flex-1 text-left"
+                                      title={isSingle ? "Jump to this finding" : "Jump to first occurrence"}
+                                    >
+                                      <div className="font-mono text-[11px] text-foreground truncate">
+                                        {maskPreview(first)}
+                                      </div>
+                                      <div className="text-[10px] text-text-2">
+                                        {isSingle ? `Page ${first.page}` : `${g.dets.length.toLocaleString()} occurrences`}
+                                      </div>
+                                    </button>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </li>
               );
             })}
           </ul>
+
           {sideChannelGrouped && sideChannelGrouped.length > 0 && (
             <div className="border-t border-border/60">
               <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-vault">
@@ -2999,36 +3221,59 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
       <Section title="Commit" icon={<ShieldCheck className="h-3 w-3" />}>
-        <label className={cn(
-          "mb-2 flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
-          reviewedSignOff ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
-          totalBoxes === 0 && "cursor-not-allowed opacity-60",
-        )}>
-          <input
-            type="checkbox"
-            checked={reviewedSignOff}
-            disabled={totalBoxes === 0}
-            onChange={(e) => setReviewedSignOff(e.target.checked)}
-            className="mt-0.5 h-3 w-3 accent-vault"
-          />
-          <span className="text-foreground">
-            I have reviewed every page of this document and confirm the redaction set is complete.
-            I understand auto-detection only flags structured patterns and that I am responsible
-            for catching names and context-dependent secrets.
-          </span>
-        </label>
-        <button
-          type="button"
-          onClick={exportRedacted}
-          disabled={busy || totalBoxes === 0 || !reviewedSignOff}
-          className={cn(
-            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-            (busy || totalBoxes === 0 || !reviewedSignOff) && "cursor-not-allowed opacity-60",
-          )}
-        >
-          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {busy ? "Working…" : `Redact & verify${totalBoxes > 0 ? ` (${totalBoxes.toLocaleString()} item${totalBoxes === 1 ? "" : "s"})` : ""}`}
-        </button>
+        {(() => {
+          // Total items awaiting commit = manual/AI page annotations + ticked
+          // side-channel items (form fields, comments, metadata). Either can
+          // drive a commit on its own.
+          const totalStaged = totalBoxes + (staged.sideStaged || 0);
+          const canCommit = totalStaged > 0;
+          const onCommit = async () => {
+            // Prefer the page-burn path when any page box is staged — the
+            // gate inside `exportRedacted` scrubs side-channels too, so ticked
+            // form-field/annotation/metadata items are covered by the same
+            // pass. Side-channel-only stages fall back to the sanitize+swap
+            // path published by AutoDetectSection.
+            if (totalBoxes > 0) {
+              await exportRedacted();
+            } else if (staged.sideCommit) {
+              await staged.sideCommit();
+            }
+          };
+          return (
+            <>
+              <label className={cn(
+                "mb-2 flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[11.5px] transition-colors",
+                reviewedSignOff ? "border-vault/50 bg-accent-soft" : "border-border bg-surface-2 hover:border-vault/30",
+                !canCommit && "cursor-not-allowed opacity-60",
+              )}>
+                <input
+                  type="checkbox"
+                  checked={reviewedSignOff}
+                  disabled={!canCommit}
+                  onChange={(e) => setReviewedSignOff(e.target.checked)}
+                  className="mt-0.5 h-3 w-3 accent-vault"
+                />
+                <span className="text-foreground">
+                  I have reviewed every page of this document and confirm the redaction set is complete.
+                  I understand auto-detection only flags structured patterns and that I am responsible
+                  for catching names and context-dependent secrets.
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={onCommit}
+                disabled={busy || !canCommit || !reviewedSignOff}
+                className={cn(
+                  "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+                  (busy || !canCommit || !reviewedSignOff) && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+                {busy ? "Working…" : `Redact & verify${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
+              </button>
+            </>
+          );
+        })()}
         <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-text-muted">
           <span
             aria-hidden
