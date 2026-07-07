@@ -14,11 +14,13 @@ import { cn } from "@/lib/utils";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import type { ToolPanelCtx } from "./tool-panels";
 import {
+  abortIndex,
   addDiscoveryDebug,
   capabilityCheck,
   getDiscoveryDebugLines,
   hasIndex,
   indexDocument,
+  isIndexing,
   loadModel,
   queryIndex,
   subscribeDiscoveryDebug,
