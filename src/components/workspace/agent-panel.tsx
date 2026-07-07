@@ -39,6 +39,7 @@ import type { AssistToolEntry, AssistTopicEntry } from "@/lib/assist/knowledge-b
 import { useIsPro } from "@/lib/pro-gate";
 import { useUpgradeModal } from "@/components/upgrade-modal";
 import { useNavigate } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 
 type Action = {
