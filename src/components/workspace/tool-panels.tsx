@@ -2045,7 +2045,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                             const allKey = `${groupKey}::all`;
                             const showAll = expandedGroups.has(allKey);
                             const SAMPLE = 10;
-                            const visible = showAll ? g.dets : g.dets.slice(0, SAMPLE);
+                            // Even "show all" caps at MAX_EXPANDED. Mounting
+                            // 5000+ <li>s freezes the panel; users almost never
+                            // scroll past the first few hundred and can always
+                            // jump to a specific page from the sample.
+                            const MAX_EXPANDED = 200;
+                            const visible = showAll
+                              ? g.dets.slice(0, MAX_EXPANDED)
+                              : g.dets.slice(0, SAMPLE);
                             const hidden = g.dets.length - visible.length;
                             const last = g.dets[g.dets.length - 1];
                             return (
