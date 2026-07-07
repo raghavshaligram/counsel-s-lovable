@@ -1310,8 +1310,6 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<string>("all");
-  const [committingCat, setCommittingCat] = useState<string | null>(null);
-
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const [capability, setCapability] = useState<DeviceCapability | null>(null);
   const [activeScanMode, setActiveScanMode] = useState<"quick" | "full" | null>(null);
@@ -1619,16 +1617,14 @@ function sanitizeStageLabel(stage: string): string {
 }
 
 
-  const redactSelected = useCallback(async (overrideIds?: ReadonlySet<string>) => {
-    const activeIds = overrideIds ?? selected;
-    if (!findings || activeIds.size === 0) return;
+  const redactSelected = useCallback(async () => {
+    if (!findings || selected.size === 0) return;
     let added = 0;
     let skipped = 0;
     const sideChannelDets: Det[] = [];
     const toAdd: Anno[] = [];
     for (const d of findings) {
-      if (!activeIds.has(d.id)) continue;
-
+      if (!selected.has(d.id)) continue;
       // Side-channel findings (form fields, annotations, metadata) have no
       // page rect. They used to be queued for the export pipeline, which
       // failed silently (form-field/annotation content was leaking around
@@ -1815,17 +1811,8 @@ function sanitizeStageLabel(stage: string): string {
       // the source of truth. Does NOT affect what's queued for burn or
       // the verification gate — those read from annotations, not findings.
       setFindings(null);
-      if (overrideIds) {
-        setSelected((prev) => {
-          const next = new Set(prev);
-          for (const id of overrideIds) next.delete(id);
-          return next;
-        });
-      } else {
-        setSelected(new Set());
-      }
+      setSelected(new Set());
       setExpandedGroups(new Set());
-
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
@@ -2277,9 +2264,8 @@ function sanitizeStageLabel(stage: string): string {
             </label>
             <span className="text-[10px] text-text-muted">
               {selected.size > 0
-                ? `${selected.size.toLocaleString()} staged — use per-category Redact or commit below`
-                : "Tick categories (multi-select OK), then hit Redact next to each"}
-
+                ? `${selected.size.toLocaleString()} staged — commit below`
+                : "Tick a category or item to stage"}
             </span>
           </div>
           {tabList.length > 1 && (
@@ -2343,69 +2329,25 @@ function sanitizeStageLabel(stage: string): string {
                   });
                 });
               };
-              const catKey = String(cat);
-              const stagedInCat = catHiSelected + catLoIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0);
-              const catBusy = committingCat === catKey;
-              const canRedactCat = !catBusy && (stagedInCat > 0 || catHiIds.length > 0);
-              const onRedactCat = async () => {
-                const ids = new Set<string>();
-                if (stagedInCat > 0) {
-                  for (const id of catHiIds) if (selected.has(id)) ids.add(id);
-                  for (const id of catLoIds) if (selected.has(id)) ids.add(id);
-                } else {
-                  for (const id of catHiIds) ids.add(id);
-                }
-                if (ids.size === 0) return;
-                const label = meta?.[cat]?.label ?? String(cat);
-                const ok = window.confirm(
-                  `Redact ${ids.size.toLocaleString()} ${label} item${ids.size === 1 ? "" : "s"}?\n\nThis burns the boxes into the working document. You can commit more categories after, then Export to download.`,
-                );
-                if (!ok) return;
-                setCommittingCat(catKey);
-                try {
-                  await redactSelected(ids);
-                } finally {
-                  setCommittingCat(null);
-                }
-              };
               return (
                 <li key={cat}>
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted hover:bg-surface-2">
-                    <label className="flex flex-1 items-center gap-1.5 cursor-pointer min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={catAllHiChecked}
-                        ref={(el) => { if (el) el.indeterminate = catSomeHiChecked; }}
-                        onChange={(e) => toggleCategory(e.target.checked)}
-                        className="h-3 w-3 shrink-0 accent-vault"
-                      />
-                      <span className="truncate">
-                        {meta?.[cat]?.label ?? cat} · {catTotal.toLocaleString()}
-                        {distinct > 0 && distinct !== catHiIds.length && (
-                          <span className="ml-1 text-text-2 normal-case tracking-normal">
-                            ({distinct.toLocaleString()} distinct)
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={onRedactCat}
-                      disabled={!canRedactCat}
-                      className={cn(
-                        "shrink-0 rounded border border-vault/50 bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-vault hover:bg-accent-soft",
-                        !canRedactCat && "cursor-not-allowed opacity-50",
+                  <label className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted cursor-pointer hover:bg-surface-2">
+                    <input
+                      type="checkbox"
+                      checked={catAllHiChecked}
+                      ref={(el) => { if (el) el.indeterminate = catSomeHiChecked; }}
+                      onChange={(e) => toggleCategory(e.target.checked)}
+                      className="h-3 w-3 shrink-0 accent-vault"
+                    />
+                    <span>
+                      {meta?.[cat]?.label ?? cat} · {catTotal.toLocaleString()}
+                      {distinct > 0 && distinct !== catHiIds.length && (
+                        <span className="ml-1 text-text-2 normal-case tracking-normal">
+                          ({distinct.toLocaleString()} distinct)
+                        </span>
                       )}
-                      title={
-                        stagedInCat > 0
-                          ? `Burn ${stagedInCat.toLocaleString()} staged item(s) in this category`
-                          : `Burn all ${catHiIds.length.toLocaleString()} high-confidence item(s) in this category`
-                      }
-                    >
-                      {catBusy ? "…" : `Redact ${(stagedInCat || catHiIds.length).toLocaleString()}`}
-                    </button>
-                  </div>
-
+                    </span>
+                  </label>
                   <ul>
                     {hiGroups.map((g) => {
                       const groupKey = `${cat}::${g.key}`;
