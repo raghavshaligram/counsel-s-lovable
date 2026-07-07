@@ -1536,7 +1536,7 @@ function StepCard({ step, onDismiss, onJumpToPage }: { step: Step; onDismiss: ()
       );
 
     case "find-results":
-      return <FindResultsCard step={step} />;
+      return <FindResultsCard step={step} onJumpToPage={onJumpToPage} />;
 
     case "error":
       return (
