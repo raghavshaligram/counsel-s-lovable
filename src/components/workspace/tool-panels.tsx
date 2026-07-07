@@ -780,6 +780,53 @@ function CsvFillSection({
 /* ------------------------------ Redact ------------------------------ */
 
 /**
+ * Redact staging bridge — Stage 2 unification.
+ *
+ * The AI-detect flow keeps its own selected-findings state internally
+ * (findings staged in memory until the user hits "Redact selected"), while
+ * manual boxes / pattern matches commit to `editorState.doc.annotations`
+ * immediately. That's an asymmetry the user sees in the ledger: committed
+ * boxes appear, staged AI selections don't.
+ *
+ * Rather than restructure both flows, `AutoDetectSensitive` publishes its
+ * current "selected of total" and a `commit()` callback into this
+ * module-level singleton. `RedactPanel` reads it via `useSyncExternalStore`
+ * and renders a single "Staged" row alongside the committed ledger, with
+ * a "Commit staged" button that calls the SAME `redactSelected` logic —
+ * no divergent code path, no change to the burn pipeline.
+ *
+ * If AI detect is unmounted (non-Pro, or panel not open), the bridge
+ * resets to zeros and the row hides itself.
+ */
+type StagedRedactBridge = {
+  selected: number;
+  total: number;
+  commit: (() => void) | null;
+};
+const stagedRedactBridge: { current: StagedRedactBridge } = {
+  current: { selected: 0, total: 0, commit: null },
+};
+const stagedRedactListeners = new Set<() => void>();
+function publishStagedRedact(next: StagedRedactBridge) {
+  const cur = stagedRedactBridge.current;
+  if (cur.selected === next.selected && cur.total === next.total && cur.commit === next.commit) return;
+  stagedRedactBridge.current = next;
+  for (const l of stagedRedactListeners) l();
+}
+function subscribeStagedRedact(cb: () => void) {
+  stagedRedactListeners.add(cb);
+  return () => { stagedRedactListeners.delete(cb); };
+}
+function useStagedRedact(): StagedRedactBridge {
+  return useSyncExternalStore(
+    subscribeStagedRedact,
+    () => stagedRedactBridge.current,
+    () => stagedRedactBridge.current,
+  );
+}
+
+
+/**
  * Pro capabilities that live INSIDE the (free) Redact tool. Manual redact
  * stays free for everyone; AI sensitive-data detection and pattern/bulk
  * redaction require a Pro subscription. For non-Pro users the buttons show
