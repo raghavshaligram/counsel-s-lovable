@@ -32,12 +32,64 @@ let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 let cleanupAuth: (() => void) | null = null;
 let interval: ReturnType<typeof setInterval> | null = null;
 
+function normalizeLicense(
+  session: NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>,
+  row: { plan: string; status: string; current_period_end: string | null } | null,
+): LicenseSnapshot {
+  const plan = (row?.plan ?? "free") as LicenseSnapshot["plan"];
+  const status = (row?.status ?? "active") as LicenseSnapshot["status"];
+  const currentPeriodEnd = row?.current_period_end ?? null;
+  const periodOk = !currentPeriodEnd || new Date(currentPeriodEnd).getTime() > Date.now();
+
+  return {
+    userId: session.user.id,
+    email: session.user.email ?? null,
+    plan,
+    status,
+    currentPeriodEnd,
+    entitled: (plan === "solo" || plan === "firm") && status === "active" && periodOk,
+    validatedAt: new Date().toISOString(),
+  };
+}
+
+async function readLiveLicenseFromDatabase(
+  session: NonNullable<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>,
+) {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("plan, status, current_period_end")
+    .eq("user_id", session.user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  // eslint-disable-next-line no-console
+  console.info(
+    `[license] browser live read user=${session.user.id} subscriptions.plan=${data?.plan ?? "<missing>"} subscriptions.status=${data?.status ?? "<missing>"}`,
+  );
+
+  return normalizeLicense(session, data);
+}
+
 async function activate(reason: string) {
   try {
     const { data } = await supabase.auth.getSession();
-    if (!data.session) return;
+    const session = data.session;
+    if (!session) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-    const snap = await getLicense();
+    let snap: LicenseSnapshot;
+    try {
+      // Primary source for UI gating: the live subscriptions row read by the
+      // signed-in browser session. This keeps Account menu + Pro gates aligned
+      // with Billing and avoids stale server-function/browser-cache paths.
+      snap = await readLiveLicenseFromDatabase(session);
+    } catch (liveReadError) {
+      // Server function fallback preserves entitlement checks if the direct
+      // RLS-scoped read is temporarily unavailable.
+      // eslint-disable-next-line no-console
+      console.warn("[license] browser live read failed; falling back to server validation", liveReadError);
+      snap = await getLicense();
+    }
     await saveLicense(snap);
     await persistStorage();
     setCurrent(snap);
