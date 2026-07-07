@@ -878,7 +878,46 @@ export function AgentPanel({
     return null;
   }, [currentFlow]);
 
+  // Apply requested initial tab whenever the nonce changes (Ctrl+F).
+  useEffect(() => {
+    if (!open) return;
+    setTab(initialTab);
+    const t = setTimeout(() => {
+      if (initialTab === "ask") askInputRef.current?.focus();
+      else followUpRef.current?.focus();
+    }, 20);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTabNonce, open]);
+
+  const runSemanticSearch = useCallback(
+    (term: string) => {
+      const t = term.trim();
+      if (!t) return;
+      safeRunFlow({ kind: "search", term: t });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const runAskDocument = useCallback(
+    (q: string) => {
+      const t = q.trim();
+      if (!t) return;
+      safeRunFlow({ kind: "answer", query: t });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   if (!open) return null;
+
+  const followUpPlaceholder =
+    tab === "learn"
+      ? "Ask how a tool works…"
+      : tab === "do"
+        ? "Tell the assistant what to do…"
+        : "Adjust or ask a follow-up…";
 
   return (
     <aside
@@ -915,10 +954,46 @@ export function AgentPanel({
         </button>
       </header>
 
+      <div role="tablist" aria-label="Assistant tabs" className="flex border-b border-border bg-surface-1">
+        {(["ask", "do", "learn"] as const).map((k) => {
+          const on = tab === k;
+          const label = k === "ask" ? "Ask" : k === "do" ? "Do" : "Learn";
+          return (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={on}
+              type="button"
+              onClick={() => setTab(k)}
+              className={`flex-1 px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
+                on
+                  ? "border-b-2 border-vault text-foreground"
+                  : "border-b-2 border-transparent text-text-muted hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       {scopeNote && (
         <div className="border-b border-border px-3 py-1.5 text-[10.5px] text-vault">
           {scopeNote} · {totalPages} total
         </div>
+      )}
+
+      {tab === "ask" && (
+        <AskSearchSection
+          pdfDoc={pdfDoc}
+          docId={docId}
+          totalPages={totalPages}
+          isPro={isPro}
+          inputRef={askInputRef}
+          onSemanticSearch={runSemanticSearch}
+          onAskDocument={runAskDocument}
+          onProGate={(featureName) => openUpgradeModal({ featureName })}
+        />
       )}
 
       <div
@@ -930,8 +1005,12 @@ export function AgentPanel({
         ))}
         {steps.length === 0 && (
           <div className="rounded-lg border border-border/60 bg-surface-1 p-3 text-[11.5px] text-text-muted">
-            Ready. Ask about any tool, or tell the assistant what to open.
-            Tool questions work on every plan; Pro actions show upgrade options.
+            {tab === "ask" &&
+              "Basic search above is free. AI search & Q&A are Pro. Tool actions and knowledge live in the Do and Learn tabs."}
+            {tab === "do" &&
+              "Tell the assistant what to do — e.g. \"redact all emails\", \"add Bates numbers\", \"make searchable\"."}
+            {tab === "learn" &&
+              "Ask how any tool works — e.g. \"how does redaction verify?\", \"what does sanitize remove?\"."}
           </div>
         )}
       </div>
@@ -944,9 +1023,10 @@ export function AgentPanel({
         }}
       >
         <input
+          ref={followUpRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Adjust or ask a follow-up…"
+          placeholder={followUpPlaceholder}
           className="min-w-0 flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none"
         />
         <button
