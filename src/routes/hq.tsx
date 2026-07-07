@@ -1027,6 +1027,8 @@ function SupportTab() {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px] text-text-2">
               <dt>From</dt>
               <dd className="text-foreground">{selected.name || "(anon)"} · {selected.email || "—"}</dd>
+              <dt>Category</dt>
+              <dd className="text-foreground">{selected.category ?? "—"}</dd>
               <dt>Plan</dt>
               <dd className="text-foreground">{selected.plan ?? "—"}</dd>
               <dt>Page</dt>
