@@ -2690,7 +2690,8 @@ function sanitizeStageLabel(stage: string): string {
                       })}
                     </ul>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           )}
