@@ -1371,7 +1371,7 @@ export function AgentPanel({
         className="flex-1 space-y-2 overflow-y-auto px-3 py-3"
       >
         {steps.map((s) => (
-          <StepCard key={s.id} step={s} onDismiss={() => removeStep(s.id)} />
+          <StepCard key={s.id} step={s} onDismiss={() => removeStep(s.id)} onJumpToPage={onJumpToPage} />
         ))}
         {steps.length === 0 && (
           <div className="rounded-lg border border-border/60 bg-surface-1 p-3 text-[11.5px] text-text-muted">
