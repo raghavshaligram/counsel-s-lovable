@@ -2155,7 +2155,7 @@ function ProGatedButton({
 
 
 function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
-  const { file, editorState } = ctx;
+  const { file, editorState, editorDispatch } = ctx;
   type Verify = import("@/lib/editor/verify-redaction").VerifyResult;
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
