@@ -1415,7 +1415,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       editorDispatch({
         type: "ADD_ANNO",
         a: {
-          id: `det-${d.id}-${Date.now().toString(36)}`,
+          id: `redact-det-${d.id}`,
           kind: "redact",
           page: d.page - 1,
           x: rect.x,
@@ -1581,6 +1581,26 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       publishStagedRedact({ selected: 0, total: 0, commit: null });
     };
   }, []);
+
+  // STAGE 5 — reversible staging.
+  // Every AI-detect annotation is stamped `redact-det-<detId>`. When the
+  // user unchecks an item (or a whole group) in the list, the corresponding
+  // annotation is removed from the ledger LIVE so the staged count updates
+  // immediately and the canvas mark disappears. Nothing here is destructive:
+  // it just removes the pre-commit draft. The final burn only happens when
+  // the user clicks "Redact & verify".
+  useEffect(() => {
+    const annos = editorState?.doc?.annotations ?? [];
+    for (const a of annos) {
+      if (a.kind !== "redact") continue;
+      if (!a.id.startsWith("redact-det-")) continue;
+      const detId = a.id.slice("redact-det-".length);
+      if (!selected.has(detId)) {
+        editorDispatch({ type: "DELETE_ANNO", id: a.id });
+      }
+    }
+  }, [selected, editorState?.doc?.annotations, editorDispatch]);
+
 
   const grouped = useMemo(() => {
     if (!pageRedactableFindings.length) return null;
@@ -2135,7 +2155,7 @@ function ProGatedButton({
 
 
 function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
-  const { file, editorState } = ctx;
+  const { file, editorState, editorDispatch } = ctx;
   type Verify = import("@/lib/editor/verify-redaction").VerifyResult;
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
@@ -2502,9 +2522,44 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               <div className="text-text-2">
                 Staged from AI scan
                 <span className="ml-1.5 text-[10.5px] text-text-muted">
-                  ({staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected — commits with the single Redact & verify button below)
+                  ({staged.selected.toLocaleString()} of {staged.total.toLocaleString()} selected — uncheck any item above to unstage it)
                 </span>
               </div>
+            </div>
+          )}
+          <p className="mt-2 text-[10.5px] leading-snug text-text-muted">
+            Staged marks are drafts. Click any box on the page and use the toolbar
+            Delete to remove it, or clear everything below. Nothing is permanent
+            until <strong className="text-foreground">Redact &amp; verify</strong>.
+          </p>
+          {totalBoxes > 0 && (
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: "Clear all staged redactions?",
+                    description: (
+                      <>
+                        This removes all <span className="font-medium text-foreground">{totalBoxes.toLocaleString()}</span> staged
+                        redaction{totalBoxes === 1 ? "" : "s"} from this document. Nothing is burned — you can re-stage
+                        any of them again. This does not affect any file you&apos;ve already exported.
+                      </>
+                    ),
+                    confirmText: "Clear staged",
+                    cancelText: "Cancel",
+                    tone: "danger",
+                  });
+                  if (!ok) return;
+                  for (const a of redactAnnos) {
+                    editorDispatch({ type: "DELETE_ANNO", id: a.id });
+                  }
+                }}
+                className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[11px] text-text-2 hover:border-vault/40 hover:bg-surface-3 hover:text-foreground"
+                title="Remove every staged redaction (does not burn the file)"
+              >
+                Clear all staged
+              </button>
             </div>
           )}
         </div>
