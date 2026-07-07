@@ -180,6 +180,11 @@ export function reducer(s: State, a: Action): State {
       if (!s.doc) return s;
       return commit(s, { ...s.doc, annotations: s.doc.annotations.filter((x) => x.id !== a.id) });
     }
+    case "DELETE_ANNOS": {
+      if (!s.doc || a.ids.length === 0) return s;
+      const kill = new Set(a.ids);
+      return commit(s, { ...s.doc, annotations: s.doc.annotations.filter((x) => !kill.has(x.id)) });
+    }
     case "REORDER_PAGE": {
       if (!s.doc) return s;
       const pages = [...s.doc.pages];
