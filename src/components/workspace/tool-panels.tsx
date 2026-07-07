@@ -1415,7 +1415,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       editorDispatch({
         type: "ADD_ANNO",
         a: {
-          id: `det-${d.id}-${Date.now().toString(36)}`,
+          id: `redact-det-${d.id}`,
           kind: "redact",
           page: d.page - 1,
           x: rect.x,
