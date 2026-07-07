@@ -41,6 +41,11 @@ const TEXT_ANNOT_SUBTYPES = new Set([
   "/RichMedia", "/Movie",
 ]);
 
+export interface SanitizeOptions {
+  onProgress?: (stage: string, done: number, total: number) => void;
+  shouldAbort?: () => boolean;
+}
+
 export async function sanitizePdfBytes(bytes: Uint8Array): Promise<Uint8Array> {
   const { bytes: out } = await sanitizePdfBytesWithReport(bytes);
   return out;
@@ -48,14 +53,29 @@ export async function sanitizePdfBytes(bytes: Uint8Array): Promise<Uint8Array> {
 
 export async function sanitizePdfBytesWithReport(
   bytes: Uint8Array,
+  opts: SanitizeOptions = {},
 ): Promise<{ bytes: Uint8Array; report: SanitizeReport; pageCount: number }> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+
+  const throwIfAborted = () => {
+    if (opts.shouldAbort?.()) throw new DOMException("Canceled", "AbortError");
+  };
+  const yieldEvery = 2000;
+  const maybeYield = async (i: number, stage: string, total: number) => {
+    if (i > 0 && i % yieldEvery === 0) {
+      opts.onProgress?.(stage, i, total);
+      throwIfAborted();
+      // Cooperative yield — works in worker (setTimeout) and main thread.
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
+  };
 
   const report: SanitizeReport = {
     documentInfo: 0, xmpMetadata: 0, embeddedFiles: 0, javascript: 0,
     acroForm: 0, acroFormFields: 0, annotations: 0,
     hiddenLayers: 0, hiddenLayerContent: 0, additionalActions: 0,
   };
+
 
   // 1) Document info ----------------------------------------------------
   const had = (v: string | undefined | string[]) =>
@@ -102,12 +122,16 @@ export async function sanitizePdfBytesWithReport(
   // Belt and braces: even if /AcroForm was already missing, individual
   // field dicts can linger as orphans. Walk every indirect object and
   // clear any /FT /Tx-style field value we find.
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const isFieldOrWidget = obj.has(PDFName.of("FT")) || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget";
-    if (!isFieldOrWidget) continue;
-    const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan");
-    report.acroFormFields += cleared;
+  {
+    let i = 0;
+    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "orphan-fields", 0);
+      if (!(obj instanceof PDFDict)) continue;
+      const isFieldOrWidget = obj.has(PDFName.of("FT")) || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget";
+      if (!isFieldOrWidget) continue;
+      const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan");
+      report.acroFormFields += cleared;
+    }
   }
   // Also drop /Widget annotations on every page — the parent form fields
   // were just deleted, so the widgets are now orphans whose only purpose
@@ -198,23 +222,26 @@ export async function sanitizePdfBytesWithReport(
     }
     catalog.delete(PDFName.of("OCProperties"));
   }
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    // Annotation with /OC dict → was layer-gated → drop the whole thing.
-    if (obj instanceof PDFDict && obj.has(PDFName.of("OC")) && obj.has(PDFName.of("Subtype"))) {
-      removeRef(ctx, ref);
-      report.hiddenLayerContent++;
-      continue;
-    }
-    // XObject with /OC → wipe its contents so any layer-hidden glyphs go.
-    if (obj instanceof PDFStream) {
-      const d = obj.dict;
-      if (d instanceof PDFDict && d.has(PDFName.of("OC"))) {
-        // Replace with an empty stream of the same kind.
-        try {
-          const empty = ctx.stream(new Uint8Array(0));
-          ctx.assign(ref, empty);
-          report.hiddenLayerContent++;
-        } catch { /* ignore */ }
+  {
+    let i = 0;
+    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "hidden-layers", 0);
+      // Annotation with /OC dict → was layer-gated → drop the whole thing.
+      if (obj instanceof PDFDict && obj.has(PDFName.of("OC")) && obj.has(PDFName.of("Subtype"))) {
+        removeRef(ctx, ref);
+        report.hiddenLayerContent++;
+        continue;
+      }
+      // XObject with /OC → wipe its contents so any layer-hidden glyphs go.
+      if (obj instanceof PDFStream) {
+        const d = obj.dict;
+        if (d instanceof PDFDict && d.has(PDFName.of("OC"))) {
+          try {
+            const empty = ctx.stream(new Uint8Array(0));
+            ctx.assign(ref, empty);
+            report.hiddenLayerContent++;
+          } catch { /* ignore */ }
+        }
       }
     }
   }
@@ -232,12 +259,16 @@ export async function sanitizePdfBytesWithReport(
       names.delete(PDFName.of("JavaScript"));
     }
   }
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const type = nameStr(obj.get(PDFName.of("Type")));
-    if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
-      removeRef(ctx, ref);
-      report.embeddedFiles++;
+  {
+    let i = 0;
+    for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "attachments", 0);
+      if (!(obj instanceof PDFDict)) continue;
+      const type = nameStr(obj.get(PDFName.of("Type")));
+      if (type === "/Filespec" || obj.has(PDFName.of("EF"))) {
+        removeRef(ctx, ref);
+        report.embeddedFiles++;
+      }
     }
   }
 
@@ -256,14 +287,18 @@ export async function sanitizePdfBytesWithReport(
       page.node.delete(PDFName.of("AA"));
     }
   }
-  for (const [, obj] of ctx.enumerateIndirectObjects()) {
-    if (!(obj instanceof PDFDict)) continue;
-    const s = nameStr(obj.get(PDFName.of("S")));
-    if (s === "/JavaScript") {
-      report.javascript++;
-      obj.set(PDFName.of("S"), PDFName.of("GoTo"));
-      for (const k of ["JS", "F"]) {
-        if (obj.has(PDFName.of(k))) obj.delete(PDFName.of(k));
+  {
+    let i = 0;
+    for (const [, obj] of ctx.enumerateIndirectObjects()) {
+      await maybeYield(i++, "javascript", 0);
+      if (!(obj instanceof PDFDict)) continue;
+      const s = nameStr(obj.get(PDFName.of("S")));
+      if (s === "/JavaScript") {
+        report.javascript++;
+        obj.set(PDFName.of("S"), PDFName.of("GoTo"));
+        for (const k of ["JS", "F"]) {
+          if (obj.has(PDFName.of(k))) obj.delete(PDFName.of(k));
+        }
       }
     }
   }

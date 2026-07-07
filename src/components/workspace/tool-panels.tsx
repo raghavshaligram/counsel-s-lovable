@@ -3,7 +3,7 @@
  * single Inspector container at any time. No outer card/wrapper here: the
  * Inspector already provides the header, border, and scroll area.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Sparkles,
   Search,
@@ -1507,7 +1507,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     let sideChannelApplied = 0;
     if (sideChannelDets.length > 0 && editorState?.doc?.srcBytes) {
       const tid = "wsx-redact-apply-side";
-      toast.loading("Wiping form fields, comments, metadata…", { id: tid });
+      const abort = new AbortController();
+      toast.loading("Wiping form fields, comments, metadata…", {
+        id: tid,
+        action: {
+          label: "Cancel",
+          onClick: () => abort.abort(),
+        },
+      });
       try {
         const formFieldFindings = sideChannelDets.filter((d) => d.vector === "form-field");
         // eslint-disable-next-line no-console
@@ -1521,13 +1528,23 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           })),
           order: "sanitize/clear fields before any flatten, PDF/A conversion, or download",
         });
-        const { sanitizePdfBytesWithReport } = await importChunk(
-          () => import("@/lib/pdf/sanitize"),
+        const { sanitizeInWorker } = await importChunk(
+          () => import("@/lib/workers/sanitize-client"),
         );
         const sourceBytes = editorState.doc.srcBytes.byteLength > 0
           ? editorState.doc.srcBytes
           : new Uint8Array(await file!.arrayBuffer());
-        const { bytes: cleaned, report } = await sanitizePdfBytesWithReport(sourceBytes);
+        const { bytes: cleaned, report } = await sanitizeInWorker(sourceBytes, {
+          signal: abort.signal,
+          onProgress: ({ stage, done }) => {
+            if (done > 0 && done % 4000 === 0) {
+              toast.loading(`Wiping hidden data… (${stage} · ${done.toLocaleString()} objects)`, {
+                id: tid,
+                action: { label: "Cancel", onClick: () => abort.abort() },
+              });
+            }
+          },
+        });
         // eslint-disable-next-line no-console
         console.info("[redact:form-field] apply-now sanitize report", {
           acroForm: report.acroForm,
@@ -1535,23 +1552,28 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           flattened: false,
           order: "field values/AP cleared now; flatten/PDF-A can only run later",
         });
-        const { verifyRedactionRemoval } = await importChunk(
-          () => import("@/lib/editor/verify-redaction"),
-        );
-        const sideTargets = sideChannelDets.flatMap((d) => {
-          const full = (d.sensitiveText || "").trim();
-          const snip = (d.snippet || "").replace(/…$/, "").trim();
-          return Array.from(new Set([full, snip].filter(Boolean))).map((text) => ({
-            page: 0,
-            text,
-            label: d.sourceLabel,
-          }));
-        });
-        const verify = await verifyRedactionRemoval(cleaned, sideTargets);
-        if (!verify.ok) {
-          throw new Error(
-            `Immediate hidden-vector redaction failed — ${verify.leaks.length} value${verify.leaks.length === 1 ? "" : "s"} still recoverable.`,
+        // Targeted verification only — the wipe has no page-rect targets,
+        // so a full-doc raw-stream scan would just re-parse every page for
+        // nothing. Sanitize already removed the containing indirect objects;
+        // verifySideChannelVectors reads the remaining side-channel dicts
+        // and confirms no sensitive string survived.
+        const sensitiveStrings = Array.from(new Set(
+          sideChannelDets.flatMap((d) => {
+            const full = (d.sensitiveText || "").trim();
+            const snip = (d.snippet || "").replace(/…$/, "").trim();
+            return [full, snip].filter((s) => s.length >= 3);
+          }),
+        ));
+        if (sensitiveStrings.length > 0) {
+          const { verifySideChannelVectors } = await importChunk(
+            () => import("@/lib/editor/verify-redaction"),
           );
+          const sideLeaks = await verifySideChannelVectors(cleaned, sensitiveStrings);
+          if (sideLeaks.length > 0) {
+            throw new Error(
+              `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
+            );
+          }
         }
         // Replace srcBytes in-place; preserve annotations + page ops + ocr.
         editorDispatch({
@@ -1581,12 +1603,18 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           },
         );
       } catch (e) {
-        toast.error("Failed to wipe hidden findings", {
-          id: tid,
-          description: e instanceof Error ? e.message : String(e),
-        });
+        const aborted = e instanceof DOMException && e.name === "AbortError";
+        if (aborted) {
+          toast.info("Wipe cancelled", { id: tid, description: "Document is unchanged." });
+        } else {
+          toast.error("Failed to wipe hidden findings", {
+            id: tid,
+            description: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
     }
+
 
     if (added > 0) {
       toast.success(`${added} redaction box${added === 1 ? "" : "es"} added`, {
@@ -1771,10 +1799,27 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     );
   }, [sideChannelFindings]);
 
-
+  // Precompute selection counts per group ONCE per (grouped, selected) change.
+  // Without this every checkbox toggle would re-run g.dets.reduce for every
+  // group in the tree — O(N*K) per render — which is the source of the lag
+  // when a 5000-page doc produces thousands of groups.
+  const selectionByGroup = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!grouped) return map;
+    for (const [cat, groups] of grouped) {
+      for (const g of groups) {
+        const key = `${cat}::${g.key}`;
+        let n = 0;
+        for (const d of g.dets) if (selected.has(d.id)) n++;
+        map.set(key, n);
+      }
+    }
+    return map;
+  }, [grouped, selected]);
 
   const allSelected =
     redactableFindings.length > 0 && selected.size === redactableFindings.length;
+
 
   return (
     <div className="flex flex-col gap-2">
@@ -1878,11 +1923,18 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                 type="checkbox"
                 checked={allSelected}
                 onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelected(new Set(redactableFindings.map((d) => d.id)));
-                  } else {
-                    setSelected(new Set());
-                  }
+                  // Wrap in startTransition so the checkbox flips instantly
+                  // and the (potentially huge) tree re-renders in the
+                  // background — otherwise select-all on 100k findings
+                  // freezes the panel until React finishes.
+                  const checked = e.target.checked;
+                  startTransition(() => {
+                    if (checked) {
+                      setSelected(new Set(redactableFindings.map((d) => d.id)));
+                    } else {
+                      setSelected(new Set());
+                    }
+                  });
                 }}
                 className="h-3 w-3 accent-vault"
               />
@@ -1926,7 +1978,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                   <ul>
                     {groups.map((g) => {
                       const groupKey = `${cat}::${g.key}`;
-                      const selCount = g.dets.reduce((s, d) => s + (selected.has(d.id) ? 1 : 0), 0);
+                      const selCount = selectionByGroup.get(`${cat}::${g.key}`) ?? 0;
                       const allChecked = selCount === g.dets.length;
                       const someChecked = selCount > 0 && !allChecked;
                       const isExpanded = expandedGroups.has(groupKey);
@@ -1993,7 +2045,14 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
                             const allKey = `${groupKey}::all`;
                             const showAll = expandedGroups.has(allKey);
                             const SAMPLE = 10;
-                            const visible = showAll ? g.dets : g.dets.slice(0, SAMPLE);
+                            // Even "show all" caps at MAX_EXPANDED. Mounting
+                            // 5000+ <li>s freezes the panel; users almost never
+                            // scroll past the first few hundred and can always
+                            // jump to a specific page from the sample.
+                            const MAX_EXPANDED = 200;
+                            const visible = showAll
+                              ? g.dets.slice(0, MAX_EXPANDED)
+                              : g.dets.slice(0, SAMPLE);
                             const hidden = g.dets.length - visible.length;
                             const last = g.dets[g.dets.length - 1];
                             return (
