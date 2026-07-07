@@ -429,9 +429,18 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
             <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-2 px-2 py-1.5">
               <div className="flex items-center justify-between text-[11px] text-text-muted">
                 <span>Indexing passages…</span>
-                <span>
-                  {indexProgress.done} / {indexProgress.total}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span>
+                    {indexProgress.done} / {indexProgress.total}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={cancelIndexing}
+                    className="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-[10.5px] text-text-2 hover:bg-surface hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface">
                 <div
