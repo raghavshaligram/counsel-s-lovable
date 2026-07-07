@@ -69,7 +69,7 @@ export function verifyRedactionRemovalInWorker(
     opts.signal?.addEventListener("abort", onAbort);
     w.addEventListener("message", handler);
 
-    const buf = toTransferable(bytes);
+    const buf = toTransferable(bytes, { steal: opts.stealBytes });
     w.postMessage(
       {
         kind: "verify",
