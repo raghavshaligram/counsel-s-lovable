@@ -1444,6 +1444,41 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     [editorDispatch],
   );
 
+// Map raw sanitizer phase names to user-friendly labels for the wipe toast.
+// The sanitizer emits stage names like "javascript" / "acroForm" which read
+// like error jargon in a progress toast; translate them here so the user sees
+// what's actually being cleaned.
+function sanitizeStageLabel(stage: string): string {
+  switch (stage) {
+    case "acroForm":
+    case "form-fields":
+    case "formFields":
+      return "form fields";
+    case "annotations":
+      return "comments & markup";
+    case "javascript":
+    case "js":
+      return "embedded scripts";
+    case "openAction":
+    case "additionalActions":
+    case "aa":
+      return "auto-run triggers";
+    case "names":
+    case "names-tree":
+      return "hidden name entries";
+    case "embeddedFiles":
+    case "embedded-files":
+      return "embedded files";
+    case "metadata":
+    case "xmp":
+    case "documentInfo":
+      return "metadata";
+    default:
+      return "hidden data";
+  }
+}
+
+
   const redactSelected = useCallback(async () => {
     if (!findings || selected.size === 0) return;
     let added = 0;
