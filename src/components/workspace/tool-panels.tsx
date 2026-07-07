@@ -2277,8 +2277,9 @@ function sanitizeStageLabel(stage: string): string {
             </label>
             <span className="text-[10px] text-text-muted">
               {selected.size > 0
-                ? `${selected.size.toLocaleString()} staged — commit below`
-                : "Tick a category or item to stage"}
+                ? `${selected.size.toLocaleString()} staged — use per-category Redact or commit below`
+                : "Tick categories (multi-select OK), then hit Redact next to each"}
+
             </span>
           </div>
           {tabList.length > 1 && (
