@@ -343,6 +343,214 @@ export function AgentPanel({
     [navigate, onClose, openUpgradeModal, resetAssistCtxAction],
   );
 
+  const alternateActions = useCallback(
+    (
+      seedSteps: Step[],
+      alternates: Array<{ lane: "literal" | "semantic" | "action" | "help"; label: string }> | undefined,
+      term: string,
+    ): Action[] => {
+      if (!alternates?.length) return [];
+      const out: Action[] = [];
+      for (const alt of alternates) {
+        if (alt.lane === "semantic") {
+          out.push({
+            label: alt.label,
+            tone: "ghost",
+            onClick: () =>
+              showSemanticPitch(
+                { kind: "semantic", query: term, reason: `Interpreting "${term}" as a meaning-based search.` },
+                seedSteps,
+                term,
+              ),
+          });
+        } else if (alt.lane === "literal") {
+          out.push({
+            label: alt.label,
+            tone: "ghost",
+            onClick: () =>
+              void showLiteralFind(
+                {
+                  kind: "literal",
+                  term,
+                  wholeWord: false,
+                  regex: false,
+                  reason: `Searching for the exact text “${term}”.`,
+                },
+                seedSteps,
+                term,
+              ),
+          });
+        } else if (alt.lane === "action") {
+          out.push({
+            label: alt.label,
+            tone: "ghost",
+            onClick: () => {
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("agent:redact-pattern", { detail: { term } }),
+                );
+              } catch { /* ignore */ }
+              openTool("redact");
+              onClose();
+            },
+          });
+        }
+      }
+      return out;
+    },
+    // Refers to showLiteralFind / showSemanticPitch which are defined below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onClose, openTool],
+  );
+
+  const showLiteralFind = useCallback(
+    async (
+      classified: { kind: "literal"; term: string; wholeWord: boolean; regex: boolean; reason: string; alternates?: Array<{ lane: "literal" | "semantic" | "action" | "help"; label: string }> },
+      seedSteps: Step[],
+      originalQuery: string,
+    ) => {
+      if (!file) {
+        setSteps([
+          ...seedSteps,
+          {
+            kind: "error",
+            id: nextId(),
+            title: "No document open",
+            body: "Open a PDF first, then ask me to find text in it.",
+          },
+        ]);
+        return;
+      }
+      const runId = nextId();
+      setSteps([
+        ...seedSteps,
+        { kind: "running", id: runId, label: `Searching for “${classified.term}”…` },
+      ]);
+      try {
+        const { findLiteralInPdf } = await importChunk(() => import("@/lib/assist/find"));
+        const matches = await findLiteralInPdf(file, classified.term, {
+          wholeWord: classified.wholeWord,
+          regex: classified.regex,
+          maxMatches: 30,
+        });
+        const findEntry = ASSIST_KNOWLEDGE_BASE_lookup("redact");
+        const actions: Action[] = [];
+        if (matches.length > 0) {
+          const canRedact = isPro; // pattern-bulk-redact is Pro
+          actions.push({
+            label: canRedact ? "Redact all matches" : "Redact all matches (Pro)",
+            tone: canRedact ? "destructive" : "primary",
+            onClick: () => {
+              if (!canRedact) {
+                openUpgradeModal({ featureName: "Pattern / bulk redaction" });
+                return;
+              }
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("agent:redact-pattern", { detail: { term: classified.term } }),
+                );
+              } catch { /* ignore */ }
+              openTool("redact");
+              onClose();
+            },
+          });
+        }
+        actions.push(...alternateActions(seedSteps, classified.alternates, classified.term));
+        actions.push({ label: "Close", tone: "ghost", onClick: () => onClose() });
+
+        const body =
+          matches.length === 0
+            ? `No matches for “${classified.term}” in this document.`
+            : matches
+                .slice(0, 8)
+                .map((m) => `• Page ${m.page} — ${m.snippet}`)
+                .join("\n") +
+              (matches.length > 8 ? `\n…and ${matches.length - 8} more.` : "");
+
+        setSteps([
+          ...seedSteps,
+          {
+            kind: "result",
+            id: nextId(),
+            title:
+              matches.length === 0
+                ? `Literal search — no matches`
+                : `Literal search — ${matches.length} match${matches.length === 1 ? "" : "es"}`,
+            body,
+            caveat: classified.reason,
+            actions,
+          },
+        ]);
+        void findEntry;
+        assistCtxRef.current = {
+          lastLane: "literal",
+          lastFindTerm: classified.term,
+          lastFindMatches: matches.map((m) => ({ page: m.page, snippet: m.snippet })),
+          lastQuery: originalQuery,
+        };
+      } catch (err) {
+        setSteps([
+          ...seedSteps,
+          {
+            kind: "error",
+            id: nextId(),
+            title: "Search failed",
+            body: err instanceof Error ? err.message : String(err),
+          },
+        ]);
+      }
+    },
+    [alternateActions, file, isPro, onClose, openTool, openUpgradeModal],
+  );
+
+  const showSemanticPitch = useCallback(
+    (
+      classified: { kind: "semantic"; query: string; reason: string; alternates?: Array<{ lane: "literal" | "semantic" | "action" | "help"; label: string }> },
+      seedSteps: Step[],
+      originalQuery: string,
+    ) => {
+      const actions: Action[] = [];
+      if (isPro) {
+        actions.push({
+          label: "Open in AI search",
+          tone: "primary",
+          onClick: () => {
+            onAnswerQuery(classified.query);
+            onClose();
+          },
+        });
+      } else {
+        actions.push({
+          label: "Unlock AI search (Pro)",
+          tone: "primary",
+          onClick: () => openUpgradeModal({ featureName: "Private AI assist & search" }),
+        });
+      }
+      actions.push(...alternateActions(seedSteps, classified.alternates, classified.query));
+      actions.push({ label: "Close", tone: "ghost", onClick: () => onClose() });
+
+      setSteps([
+        ...seedSteps,
+        {
+          kind: "result",
+          id: nextId(),
+          title: "Search by meaning",
+          body: isPro
+            ? `Open Private AI assist to search for “${classified.query}” by meaning. Runs on-device.`
+            : `Meaning-based search is a Pro feature. Free users can run a literal find instead.`,
+          caveat: classified.reason,
+          actions,
+        },
+      ]);
+      assistCtxRef.current = {
+        lastLane: "semantic",
+        lastQuery: originalQuery,
+      };
+    },
+    [alternateActions, isPro, onAnswerQuery, onClose, openUpgradeModal],
+  );
+
+
   const runAssistQuery = useCallback(
     async (raw: string) => {
       const text = raw.trim();
