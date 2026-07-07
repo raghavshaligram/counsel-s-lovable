@@ -16,7 +16,7 @@ export type BillingSnapshot = {
   seats: { used: number; total: number } | null;
 };
 
-export const getMyBilling = createServerFn({ method: "GET" })
+export const getMyBilling = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<BillingSnapshot> => {
     const { data } = await context.supabase
