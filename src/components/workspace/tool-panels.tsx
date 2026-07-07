@@ -1449,6 +1449,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     let added = 0;
     let skipped = 0;
     const sideChannelDets: Det[] = [];
+    const toAdd: Anno[] = [];
     for (const d of findings) {
       if (!selected.has(d.id)) continue;
       // Side-channel findings (form fields, annotations, metadata) have no
@@ -1469,36 +1470,48 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         skipped++;
         continue;
       }
-      editorDispatch({
-        type: "ADD_ANNO",
-        a: {
-          id: `redact-det-${d.id}`,
-          kind: "redact",
-          page: d.page - 1,
-          x: rect.x,
-          y: rect.y,
-          w: rect.w,
-          h: rect.h,
-          color: { r: 0, g: 0, b: 0 },
-          opacity: 1,
-          category: d.category,
-          sources: d.source?.originalString
-            ? [
-                {
-                  originalString: d.source.originalString,
-                  redactText: d.source.redactText,
-                  matchStart: d.source.matchStart,
-                  matchLength: d.source.matchLength,
-                  transform: d.source.transform,
-                  fontName: d.source.fontName,
-                  bounds: d.source.bounds,
-                },
-              ]
-            : undefined,
-        },
+      toAdd.push({
+        id: `redact-det-${d.id}`,
+        kind: "redact",
+        page: d.page - 1,
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+        color: { r: 0, g: 0, b: 0 },
+        opacity: 1,
+        category: d.category,
+        sources: d.source?.originalString
+          ? [
+              {
+                originalString: d.source.originalString,
+                redactText: d.source.redactText,
+                matchStart: d.source.matchStart,
+                matchLength: d.source.matchLength,
+                transform: d.source.transform,
+                fontName: d.source.fontName,
+                bounds: d.source.bounds,
+              },
+            ]
+          : undefined,
       });
       added++;
     }
+    // Batch-dispatch all page-rect redactions in a single reducer pass so
+    // 13k+ selections don't trigger 13k re-renders + O(N^2) array spreads.
+    // The verified-export gate on commit is unchanged — these annotations
+    // flow through the same rasterize → sanitize → verify pipeline as any
+    // manually drawn redaction.
+    if (toAdd.length > 0) {
+      if (toAdd.length > 2000) {
+        toast.message(`Queuing ${toAdd.length.toLocaleString()} redactions…`);
+      }
+      startTransition(() => {
+        editorDispatch({ type: "ADD_ANNOS", list: toAdd });
+      });
+    }
+
+
 
     // -- Apply-NOW for side-channel vectors --------------------------
     // Run sanitize on the current bytes immediately so form-field /
