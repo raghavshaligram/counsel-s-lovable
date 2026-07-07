@@ -101,7 +101,7 @@ import {
 } from "@/lib/workspace/persistence";
 
 import { reducer, initialState, PALETTE, type Action as EditorAction } from "@/lib/editor/state";
-import type { Tool, RGB, EditorDoc, PageOp } from "@/lib/editor/types";
+import type { Tool, RGB, EditorDoc, PageOp, Anno } from "@/lib/editor/types";
 import { ExportDialog } from "./export-dialog";
 import { QuickActionsMenu } from "./quick-actions-menu";
 import { AccountMenu } from "./account-menu";
