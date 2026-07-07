@@ -678,10 +678,7 @@ export function AgentPanel({
         ]);
       }
     },
-    // Deps intentionally include the show* helpers; they're declared below
-    // and are stable useCallback refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isPro, onClose, openTool, showEntryHelp, showTopicAnswer],
+    [isPro, onClose, openTool, showEntryHelp, showLiteralFind, showSemanticPitch, showTopicAnswer],
   );
 
 
