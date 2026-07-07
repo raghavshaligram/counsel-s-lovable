@@ -1787,11 +1787,19 @@ function sanitizeStageLabel(stage: string): string {
 
 
     if (added > 0) {
-      toast.success(`${added} redaction box${added === 1 ? "" : "es"} added`, {
+      toast.success(`${added.toLocaleString()} redaction box${added === 1 ? "" : "es"} added`, {
         description:
           'Click "Redact, export & verify" below to burn page text into the PDF.',
       });
+      // Post-commit cleanup: the findings list describes staged detections
+      // that are now represented on-canvas as redact boxes. Keeping 13k
+      // <li>s mounted re-commits every stale finding on every dispatch
+      // and freezes the panel. Clear the list; a re-scan after burn is
+      // the source of truth. Does NOT affect what's queued for burn or
+      // the verification gate — those read from annotations, not findings.
+      setFindings(null);
       setSelected(new Set());
+      setExpandedGroups(new Set());
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
