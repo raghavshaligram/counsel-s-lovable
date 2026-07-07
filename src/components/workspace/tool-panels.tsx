@@ -3128,6 +3128,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           // Clear any staged selection so those items don't immediately
           // re-stage from the auto-detect list.
           try { window.dispatchEvent(new Event("redact:clear-selection")); } catch { /* ignore */ }
+          setCommittedOnce(true);
           toast.success(`Committed — ${result.removed}/${result.total} regions cleared${flatNote}. Click Export to download.`, { id: tid });
         } else {
           await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
