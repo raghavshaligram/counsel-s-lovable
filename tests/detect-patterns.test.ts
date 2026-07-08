@@ -7,7 +7,7 @@
  * and a leak can ship. These tests fail loudly on any drift.
  */
 import { describe, it, expect } from "vitest";
-import { PATTERNS } from "@/lib/pdf/detect-pii";
+import { __testComputeMeasuredSpanBox, __testResetMeasureContext, PATTERNS } from "@/lib/pdf/detect-pii";
 
 function find(category: string, input: string): string | null {
   const p = PATTERNS.find((x) => x.category === category);
@@ -50,5 +50,60 @@ describe("detect-pii PATTERNS — structured data contract", () => {
   });
   it("does NOT flag obvious non-SSN strings", () => {
     expect(find("ssn", "Order #12-34 from 2024.")).toBeNull();
+  });
+});
+
+describe("detect-pii geometry — measured substring spans", () => {
+  it("places a structured PII box on the true leading edge after a narrow label prefix", () => {
+    const originalDocument = globalThis.document;
+    __testResetMeasureContext();
+    const str = "Client SSN (test data): 652-77-1009";
+    const widths = new Map<string, number>([
+      ["Client SSN (test data): ", 102.26],
+      ["652-77-1009", 61.16],
+      [str, 163.42],
+    ]);
+    (globalThis as unknown as { document: unknown }).document = {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          font: "",
+          measureText: (text: string) => ({
+            width: widths.get(text) ?? text.length * 4,
+          }),
+        }),
+      }),
+    };
+
+    try {
+      const matchStart = str.indexOf("652-77-1009");
+      const wholeItemWidth = 163.42;
+      const box = __testComputeMeasuredSpanBox(
+        {
+          str,
+          x0: 72,
+          charW: wholeItemWidth / str.length,
+          fontName: "Helvetica",
+          fontHeight: 10,
+        },
+        matchStart,
+        "652-77-1009".length,
+      );
+
+      expect(box).not.toBeNull();
+      expect(box!.subX).toBeCloseTo(174.26, 2);
+      expect(box!.subW).toBeCloseTo(61.16, 2);
+      // Old average-width extrapolation overshot the real leading edge by
+      // more than one 10pt Helvetica digit, exposing the first SSN digit.
+      expect(box!.avgSubX - box!.subX).toBeGreaterThan(5.56);
+    } finally {
+      __testResetMeasureContext();
+      if (originalDocument === undefined) {
+        delete (globalThis as unknown as { document?: unknown }).document;
+      } else {
+        globalThis.document = originalDocument;
+      }
+    }
   });
 });

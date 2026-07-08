@@ -9,6 +9,7 @@
 import { getPdfjs } from "./worker";
 import { importChunk } from "@/lib/chunk-import";
 import { runNer, runNerBatch, PRIVILEGE_TERMS_RE, getNerStats, resetNerStats, type NerEntity } from "./ner";
+import { matchPdfFont } from "@/lib/utils/fontMatcher";
 
 /**
  * Create a canvas that works on both main thread (HTMLCanvasElement) AND
@@ -34,6 +35,87 @@ function freeCanvas(canvas: AnyCanvas | null): void {
     canvas.width = 0;
     canvas.height = 0;
   } catch { /* noop */ }
+}
+
+type MeasureCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+let measureCtx: MeasureCtx | null = null;
+const OPAQUE_PDFJS_FONT_ID = /^g_d\d+_f\d+$/;
+
+function isOpaquePdfjsFontId(name: string | undefined): boolean {
+  return !!name && OPAQUE_PDFJS_FONT_ID.test(name);
+}
+
+function getMeasureCtx(): MeasureCtx | null {
+  if (measureCtx) return measureCtx;
+  if (typeof document === "undefined" && typeof OffscreenCanvas === "undefined") return null;
+  const c = makeCanvas(10, 10);
+  measureCtx = c.getContext("2d") as MeasureCtx | null;
+  return measureCtx;
+}
+
+function resolveCssFontForItem(
+  fontName: string | undefined,
+  fontHeight: number,
+  cssFamily?: string,
+  fontWeight?: number | string,
+): string {
+  const candidates = [fontName, cssFamily].filter((n): n is string => !!n && !isOpaquePdfjsFontId(n));
+  let matched = matchPdfFont(candidates[0] ?? "");
+  for (const candidate of candidates) {
+    const next = matchPdfFont(candidate);
+    matched = next;
+    if (next.matched) break;
+  }
+  const style = matched.fontStyle ?? "normal";
+  const weight = fontWeight ?? matched.fontWeight ?? "400";
+  return `${style} ${weight} ${Math.max(1, fontHeight)}px ${matched.fontFamily || "sans-serif"}`;
+}
+
+function measureSubstringWidth(
+  item: { str: string; x0?: number; x1?: number; charW: number; fontName?: string; fontHeight: number; cssFamily?: string; fontWeight?: number | string },
+  text: string,
+): number {
+  if (!text) return 0;
+  const ctx = getMeasureCtx();
+  if (!ctx) return item.charW * text.length;
+  try {
+    ctx.font = resolveCssFontForItem(item.fontName, item.fontHeight, item.cssFamily, item.fontWeight);
+    const width = ctx.measureText(text).width;
+    if (!Number.isFinite(width) || width <= 0) return item.charW * text.length;
+    const itemWidth =
+      Number.isFinite(item.x0) && Number.isFinite(item.x1)
+        ? Math.max(0, (item.x1 ?? 0) - (item.x0 ?? 0))
+        : item.charW * item.str.length;
+    const wholeMeasured = ctx.measureText(item.str).width;
+    if (itemWidth > 0 && Number.isFinite(wholeMeasured) && wholeMeasured > 0) {
+      return (width / wholeMeasured) * itemWidth;
+    }
+    return width;
+  } catch {
+    return item.charW * text.length;
+  }
+}
+
+export function __testComputeMeasuredSpanBox(
+  item: { str: string; x0: number; x1?: number; charW: number; fontName?: string; fontHeight: number; cssFamily?: string; fontWeight?: number | string },
+  spanStart: number,
+  spanLen: number,
+): { subX: number; subW: number; avgSubX: number; avgSubW: number } | null {
+  const safeStart = Math.max(0, Math.min(spanStart, item.str.length));
+  const safeLen = Math.max(0, Math.min(spanLen, item.str.length - safeStart));
+  if (safeLen <= 0) return null;
+  const prefixW = measureSubstringWidth(item, item.str.slice(0, safeStart));
+  const matchW = measureSubstringWidth(item, item.str.slice(safeStart, safeStart + safeLen));
+  return {
+    subX: item.x0 + prefixW,
+    subW: Math.max(1, matchW),
+    avgSubX: item.x0 + item.charW * safeStart,
+    avgSubW: Math.max(item.charW, item.charW * safeLen),
+  };
+}
+
+export function __testResetMeasureContext(): void {
+  measureCtx = null;
 }
 
 export type PiiCategory =
@@ -430,6 +512,8 @@ export async function detectPiiInPdf(
     pad: number;
     charW: number;
     fontName: string | undefined;
+    cssFamily: string | undefined;
+    fontWeight: number | string | undefined;
     transform: number[];
   };
 
@@ -470,8 +554,10 @@ export async function detectPiiInPdf(
     const key = `${pageIdx}:${category}:${item.idx}:${safeStart}:${safeLen}`;
     if (emittedBoxKeys.has(key)) return null;
     emittedBoxKeys.add(key);
-    const subX = item.x0 + item.charW * safeStart;
-    const subW = Math.max(item.charW, item.charW * safeLen);
+    const prefixW = measureSubstringWidth(item, item.str.slice(0, safeStart));
+    const matchW = measureSubstringWidth(item, item.str.slice(safeStart, safeStart + safeLen));
+    const subX = item.x0 + prefixW;
+    const subW = Math.max(1, matchW);
     const cx = subX - item.pad;
     const cy = item.y - item.pad;
     const cw = subW + item.pad * 2;
@@ -729,7 +815,11 @@ export async function detectPiiInPdf(
       const pad = Math.max(2, fontHeight * 0.15);
       const fontName = (raw as { fontName?: string }).fontName;
       const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
-      return { idx, str, x0, x1, y, fontHeight, pad, charW, fontName, transform: raw.transform };
+      const styles = (content as unknown as { styles?: Record<string, { fontFamily?: string; fontWeight?: number | string }> }).styles ?? {};
+      const styleEntry = fontName ? styles[fontName] : undefined;
+      const cssFamily = styleEntry?.fontFamily;
+      const fontWeight = styleEntry?.fontWeight;
+      return { idx, str, x0, x1, y, fontHeight, pad, charW, fontName, cssFamily, fontWeight, transform: raw.transform };
     });
 
     emitLineRunMatches(i, records);
@@ -800,6 +890,8 @@ export async function detectPiiInPdf(
           pad: itemRecord.pad,
           charW: itemRecord.charW,
           fontName: itemRecord.fontName,
+          cssFamily: itemRecord.cssFamily,
+          fontWeight: itemRecord.fontWeight,
           transform: raw.transform,
           joinedStart, joinedEnd,
           regexNameSpans,
