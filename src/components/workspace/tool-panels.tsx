@@ -1937,6 +1937,23 @@ function sanitizeStageLabel(stage: string): string {
     const sideChannelApplied = await sanitizeSideChannelDets(sideChannelDets, toAdd);
 
     if (added > 0) {
+      // Build page-vector summary from toAdd (counts + pages only, no
+      // sensitive values). Group by category; pages stored as 1-indexed.
+      const pageMap = new Map<string, { category: string; label: string; count: number; pages: Set<number> }>();
+      for (const a of toAdd) {
+        const cat = String(a.category ?? "other");
+        const label = meta?.[cat as Cat]?.label ?? cat;
+        const cur = pageMap.get(cat);
+        if (cur) { cur.count++; cur.pages.add(a.page + 1); }
+        else pageMap.set(cat, { category: cat, label, count: 1, pages: new Set([a.page + 1]) });
+      }
+      mergeSummary({
+        timestamp: Date.now(),
+        pageRedactions: Array.from(pageMap.values()).map((r) => ({
+          category: r.category, label: r.label, count: r.count,
+          pages: Array.from(r.pages).sort((a, b) => a - b),
+        })),
+      });
       toast.success(`${added.toLocaleString()} redaction box${added === 1 ? "" : "es"} added`, {
         description:
           'Click "Redact, export & verify" below to burn page text into the PDF.',
@@ -1947,7 +1964,7 @@ function sanitizeStageLabel(stage: string): string {
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
-  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, sanitizeSideChannelDets]);
+  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, sanitizeSideChannelDets, meta, mergeSummary]);
 
 
   const pageRedactableFindings = useMemo(
