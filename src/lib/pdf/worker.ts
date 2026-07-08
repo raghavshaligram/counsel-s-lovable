@@ -34,6 +34,13 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
     import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
   ]);
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
+  if (hasWorker && !hasWindow) {
+    // We are already inside our own dedicated background worker. Running an
+    // additional nested pdf.js worker can miss the compatibility shim above in
+    // older Chromium builds; fake-worker mode keeps parsing/rendering in this
+    // same off-main-thread scope with no UI responsiveness cost.
+    try { await pdfjs.PDFWorker.create({ port: null as never }).destroy(); } catch { /* best-effort */ }
+  }
   cached = pdfjs;
   return pdfjs;
 }
