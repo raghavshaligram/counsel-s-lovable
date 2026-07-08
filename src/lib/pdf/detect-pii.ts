@@ -421,6 +421,7 @@ export async function detectPiiInPdf(
    * '(7' and '28' visible AND extractable.
    */
   type ItemRec = {
+    idx: number;
     str: string;
     x0: number;
     x1: number;
@@ -453,6 +454,7 @@ export async function detectPiiInPdf(
   // Small helper: push a detection built from a per-item record.
   // Used from BOTH the regex pass and the NER-mapping pass so coordinates
   // are computed identically regardless of which pass surfaced the hit.
+  const emittedBoxKeys = new Set<string>();
   const emitBoxFor = (
     pageIdx: number,
     item: ItemRec,
@@ -461,9 +463,15 @@ export async function detectPiiInPdf(
     category: PiiCategory,
     confidence: "high" | "low" | undefined,
     text: string,
-  ): Detection => {
-    const subX = item.x0 + item.charW * spanStart;
-    const subW = Math.max(item.charW, item.charW * spanLen);
+  ): Detection | null => {
+    const safeStart = Math.max(0, Math.min(spanStart, item.str.length));
+    const safeLen = Math.max(0, Math.min(spanLen, item.str.length - safeStart));
+    if (safeLen <= 0) return null;
+    const key = `${pageIdx}:${category}:${item.idx}:${safeStart}:${safeLen}`;
+    if (emittedBoxKeys.has(key)) return null;
+    emittedBoxKeys.add(key);
+    const subX = item.x0 + item.charW * safeStart;
+    const subW = Math.max(item.charW, item.charW * safeLen);
     const cx = subX - item.pad;
     const cy = item.y - item.pad;
     const cw = subW + item.pad * 2;
@@ -478,8 +486,8 @@ export async function detectPiiInPdf(
       source: {
         originalString: item.str,
         redactText: text,
-        matchStart: spanStart,
-        matchLength: spanLen,
+        matchStart: safeStart,
+        matchLength: safeLen,
         transform: item.transform,
         fontName: item.fontName,
         bounds: { x: cx / scale, y: cy / scale, w: cw / scale, h: ch / scale },
@@ -540,6 +548,28 @@ export async function detectPiiInPdf(
     return { leftChain, rightChain };
   };
 
+  const TOKEN_BOUNDARY_RE = /[\s:;=|,]/;
+  const isTokenBoundary = (ch: string): boolean => TOKEN_BOUNDARY_RE.test(ch);
+  const expandSpanToToken = (str: string, start: number, len: number): { start: number; len: number } => {
+    const n = str.length;
+    let s = Math.max(0, Math.min(start, n));
+    let e = Math.max(s, Math.min(start + len, n));
+    while (s > 0 && !isTokenBoundary(str[s - 1])) s--;
+    while (e < n && !isTokenBoundary(str[e])) e++;
+    return { start: s, len: e - s };
+  };
+  const edgeSuffixSpan = (str: string): { start: number; len: number } => {
+    const n = str.length;
+    let s = n;
+    while (s > 0 && !isTokenBoundary(str[s - 1])) s--;
+    return { start: s, len: n - s };
+  };
+  const edgePrefixSpan = (str: string): { start: number; len: number } => {
+    let e = 0;
+    while (e < str.length && !isTokenBoundary(str[e])) e++;
+    return { start: 0, len: e };
+  };
+
   /**
    * Emit the primary match box AND — when the match hits an item boundary
    * — whole-item boxes for the contiguous neighbour chain. This is what
@@ -558,16 +588,84 @@ export async function detectPiiInPdf(
     confidence: "high" | "low" | undefined,
     text: string,
   ): void => {
-    emitBoxFor(pageIdx, rec, spanStart, spanLen, category, confidence, text);
-    if (spanStart === 0) {
+    const expanded = expandSpanToToken(rec.str, spanStart, spanLen);
+    emitBoxFor(pageIdx, rec, expanded.start, expanded.len, category, confidence, text);
+    if (expanded.start === 0) {
       for (const n of leftChain) {
-        emitBoxFor(pageIdx, n, 0, n.str.length, category, confidence, n.str);
+        const suffix = edgeSuffixSpan(n.str);
+        emitBoxFor(pageIdx, n, suffix.start, suffix.len, category, confidence, n.str.slice(suffix.start));
       }
     }
-    if (spanStart + spanLen === rec.str.length) {
+    if (expanded.start + expanded.len === rec.str.length) {
       for (const n of rightChain) {
-        emitBoxFor(pageIdx, n, 0, n.str.length, category, confidence, n.str);
+        const prefix = edgePrefixSpan(n.str);
+        emitBoxFor(pageIdx, n, prefix.start, prefix.len, category, confidence, n.str.slice(0, prefix.len));
       }
+    }
+  };
+
+  const emitLineRunMatches = (pageIdx: number, records: (ItemRec | null)[]): void => {
+    const sorted = records
+      .filter((r): r is ItemRec => !!r)
+      .slice()
+      .sort((a, b) => a.y - b.y || a.x0 - b.x0);
+    const lines: ItemRec[][] = [];
+    for (const rec of sorted) {
+      const line = lines[lines.length - 1];
+      const yBand = Math.max(line?.[0]?.fontHeight ?? rec.fontHeight, rec.fontHeight) * 0.6;
+      if (line && Math.abs(line[0].y - rec.y) < yBand) line.push(rec);
+      else lines.push([rec]);
+    }
+
+    const flushRun = (run: ItemRec[]) => {
+      if (run.length < 2) return;
+      let runText = "";
+      const parts = run.map((rec) => {
+        const start = runText.length;
+        runText += rec.str;
+        return { rec, start, end: runText.length };
+      });
+      const hits = matchAllCategories(runText);
+      for (const hit of hits) {
+        const expanded = expandSpanToToken(runText, hit.start, hit.length);
+        const expandedStart = expanded.start;
+        const expandedEnd = expanded.start + expanded.len;
+        for (const part of parts) {
+          if (part.end <= expandedStart || part.start >= expandedEnd) continue;
+          const localStart = Math.max(0, expandedStart - part.start);
+          const localEnd = Math.min(part.rec.str.length, expandedEnd - part.start);
+          emitBoxFor(
+            pageIdx,
+            part.rec,
+            localStart,
+            localEnd - localStart,
+            hit.category,
+            hit.confidence,
+            part.rec.str.slice(localStart, localEnd),
+          );
+        }
+      }
+    };
+
+    for (const line of lines) {
+      line.sort((a, b) => a.x0 - b.x0);
+      let run: ItemRec[] = [];
+      for (const rec of line) {
+        const prev = run[run.length - 1];
+        if (!prev) {
+          run = [rec];
+          continue;
+        }
+        const gap = rec.x0 - prev.x1;
+        const maxGap = Math.max(prev.fontHeight, rec.fontHeight) * 0.5;
+        const contiguous = gap >= -1 && gap <= maxGap && !/\s$/.test(prev.str) && !/^\s/.test(rec.str);
+        if (contiguous) run.push(rec);
+        else {
+          flushRun(run);
+          run = [rec];
+        }
+      }
+      flushRun(run);
     }
   };
 
@@ -613,7 +711,7 @@ export async function detectPiiInPdf(
     // the page — sparse-indexed to mirror `items`. Needed so token expansion
     // can walk to same-line neighbours by index without a second pass over
     // pdf.js item metrics.
-    const records: (ItemRec | null)[] = items.map((raw) => {
+    const records: (ItemRec | null)[] = items.map((raw, idx) => {
       const str = raw.str;
       if (!str || !str.trim()) return null;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
@@ -625,8 +723,10 @@ export async function detectPiiInPdf(
       const pad = Math.max(2, fontHeight * 0.15);
       const fontName = (raw as { fontName?: string }).fontName;
       const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
-      return { str, x0, x1, y, fontHeight, pad, charW, fontName, transform: raw.transform };
+      return { idx, str, x0, x1, y, fontHeight, pad, charW, fontName, transform: raw.transform };
     });
+
+    emitLineRunMatches(i, records);
 
     for (let recIdx = 0; recIdx < items.length; recIdx++) {
       const itemRecord = records[recIdx];
@@ -685,6 +785,7 @@ export async function detectPiiInPdf(
         joinedText += NER_SEP;
         const { leftChain, rightChain } = getChains();
         nerItems.push({
+          idx: itemRecord.idx,
           str,
           x0: itemRecord.x0,
           x1: itemRecord.x1,

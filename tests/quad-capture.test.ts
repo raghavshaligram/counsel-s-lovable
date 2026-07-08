@@ -43,6 +43,18 @@ describe("computeQuads — token expansion across fragmented text items", () => 
     expect(q.x + q.w).toBeGreaterThanOrEqual(46 - 0.01);
   });
 
+  it("covers the leading character when the hit lands inside one text item", () => {
+    // pdf.js can also keep a value in ONE item while the user's drag starts
+    // just after the first glyph. The old quad clamped to rect.x, leaving
+    // the first digit/letter visible ("0████" or "A████").
+    const items: TextItemLite[] = [item("A0781151140428", 10, 56)];
+    const rect = { x: 14, y: 98, w: 44, h: H + 4 };
+    const quads = computeQuads(rect, items);
+    expect(quads).toHaveLength(1);
+    expect(quads[0].x).toBeLessThanOrEqual(10 + 0.01);
+    expect(quads[0].x + quads[0].w).toBeGreaterThanOrEqual(66 - 0.01);
+  });
+
   it("stops at whitespace — does NOT over-redact the adjacent word", () => {
     // "Name:" + " Jane" — space at start of second item breaks the chain.
     // Drag hits only "Name:" — expansion must not swallow " Jane".
@@ -53,8 +65,9 @@ describe("computeQuads — token expansion across fragmented text items", () => 
     const rect = { x: 12, y: 98, w: 16, h: H + 4 };
     const quads = computeQuads(rect, items);
     expect(quads).toHaveLength(1);
-    // Right edge must NOT cross into the "Jane" item (x=30).
-    expect(quads[0].x + quads[0].w).toBeLessThan(30);
+    // Right edge may cover the inter-item space/pad, but must not reach the
+    // first non-space glyph of "Jane" (space consumes 18/5 = 3.6pt).
+    expect(quads[0].x + quads[0].w).toBeLessThan(33.6);
   });
 
   it("stops at a large horizontal gap — does NOT bridge unrelated columns", () => {
