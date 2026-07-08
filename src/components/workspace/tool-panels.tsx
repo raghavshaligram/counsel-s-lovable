@@ -3253,7 +3253,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         ? editorState.doc.srcBytes
         : new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
-      let bytes: Uint8Array | null = await exportEditedPdfInWorker(exportDoc);
+      let bytes = await exportEditedPdfInWorker(exportDoc);
 
       // Region-rasterize redacted pages. Default ("always") rasterizes every
       // page with a redaction — text inside the box is physically replaced
@@ -3275,18 +3275,15 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         { kind: "redact-export", docId: jobDocId, docLabel: file.name },
         async ({ signal, onProgress }) => {
           const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
-          if (!bytes) throw new Error("Export buffer was released before redaction burn completed");
           const rasterResult = await rasterizeRedactedPagesInWorker(bytes, pageRedactions, {
             mode: maxSecurity ? "always" : "fallback",
             scale: 2.5,
             signal,
-            stealBytes: true,
             onProgress: (done, total) => {
               onProgress({ fraction: total ? (done / total) * 0.55 : 0, step: `Burning ${done}/${total}` });
               toast.loading(`Burning redactions ${done}/${total}…`, { id: tid });
             },
           });
-          bytes = null;
           // STAGE 3 — single commit path.
           // Sanitize + verify + raster-fallback + re-verify now go through the
           // ONE consolidated `enforceRedactionGate` chokepoint (see
@@ -3313,10 +3310,6 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               }
             },
           });
-          // The gate now owns the export bytes. Drop the pre-gate wrapper so
-          // the large post-raster buffer is not retained in this job closure.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (rasterResult as any).bytes = null;
           let outBytes = gated.bytes;
           const gatedRasterizedPages = gated.rasterizedPages;
           const vresult = gated.verify;
@@ -3364,7 +3357,6 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
           return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
         };
-        if (!bytes) throw new Error("Redacted export buffer was released before download");
         const redactedHash = await hash(bytes);
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         // Release the export buffer from the job output and this closure —
@@ -3374,7 +3366,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         (jobOutput as any).bytes = null;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (rasterResult as any).bytes = null;
-        bytes = null;
+        bytes = new Uint8Array(0);
         const flatNote = rasterResult.rasterizedPages.length
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned`
           : "";

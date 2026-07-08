@@ -61,10 +61,7 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
 
     const scale = m.scale;
     const pdfjs = await loadPdfjs();
-    // This worker never returns the PDF bytes, so pdf.js can take ownership of
-    // the transferred buffer directly. Avoiding bytes.slice() prevents one
-    // extra full-output allocation during the post-gate visual sanity check.
-    const doc = await pdfjs.getDocument({ data: bytes }).promise;
+    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
 
     const byPage = new Map<number, PixelVerifyTarget[]>();
     for (const t of targets) {

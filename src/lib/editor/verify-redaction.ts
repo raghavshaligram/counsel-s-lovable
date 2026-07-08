@@ -157,13 +157,13 @@ async function verifyPageGeometry(
       const viewport = page.getViewport({ scale: 1 });
       const tc = await page.getTextContent();
       const itemBoxes = tc.items
-        .filter((it: unknown) => typeof it === "object" && it !== null && "str" in it && (it as { str: string }).str.trim())
-        .map((it: unknown) => textItemBox(pdfjs, viewport, it as { str: string; transform: number[]; width?: number; height?: number }))
-        .filter((b: ReturnType<typeof textItemBox>): b is NonNullable<ReturnType<typeof textItemBox>> => !!b);
+        .filter((it) => "str" in it && (it as { str: string }).str.trim())
+        .map((it) => textItemBox(pdfjs, viewport, it as { str: string; transform: number[]; width?: number; height?: number }))
+        .filter((b): b is NonNullable<typeof b> => !!b);
       for (const t of items) {
         const r = t.rect;
         if (!r) continue;
-          const leak = itemBoxes.find((b: NonNullable<ReturnType<typeof textItemBox>>) => intersects(b, r));
+        const leak = itemBoxes.find((b) => intersects(b, r));
         if (leak) {
           leaks.push({
             vector: "page",
