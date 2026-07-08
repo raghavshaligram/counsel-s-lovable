@@ -211,9 +211,149 @@ export async function runMixedRedactionE2E(): Promise<E2eProbe> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Fragmented-token fixture — guards the "middle-fragment only" leak class.
+//
+// pdf.js splits a visibly-single token like "(763) 300-1828" into multiple
+// text items whenever the underlying content stream draws it as separate
+// Tj/TJ ops (which is what a series of drawText calls produces). A regex
+// match hits only ONE of those items; without token expansion the burn
+// covers the middle and leaves leading/trailing digits visible AND
+// text-extractable. This fixture reproduces that exact split, runs the
+// production burn + gate, then re-extracts text to prove the WHOLE
+// value — not just the matched fragment — is gone.
+
+const FRAG_PHONE_PARTS = ["(7", "63) 300-18", "28"] as const;
+const FRAG_PHONE_FULL = FRAG_PHONE_PARTS.join("");
+
+export interface FragProbe {
+  fullValue: string;
+  /** Parts that must NOT survive individually — leading & trailing fragments
+   *  are the ones the old pipeline leaked. */
+  leadingFragment: string;
+  trailingFragment: string;
+  outcome: "clean" | "blocked" | "leaked";
+  /** True when redaction rects covered ALL fragment items (expansion worked). */
+  rectsCoveredAllFragments: boolean;
+  detectionRectCount: number;
+  extractedText?: string;
+  leadingSurvived?: boolean;
+  trailingSurvived?: boolean;
+  fullSurvived?: boolean;
+  blockedMessage?: string;
+}
+
+async function buildFragmentedFixture(): Promise<{ bytes: Uint8Array; rectApproxY: number }> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  const helv = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText("Contact info:", { x: 72, y: 720, size: 12, font: helv });
+  // Draw the phone number as THREE separate drawText calls at tightly
+  // adjacent x positions — this produces three separate Tj operators in
+  // the content stream, which pdf.js surfaces as three distinct text items.
+  const size = 12;
+  const y = 700;
+  let x = 72;
+  for (const part of FRAG_PHONE_PARTS) {
+    page.drawText(part, { x, y, size, font: helv });
+    x += helv.widthOfTextAtSize(part, size);
+  }
+  const bytes = await doc.save({ useObjectStreams: false });
+  return { bytes, rectApproxY: y };
+}
+
+/**
+ * Run the full detection → rasterize → gate pipeline on a fixture whose
+ * only sensitive value is a fragmented phone number. Asserts that (a)
+ * detection produced rects covering ALL three fragment items (proving the
+ * token-expansion pass fired), and (b) an independent re-extraction of
+ * the final bytes finds NO fragment of the phone number.
+ */
+export async function runFragmentedRedactionE2E(): Promise<FragProbe> {
+  const { bytes } = await buildFragmentedFixture();
+
+  // Run the real production detector. skipNer keeps the run fast (no model
+  // download needed in headless Chromium); the phone regex handles this
+  // fixture on its own.
+  const { detectPiiInPdf } = await import("@/lib/pdf/detect-pii");
+  const file = new File([bytes as BlobPart], "frag.pdf", { type: "application/pdf" });
+  const { detections } = await detectPiiInPdf(file, 1.5, undefined, undefined, {
+    skipNer: true,
+  });
+
+  // Convert every phone detection into a page-0 RedactionRectTL. We accept
+  // any category the detector chose (phone, creditCard fallback for long
+  // digit runs, etc.) as long as the rects cover the fragments.
+  const pageRects: RedactionRectTL[] = detections
+    .filter((d) => d.page === 0 && d.pdfRect)
+    .map((d) => {
+      const r = d.pdfRect!;
+      return { x: r.x, y: r.y, w: r.w, h: r.h };
+    });
+
+  // Sanity: at least 2 rects (middle + at least one neighbour) means the
+  // expansion pass fired. A single rect = old behaviour, guaranteed leak.
+  const rectsCoveredAllFragments = pageRects.length >= FRAG_PHONE_PARTS.length;
+
+  const pageMap = new Map<number, RedactionRectTL[]>([[0, pageRects]]);
+  const rast = await rasterizeRedactedPagesInWorker(bytes, pageMap, {
+    scale: 2.5,
+    mode: "always",
+  });
+
+  const targets = [{ page: 0, text: FRAG_PHONE_FULL, label: "phone" }];
+  let gateBytes: Uint8Array;
+  try {
+    const gate = await enforceRedactionGate(rast.bytes, targets, {
+      rasterizedPages: rast.rasterizedPages,
+    });
+    gateBytes = gate.bytes;
+  } catch (e) {
+    const err = e as { name?: string; message?: string };
+    if (err?.name === "RedactionGateError") {
+      return {
+        fullValue: FRAG_PHONE_FULL,
+        leadingFragment: FRAG_PHONE_PARTS[0],
+        trailingFragment: FRAG_PHONE_PARTS[FRAG_PHONE_PARTS.length - 1],
+        outcome: "blocked",
+        rectsCoveredAllFragments,
+        detectionRectCount: pageRects.length,
+        blockedMessage: err.message,
+      };
+    }
+    throw e;
+  }
+
+  const perPage = await extractTextPerPage(gateBytes);
+  const joined = perPage.join(" ");
+  const leadingSurvived = joined.includes(FRAG_PHONE_PARTS[0]);
+  const trailingSurvived = joined.includes(FRAG_PHONE_PARTS[FRAG_PHONE_PARTS.length - 1]);
+  const fullSurvived = joined.includes(FRAG_PHONE_FULL);
+  const outcome: FragProbe["outcome"] =
+    leadingSurvived || trailingSurvived || fullSurvived ? "leaked" : "clean";
+
+  return {
+    fullValue: FRAG_PHONE_FULL,
+    leadingFragment: FRAG_PHONE_PARTS[0],
+    trailingFragment: FRAG_PHONE_PARTS[FRAG_PHONE_PARTS.length - 1],
+    outcome,
+    rectsCoveredAllFragments,
+    detectionRectCount: pageRects.length,
+    extractedText: joined,
+    leadingSurvived,
+    trailingSurvived,
+    fullSurvived,
+  };
+}
+
 // Convenience: expose on window so the Playwright script can just call
 // `await window.__runMixedRedactionE2E()` without wiring an import graph.
 if (typeof window !== "undefined") {
-  (window as unknown as { __runMixedRedactionE2E?: typeof runMixedRedactionE2E }).__runMixedRedactionE2E =
-    runMixedRedactionE2E;
+  const w = window as unknown as {
+    __runMixedRedactionE2E?: typeof runMixedRedactionE2E;
+    __runFragmentedRedactionE2E?: typeof runFragmentedRedactionE2E;
+  };
+  w.__runMixedRedactionE2E = runMixedRedactionE2E;
+  w.__runFragmentedRedactionE2E = runFragmentedRedactionE2E;
 }
+

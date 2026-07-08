@@ -104,4 +104,68 @@ test.describe("redaction end-to-end (browser chain)", () => {
       `redaction-module console errors:\n${relevantErrors.join("\n")}`,
     ).toEqual([]);
   });
+
+  test("fragmented-token selection: whole value redacted, no fragment survives", async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on("pageerror", (e) => consoleErrors.push(String(e)));
+    page.on("console", (msg) => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.addScriptTag({ url: HARNESS_URL, type: "module" });
+
+    await page.waitForFunction(
+      () => typeof (window as unknown as { __runFragmentedRedactionE2E?: unknown }).__runFragmentedRedactionE2E === "function",
+      { timeout: 30_000 },
+    );
+
+    const probe = (await page.evaluate(async () => {
+      const fn = (window as unknown as { __runFragmentedRedactionE2E: () => Promise<unknown> })
+        .__runFragmentedRedactionE2E;
+      return fn();
+    })) as {
+      fullValue: string;
+      leadingFragment: string;
+      trailingFragment: string;
+      outcome: "clean" | "blocked" | "leaked";
+      rectsCoveredAllFragments: boolean;
+      detectionRectCount: number;
+      extractedText?: string;
+      leadingSurvived?: boolean;
+      trailingSurvived?: boolean;
+      fullSurvived?: boolean;
+      blockedMessage?: string;
+    };
+
+    // eslint-disable-next-line no-console
+    console.log("[redaction-e2e:frag]", JSON.stringify(probe, null, 2));
+
+    expect(
+      probe.outcome,
+      probe.outcome === "leaked"
+        ? `LEAK: fragment survived. leading=${probe.leadingSurvived} trailing=${probe.trailingSurvived} full=${probe.fullSurvived} text=${probe.extractedText}`
+        : "unreachable",
+    ).not.toBe("leaked");
+
+    // Token expansion must have produced at least one rect per fragment
+    // item. A single rect = the middle-fragment-only leak we're guarding
+    // against. Only enforce when the gate didn't block (blocking is also
+    // a safe outcome but tells us nothing about expansion).
+    if (probe.outcome === "clean") {
+      expect(
+        probe.rectsCoveredAllFragments,
+        `token expansion did not fire: only ${probe.detectionRectCount} rect(s) for a 3-fragment value`,
+      ).toBe(true);
+    }
+
+    const relevantErrors = consoleErrors.filter(
+      (e) => /redact|sanitize|verify|rasterize|pdfjs|pdf-lib|worker/i.test(e),
+    );
+    expect(
+      relevantErrors,
+      `redaction-module console errors:\n${relevantErrors.join("\n")}`,
+    ).toEqual([]);
+  });
 });
+

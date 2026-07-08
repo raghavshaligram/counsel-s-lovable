@@ -409,38 +409,53 @@ export async function detectPiiInPdf(
   resetNerStats();
 
 
-  // NER work collected during Pass A, run in Pass B batched across pages.
-  // Grouping by page lets us surface findings page-by-page as batches
-  // complete, and keeps offset mapping simple (per-page joined string).
-  type PageNerItem = {
+  /**
+   * Full geometry record for one pdf.js text item on the page. `x1` is the
+   * right edge in canvas coords — needed to detect whether the NEXT item on
+   * the same line is contiguous (small gap, no whitespace) so we can expand
+   * a regex/NER match across the whole enclosing token.
+   *
+   * See docs/notes on the fragmented-number leak: pdf.js emits
+   * "(763) 300-1828" as ~3–5 separate items and a regex only matches one
+   * of them; without token expansion the burn covers the middle and leaves
+   * '(7' and '28' visible AND extractable.
+   */
+  type ItemRec = {
     str: string;
     x0: number;
+    x1: number;
     y: number;
     fontHeight: number;
     pad: number;
     charW: number;
     fontName: string | undefined;
     transform: number[];
+  };
+
+  // NER work collected during Pass A, run in Pass B batched across pages.
+  // Grouping by page lets us surface findings page-by-page as batches
+  // complete, and keeps offset mapping simple (per-page joined string).
+  type PageNerItem = ItemRec & {
     joinedStart: number;
     joinedEnd: number;
     // Regex name hits within this item — used to dedupe against NER results
     // so a name caught by BOTH the "Mr. X" regex and the NER model doesn't
     // produce two redaction boxes on the same span.
     regexNameSpans: Array<{ start: number; end: number }>;
+    // Contiguous same-line neighbours (no whitespace, gap ≤ 0.5em) to redact
+    // as whole-item boxes when a NER match hits this item's boundary.
+    leftChain: ItemRec[];
+    rightChain: ItemRec[];
   };
   type PageNerWork = { page: number; joinedText: string; items: PageNerItem[] };
   const pageNerWork: PageNerWork[] = [];
 
-  // Small helper: push a detection built from a per-item PageNerItem record.
+  // Small helper: push a detection built from a per-item record.
   // Used from BOTH the regex pass and the NER-mapping pass so coordinates
   // are computed identically regardless of which pass surfaced the hit.
   const emitBoxFor = (
     pageIdx: number,
-    item: PageNerItem | {
-      str: string;
-      x0: number; y: number; fontHeight: number; pad: number; charW: number;
-      fontName: string | undefined; transform: number[];
-    },
+    item: ItemRec,
     spanStart: number,
     spanLen: number,
     category: PiiCategory,
@@ -474,6 +489,88 @@ export async function detectPiiInPdf(
     detections.push(det);
     return det;
   };
+
+  /**
+   * Given a page's records and a hit at (recIdx, spanStart, spanLen),
+   * return the ordered chains of CONTIGUOUS neighbouring items to redact
+   * as whole-item boxes on the left (if the hit touches str[0]) and right
+   * (if it touches str[len]). Stops at whitespace or a horizontal gap
+   * greater than ~0.5 × font height. Used by BOTH the regex pass (called
+   * per-match) and the NER pass (chain precomputed and stashed).
+   */
+  const computeChains = (
+    records: (ItemRec | null)[],
+    recIdx: number,
+  ): { leftChain: ItemRec[]; rightChain: ItemRec[] } => {
+    const rec = records[recIdx];
+    if (!rec) return { leftChain: [], rightChain: [] };
+    // Same-line records sorted by x, so left/right walk is deterministic
+    // regardless of the order pdf.js emitted them.
+    const yBand = rec.fontHeight * 0.6;
+    const sameLine = records
+      .filter((r): r is ItemRec => !!r && Math.abs(r.y - rec.y) < yBand)
+      .slice()
+      .sort((a, b) => a.x0 - b.x0);
+    const meIdx = sameLine.indexOf(rec);
+    if (meIdx < 0) return { leftChain: [], rightChain: [] };
+
+    const MAX_GAP = rec.fontHeight * 0.5;
+    const leftChain: ItemRec[] = [];
+    let cur: ItemRec = rec;
+    for (let j = meIdx - 1; j >= 0; j--) {
+      if (/^\s/.test(cur.str)) break;
+      const prev = sameLine[j];
+      const gap = cur.x0 - prev.x1;
+      if (gap < -1 || gap > MAX_GAP) break;
+      if (/\s$/.test(prev.str)) break;
+      leftChain.push(prev);
+      cur = prev;
+    }
+    const rightChain: ItemRec[] = [];
+    cur = rec;
+    for (let j = meIdx + 1; j < sameLine.length; j++) {
+      if (/\s$/.test(cur.str)) break;
+      const next = sameLine[j];
+      const gap = next.x0 - cur.x1;
+      if (gap < -1 || gap > MAX_GAP) break;
+      if (/^\s/.test(next.str)) break;
+      rightChain.push(next);
+      cur = next;
+    }
+    return { leftChain, rightChain };
+  };
+
+  /**
+   * Emit the primary match box AND — when the match hits an item boundary
+   * — whole-item boxes for the contiguous neighbour chain. This is what
+   * closes the "middle-fragment only" leak: even if the regex matched only
+   * "81151140" of "0781151140428" (split into ["07","81151140","8"]), the
+   * neighbouring "07" and "8" items get redacted as whole-item boxes too.
+   */
+  const emitWithExpansion = (
+    pageIdx: number,
+    rec: ItemRec,
+    leftChain: ItemRec[],
+    rightChain: ItemRec[],
+    spanStart: number,
+    spanLen: number,
+    category: PiiCategory,
+    confidence: "high" | "low" | undefined,
+    text: string,
+  ): void => {
+    emitBoxFor(pageIdx, rec, spanStart, spanLen, category, confidence, text);
+    if (spanStart === 0) {
+      for (const n of leftChain) {
+        emitBoxFor(pageIdx, n, 0, n.str.length, category, confidence, n.str);
+      }
+    }
+    if (spanStart + spanLen === rec.str.length) {
+      for (const n of rightChain) {
+        emitBoxFor(pageIdx, n, 0, n.str.length, category, confidence, n.str);
+      }
+    }
+  };
+
 
   // ========== Pass A — regex + heuristics + privilege terms, all pages ==========
   // Regex-only, per-item — completes in seconds even on 300+ pages so the
@@ -511,25 +608,47 @@ export async function detectPiiInPdf(
     const NER_SEP = "\n"; // 1 char — offsets in joined string map cleanly to items
 
     const tr0 = performance.now();
-    for (const raw of items) {
+
+    // Precompute FULL geometry (including x1 = right edge) for every item on
+    // the page — sparse-indexed to mirror `items`. Needed so token expansion
+    // can walk to same-line neighbours by index without a second pass over
+    // pdf.js item metrics.
+    const records: (ItemRec | null)[] = items.map((raw) => {
       const str = raw.str;
-      if (!str || !str.trim()) continue;
-      itemCount++;
+      if (!str || !str.trim()) return null;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
       const x0 = m[4];
+      const x1 = x0 + itemWidth;
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
       const fontName = (raw as { fontName?: string }).fontName;
       const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
+      return { str, x0, x1, y, fontHeight, pad, charW, fontName, transform: raw.transform };
+    });
 
-      const itemRecord = { str, x0, y, fontHeight, pad, charW, fontName, transform: raw.transform };
+    for (let recIdx = 0; recIdx < items.length; recIdx++) {
+      const itemRecord = records[recIdx];
+      if (!itemRecord) continue;
+      const raw = items[recIdx];
+      const str = itemRecord.str;
+      itemCount++;
+
+      // Cheap gate: only pay for chain discovery if THIS item shows a match
+      // signal (regex hit / privilege term / NER eligibility). Chains stay
+      // undefined otherwise — the vast majority of items on a page.
+      let chains: { leftChain: ItemRec[]; rightChain: ItemRec[] } | null = null;
+      const getChains = () => (chains ??= computeChains(records, recIdx));
 
       // 1) Structured regex patterns + heuristic name match.
       const hits = matchAllCategories(str);
       for (const hit of hits) {
-        emitBoxFor(i, itemRecord, hit.start, hit.length, hit.category, hit.confidence, hit.text);
+        const { leftChain, rightChain } = getChains();
+        emitWithExpansion(
+          i, itemRecord, leftChain, rightChain,
+          hit.start, hit.length, hit.category, hit.confidence, hit.text,
+        );
       }
       const regexNameSpans = hits
         .filter((h) => h.category === "name")
@@ -539,10 +658,17 @@ export async function detectPiiInPdf(
       PRIVILEGE_TERMS_RE.lastIndex = 0;
       let pm: RegExpExecArray | null;
       while ((pm = PRIVILEGE_TERMS_RE.exec(str)) !== null) {
-        emitBoxFor(i, itemRecord, pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
+        const { leftChain, rightChain } = getChains();
+        emitWithExpansion(
+          i, itemRecord, leftChain, rightChain,
+          pm.index, pm[0].length, "privilegeContext", "low", pm[0],
+        );
         const values = findValuesNearPrivilege(str, pm.index, pm.index + pm[0].length);
         for (const v of values) {
-          emitBoxFor(i, itemRecord, v.start, v.end - v.start, "privilegeValue", "low", v.text);
+          emitWithExpansion(
+            i, itemRecord, leftChain, rightChain,
+            v.start, v.end - v.start, "privilegeValue", "low", v.text,
+          );
         }
         if (pm[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
       }
@@ -557,15 +683,25 @@ export async function detectPiiInPdf(
         joinedText += str;
         const joinedEnd = joinedText.length;
         joinedText += NER_SEP;
+        const { leftChain, rightChain } = getChains();
         nerItems.push({
-          str, x0, y, fontHeight, pad, charW, fontName,
+          str,
+          x0: itemRecord.x0,
+          x1: itemRecord.x1,
+          y: itemRecord.y,
+          fontHeight: itemRecord.fontHeight,
+          pad: itemRecord.pad,
+          charW: itemRecord.charW,
+          fontName: itemRecord.fontName,
           transform: raw.transform,
           joinedStart, joinedEnd,
           regexNameSpans,
+          leftChain, rightChain,
         });
       }
     }
     tRegex += performance.now() - tr0;
+
 
     if (nerItems.length > 0) {
       pageNerWork.push({ page: i, joinedText, items: nerItems });
@@ -631,15 +767,18 @@ export async function detectPiiInPdf(
           (s) => !(localEnd <= s.start || localStart >= s.end),
         );
         if (overlapsRegexName) continue;
-        emitBoxFor(
+        emitWithExpansion(
           page,
           item,
+          item.leftChain,
+          item.rightChain,
           localStart,
           localEnd - localStart,
           e.type === "PER" ? "name" : "org",
           "high",
           item.str.slice(localStart, localEnd),
         );
+
       }
       const added = detections.length - detectionsBeforeItem;
       if (added > 0) emittedByPage.set(page, (emittedByPage.get(page) ?? 0) + added);
