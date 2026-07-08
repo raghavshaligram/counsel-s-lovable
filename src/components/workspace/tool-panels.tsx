@@ -1941,7 +1941,7 @@ function sanitizeStageLabel(stage: string): string {
       // sensitive values). Group by category; pages stored as 1-indexed.
       const pageMap = new Map<string, { category: string; label: string; count: number; pages: Set<number> }>();
       for (const a of toAdd) {
-        const cat = String(a.category ?? "other");
+        const cat = String((a as { category?: string }).category ?? "other");
         const label = meta?.[cat as Cat]?.label ?? cat;
         const cur = pageMap.get(cat);
         if (cur) { cur.count++; cur.pages.add(a.page + 1); }
