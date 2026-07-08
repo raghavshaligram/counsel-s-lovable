@@ -3382,14 +3382,17 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           const totalStaged = totalBoxes + (staged.sideStaged || 0);
           const canCommit = totalStaged > 0;
           const onCommit = async () => {
-            // STEP 1 — Apply-NOW for any checked side-channel findings
-            // (form fields, annotations, metadata). These have no page
-            // rect, so live-staging never covered them; the sanitize
-            // step must run against the live bytes BEFORE the page burn
-            // so flatten/PDF-A can't promote a hidden value into page
-            // text. `sideCommit` is `redactSelected`, which handles the
-            // side-channel wipe and also re-adds any ticked page items
-            // (already deduped against existing redact keys).
+            // STEP 0 — Flush any pending/in-flight live-hide sanitize so
+            // Export never races replaceFile with a mid-flight worker call
+            // (fast Export within the 450ms debounce window, or during a
+            // slow ongoing sanitize).
+            await flushPendingSideChannel();
+            // STEP 1 — Apply-NOW for any still-checked side-channel findings
+            // (a user who clicked Export before the debounce fired). These
+            // have no page rect, so the page-burn step can't touch them.
+            // `sideCommit` is `redactSelected`, which handles the wipe and
+            // also re-adds any ticked page items (deduped against existing
+            // redact keys).
             if ((staged.sideStaged || 0) > 0 && staged.sideCommit) {
               await staged.sideCommit();
             }
@@ -3398,6 +3401,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               await exportRedacted();
             }
           };
+
           return (
             <>
               <label className={cn(
