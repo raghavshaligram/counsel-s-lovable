@@ -140,9 +140,9 @@ async function extractTextPerPage(bytes: Uint8Array): Promise<string[]> {
 export async function runMixedRedactionE2E(): Promise<E2eProbe> {
   const { bytes, rect } = await buildFixture();
 
-  // Step 1 — burn on page 0 (mirrors the real export path).
+  // Step 1 — burn on page 0 via the SAME worker wrapper the export path uses.
   const pageMap = new Map<number, RedactionRectTL[]>([[0, [rect]]]);
-  const rast = await rasterizeRedactedPages(bytes, pageMap, { scale: 2.5, mode: "always" });
+  const rast = await rasterizeRedactedPagesInWorker(bytes, pageMap, { scale: 2.5, mode: "always" });
 
   // Step 2 — gate: sanitize side-channels + verify. Targets include the
   // secret AND the name so the gate scans every vector.
