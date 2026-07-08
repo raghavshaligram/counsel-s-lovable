@@ -130,7 +130,7 @@ async function rasterize(
 
       if (mode === "fallback") {
         const tc = await page.getTextContent();
-        const hit = tc.items.some((it) => {
+        const hit = (tc.items as unknown[]).some((it: unknown) => {
           if (!("str" in it)) return false;
           const item = it as { str: string; transform: number[]; width?: number; height?: number };
           if (!item.str || !item.str.trim()) return false;
