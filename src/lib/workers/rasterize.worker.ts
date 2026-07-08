@@ -79,9 +79,14 @@ async function rasterize(
 ): Promise<{ bytes: Uint8Array; rasterizedPages: number[] }> {
   if (pageRedactions.size === 0) return { bytes, rasterizedPages: [] };
 
-  const pdfjs = await loadPdfjs();
-  const srcDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
   const outDoc = await PDFDocument.load(bytes);
+  const pdfjs = await loadPdfjs();
+  // In max-security mode the caller has transferred ownership of `bytes` to
+  // this worker and no stage needs the raw buffer after pdf-lib has loaded it.
+  // Hand that same buffer to pdf.js instead of allocating bytes.slice() — the
+  // old full-file duplicate was enough to OOM 3000–5000 page exports.
+  const srcData = mode === "fallback" ? bytes.slice() : bytes;
+  const srcDoc = await pdfjs.getDocument({ data: srcData }).promise;
   const rasterizedPages: number[] = [];
 
   const pageOrder = Array.from(pageRedactions.keys()).sort((a, b) => b - a);
@@ -174,7 +179,7 @@ async function rasterize(
   }
 
   if (rasterizedPages.length === 0) return { bytes, rasterizedPages: [] };
-  const outBytes = await outDoc.save({ useObjectStreams: false, updateFieldAppearances: false });
+  const outBytes = await outDoc.save({ updateFieldAppearances: false });
   return { bytes: outBytes, rasterizedPages: rasterizedPages.slice().sort((a, b) => a - b) };
 }
 

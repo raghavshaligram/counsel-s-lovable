@@ -59,13 +59,16 @@ export async function rasterizeRedactedPages(
   const onProgress = options.onProgress;
   if (pageRedactions.size === 0) return { bytes, rasterizedPages: [] };
 
-  const pdfjs = await loadPdfjs();
-  // pdf.js detaches the buffer it's handed — slice so we keep `bytes` usable.
-  const srcDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-
   // Load the output doc ONCE up front so we can stream embeds page-by-page
   // instead of accumulating every JPEG in a replacements[] array.
   const outDoc = await PDFDocument.load(bytes);
+  const pdfjs = await loadPdfjs();
+  // In max-security mode, pdf-lib has already parsed the source and the raw
+  // buffer can be handed to pdf.js without keeping a second full-file slice.
+  // Fallback mode may need to return the original bytes unchanged, so preserve
+  // its buffer there only.
+  const srcData = mode === "fallback" ? bytes.slice() : bytes;
+  const srcDoc = await pdfjs.getDocument({ data: srcData }).promise;
   const rasterizedPages: number[] = [];
 
   // Sort keys descending — removePage(i)+insertPage(i) keeps ordering but
