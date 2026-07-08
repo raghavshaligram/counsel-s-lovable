@@ -3109,22 +3109,26 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           }
 
 
-          return { bytes: outBytes, rasterizedPages: gatedRasterizedPages, verify: vresult };
+          return { bytes: outBytes, rasterizedPages: gatedRasterizedPages, verify: vresult, pixelWarnCount };
         },
       );
       const jobOutput = await jobRun.promise;
       bytes = jobOutput.bytes;
       const rasterResult = { bytes: jobOutput.bytes, rasterizedPages: jobOutput.rasterizedPages };
       const result = jobOutput.verify;
+      const pixelWarn = jobOutput.pixelWarnCount ?? 0;
 
       setVerify(result);
       if (result.ok) {
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         setLastBytes(bytes);
         const flatNote = rasterResult.rasterizedPages.length
-          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned & OCR-verified`
+          ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned`
           : "";
-        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}`, { id: tid });
+        const warnNote = pixelWarn > 0
+          ? ` · ${pixelWarn} region${pixelWarn === 1 ? "" : "s"} flagged for visual review (content already verified removed)`
+          : "";
+        toast.success(`Verified — ${result.removed}/${result.total} regions cleared${flatNote}${warnNote}`, { id: tid });
         try {
           window.dispatchEvent(new CustomEvent("agent:redact-complete", {
             detail: { ok: true, removed: result.removed, total: result.total, leaks: 0 },
