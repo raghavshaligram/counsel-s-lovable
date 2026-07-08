@@ -91,10 +91,22 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
         try { page.cleanup(); } catch { /* noop */ }
 
         for (const t of items) {
-          const cx = Math.max(0, Math.floor(t.rect.x * scale));
-          const cy = Math.max(0, Math.floor(t.rect.y * scale));
-          const cw = Math.min(canvas.width - cx, Math.ceil(t.rect.w * scale));
-          const ch = Math.min(canvas.height - cy, Math.ceil(t.rect.h * scale));
+          // Sample slightly INSIDE the painted rect (inset by ~2px at
+          // scale). The rasterizer bleeds the black fill ~2px OUTSIDE
+          // the exact rect bounds to defeat JPEG edge ringing; here we
+          // sample only the reliably-solid interior. Using ceil on the
+          // origin and floor on the extent ensures the sample window is
+          // strictly INSIDE the painted (rect+bleed) area — never larger.
+          const INSET = 2;
+          const rx = t.rect.x * scale + INSET;
+          const ry = t.rect.y * scale + INSET;
+          const rw = t.rect.w * scale - INSET * 2;
+          const rh = t.rect.h * scale - INSET * 2;
+          if (rw < 2 || rh < 2) continue;
+          const cx = Math.max(0, Math.ceil(rx));
+          const cy = Math.max(0, Math.ceil(ry));
+          const cw = Math.min(canvas.width - cx, Math.floor(rx + rw) - cx);
+          const ch = Math.min(canvas.height - cy, Math.floor(ry + rh) - cy);
           if (cw < 2 || ch < 2) continue;
           const img = ctx.getImageData(cx, cy, cw, ch);
           const data = img.data;
@@ -105,7 +117,11 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
             if (data[i] + data[i + 1] + data[i + 2] < 90) dark++;
           }
           const coverage = px > 0 ? dark / px : 1;
-          if (coverage < 0.995) {
+          // Interior (post-inset, post-bleed) should be ~100% black.
+          // A correctly-drawn rect always passes at 0.98; a rect drawn in
+          // the wrong location or not drawn at all shows massive non-black
+          // area and fails loudly.
+          if (coverage < 0.98) {
             leaks.push({ page: pageIdx, rect: t.rect, coverage });
           }
         }

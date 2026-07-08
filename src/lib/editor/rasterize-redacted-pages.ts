@@ -131,8 +131,18 @@ export async function rasterizeRedactedPages(
       await renderTask.promise;
 
       ctx.fillStyle = "#000000";
+      // Paint a small bleed (~2px at render scale) beyond the exact rect
+      // bounds. JPEG's 8x8 DCT introduces ringing/blur at high-contrast
+      // edges; bleeding the black fill outward guarantees the intended
+      // redaction area remains solidly black after JPEG encoding. Bleeding
+      // outward is always safe — a black margin never reveals content.
+      const BLEED = 2;
       for (const r of rects) {
-        ctx.fillRect(r.x * scale, r.y * scale, r.w * scale, r.h * scale);
+        const x = r.x * scale - BLEED;
+        const y = r.y * scale - BLEED;
+        const w = r.w * scale + BLEED * 2;
+        const h = r.h * scale + BLEED * 2;
+        ctx.fillRect(x, y, w, h);
       }
       try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
 
