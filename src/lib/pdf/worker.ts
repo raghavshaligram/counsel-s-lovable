@@ -2,7 +2,7 @@
 // module-eval time, which doesn't exist during Cloudflare Worker SSR.
 // We dynamic-import to keep it out of the SSR bundle entirely.
 
-type PdfjsModule = typeof import("pdfjs-dist");
+type PdfjsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 let cached: PdfjsModule | null = null;
 
 function ensurePdfjsMapUpsertPolyfills(): void {
@@ -48,7 +48,7 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
     throw new Error("pdfjs can only be loaded in the browser");
   }
   const [pdfjs, workerUrlMod] = await Promise.all([
-    import("pdfjs-dist"),
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
     import("./pdfjs-worker-polyfill?url"),
   ]);
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
