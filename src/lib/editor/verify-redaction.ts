@@ -189,6 +189,7 @@ async function verifyPageGeometry(
 export async function verifySideChannelVectors(
   bytes: Uint8Array,
   sensitiveStrings: string[],
+  opts: SideChannelOptions = {},
 ): Promise<VerifyLeak[]> {
   let doc: PDFDocument;
   try {
@@ -196,20 +197,58 @@ export async function verifySideChannelVectors(
   } catch {
     return [];
   }
-  return verifySideChannelVectorsWithDoc(doc, sensitiveStrings);
+  return verifySideChannelVectorsWithDoc(doc, sensitiveStrings, opts);
 }
 
-/** Same as `verifySideChannelVectors` but reuses an already-parsed
- *  PDFDocument and walks `enumerateIndirectObjects` exactly ONCE.
- *  The previous impl walked it three times (form/OCG/attachments),
- *  which is O(n) work triplicated on huge docs. */
-export function verifySideChannelVectorsWithDoc(
+export interface SideChannelOptions {
+  signal?: AbortSignal;
+  /** (done, total) — `total` is best-effort (page count + object count estimate). */
+  onProgress?: (done: number, total: number) => void;
+  /**
+   * How many indirect objects / annotations to walk before yielding to
+   * the event loop. Default: 128. Lower = more responsive, higher = less
+   * yielding overhead. Callers running INSIDE a Web Worker can bump this
+   * higher since main-thread responsiveness isn't a concern there.
+   */
+  chunkSize?: number;
+}
+
+/**
+ * Same as `verifySideChannelVectors` but reuses an already-parsed
+ * PDFDocument and walks `enumerateIndirectObjects` exactly ONCE.
+ *
+ * Runs on whichever thread the caller invokes it on (worker or main).
+ * The internal loops yield to the event loop every `chunkSize` iterations
+ * so that when this is invoked on the main thread on a large document,
+ * the UI does not freeze. Correctness is unchanged — the yield windows
+ * are between per-object inspection steps and do NOT touch any bytes;
+ * the caller's PDFDocument reference remains the single source of truth.
+ */
+export async function verifySideChannelVectorsWithDoc(
   doc: PDFDocument,
   sensitiveStrings: string[],
-): VerifyLeak[] {
+  opts: SideChannelOptions = {},
+): Promise<VerifyLeak[]> {
   const leaks: VerifyLeak[] = [];
   const ctx = doc.context;
   const catalog = doc.catalog;
+  const chunkSize = Math.max(1, opts.chunkSize ?? 128);
+  const signal = opts.signal;
+
+  // Best-effort progress denominator. We don't know the indirect-object
+  // count until we've walked it; use page count + a rough headroom so the
+  // bar advances monotonically until it snaps to 100% at completion.
+  const pageCount = doc.getPageCount();
+  const totalEstimate = Math.max(1, pageCount + 512);
+  let doneCount = 0;
+  const tick = (n = 1): void => {
+    doneCount += n;
+    opts.onProgress?.(Math.min(doneCount, totalEstimate - 1), totalEstimate);
+  };
+  const yieldPoint = async (): Promise<void> => {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    await new Promise<void>((r) => setTimeout(r, 0));
+  };
 
   const sensitiveHit = (s: string | undefined | null): string | null => {
     if (!s) return null;
@@ -245,28 +284,39 @@ export function verifySideChannelVectorsWithDoc(
       });
     }
   }
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
   // -- Annotation text (per-page walk, no full-heap scan) --------------
-  for (let pageIdx = 0; pageIdx < doc.getPageCount(); pageIdx++) {
+  // Yield every `chunkSize` pages so a 10k-page doc doesn't stall the
+  // main thread here. Per-page work is tiny (Annots array lookup + a
+  // handful of dict reads) so the chunk can be relatively large.
+  for (let pageIdx = 0; pageIdx < pageCount; pageIdx++) {
     const page = doc.getPage(pageIdx);
     const annotsArr = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
-    if (!annotsArr) continue;
-    for (const item of annotsArr.asArray()) {
-      const annot = resolveDict(ctx, item);
-      if (!annot) continue;
-      for (const key of ["Contents", "RC", "T", "Subj"]) {
-        const txt = extractText(annot.get(PDFName.of(key)));
-        const hit = sensitiveHit(txt);
-        if (hit) {
-          leaks.push({
-            vector: "annotation",
-            page: pageIdx,
-            text: `Annotation /${key}: "${truncate(txt)}" (matched "${truncate(hit)}")`,
-            ref: refStr(item),
-          });
+    if (annotsArr) {
+      let annotSeen = 0;
+      for (const item of annotsArr.asArray()) {
+        const annot = resolveDict(ctx, item);
+        if (!annot) continue;
+        for (const key of ["Contents", "RC", "T", "Subj"]) {
+          const txt = extractText(annot.get(PDFName.of(key)));
+          const hit = sensitiveHit(txt);
+          if (hit) {
+            leaks.push({
+              vector: "annotation",
+              page: pageIdx,
+              text: `Annotation /${key}: "${truncate(txt)}" (matched "${truncate(hit)}")`,
+              ref: refStr(item),
+            });
+          }
         }
+        annotSeen++;
+        // Pages with hundreds of annotations (form-heavy PDFs) still yield mid-page.
+        if (annotSeen % chunkSize === 0) await yieldPoint();
       }
     }
+    tick(1);
+    if ((pageIdx & (chunkSize - 1)) === 0) await yieldPoint();
   }
 
   // -- Attachments discoverable from catalog Names --------------------
@@ -279,7 +329,9 @@ export function verifySideChannelVectorsWithDoc(
 
   // -- SINGLE enumerateIndirectObjects walk: orphan form fields,
   //    hidden-layer objects, filespecs, embedded file streams.
-  //    Previously three separate walks over the entire object graph.
+  //    Chunked-and-yielding so the main thread stays responsive on
+  //    documents with tens of thousands of indirect objects.
+  let objSeen = 0;
   for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
     if (obj instanceof PDFDict) {
       // Orphan form field with /FT + /V outside the AcroForm /Fields tree.
@@ -318,10 +370,19 @@ export function verifySideChannelVectorsWithDoc(
         leaks.push({ vector: "attachment", text: "Embedded-file stream present", ref: refStr(ref) });
       }
     }
+    objSeen++;
+    if (objSeen % chunkSize === 0) {
+      tick(chunkSize);
+      await yieldPoint();
+    }
   }
 
+  // Snap progress to 100% on the last emission so consumers see completion.
+  opts.onProgress?.(totalEstimate, totalEstimate);
   return leaks;
 }
+
+
 
 
 
