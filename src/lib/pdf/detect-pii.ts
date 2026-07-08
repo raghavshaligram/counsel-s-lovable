@@ -1731,6 +1731,7 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
       vector: SideChannelFinding["vector"],
       sourceLabel: string,
       idSuffix: string,
+      fieldName?: string,
     ): void => {
       const t = (text || "").trim();
       if (!t || t.length < 3) return;
@@ -1746,6 +1747,7 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
           sensitiveText: t,
           vector,
           sourceLabel,
+          ...(fieldName ? { fieldName } : {}),
         });
       }
     };
@@ -1760,9 +1762,9 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
           if (!field) continue;
           const name = extractStr(field.get(PDFName.of("T"))) || "field";
           const v = extractStr(field.get(PDFName.of("V")));
-          if (v) scan(v, "form-field", `Form field: ${truncate(name, 40)}`, name);
+          if (v) scan(v, "form-field", `Form field: ${truncate(name, 40)}`, name, name);
           const dv = extractStr(field.get(PDFName.of("DV")));
-          if (dv && dv !== v) scan(dv, "form-field", `Form field default: ${truncate(name, 40)}`, name + "-dv");
+          if (dv && dv !== v) scan(dv, "form-field", `Form field default: ${truncate(name, 40)}`, name + "-dv", name);
           const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
           if (kids) walk(kids.asArray());
         }
@@ -1775,7 +1777,7 @@ export async function detectPiiInSideChannels(file: File): Promise<SideChannelFi
       if (!obj.has(PDFName.of("FT")) || !obj.has(PDFName.of("V"))) continue;
       const name = extractStr(obj.get(PDFName.of("T"))) || "orphan";
       const v = extractStr(obj.get(PDFName.of("V")));
-      if (v) scan(v, "form-field", `Form field: ${truncate(name, 40)}`, "orphan-" + name);
+      if (v) scan(v, "form-field", `Form field: ${truncate(name, 40)}`, "orphan-" + name, name);
     }
 
     // ---- Annotations (comments, sticky notes, free text) ----
