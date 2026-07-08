@@ -1506,6 +1506,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setTotalPagesScanned(0);
     setSelected(new Set());
     autoSelectedRef.current = new Set();
+    setLastSummary(null);
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
