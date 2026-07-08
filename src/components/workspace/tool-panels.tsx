@@ -3156,7 +3156,12 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   type Verify = import("@/lib/editor/verify-redaction").VerifyResult;
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
-  const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
+  // MEMORY: store hashes only, never the full exported Uint8Array. Retaining
+  // 500MB–1.5GB in React state across the session was the primary cause of
+  // "Array buffer allocation failed" on the NEXT export. Certificate build
+  // needs the hashes, not the bytes — compute them once during export and
+  // release the buffer immediately.
+  const [lastHashes, setLastHashes] = useState<{ source: string; redacted: string } | null>(null);
   const [reviewedSignOff, setReviewedSignOff] = useState(false);
   // "always" = rasterize every page that carries a redaction (default, safest).
   // "fallback" = attempt content-stream surgery first, rasterize only pages
