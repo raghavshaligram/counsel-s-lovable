@@ -18,8 +18,8 @@
 
 import { PDFDocument, PDFName, PDFString, StandardFonts } from "pdf-lib";
 import { enforceRedactionGate } from "@/lib/editor/redaction-gate";
-import { rasterizeRedactedPages, type RedactionRectTL } from "@/lib/editor/rasterize-redacted-pages";
-import { loadPdfjs } from "@/lib/pdf/worker";
+import { rasterizeRedactedPagesInWorker } from "@/lib/workers/rasterize-client";
+import type { RedactionRectTL } from "@/lib/editor/rasterize-redacted-pages";
 
 // pdf.js 5.x uses Map.prototype.getOrInsertComputed (TC39 upsert proposal),
 // which is only unflagged in Chromium 142+. Test browsers may lag; polyfill
