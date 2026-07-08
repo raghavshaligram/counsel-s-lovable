@@ -44,6 +44,13 @@ const TEXT_ANNOT_SUBTYPES = new Set([
 export interface SanitizeOptions {
   onProgress?: (stage: string, done: number, total: number) => void;
   shouldAbort?: () => boolean;
+  /** When provided, ONLY form fields whose /T matches one of these names
+   *  are cleared. Annotations, metadata, embedded files, JavaScript, and
+   *  OCGs are still fully wiped (their non-page vectors have no per-item
+   *  targeting UI). When omitted, the standalone Sanitize tool's blanket
+   *  behavior is preserved: every form field is cleared and /AcroForm is
+   *  deleted wholesale. */
+  targetFieldNames?: string[];
 }
 
 export async function sanitizePdfBytes(bytes: Uint8Array): Promise<Uint8Array> {
