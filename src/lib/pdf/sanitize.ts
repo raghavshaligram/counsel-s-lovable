@@ -410,18 +410,38 @@ async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promis
   for (const r of targets) removeRef(ctx, r);
 }
 
+/** Walk a widget's /Parent chain to find the owning field's /T name.
+ *  Widgets can be merged with the field (have /T themselves) or reference
+ *  a parent field via /Parent. Selective sanitize needs the effective name
+ *  to decide whether to drop the widget. */
+function widgetFieldName(ctx: PDFDocument["context"], widget: PDFDict): string {
+  let cur: PDFDict | undefined = widget;
+  const seen = new Set<PDFDict>();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const n = extractText(cur.get(PDFName.of("T")));
+    if (n) return n;
+    const parent = cur.get(PDFName.of("Parent"));
+    cur = resolveDict(ctx, parent);
+  }
+  return "";
+}
+
 /** Recursively clear /V (and /DV, /RV) on a form field tree.
  *  Returns the count of fields whose /V was non-empty before clearing.
- *  Logs before/after for each cleared field so a regression where the
- *  value is "covered but not removed" is immediately visible in DevTools. */
-function clearFormFieldTree(ctx: PDFDocument["context"], item: unknown, appearanceRefs: PDFRef[]): number {
+ *  When targetSet is provided, only fields whose /T is in the set are cleared. */
+function clearFormFieldTree(
+  ctx: PDFDocument["context"],
+  item: unknown,
+  appearanceRefs: PDFRef[],
+  targetSet: Set<string> | null,
+): number {
   const field = resolveDict(ctx, item);
   if (!field) return 0;
-  rememberRef(appearanceRefs, item);
-  let count = clearFormFieldDict(ctx, field, item, appearanceRefs, "AcroForm-tree");
+  let count = clearFormFieldDict(ctx, field, item, appearanceRefs, "AcroForm-tree", targetSet);
   const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
   if (kids) {
-    for (const k of kids.asArray()) count += clearFormFieldTree(ctx, k, appearanceRefs);
+    for (const k of kids.asArray()) count += clearFormFieldTree(ctx, k, appearanceRefs, targetSet);
   }
   return count;
 }
@@ -432,8 +452,15 @@ function clearFormFieldDict(
   ref: unknown,
   appearanceRefs: PDFRef[],
   source: "AcroForm-tree" | "orphan-scan",
+  targetSet: Set<string> | null,
 ): number {
   const name = extractText(field.get(PDFName.of("T"))) || "(anon)";
+  // Selective mode: only touch targeted fields. Widgets without /T need
+  // parent-chain resolution to compare against the target set.
+  if (targetSet) {
+    const effective = name !== "(anon)" ? name : widgetFieldName(ctx, field);
+    if (!effective || !targetSet.has(effective)) return 0;
+  }
   const beforeV = extractText(field.get(PDFName.of("V")));
   const beforeDV = extractText(field.get(PDFName.of("DV")));
   const hadAP = field.has(PDFName.of("AP"));
@@ -447,6 +474,7 @@ function clearFormFieldDict(
     dvBefore: beforeDV.slice(0, 160),
     hasAPBefore: hadAP,
     flattenOrder: "CLEAR_FIELD_THEN_FLATTEN",
+    selective: !!targetSet,
   });
   collectAppearanceRefs(ctx, field, appearanceRefs);
   rememberRef(appearanceRefs, ref);
