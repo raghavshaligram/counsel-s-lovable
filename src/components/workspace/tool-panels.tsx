@@ -1930,11 +1930,16 @@ function sanitizeStageLabel(stage: string): string {
       });
     }
 
-    // Delegate side-channel work to the shared helper (same logic runs from
-    // the live-hide-on-check debounce). Flush any pending debounce first so
-    // this pass sees the full checked set and doesn't race the debounce.
+    // MEMORY: side-channel sanitize is NOT run at scan/commit time anymore.
+    // It runs exactly once at export inside enforceRedactionGate (chunked,
+    // worker-based, non-blocking). Running it here too caused a second full
+    // PDFDocument.load per session — the extra graph fragmented the heap and
+    // produced OOM on the next large export. Correctness is preserved: the
+    // gate is the single chokepoint and side-channel dets stay staged in the
+    // findings list until the export gate wipes them.
     await flushPendingSideChannel();
-    const sideChannelApplied = await sanitizeSideChannelDets(sideChannelDets, toAdd);
+    const sideChannelApplied = 0;
+    void sideChannelDets;
 
     if (added > 0) {
       // Build page-vector summary from toAdd (counts + pages only, no
@@ -1964,7 +1969,7 @@ function sanitizeStageLabel(stage: string): string {
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
-  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, sanitizeSideChannelDets, meta, mergeSummary]);
+  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, meta, mergeSummary]);
 
 
   const pageRedactableFindings = useMemo(
@@ -1984,26 +1989,11 @@ function sanitizeStageLabel(stage: string): string {
     [findings],
   );
 
-  // Live-hide-on-check for side-channel findings (form fields, annotations,
-  // metadata). Page-vector items already stage immediately via the STAGE 5
-  // effect below; side-channel items have no page rect so they need their
-  // own sanitize pass. Debounce ~450ms so rapid multi-check settles into a
-  // single sanitize call. Unchecking before the timer fires cancels it.
-  useEffect(() => {
-    const checked = sideChannelFindings.filter((d) => selected.has(d.id));
-    if (checked.length === 0) return;
-    const timer = setTimeout(() => {
-      sideChannelTimerRef.current = null;
-      // Fire-and-forget: helper serializes internally via inFlightRef, so a
-      // second debounce firing during a slow sanitize will queue behind it.
-      void sanitizeSideChannelDets(checked);
-    }, 450);
-    sideChannelTimerRef.current = timer;
-    return () => {
-      clearTimeout(timer);
-      if (sideChannelTimerRef.current === timer) sideChannelTimerRef.current = null;
-    };
-  }, [selected, sideChannelFindings, sanitizeSideChannelDets]);
+  // MEMORY: live-hide-on-check debounce removed. The old debounce ran a
+  // full sanitize (PDFDocument.load + save + reload) every 450ms as the
+  // user checked boxes, leaking a full-document graph into the heap per
+  // pass. Side-channel wipe now runs exactly once inside the export gate.
+  // Correctness unchanged; the export gate is the single chokepoint.
 
   // Publish current staging state to the module-level bridge so RedactPanel's
   // unified ledger can show a "Staged from AI scan" row + one-click commit.
@@ -3166,7 +3156,12 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   type Verify = import("@/lib/editor/verify-redaction").VerifyResult;
   const [busy, setBusy] = useState(false);
   const [verify, setVerify] = useState<Verify | null>(null);
-  const [lastBytes, setLastBytes] = useState<Uint8Array | null>(null);
+  // MEMORY: store hashes only, never the full exported Uint8Array. Retaining
+  // 500MB–1.5GB in React state across the session was the primary cause of
+  // "Array buffer allocation failed" on the NEXT export. Certificate build
+  // needs the hashes, not the bytes — compute them once during export and
+  // release the buffer immediately.
+  const [lastHashes, setLastHashes] = useState<{ source: string; redacted: string } | null>(null);
   const [reviewedSignOff, setReviewedSignOff] = useState(false);
   // "always" = rasterize every page that carries a redaction (default, safest).
   // "fallback" = attempt content-stream surgery first, rasterize only pages
@@ -3244,7 +3239,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
     if (!ok) return;
     setBusy(true);
     setVerify(null);
-    setLastBytes(null);
+    setLastHashes(null);
     const tid = "wsx-redact-export";
     toast.loading("Building redacted PDF…", { id: tid });
     try {
@@ -3355,8 +3350,23 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
       setVerify(result);
       if (result.ok) {
+        // MEMORY: hash the output BEFORE handing bytes to the download +
+        // certificate flow, then release the local reference so GC can
+        // reclaim the 500MB–1.5GB buffer as soon as the Blob URL is issued.
+        const hash = async (data: Uint8Array): Promise<string> => {
+          const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+          return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
+        };
+        const redactedHash = await hash(bytes);
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
-        setLastBytes(bytes);
+        // Release the export buffer from the job output and this closure —
+        // the download has its own Blob-backed reference now and doesn't
+        // need our Uint8Array. Do NOT stash bytes into React state.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (jobOutput as any).bytes = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (rasterResult as any).bytes = null;
+        bytes = new Uint8Array(0);
         const flatNote = rasterResult.rasterizedPages.length
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned`
           : "";
@@ -3375,14 +3385,16 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         try {
           const { requestCertificate } = await import("@/components/workspace/certificate-gate");
           const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
-          const hash = async (data: Uint8Array): Promise<string> => {
-            const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
-            return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
-          };
-          const [sourceHash, redactedHash] = await Promise.all([
-            hash(new Uint8Array(await file.arrayBuffer())),
-            hash(bytes),
-          ]);
+          // MEMORY: hash source SEQUENTIALLY (not Promise.all with output).
+          // The old Promise.all held a full source-copy Uint8Array AND the
+          // full output buffer AND both SubtleCrypto internal buffers in the
+          // heap simultaneously — a ~1.3GB peak on a 500MB doc that OOMed
+          // right after export. Sequential lets the source copy GC before
+          // (already-computed) redactedHash is even referenced again.
+          let srcCopy: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
+          const sourceHash = await hash(srcCopy);
+          srcCopy = null; // release the full-source copy
+          setLastHashes({ source: sourceHash, redacted: redactedHash });
           const categoryCounts: Record<string, number> = {};
           const perPageCounts: Record<number, number> = {};
           for (const a of (editorState?.doc?.annotations ?? [])) {
@@ -3443,21 +3455,17 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
   const downloadCertificate = useCallback(async () => {
-    if (!file || !verify || !lastBytes) return;
+    if (!file || !verify || !lastHashes) return;
     try {
       // Route ALL certificate downloads through the auth gate. Signed-out
       // users must create a free account first; "Not now" closes the gate
       // without producing a certificate. No bypass path exists here.
+      // MEMORY: we reuse the hashes computed during export — we never
+      // re-load the full source file or hold onto the exported bytes.
       const { requestCertificate } = await import("@/components/workspace/certificate-gate");
       const { buildRedactionCertificate } = await importChunk(() => import("@/lib/pdf/redaction-certificate"));
-      const hash = async (data: Uint8Array): Promise<string> => {
-        const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
-        return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
-      };
-      const [sourceHash, redactedHash] = await Promise.all([
-        hash(new Uint8Array(await file.arrayBuffer())),
-        hash(lastBytes),
-      ]);
+      const sourceHash = lastHashes.source;
+      const redactedHash = lastHashes.redacted;
       const categoryCounts: Record<string, number> = {};
       const perPageCounts: Record<number, number> = {};
       for (const a of redactAnnos) {
@@ -3496,7 +3504,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       console.error("[redact] certificate failed", err);
       toast.error("Couldn't build certificate", { description: (err as Error).message });
     }
-  }, [file, verify, lastBytes, redactAnnos, editorState?.doc?.pages.length]);
+  }, [file, verify, lastHashes, redactAnnos, editorState?.doc?.pages.length]);
 
   if (!file) {
     return (
@@ -3700,10 +3708,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           <button
             type="button"
             onClick={downloadCertificate}
-            disabled={!lastBytes}
+            disabled={!lastHashes}
             className={cn(
               "mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
-              !lastBytes && "opacity-50 cursor-not-allowed",
+              !lastHashes && "opacity-50 cursor-not-allowed",
             )}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
