@@ -92,6 +92,11 @@ function expandToken(
   if (!leftHit || !rightHit) return { x, x2 };
 
   const MAX_GAP = h * 0.5;
+  // Reported text-item boxes can overlap a little at font/kerning boundaries.
+  // A hard `gap < -1` cutoff made expansion stop at the second fragment,
+  // leaving the first digit/letter visible. Allow modest overlap as the same
+  // token; whitespace and large positive/negative gaps still stop expansion.
+  const MAX_OVERLAP = h * 0.5;
 
   // Walk left from leftHit.
   let curL = leftHit;
@@ -102,7 +107,7 @@ function expandToken(
     if (idx <= 0) break;
     const prev = sameLine[idx - 1];
     const gap = curL.x - (prev.x + prev.w);
-    if (gap < -1 || gap > MAX_GAP) break;
+    if (gap < -MAX_OVERLAP || gap > MAX_GAP) break;
     if (/\s$/.test(prev.str)) break; // previous's right side is whitespace
     newX = Math.min(newX, prev.x);
     curL = prev;
@@ -117,7 +122,7 @@ function expandToken(
     if (idx < 0 || idx >= sameLine.length - 1) break;
     const next = sameLine[idx + 1];
     const gap = next.x - (curR.x + curR.w);
-    if (gap < -1 || gap > MAX_GAP) break;
+    if (gap < -MAX_OVERLAP || gap > MAX_GAP) break;
     if (/^\s/.test(next.str)) break;
     newX2 = Math.max(newX2, next.x + next.w);
     curR = next;

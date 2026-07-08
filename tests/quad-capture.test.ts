@@ -55,6 +55,23 @@ describe("computeQuads — token expansion across fragmented text items", () => 
     expect(quads[0].x + quads[0].w).toBeGreaterThanOrEqual(66 - 0.01);
   });
 
+  it("covers a leading first-character fragment even when item bounds slightly overlap", () => {
+    // This mirrors real pdf.js output at font/metric boundaries: the leading
+    // digit is its own item and the next item starts slightly before that
+    // digit's reported right edge (negative gap). The old walk used
+    // `gap < -1` as a boundary, so it stopped at the second item and left
+    // the first digit visible.
+    const items: TextItemLite[] = [
+      item("0", 10, 7),
+      item("781151140428", 15, 48), // gap = -2pt, still same visible token
+    ];
+    const rect = { x: 18, y: 98, w: 38, h: H + 4 };
+    const quads = computeQuads(rect, items);
+    expect(quads).toHaveLength(1);
+    expect(quads[0].x).toBeLessThanOrEqual(10 + 0.01);
+    expect(quads[0].x + quads[0].w).toBeGreaterThanOrEqual(63 - 0.01);
+  });
+
   it("stops at whitespace — does NOT over-redact the adjacent word", () => {
     // "Name:" + " Jane" — space at start of second item breaks the chain.
     // Drag hits only "Name:" — expansion must not swallow " Jane".
