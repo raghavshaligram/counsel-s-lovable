@@ -13,6 +13,12 @@ export default defineConfig({
     server: { entry: "server" },
   },
   vite: {
+    optimizeDeps: {
+      exclude: [
+        "pdfjs-dist/legacy/build/pdf.mjs",
+        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+      ],
+    },
     // The automation worker (src/lib/automation/worker.ts) uses dynamic
     // imports via importChunk, which requires code-splitting. Rollup can't
     // code-split IIFE workers, so force ES module output.
