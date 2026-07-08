@@ -111,20 +111,25 @@ export async function sanitizePdfBytesWithReport(
     hasAcroForm: !!acroForm,
     order: "clear /V + /DV and delete /AP before any flatten/PDF-A/export",
   });
+  const selective = Array.isArray(opts.targetFieldNames);
+  const targetSet = selective ? new Set(opts.targetFieldNames) : null;
+  const isTargeted = (name: string) => !targetSet || targetSet.has(name);
   if (acroForm) {
     report.acroForm = 1;
     const fieldsArr = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
     if (fieldsArr) {
       for (const item of fieldsArr.asArray()) {
-        const cleared = clearFormFieldTree(ctx, item, appearanceRefsToRemove);
+        const cleared = clearFormFieldTree(ctx, item, appearanceRefsToRemove, targetSet);
         report.acroFormFields += cleared;
       }
-      // Remove the fields from the live AcroForm tree before any downstream
-      // flatten call can bake their previous appearance into page content.
-      const emptied = PDFArray.withContext(ctx);
-      acroForm.set(PDFName.of("Fields"), emptied);
+      if (!selective) {
+        // Remove the fields from the live AcroForm tree before any downstream
+        // flatten call can bake their previous appearance into page content.
+        const emptied = PDFArray.withContext(ctx);
+        acroForm.set(PDFName.of("Fields"), emptied);
+      }
     }
-    catalog.delete(PDFName.of("AcroForm"));
+    if (!selective) catalog.delete(PDFName.of("AcroForm"));
   }
   // Belt and braces: even if /AcroForm was already missing, individual
   // field dicts can linger as orphans. Walk every indirect object and
@@ -136,13 +141,14 @@ export async function sanitizePdfBytesWithReport(
       if (!(obj instanceof PDFDict)) continue;
       const isFieldOrWidget = obj.has(PDFName.of("FT")) || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget";
       if (!isFieldOrWidget) continue;
-      const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan");
+      const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan", targetSet);
       report.acroFormFields += cleared;
     }
   }
   // Also drop /Widget annotations on every page — the parent form fields
   // were just deleted, so the widgets are now orphans whose only purpose
-  // would be to carry leftover /AP streams.
+  // would be to carry leftover /AP streams. In selective mode, only drop
+  // widgets whose owning field name is targeted.
   for (const page of doc.getPages()) {
     const annotsArr2 = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
     if (!annotsArr2) continue;
@@ -151,6 +157,10 @@ export async function sanitizePdfBytesWithReport(
       const annot = resolveDict(ctx, item);
       if (!annot) { keep2.push(item); continue; }
       if (nameStr(annot.get(PDFName.of("Subtype"))) === "/Widget") {
+        if (selective) {
+          const wname = widgetFieldName(ctx, annot);
+          if (!isTargeted(wname)) { keep2.push(item); continue; }
+        }
         collectAppearanceRefs(ctx, annot, appearanceRefsToRemove);
         if (annot.has(PDFName.of("AP"))) annot.delete(PDFName.of("AP"));
         if (item && typeof item === "object" && "objectNumber" in item) {
@@ -166,13 +176,12 @@ export async function sanitizePdfBytesWithReport(
       page.node.set(PDFName.of("Annots"), next);
     }
   }
-  // Purge orphaned widget appearance streams (/Form XObjects pdf-lib
-  // tagged with /Tx BMC). Without this they survive in the saved file
-  // even though nothing references them — and they still carry the
-  // form-field glyph strings, which a raw-stream verifier rightly
-  // flags as a leak.
+  // Purge orphaned widget appearance streams. In selective mode, only the
+  // targeted field's appearance refs were collected above, so restrict this
+  // to those refs and skip the blanket /Tx BMC sweep (which would blank
+  // untargeted fields' appearances).
   for (const r of appearanceRefsToRemove) removeRef(ctx, r);
-  await purgeWidgetAppearanceStreams(ctx);
+  if (!selective) await purgeWidgetAppearanceStreams(ctx);
 
   // 3) Annotations — strip text from every annotation and remove
   //    text-bearing subtypes entirely so /Contents, /RC, /T, /Subj
