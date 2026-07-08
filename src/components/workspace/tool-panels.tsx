@@ -1898,11 +1898,12 @@ function sanitizeStageLabel(stage: string): string {
       sideStaged,
       commit: redactableFindings.length > 0 ? redactSelected : null,
       sideCommit: sideStaged > 0 ? redactSelected : null,
+      flushSide: flushPendingSideChannel,
     });
-  }, [selected, redactableFindings, sideChannelFindings, redactSelected]);
+  }, [selected, redactableFindings, sideChannelFindings, redactSelected, flushPendingSideChannel]);
   useEffect(() => {
     return () => {
-      publishStagedRedact({ selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null });
+      publishStagedRedact({ selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null, flushSide: null });
     };
   }, []);
 
