@@ -65,8 +65,9 @@ describe("computeQuads — token expansion across fragmented text items", () => 
     const rect = { x: 12, y: 98, w: 16, h: H + 4 };
     const quads = computeQuads(rect, items);
     expect(quads).toHaveLength(1);
-    // Right edge must NOT cross into the "Jane" item (x=30).
-    expect(quads[0].x + quads[0].w).toBeLessThan(30);
+    // Right edge may cover the inter-item space/pad, but must not reach the
+    // first non-space glyph of "Jane" (space consumes 18/5 = 3.6pt).
+    expect(quads[0].x + quads[0].w).toBeLessThan(33.6);
   });
 
   it("stops at a large horizontal gap — does NOT bridge unrelated columns", () => {
