@@ -100,24 +100,6 @@ export function reducer(s: State, a: Action): State {
   switch (a.type) {
     case "LOAD":
       return { ...initialState, doc: a.doc, color: s.color };
-    case "SET_SRC_BYTES": {
-      // Post-sanitize hot-swap of the byte stream WITHOUT tearing down the
-      // rest of the editor state. `LOAD` used to be dispatched here, which
-      // reset `past`/`future`/`current`/tool/etc. and forced a follow-up
-      // `LOAD_SIDECAR` to re-attach annotations — two full renders back to
-      // back, with the intermediate one showing 0 annotations. This action
-      // updates only `doc.srcBytes` so the next export/burn sees the
-      // sanitized bytes as the source of truth, annotations stay put, and
-      // there's no reset-and-restore round-trip. Undo history is cleared
-      // because the pre-sanitize bytes are no longer a valid past state.
-      if (!s.doc) return s;
-      return {
-        ...s,
-        doc: { ...s.doc, srcBytes: a.bytes },
-        past: [],
-        future: [],
-      };
-    }
     case "SET_PAGE":
       return { ...s, current: a.n, selectedAnnoId: null };
     case "SET_TOOL":
