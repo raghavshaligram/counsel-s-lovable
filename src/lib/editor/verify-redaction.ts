@@ -92,7 +92,12 @@ export async function verifyRedactionRemoval(
   } catch { /* keep sharedDoc null — vector scans skip */ }
 
   if (sharedDoc) {
-    const vectorLeaks = verifySideChannelVectorsWithDoc(sharedDoc, sensitiveStrings);
+    const vectorLeaks = await verifySideChannelVectorsWithDoc(sharedDoc, sensitiveStrings, {
+      signal: opts.signal,
+      onProgress: opts.onProgress
+        ? (done, total) => opts.onProgress!("side-channel", done, total)
+        : undefined,
+    });
     leaks.push(...vectorLeaks);
   }
 
