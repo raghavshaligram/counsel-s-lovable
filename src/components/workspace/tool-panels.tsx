@@ -3708,10 +3708,10 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           <button
             type="button"
             onClick={downloadCertificate}
-            disabled={!lastBytes}
+            disabled={!lastHashes}
             className={cn(
               "mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
-              !lastBytes && "opacity-50 cursor-not-allowed",
+              !lastHashes && "opacity-50 cursor-not-allowed",
             )}
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2} />
