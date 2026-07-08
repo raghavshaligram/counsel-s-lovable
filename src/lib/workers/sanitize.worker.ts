@@ -9,7 +9,7 @@ import { sanitizePdfBytesWithReport, type SanitizeReport } from "@/lib/pdf/sanit
 import type { VerifyLeak } from "@/lib/editor/verify-redaction";
 
 type InboundMsg =
-  | { kind: "sanitize"; id: string; bytes: ArrayBuffer; sideVerifyStrings?: string[] }
+  | { kind: "sanitize"; id: string; bytes: ArrayBuffer; sideVerifyStrings?: string[]; targetFieldNames?: string[] }
   | { kind: "cancel"; id: string };
 
 type OutboundMsg =
