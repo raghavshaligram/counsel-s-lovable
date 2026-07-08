@@ -187,6 +187,7 @@ export async function enforceRedactionGate(
     for (const p of forced.rasterizedPages) rasterizedPages.add(p);
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     opts.onProgress?.("verify-again");
+    const { verifyRedactionRemovalInWorker } = await importChunk(() => import("@/lib/workers/verify-client"));
     result = await verifyRedactionRemovalInWorker(bytes!, targets, {
       rasterizedPages: [...rasterizedPages],
       signal: opts.signal,
