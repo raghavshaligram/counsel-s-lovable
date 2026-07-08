@@ -409,38 +409,53 @@ export async function detectPiiInPdf(
   resetNerStats();
 
 
-  // NER work collected during Pass A, run in Pass B batched across pages.
-  // Grouping by page lets us surface findings page-by-page as batches
-  // complete, and keeps offset mapping simple (per-page joined string).
-  type PageNerItem = {
+  /**
+   * Full geometry record for one pdf.js text item on the page. `x1` is the
+   * right edge in canvas coords — needed to detect whether the NEXT item on
+   * the same line is contiguous (small gap, no whitespace) so we can expand
+   * a regex/NER match across the whole enclosing token.
+   *
+   * See docs/notes on the fragmented-number leak: pdf.js emits
+   * "(763) 300-1828" as ~3–5 separate items and a regex only matches one
+   * of them; without token expansion the burn covers the middle and leaves
+   * '(7' and '28' visible AND extractable.
+   */
+  type ItemRec = {
     str: string;
     x0: number;
+    x1: number;
     y: number;
     fontHeight: number;
     pad: number;
     charW: number;
     fontName: string | undefined;
     transform: number[];
+  };
+
+  // NER work collected during Pass A, run in Pass B batched across pages.
+  // Grouping by page lets us surface findings page-by-page as batches
+  // complete, and keeps offset mapping simple (per-page joined string).
+  type PageNerItem = ItemRec & {
     joinedStart: number;
     joinedEnd: number;
     // Regex name hits within this item — used to dedupe against NER results
     // so a name caught by BOTH the "Mr. X" regex and the NER model doesn't
     // produce two redaction boxes on the same span.
     regexNameSpans: Array<{ start: number; end: number }>;
+    // Contiguous same-line neighbours (no whitespace, gap ≤ 0.5em) to redact
+    // as whole-item boxes when a NER match hits this item's boundary.
+    leftChain: ItemRec[];
+    rightChain: ItemRec[];
   };
   type PageNerWork = { page: number; joinedText: string; items: PageNerItem[] };
   const pageNerWork: PageNerWork[] = [];
 
-  // Small helper: push a detection built from a per-item PageNerItem record.
+  // Small helper: push a detection built from a per-item record.
   // Used from BOTH the regex pass and the NER-mapping pass so coordinates
   // are computed identically regardless of which pass surfaced the hit.
   const emitBoxFor = (
     pageIdx: number,
-    item: PageNerItem | {
-      str: string;
-      x0: number; y: number; fontHeight: number; pad: number; charW: number;
-      fontName: string | undefined; transform: number[];
-    },
+    item: ItemRec,
     spanStart: number,
     spanLen: number,
     category: PiiCategory,
@@ -474,6 +489,88 @@ export async function detectPiiInPdf(
     detections.push(det);
     return det;
   };
+
+  /**
+   * Given a page's records and a hit at (recIdx, spanStart, spanLen),
+   * return the ordered chains of CONTIGUOUS neighbouring items to redact
+   * as whole-item boxes on the left (if the hit touches str[0]) and right
+   * (if it touches str[len]). Stops at whitespace or a horizontal gap
+   * greater than ~0.5 × font height. Used by BOTH the regex pass (called
+   * per-match) and the NER pass (chain precomputed and stashed).
+   */
+  const computeChains = (
+    records: (ItemRec | null)[],
+    recIdx: number,
+  ): { leftChain: ItemRec[]; rightChain: ItemRec[] } => {
+    const rec = records[recIdx];
+    if (!rec) return { leftChain: [], rightChain: [] };
+    // Same-line records sorted by x, so left/right walk is deterministic
+    // regardless of the order pdf.js emitted them.
+    const yBand = rec.fontHeight * 0.6;
+    const sameLine = records
+      .filter((r): r is ItemRec => !!r && Math.abs(r.y - rec.y) < yBand)
+      .slice()
+      .sort((a, b) => a.x0 - b.x0);
+    const meIdx = sameLine.indexOf(rec);
+    if (meIdx < 0) return { leftChain: [], rightChain: [] };
+
+    const MAX_GAP = rec.fontHeight * 0.5;
+    const leftChain: ItemRec[] = [];
+    let cur: ItemRec = rec;
+    for (let j = meIdx - 1; j >= 0; j--) {
+      if (/^\s/.test(cur.str)) break;
+      const prev = sameLine[j];
+      const gap = cur.x0 - prev.x1;
+      if (gap < -1 || gap > MAX_GAP) break;
+      if (/\s$/.test(prev.str)) break;
+      leftChain.push(prev);
+      cur = prev;
+    }
+    const rightChain: ItemRec[] = [];
+    cur = rec;
+    for (let j = meIdx + 1; j < sameLine.length; j++) {
+      if (/\s$/.test(cur.str)) break;
+      const next = sameLine[j];
+      const gap = next.x0 - cur.x1;
+      if (gap < -1 || gap > MAX_GAP) break;
+      if (/^\s/.test(next.str)) break;
+      rightChain.push(next);
+      cur = next;
+    }
+    return { leftChain, rightChain };
+  };
+
+  /**
+   * Emit the primary match box AND — when the match hits an item boundary
+   * — whole-item boxes for the contiguous neighbour chain. This is what
+   * closes the "middle-fragment only" leak: even if the regex matched only
+   * "81151140" of "0781151140428" (split into ["07","81151140","8"]), the
+   * neighbouring "07" and "8" items get redacted as whole-item boxes too.
+   */
+  const emitWithExpansion = (
+    pageIdx: number,
+    rec: ItemRec,
+    leftChain: ItemRec[],
+    rightChain: ItemRec[],
+    spanStart: number,
+    spanLen: number,
+    category: PiiCategory,
+    confidence: "high" | "low" | undefined,
+    text: string,
+  ): void => {
+    emitBoxFor(pageIdx, rec, spanStart, spanLen, category, confidence, text);
+    if (spanStart === 0) {
+      for (const n of leftChain) {
+        emitBoxFor(pageIdx, n, 0, n.str.length, category, confidence, n.str);
+      }
+    }
+    if (spanStart + spanLen === rec.str.length) {
+      for (const n of rightChain) {
+        emitBoxFor(pageIdx, n, 0, n.str.length, category, confidence, n.str);
+      }
+    }
+  };
+
 
   // ========== Pass A — regex + heuristics + privilege terms, all pages ==========
   // Regex-only, per-item — completes in seconds even on 300+ pages so the
