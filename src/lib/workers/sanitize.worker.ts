@@ -41,6 +41,9 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
           post({ kind: "progress", id: m.id, stage, done, total });
         },
         shouldAbort: () => entry.canceled,
+        ...(m.targetFieldNames && m.targetFieldNames.length > 0
+          ? { targetFieldNames: m.targetFieldNames }
+          : {}),
       });
       if (entry.canceled) throw new DOMException("Canceled", "AbortError");
       let sideLeaks: VerifyLeak[] | undefined;
