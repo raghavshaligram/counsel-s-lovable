@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
 import type { Action as EditorAction, State as EditorState } from "@/lib/editor/state";
 import type { Anno, Reply } from "@/lib/editor/types";
+import { saveSidecarNow } from "@/lib/workspace/persistence";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Check, CornerDownRight, MessageSquare } from "lucide-react";
@@ -1760,17 +1761,54 @@ function sanitizeStageLabel(stage: string): string {
             `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
           );
         }
-        // Hot-swap srcBytes in place. Previously this dispatched
-        // `LOAD { doc: { ...doc, srcBytes: cleaned } }` — which reset
-        // state to `initialState` and dropped annotations — and then a
-        // follow-up `LOAD_SIDECAR` to restore them. That was two full
-        // reducer passes + two re-renders, with the intermediate render
-        // committing 0 annotations. `SET_SRC_BYTES` mutates only srcBytes
-        // on the current doc so annotations/pages/ocr stay put, undo
-        // history is cleared (pre-sanitize bytes are no longer valid),
-        // and the next export/burn reads the sanitized bytes directly
-        // via `editorState.doc.srcBytes` (see `exportEditedPdf`).
-        editorDispatch({ type: "SET_SRC_BYTES", bytes: cleaned });
+        // CORRECTNESS OVER SPEED. Previously this dispatched
+        // `SET_SRC_BYTES` to hot-swap `doc.srcBytes` without a re-parse,
+        // then called `replaceFile(...)`. That combination broke redaction
+        // byte propagation two ways:
+        //
+        //   1. `replaceFile` mutates `active.file`, which is a dependency
+        //      of the workspace open-effect. The open-effect re-parses the
+        //      PDF from scratch and dispatches `LOAD`, whose reducer
+        //      resets to `initialState` — wiping every redact annotation
+        //      just added by the same click's `ADD_ANNOS` batch.
+        //   2. The follow-up `LOAD_SIDECAR` restored annotations from the
+        //      IndexedDB sidecar, but the sidecar save is debounced (400ms
+        //      inside `saveSidecarDebounced`) and had not yet flushed the
+        //      just-added redact boxes. So the restore used STALE data —
+        //      zero redact targets, no burn, no gate, exported PDF still
+        //      contained the sensitive page text. This is exactly the
+        //      "OCR still finds redacted text" symptom.
+        //
+        // Fix: (a) persist the merged annotation list SYNCHRONOUSLY via
+        // `saveSidecarNow` before any file swap so the LOAD_SIDECAR that
+        // follows the reload sees the fresh redact boxes, and (b) let
+        // `replaceFile` drive a full LOAD re-parse so the viewer's cached
+        // `pdfDoc`, `state.doc.srcBytes`, and every downstream consumer
+        // agree on the cleaned bytes as the single source of truth. We
+        // do NOT re-dispatch `SET_SRC_BYTES` — it was a dead-code op that
+        // would be overwritten by the LOAD anyway and only served to make
+        // the sequencing look correct on paper.
+        const cleanedSize = cleaned.byteLength;
+        const mergedAnnos: Anno[] = [
+          ...(editorState?.doc?.annotations ?? []),
+          ...toAdd,
+        ];
+        const mergedPages = editorState?.doc?.pages ?? [];
+        const mergedOcr = editorState?.doc?.ocrLayer;
+        try {
+          await saveSidecarNow(file!.name, cleanedSize, {
+            fileName: file!.name,
+            size: cleanedSize,
+            annotations: mergedAnnos,
+            pages: mergedPages,
+            ocrLayer: mergedOcr,
+          });
+        } catch (persistErr) {
+          console.error("[redact:form-field] sidecar pre-flush failed", persistErr);
+          throw new Error(
+            "Could not persist staged redactions before wipe — aborting to avoid losing selections.",
+          );
+        }
         replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
         // Drop wiped findings from the visible list so the user SEES them
         // gone (and a re-scan would confirm clean).
