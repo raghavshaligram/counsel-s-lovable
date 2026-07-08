@@ -115,7 +115,7 @@ export function downloadBytes(bytes: Uint8Array, filename: string, mime = "appli
   }
   let blob: Blob;
   try {
-    blob = new Blob([blobBytes], { type: mime });
+    blob = new Blob([blobBytes as BlobPart], { type: mime });
   } catch (err) {
     logAllocationFailure("download Blob", err, {
       filename,

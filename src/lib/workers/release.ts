@@ -33,7 +33,7 @@ export function toTransferable(src: Uint8Array, opts?: { steal?: boolean }): Arr
         logAllocationFailure("toTransferable view copy", err, { bytesMB, steal: true });
         throw new Error(allocationFailureMessage("toTransferable view copy", err));
       }
-      return copy.buffer;
+      return copy.buffer as ArrayBuffer;
     }
     return src.buffer as ArrayBuffer;
   }
@@ -47,7 +47,7 @@ export function toTransferable(src: Uint8Array, opts?: { steal?: boolean }): Arr
     logAllocationFailure("toTransferable safe copy", err, { bytesMB, steal: false });
     throw new Error(allocationFailureMessage("toTransferable safe copy", err));
   }
-  return copy.buffer;
+  return copy.buffer as ArrayBuffer;
 }
 
 /** Best-effort: drop references to a Uint8Array's backing buffer so V8
