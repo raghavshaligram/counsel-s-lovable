@@ -3395,7 +3395,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
             // Export never races replaceFile with a mid-flight worker call
             // (fast Export within the 450ms debounce window, or during a
             // slow ongoing sanitize).
-            await flushPendingSideChannel();
+            if (staged.flushSide) await staged.flushSide();
             // STEP 1 — Apply-NOW for any still-checked side-channel findings
             // (a user who clicked Export before the debounce fired). These
             // have no page rect, so the page-burn step can't touch them.
