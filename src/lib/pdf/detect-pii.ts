@@ -182,6 +182,10 @@ export type Detection = {
   sourceLabel?: string;
   /** Full sensitive value for non-page vectors. Snippet may be only the regex match. */
   sensitiveText?: string;
+  /** Raw, untruncated AcroForm field name (/T). Present only for form-field
+   *  findings. Used by selective sanitize to target ONLY the checked field
+   *  instead of clearing every form field on the page. */
+  fieldName?: string;
 };
 
 /**
