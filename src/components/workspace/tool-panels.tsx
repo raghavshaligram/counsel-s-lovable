@@ -1753,7 +1753,7 @@ function sanitizeStageLabel(stage: string): string {
           const targetFieldNames = formFieldFindings
             .map((d) => d.fieldName)
             .filter((n): n is string => typeof n === "string" && n.length > 0);
-          const { bytes: cleaned, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
+          const { bytes: cleaned, report, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
             signal: abort.signal,
             sideVerifyStrings: sensitiveStrings,
             targetFieldNames,
