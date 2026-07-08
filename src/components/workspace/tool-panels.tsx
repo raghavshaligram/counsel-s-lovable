@@ -1930,11 +1930,16 @@ function sanitizeStageLabel(stage: string): string {
       });
     }
 
-    // Delegate side-channel work to the shared helper (same logic runs from
-    // the live-hide-on-check debounce). Flush any pending debounce first so
-    // this pass sees the full checked set and doesn't race the debounce.
+    // MEMORY: side-channel sanitize is NOT run at scan/commit time anymore.
+    // It runs exactly once at export inside enforceRedactionGate (chunked,
+    // worker-based, non-blocking). Running it here too caused a second full
+    // PDFDocument.load per session — the extra graph fragmented the heap and
+    // produced OOM on the next large export. Correctness is preserved: the
+    // gate is the single chokepoint and side-channel dets stay staged in the
+    // findings list until the export gate wipes them.
     await flushPendingSideChannel();
-    const sideChannelApplied = await sanitizeSideChannelDets(sideChannelDets, toAdd);
+    const sideChannelApplied = 0;
+    void sideChannelDets;
 
     if (added > 0) {
       // Build page-vector summary from toAdd (counts + pages only, no
