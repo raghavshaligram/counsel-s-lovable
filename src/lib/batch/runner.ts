@@ -103,9 +103,19 @@ export function downloadBytes(bytes: Uint8Array, filename: string, mime = "appli
     filename,
     bytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
   });
+  let blobBytes: Uint8Array;
+  try {
+    blobBytes = new Uint8Array(bytes);
+  } catch (err) {
+    logAllocationFailure("download Blob byte copy", err, {
+      filename,
+      bytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    });
+    throw new Error(allocationFailureMessage("download Blob byte copy", err));
+  }
   let blob: Blob;
   try {
-    blob = new Blob([new Uint8Array(bytes)], { type: mime });
+    blob = new Blob([blobBytes], { type: mime });
   } catch (err) {
     logAllocationFailure("download Blob", err, {
       filename,

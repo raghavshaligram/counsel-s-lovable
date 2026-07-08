@@ -6,6 +6,7 @@
  * so the OS reclaims its entire heap. These tiny helpers make that pattern
  * uniform across call sites.
  */
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 /** Get a transferable ArrayBuffer for `src`.
  *
@@ -22,14 +23,30 @@ export function toTransferable(src: Uint8Array, opts?: { steal?: boolean }): Arr
     // If the Uint8Array is a view over a larger buffer, we must copy —
     // transferring the whole buffer would neuter unrelated views.
     if (src.byteOffset !== 0 || src.byteLength !== src.buffer.byteLength) {
-      const copy = new Uint8Array(src.byteLength);
-      copy.set(src);
+      const bytesMB = Math.round((src.byteLength / 1024 / 1024) * 10) / 10;
+      logHeap("toTransferable before view copy", { bytesMB, steal: true });
+      let copy: Uint8Array;
+      try {
+        copy = new Uint8Array(src.byteLength);
+        copy.set(src);
+      } catch (err) {
+        logAllocationFailure("toTransferable view copy", err, { bytesMB, steal: true });
+        throw new Error(allocationFailureMessage("toTransferable view copy", err));
+      }
       return copy.buffer;
     }
     return src.buffer as ArrayBuffer;
   }
-  const copy = new Uint8Array(src.byteLength);
-  copy.set(src);
+  const bytesMB = Math.round((src.byteLength / 1024 / 1024) * 10) / 10;
+  logHeap("toTransferable before safe copy", { bytesMB, steal: false });
+  let copy: Uint8Array;
+  try {
+    copy = new Uint8Array(src.byteLength);
+    copy.set(src);
+  } catch (err) {
+    logAllocationFailure("toTransferable safe copy", err, { bytesMB, steal: false });
+    throw new Error(allocationFailureMessage("toTransferable safe copy", err));
+  }
   return copy.buffer;
 }
 
