@@ -21,6 +21,23 @@ import { enforceRedactionGate } from "@/lib/editor/redaction-gate";
 import { rasterizeRedactedPages, type RedactionRectTL } from "@/lib/editor/rasterize-redacted-pages";
 import { loadPdfjs } from "@/lib/pdf/worker";
 
+// pdf.js 5.x uses Map.prototype.getOrInsertComputed (TC39 upsert proposal),
+// which is only unflagged in Chromium 142+. Test browsers may lag; polyfill
+// so the e2e is portable. Ships in the test harness bundle only — not in
+// any production route.
+if (typeof Map !== "undefined" && !(Map.prototype as unknown as { getOrInsertComputed?: unknown }).getOrInsertComputed) {
+  (Map.prototype as unknown as {
+    getOrInsertComputed: (k: unknown, cb: (k: unknown) => unknown) => unknown;
+  }).getOrInsertComputed = function (key: unknown, cb: (k: unknown) => unknown) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self: any = this;
+    if (self.has(key)) return self.get(key);
+    const v = cb(key);
+    self.set(key, v);
+    return v;
+  };
+}
+
 const SECRET = "987-65-4321";
 const NAME = "John Q Public";
 
