@@ -1803,6 +1803,28 @@ function sanitizeStageLabel(stage: string): string {
             for (const d of dets) next.delete(d.id);
             return next;
           });
+          // Aggregate into the persistent post-commit summary. Store counts
+          // and vector categories only — NEVER sensitiveText or snippet.
+          const byVector = new Map<"form-field" | "annotation" | "metadata", number>();
+          for (const d of dets) {
+            const v = d.vector as "form-field" | "annotation" | "metadata";
+            byVector.set(v, (byVector.get(v) ?? 0) + 1);
+          }
+          mergeSummary({
+            timestamp: Date.now(),
+            sideChannel: Array.from(byVector, ([vector, count]) => ({ vector, count })),
+            sanitize: {
+              documentInfo: report.documentInfo,
+              xmpMetadata: report.xmpMetadata,
+              embeddedFiles: report.embeddedFiles,
+              javascript: report.javascript,
+              acroForm: report.acroForm,
+              acroFormFields: report.acroFormFields,
+              annotations: report.annotations,
+              hiddenLayers: report.hiddenLayers,
+              additionalActions: report.additionalActions,
+            },
+          });
           toast.success(
             `${dets.length} hidden finding${dets.length === 1 ? "" : "s"} wiped`,
             {
