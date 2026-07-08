@@ -103,6 +103,7 @@ export async function enforceRedactionGate(
 
   let bytes: Uint8Array | null = inputBytes;
   const rasterizedPages = new Set<number>(opts.rasterizedPages ?? []);
+  const workersAvailable = typeof Worker !== "undefined";
 
   // Each stage below runs in its OWN dedicated Web Worker. When a stage's
   // client resolves it terminates the worker, releasing that stage's heap
@@ -120,25 +121,48 @@ export async function enforceRedactionGate(
       opts.onProgress?.("sanitize");
     } else {
       opts.onProgress?.("sanitize");
-      const { sanitizeInWorker } = await importChunk(() => import("@/lib/workers/sanitize-client"));
-      const sanitized = await sanitizeInWorker(bytes, { signal: opts.signal, stealBytes: true });
+      if (!workersAvailable) {
+        const { sanitizePdfBytesWithReport } = await import("@/lib/pdf/sanitize");
+        const sanitized = await sanitizePdfBytesWithReport(bytes, {
+          shouldAbort: () => !!opts.signal?.aborted,
+        });
+        bytes = sanitized.bytes;
+      } else {
+        const { sanitizeInWorker } = await importChunk(() => import("@/lib/workers/sanitize-client"));
+        const sanitized = await sanitizeInWorker(bytes, { signal: opts.signal, stealBytes: true });
+        bytes = sanitized.bytes;
+      }
       // Drop the pre-sanitize buffer immediately — worker owns its own copy now.
-      bytes = sanitized.bytes;
     }
   }
   if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
   opts.onProgress?.("verify");
-  const { verifyRedactionRemovalInWorker } = await importChunk(() => import("@/lib/workers/verify-client"));
-  // First verify: DO NOT steal — if page leaks are found we need `bytes`
-  // again to feed the raster-fallback stage.
-  let result = await verifyRedactionRemovalInWorker(bytes!, targets, {
-    rasterizedPages: [...rasterizedPages],
-    signal: opts.signal,
-  });
+  let result: VerifyResult;
+  if (!workersAvailable) {
+    const { verifyRedactionRemoval } = await import("./verify-redaction");
+    result = await verifyRedactionRemoval(bytes!, targets, {
+      rasterizedPages: [...rasterizedPages],
+      signal: opts.signal,
+    });
+  } else {
+    const { verifyRedactionRemovalInWorker } = await importChunk(() => import("@/lib/workers/verify-client"));
+    // First verify: DO NOT steal — if page leaks are found we need `bytes`
+    // again to feed the raster-fallback stage.
+    result = await verifyRedactionRemovalInWorker(bytes!, targets, {
+      rasterizedPages: [...rasterizedPages],
+      signal: opts.signal,
+    });
+  }
 
   const pageLeaks = result.leaks.filter((l: VerifyLeak) => l.vector === "page" && l.rect && l.page !== undefined);
   if (pageLeaks.length > 0) {
+    if (!workersAvailable) {
+      throw new RedactionGateError(
+        `Redaction verification failed — ${result.leaks.length} item${result.leaks.length === 1 ? "" : "s"} still present (page), export blocked`,
+        result,
+      );
+    }
     opts.onProgress?.("raster-fallback");
     const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
     const rectsByPage = new Map<number, { x: number; y: number; w: number; h: number }[]>();
