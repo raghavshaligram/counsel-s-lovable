@@ -1293,6 +1293,79 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
 }
 
 /**
+ * Persistent post-commit summary shown in place of the (now-empty) findings
+ * list. Aggregates counts + pages by category — NEVER stores sensitive text.
+ * Consecutive commits (e.g. debounced side-channel sanitize after a
+ * page-vector commit) merge into a single running summary until the user
+ * clicks "Start new scan".
+ */
+interface RedactionSummary {
+  timestamp: number;
+  pageRedactions: { category: string; label: string; count: number; pages: number[] }[];
+  sideChannel: { vector: "form-field" | "annotation" | "metadata"; count: number }[];
+  sanitize?: {
+    documentInfo: number;
+    xmpMetadata: number;
+    embeddedFiles: number;
+    javascript: number;
+    acroForm: number;
+    acroFormFields: number;
+    annotations: number;
+    hiddenLayers: number;
+    additionalActions: number;
+  };
+}
+
+function mergeRedactionSummary(
+  prev: RedactionSummary | null,
+  partial: Partial<RedactionSummary>,
+): RedactionSummary {
+  const base: RedactionSummary = prev ?? { timestamp: Date.now(), pageRedactions: [], sideChannel: [] };
+  const pageMap = new Map<string, { category: string; label: string; count: number; pages: Set<number> }>(
+    base.pageRedactions.map((r) => [r.category, { ...r, pages: new Set(r.pages) }]),
+  );
+  for (const r of partial.pageRedactions ?? []) {
+    const cur = pageMap.get(r.category);
+    if (cur) {
+      cur.count += r.count;
+      for (const p of r.pages) cur.pages.add(p);
+      if (r.label && !cur.label) cur.label = r.label;
+    } else {
+      pageMap.set(r.category, { ...r, pages: new Set(r.pages) });
+    }
+  }
+  const sideMap = new Map<string, { vector: "form-field" | "annotation" | "metadata"; count: number }>(
+    base.sideChannel.map((s) => [s.vector, { ...s }]),
+  );
+  for (const s of partial.sideChannel ?? []) {
+    const cur = sideMap.get(s.vector);
+    if (cur) cur.count += s.count;
+    else sideMap.set(s.vector, { ...s });
+  }
+  let sanitize = base.sanitize;
+  if (partial.sanitize) {
+    const keys = [
+      "documentInfo", "xmpMetadata", "embeddedFiles", "javascript",
+      "acroForm", "acroFormFields", "annotations", "hiddenLayers", "additionalActions",
+    ] as const;
+    const prevS = sanitize;
+    sanitize = keys.reduce((acc, k) => {
+      acc[k] = (prevS?.[k] ?? 0) + (partial.sanitize?.[k] ?? 0);
+      return acc;
+    }, {} as NonNullable<RedactionSummary["sanitize"]>);
+  }
+  return {
+    timestamp: partial.timestamp ?? Date.now(),
+    pageRedactions: Array.from(pageMap.values()).map((r) => ({
+      category: r.category, label: r.label, count: r.count,
+      pages: Array.from(r.pages).sort((a, b) => a - b),
+    })),
+    sideChannel: Array.from(sideMap.values()),
+    sanitize,
+  };
+}
+
+/**
  * AutoDetectSensitive — Pro-only. Runs detect-pii on the open document,
  * lists every finding grouped by category, lets the user select / jump to
  * each, and pushes selected ones as redact annotations into the editor.
@@ -1301,6 +1374,7 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
  * confirms by triggering export.
  */
 function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
+
   const { docId: ctxDocId, file, replaceFile, editorDispatch, editorState } = ctx;
   type Det = import("@/lib/pdf/detect-pii").Detection;
   type Cat = import("@/lib/pdf/detect-pii").PiiCategory;
