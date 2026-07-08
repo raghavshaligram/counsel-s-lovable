@@ -45,14 +45,22 @@ const NAME = "John Q Public";
 export interface E2eProbe {
   secret: string;
   name: string;
-  /** true iff SECRET appears anywhere in raw output bytes (latin1 view + flate substreams). */
-  secretInRawBytes: boolean;
-  /** true iff SECRET appears in ANY page's text layer as extracted by pdf.js. */
-  secretInExtractedText: boolean;
-  /** Extracted text per page (post-export), for debugging. */
-  perPageText: string[];
-  /** Gate report. */
-  vectors: {
+  /**
+   * "clean"  — gate returned bytes AND independent re-extraction confirms
+   *            no vector still carries the secret. This is the pass case.
+   * "blocked" — gate refused to return bytes (RedactionGateError). The
+   *            user would never receive a leaky file, which is the correct
+   *            safety outcome. Test tolerates this.
+   * "leaked" — gate RETURNED bytes but our independent re-scan still
+   *            recovers the secret. This is the regression case the last
+   *            "text still traceable" bug produced — must FAIL loudly.
+   */
+  outcome: "clean" | "blocked" | "leaked";
+  /** Present when outcome !== "blocked". */
+  secretInRawBytes?: boolean;
+  secretInExtractedText?: boolean;
+  perPageText?: string[];
+  vectors?: {
     page: number;
     formField: number;
     annotation: number;
@@ -60,9 +68,11 @@ export interface E2eProbe {
     attachment: number;
     rawStream: number;
   };
-  ok: boolean;
-  outputBytes: number;
-  rasterizedPages: number[];
+  outputBytes?: number;
+  rasterizedPages?: number[];
+  /** Present when outcome === "blocked". */
+  blockedMessage?: string;
+  blockedVectors?: Record<string, number>;
 }
 
 /** Build a mixed-vector fixture: page-text on p1, form field, annotation
