@@ -3445,7 +3445,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
                 )}
               >
                 <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-                {busy ? "Working…" : `Redact & verify${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
+                {busy ? "Working…" : `Export${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
               </button>
             </>
           );
