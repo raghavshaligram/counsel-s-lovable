@@ -2306,36 +2306,81 @@ function sanitizeStageLabel(stage: string): string {
                 : "Tick a category or item to stage"}
             </span>
           </div>
-          {tabList.length > 1 && (
-            <div className="flex flex-wrap gap-1 border-b border-border/60 px-2 py-1.5">
-              <button
-                type="button"
-                onClick={() => setActiveTab("all")}
-                className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                  activeTab === "all"
-                    ? "bg-vault text-white"
-                    : "bg-surface-3 text-text-2 hover:text-foreground"
-                }`}
-              >
-                All · {redactableFindings.length.toLocaleString()}
-              </button>
-              {tabList.map((t) => (
+          {tabList.length > 1 && (() => {
+            // Chip click = filter + toggle-select all findings in that
+            // category. Same chip clicked again deselects them. Lets the
+            // user work category-by-category: pick SSN → Redact → pick
+            // Phone → Redact → … → Export once at the end.
+            const idsForChip = (key: string): string[] => {
+              if (key === "all") return redactableFindings.map((d) => d.id);
+              const hi = categoryIds.hi.get(key as Cat2) ?? [];
+              const lo = categoryIds.lo.get(key as Cat2) ?? [];
+              return [...hi, ...lo];
+            };
+            const onChip = (key: string) => {
+              const ids = idsForChip(key);
+              const allSel = ids.length > 0 && ids.every((id) => selected.has(id));
+              startTransition(() => {
+                setActiveTab(key);
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  if (allSel) for (const id of ids) next.delete(id);
+                  else for (const id of ids) next.add(id);
+                  return next;
+                });
+              });
+            };
+            const stageSelected = async () => {
+              if (selected.size === 0) return;
+              await redactSelected();
+              setSelected(new Set());
+            };
+            return (
+              <div className="flex items-start gap-1.5 border-b border-border/60 px-2 py-1.5">
+                <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onChip("all")}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                      activeTab === "all"
+                        ? "bg-vault text-white"
+                        : "bg-surface-3 text-text-2 hover:text-foreground"
+                    }`}
+                    title="Select every finding across all categories (click again to deselect)"
+                  >
+                    All · {redactableFindings.length.toLocaleString()}
+                  </button>
+                  {tabList.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => onChip(t.key)}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        activeTab === t.key
+                          ? "bg-vault text-white"
+                          : "bg-surface-3 text-text-2 hover:text-foreground"
+                      }`}
+                      title={`Select all ${t.label} findings (click again to deselect)`}
+                    >
+                      {t.label} · {t.count.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
                 <button
-                  key={t.key}
                   type="button"
-                  onClick={() => setActiveTab(t.key)}
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                    activeTab === t.key
-                      ? "bg-vault text-white"
-                      : "bg-surface-3 text-text-2 hover:text-foreground"
-                  }`}
-                  title={`Show only ${t.label}`}
+                  onClick={stageSelected}
+                  disabled={selected.size === 0}
+                  className={cn(
+                    "shrink-0 rounded-md bg-vault px-2 py-0.5 text-[10.5px] font-medium text-vault-foreground hover:opacity-90",
+                    selected.size === 0 && "cursor-not-allowed opacity-50",
+                  )}
+                  title="Stage the currently selected findings. Stack multiple categories, then hit Export at the bottom."
                 >
-                  {t.label} · {t.count.toLocaleString()}
+                  Redact{selected.size > 0 ? ` (${selected.size.toLocaleString()})` : ""}
                 </button>
-              ))}
-            </div>
-          )}
+              </div>
+            );
+          })()}
           <ul className="max-h-[280px] overflow-y-auto py-1">
             {grouped?.filter(([cat]) => showPageCat(String(cat))).map(([cat, allGroups]) => {
               // Split groups into high-conf and low-conf. A group is
@@ -3400,7 +3445,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
                 )}
               >
                 <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-                {busy ? "Working…" : `Redact & verify${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
+                {busy ? "Working…" : `Export${canCommit ? ` (${totalStaged.toLocaleString()} item${totalStaged === 1 ? "" : "s"})` : ""}`}
               </button>
             </>
           );
