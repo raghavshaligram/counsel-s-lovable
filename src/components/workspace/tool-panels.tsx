@@ -2684,7 +2684,8 @@ function sanitizeStageLabel(stage: string): string {
               <p className="px-2.5 pb-1.5 text-[10.5px] leading-snug text-text-muted">
                 Sensitive data found OUTSIDE the page text — in form fields,
                 comments/annotations, and document metadata. Page redaction
-                misses these. Click Redact to wipe them from the document now.
+                misses these. Check the items below, then click Export to
+                wipe them from the document.
               </p>
               <ul className="max-h-[200px] overflow-y-auto pb-1">
                 {sideChannelGrouped.filter(([vector]) => showSideVector(vector)).map(([vector, list]) => {
