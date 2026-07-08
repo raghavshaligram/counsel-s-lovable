@@ -937,9 +937,16 @@ type StagedRedactBridge = {
    * page-text redactions (page burn would be a no-op in that case).
    */
   sideCommit: (() => Promise<void>) | null;
+  /**
+   * Flush any pending debounced side-channel sanitize (cancel the timer
+   * and await any in-flight worker call). Export calls this before its
+   * own commit so a fast Export within the debounce window doesn't race
+   * replaceFile with a mid-flight sanitize.
+   */
+  flushSide: (() => Promise<void>) | null;
 };
 const stagedRedactBridge: { current: StagedRedactBridge } = {
-  current: { selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null },
+  current: { selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null, flushSide: null },
 };
 const stagedRedactListeners = new Set<() => void>();
 function publishStagedRedact(next: StagedRedactBridge) {
@@ -949,7 +956,8 @@ function publishStagedRedact(next: StagedRedactBridge) {
     cur.total === next.total &&
     cur.sideStaged === next.sideStaged &&
     cur.commit === next.commit &&
-    cur.sideCommit === next.sideCommit
+    cur.sideCommit === next.sideCommit &&
+    cur.flushSide === next.flushSide
   ) return;
   stagedRedactBridge.current = next;
   for (const l of stagedRedactListeners) l();
