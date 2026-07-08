@@ -1293,6 +1293,79 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
 }
 
 /**
+ * Persistent post-commit summary shown in place of the (now-empty) findings
+ * list. Aggregates counts + pages by category — NEVER stores sensitive text.
+ * Consecutive commits (e.g. debounced side-channel sanitize after a
+ * page-vector commit) merge into a single running summary until the user
+ * clicks "Start new scan".
+ */
+interface RedactionSummary {
+  timestamp: number;
+  pageRedactions: { category: string; label: string; count: number; pages: number[] }[];
+  sideChannel: { vector: "form-field" | "annotation" | "metadata"; count: number }[];
+  sanitize?: {
+    documentInfo: number;
+    xmpMetadata: number;
+    embeddedFiles: number;
+    javascript: number;
+    acroForm: number;
+    acroFormFields: number;
+    annotations: number;
+    hiddenLayers: number;
+    additionalActions: number;
+  };
+}
+
+function mergeRedactionSummary(
+  prev: RedactionSummary | null,
+  partial: Partial<RedactionSummary>,
+): RedactionSummary {
+  const base: RedactionSummary = prev ?? { timestamp: Date.now(), pageRedactions: [], sideChannel: [] };
+  const pageMap = new Map<string, { category: string; label: string; count: number; pages: Set<number> }>(
+    base.pageRedactions.map((r) => [r.category, { ...r, pages: new Set(r.pages) }]),
+  );
+  for (const r of partial.pageRedactions ?? []) {
+    const cur = pageMap.get(r.category);
+    if (cur) {
+      cur.count += r.count;
+      for (const p of r.pages) cur.pages.add(p);
+      if (r.label && !cur.label) cur.label = r.label;
+    } else {
+      pageMap.set(r.category, { ...r, pages: new Set(r.pages) });
+    }
+  }
+  const sideMap = new Map<string, { vector: "form-field" | "annotation" | "metadata"; count: number }>(
+    base.sideChannel.map((s) => [s.vector, { ...s }]),
+  );
+  for (const s of partial.sideChannel ?? []) {
+    const cur = sideMap.get(s.vector);
+    if (cur) cur.count += s.count;
+    else sideMap.set(s.vector, { ...s });
+  }
+  let sanitize = base.sanitize;
+  if (partial.sanitize) {
+    const keys = [
+      "documentInfo", "xmpMetadata", "embeddedFiles", "javascript",
+      "acroForm", "acroFormFields", "annotations", "hiddenLayers", "additionalActions",
+    ] as const;
+    const prevS = sanitize;
+    sanitize = keys.reduce((acc, k) => {
+      acc[k] = (prevS?.[k] ?? 0) + (partial.sanitize?.[k] ?? 0);
+      return acc;
+    }, {} as NonNullable<RedactionSummary["sanitize"]>);
+  }
+  return {
+    timestamp: partial.timestamp ?? Date.now(),
+    pageRedactions: Array.from(pageMap.values()).map((r) => ({
+      category: r.category, label: r.label, count: r.count,
+      pages: Array.from(r.pages).sort((a, b) => a - b),
+    })),
+    sideChannel: Array.from(sideMap.values()),
+    sanitize,
+  };
+}
+
+/**
  * AutoDetectSensitive — Pro-only. Runs detect-pii on the open document,
  * lists every finding grouped by category, lets the user select / jump to
  * each, and pushes selected ones as redact annotations into the editor.
@@ -1301,6 +1374,7 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
  * confirms by triggering export.
  */
 function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
+
   const { docId: ctxDocId, file, replaceFile, editorDispatch, editorState } = ctx;
   type Det = import("@/lib/pdf/detect-pii").Detection;
   type Cat = import("@/lib/pdf/detect-pii").PiiCategory;
@@ -1322,6 +1396,13 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const [capability, setCapability] = useState<DeviceCapability | null>(null);
   const [activeScanMode, setActiveScanMode] = useState<"quick" | "full" | null>(null);
+  // Persistent post-commit summary. Survives Export, findings-list reset,
+  // and file replaceFile from the sanitize path. Only cleared explicitly by
+  // "Start new scan" or when the document changes (see effect below).
+  const [lastSummary, setLastSummary] = useState<RedactionSummary | null>(null);
+  const mergeSummary = useCallback((partial: Partial<RedactionSummary>) => {
+    setLastSummary((prev) => mergeRedactionSummary(prev, partial));
+  }, []);
   const pageCount = editorState?.doc?.pages.length ?? 0;
   useEffect(() => {
     let alive = true;
@@ -1425,6 +1506,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
     setTotalPagesScanned(0);
     setSelected(new Set());
     autoSelectedRef.current = new Set();
+    setLastSummary(null);
     try {
       const mod = await importChunk(() => import("@/lib/pdf/detect-pii"));
       setMeta(mod.CATEGORY_META);
@@ -1671,7 +1753,7 @@ function sanitizeStageLabel(stage: string): string {
           const targetFieldNames = formFieldFindings
             .map((d) => d.fieldName)
             .filter((n): n is string => typeof n === "string" && n.length > 0);
-          const { bytes: cleaned, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
+          const { bytes: cleaned, report, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
             signal: abort.signal,
             sideVerifyStrings: sensitiveStrings,
             targetFieldNames,
@@ -1721,6 +1803,28 @@ function sanitizeStageLabel(stage: string): string {
             for (const d of dets) next.delete(d.id);
             return next;
           });
+          // Aggregate into the persistent post-commit summary. Store counts
+          // and vector categories only — NEVER sensitiveText or snippet.
+          const byVector = new Map<"form-field" | "annotation" | "metadata", number>();
+          for (const d of dets) {
+            const v = d.vector as "form-field" | "annotation" | "metadata";
+            byVector.set(v, (byVector.get(v) ?? 0) + 1);
+          }
+          mergeSummary({
+            timestamp: Date.now(),
+            sideChannel: Array.from(byVector, ([vector, count]) => ({ vector, count })),
+            sanitize: {
+              documentInfo: report.documentInfo,
+              xmpMetadata: report.xmpMetadata,
+              embeddedFiles: report.embeddedFiles,
+              javascript: report.javascript,
+              acroForm: report.acroForm,
+              acroFormFields: report.acroFormFields,
+              annotations: report.annotations,
+              hiddenLayers: report.hiddenLayers,
+              additionalActions: report.additionalActions,
+            },
+          });
           toast.success(
             `${dets.length} hidden finding${dets.length === 1 ? "" : "s"} wiped`,
             {
@@ -1750,7 +1854,7 @@ function sanitizeStageLabel(stage: string): string {
         if (sideChannelInFlightRef.current === run) sideChannelInFlightRef.current = null;
       }
     },
-    [editorState, file, replaceFile],
+    [editorState, file, replaceFile, mergeSummary],
   );
 
   // Flush any pending debounced sanitize before Export runs its own commit.
@@ -1833,6 +1937,23 @@ function sanitizeStageLabel(stage: string): string {
     const sideChannelApplied = await sanitizeSideChannelDets(sideChannelDets, toAdd);
 
     if (added > 0) {
+      // Build page-vector summary from toAdd (counts + pages only, no
+      // sensitive values). Group by category; pages stored as 1-indexed.
+      const pageMap = new Map<string, { category: string; label: string; count: number; pages: Set<number> }>();
+      for (const a of toAdd) {
+        const cat = String((a as { category?: string }).category ?? "other");
+        const label = meta?.[cat as Cat]?.label ?? cat;
+        const cur = pageMap.get(cat);
+        if (cur) { cur.count++; cur.pages.add(a.page + 1); }
+        else pageMap.set(cat, { category: cat, label, count: 1, pages: new Set([a.page + 1]) });
+      }
+      mergeSummary({
+        timestamp: Date.now(),
+        pageRedactions: Array.from(pageMap.values()).map((r) => ({
+          category: r.category, label: r.label, count: r.count,
+          pages: Array.from(r.pages).sort((a, b) => a - b),
+        })),
+      });
       toast.success(`${added.toLocaleString()} redaction box${added === 1 ? "" : "es"} added`, {
         description:
           'Click "Redact, export & verify" below to burn page text into the PDF.',
@@ -1843,7 +1964,7 @@ function sanitizeStageLabel(stage: string): string {
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
-  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, sanitizeSideChannelDets]);
+  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, sanitizeSideChannelDets, meta, mergeSummary]);
 
 
   const pageRedactableFindings = useMemo(
@@ -2885,6 +3006,88 @@ function sanitizeStageLabel(stage: string): string {
           page and add manual redactions as needed.
         </p>
       )}
+
+      {lastSummary && (() => {
+        const totalItems =
+          lastSummary.pageRedactions.reduce((n, r) => n + r.count, 0) +
+          lastSummary.sideChannel.reduce((n, r) => n + r.count, 0);
+        const allPages = new Set<number>();
+        for (const r of lastSummary.pageRedactions) for (const p of r.pages) allPages.add(p);
+        const when = new Date(lastSummary.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const vectorLabel = (v: string) =>
+          v === "form-field" ? "form field" : v === "annotation" ? "annotation" : "metadata entry";
+        const s = lastSummary.sanitize;
+        const sanitizeLines: string[] = [];
+        if (s) {
+          if (s.documentInfo > 0) sanitizeLines.push(`Document info removed (${s.documentInfo})`);
+          if (s.xmpMetadata > 0) sanitizeLines.push("XMP metadata removed");
+          if (s.embeddedFiles > 0) sanitizeLines.push(`${s.embeddedFiles} embedded file${s.embeddedFiles === 1 ? "" : "s"} removed`);
+          if (s.javascript > 0) sanitizeLines.push(`${s.javascript} JavaScript trigger${s.javascript === 1 ? "" : "s"} removed`);
+          if (s.annotations > 0) sanitizeLines.push(`${s.annotations} annotation${s.annotations === 1 ? "" : "s"} removed`);
+          if (s.hiddenLayers > 0) sanitizeLines.push(`${s.hiddenLayers} hidden layer${s.hiddenLayers === 1 ? "" : "s"} removed`);
+          if (s.additionalActions > 0) sanitizeLines.push("Auto-open triggers removed");
+        }
+        return (
+          <div className="mt-1 rounded-md border border-vault/40 bg-vault/[0.08] px-2.5 py-2 text-[11.5px] leading-relaxed text-text-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-vault">
+                Redaction summary
+              </div>
+              <div className="text-[10px] text-text-muted">{when}</div>
+            </div>
+            <div className="mt-1 font-medium">
+              Redacted {totalItems.toLocaleString()} item{totalItems === 1 ? "" : "s"}
+              {allPages.size > 0 ? ` across ${allPages.size} page${allPages.size === 1 ? "" : "s"}` : ""}.
+            </div>
+            {lastSummary.pageRedactions.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5">
+                {lastSummary.pageRedactions.map((r) => {
+                  const pagesLabel =
+                    r.pages.length === 0 ? "" :
+                    r.pages.length <= 6 ? ` (pages ${r.pages.join(", ")})` :
+                    ` (pages ${r.pages.slice(0, 6).join(", ")}, +${r.pages.length - 6} more)`;
+                  return (
+                    <li key={r.category} className="text-text-2">
+                      <span className="text-text-1">{r.label}</span> · {r.count.toLocaleString()}
+                      <span className="text-text-muted">{pagesLabel}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {lastSummary.sideChannel.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5">
+                {lastSummary.sideChannel.map((r) => (
+                  <li key={r.vector} className="text-text-2">
+                    {r.count.toLocaleString()} {vectorLabel(r.vector)}{r.count === 1 ? "" : "s"} cleared
+                  </li>
+                ))}
+              </ul>
+            )}
+            {sanitizeLines.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 border-t border-vault/20 pt-1.5">
+                {sanitizeLines.map((line) => (
+                  <li key={line} className="text-[10.5px] text-text-muted">{line}</li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setLastSummary(null);
+                setFindings(null);
+                setSelected(new Set());
+                setExpandedGroups(new Set());
+                void runScan(activeScanMode ?? "full");
+              }}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2 py-1 text-[11px] font-medium text-vault transition-colors hover:bg-vault/15"
+            >
+              <Sparkles className="h-3 w-3" strokeWidth={2.5} />
+              Start new scan
+            </button>
+          </div>
+        );
+      })()}
 
       {usedOcr && scannedPages.length === 0 && (
         <p className="text-[10.5px] leading-snug text-text-muted">
