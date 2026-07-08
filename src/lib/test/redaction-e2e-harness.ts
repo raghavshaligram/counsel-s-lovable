@@ -139,7 +139,7 @@ async function extractTextPerPage(bytes: Uint8Array): Promise<string[]> {
   for (let i = 1; i <= doc.numPages; i++) {
     const p = await doc.getPage(i);
     const tc = await p.getTextContent();
-    out.push(tc.items.map((it) => ("str" in it ? it.str : "")).join(" "));
+    out.push(tc.items.map((it: unknown) => (typeof it === "object" && it !== null && "str" in it ? String((it as { str: string }).str) : "")).join(" "));
   }
   return out;
 }

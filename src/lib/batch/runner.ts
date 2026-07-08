@@ -98,7 +98,7 @@ export function zipBatchOutputs(p: BatchProgress, zipName = "counselpdf-batch.zi
 }
 
 export function downloadBytes(bytes: Uint8Array, filename: string, mime = "application/octet-stream") {
-  const blob = new Blob([new Uint8Array(bytes)], { type: mime });
+  const blob = new Blob([bytes as BlobPart], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
