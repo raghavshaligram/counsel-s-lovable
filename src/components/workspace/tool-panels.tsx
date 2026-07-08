@@ -1969,7 +1969,7 @@ function sanitizeStageLabel(stage: string): string {
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
-  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, sanitizeSideChannelDets, meta, mergeSummary]);
+  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, meta, mergeSummary]);
 
 
   const pageRedactableFindings = useMemo(
