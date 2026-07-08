@@ -26,6 +26,17 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "chromium", use: { browserName: "chromium" } },
+    {
+      name: "chromium",
+      use: {
+        browserName: "chromium",
+        // The sandbox ships a pre-installed Chromium at a fixed path; the
+        // Playwright NPM package's expected browser revision may not match.
+        // Fall back to the pinned pre-installed binary when present.
+        launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+          ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
+          : {},
+      },
+    },
   ],
 });
