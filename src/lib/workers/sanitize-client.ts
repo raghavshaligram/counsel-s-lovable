@@ -103,6 +103,6 @@ export function sanitizeInWorker(
     // callers can opt into zero-copy transfer with stealBytes to avoid
     // holding two full copies of a huge PDF during redaction export.
     const buf = toTransferable(sourceBytes, { steal: opts.stealBytes });
-    w.postMessage({ kind: "sanitize", id, bytes: buf, sideVerifyStrings: opts.sideVerifyStrings ?? [] }, [buf]);
+    w.postMessage({ kind: "sanitize", id, bytes: buf, sideVerifyStrings: opts.sideVerifyStrings ?? [], targetFieldNames: opts.targetFieldNames ?? [] }, [buf]);
   });
 }
