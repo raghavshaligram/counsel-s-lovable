@@ -131,7 +131,16 @@ test.describe("redaction end-to-end (browser chain)", () => {
       outcome: "clean" | "blocked" | "leaked";
       rectsCoveredAllFragments: boolean;
       detectionRectCount: number;
+      beforeText?: string;
       extractedText?: string;
+      geometry?: {
+        items: Array<{ str: string; x0: number; x1: number; y: number; h: number }>;
+        rects: Array<{ x0: number; x1: number; y0: number; y1: number }>;
+        leadingItem: { str: string; x0: number; x1: number; y: number; h: number } | null;
+        leftmostRectX0: number | null;
+        rightmostRectX1: number | null;
+        leadingCovered: boolean;
+      };
       leadingSurvived?: boolean;
       trailingSurvived?: boolean;
       fullSurvived?: boolean;
@@ -153,9 +162,10 @@ test.describe("redaction end-to-end (browser chain)", () => {
     // against. Only enforce when the gate didn't block (blocking is also
     // a safe outcome but tells us nothing about expansion).
     if (probe.outcome === "clean") {
+      expect(probe.geometry?.leadingCovered, `leading fragment was not fully covered: ${JSON.stringify(probe.geometry)}`).toBe(true);
       expect(
         probe.rectsCoveredAllFragments,
-        `token expansion did not fire: only ${probe.detectionRectCount} rect(s) for a 3-fragment value`,
+        `token expansion did not cover the full leading-edge value: ${JSON.stringify(probe.geometry)}`,
       ).toBe(true);
     }
 

@@ -223,7 +223,7 @@ export async function runMixedRedactionE2E(): Promise<E2eProbe> {
 // production burn + gate, then re-extracts text to prove the WHOLE
 // value — not just the matched fragment — is gone.
 
-const FRAG_PHONE_PARTS = ["(7", "63) 300-18", "28"] as const;
+const FRAG_PHONE_PARTS = ["0", "781151140428"] as const;
 const FRAG_PHONE_FULL = FRAG_PHONE_PARTS.join("");
 
 export interface FragProbe {
@@ -236,7 +236,16 @@ export interface FragProbe {
   /** True when redaction rects covered ALL fragment items (expansion worked). */
   rectsCoveredAllFragments: boolean;
   detectionRectCount: number;
+  beforeText?: string;
   extractedText?: string;
+  geometry?: {
+    items: Array<{ str: string; x0: number; x1: number; y: number; h: number }>;
+    rects: Array<{ x0: number; x1: number; y0: number; y1: number }>;
+    leadingItem: { str: string; x0: number; x1: number; y: number; h: number } | null;
+    leftmostRectX0: number | null;
+    rightmostRectX1: number | null;
+    leadingCovered: boolean;
+  };
   leadingSurvived?: boolean;
   trailingSurvived?: boolean;
   fullSurvived?: boolean;
@@ -247,19 +256,34 @@ async function buildFragmentedFixture(): Promise<{ bytes: Uint8Array; rectApprox
   const doc = await PDFDocument.create();
   const page = doc.addPage([612, 792]);
   const helv = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   page.drawText("Contact info:", { x: 72, y: 720, size: 12, font: helv });
-  // Draw the phone number as THREE separate drawText calls at tightly
-  // adjacent x positions — this produces three separate Tj operators in
-  // the content stream, which pdf.js surfaces as three distinct text items.
+  // Draw the first digit as its own font run and start the remainder with a
+  // small reported-bounds overlap. This reproduces the real leading-edge leak:
+  // the old token walk treated `gap < -1` as a boundary, so the first digit's
+  // item was excluded even though it is part of the same visible value.
   const size = 12;
   const y = 700;
   let x = 72;
-  for (const part of FRAG_PHONE_PARTS) {
-    page.drawText(part, { x, y, size, font: helv });
-    x += helv.widthOfTextAtSize(part, size);
-  }
+  page.drawText(FRAG_PHONE_PARTS[0], { x, y, size, font: bold });
+  x += bold.widthOfTextAtSize(FRAG_PHONE_PARTS[0], size) - 1.4;
+  page.drawText(FRAG_PHONE_PARTS[1], { x, y, size, font: helv });
   const bytes = await doc.save({ useObjectStreams: false });
   return { bytes, rectApproxY: y };
+}
+
+async function inspectFragmentItems(bytes: Uint8Array): Promise<Array<{ str: string; x0: number; x1: number; y: number; h: number }>> {
+  const pdfjs = await loadPdfjs();
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const p = await doc.getPage(1);
+  const viewport = p.getViewport({ scale: 1.5 });
+  const tc = await p.getTextContent();
+  return (tc.items as Array<{ str: string; transform: number[]; width: number }>).flatMap((it) => {
+    if (!it.str || !it.str.trim()) return [];
+    const m = pdfjs.Util.transform(viewport.transform, it.transform);
+    const h = Math.hypot(m[2], m[3]);
+    return [{ str: it.str, x0: m[4] / 1.5, x1: (m[4] + it.width * 1.5) / 1.5, y: (m[5] - h) / 1.5, h: h / 1.5 }];
+  });
 }
 
 /**
@@ -271,6 +295,8 @@ async function buildFragmentedFixture(): Promise<{ bytes: Uint8Array; rectApprox
  */
 export async function runFragmentedRedactionE2E(): Promise<FragProbe> {
   const { bytes } = await buildFragmentedFixture();
+  const beforeText = (await extractTextPerPage(bytes)).join(" ");
+  const items = await inspectFragmentItems(bytes);
 
   // Run the real production detector. skipNer keeps the run fast (no model
   // download needed in headless Chromium); the phone regex handles this
@@ -285,15 +311,23 @@ export async function runFragmentedRedactionE2E(): Promise<FragProbe> {
   // any category the detector chose (phone, creditCard fallback for long
   // digit runs, etc.) as long as the rects cover the fragments.
   const pageRects: RedactionRectTL[] = detections
-    .filter((d) => d.page === 0 && d.pdfRect)
+    .filter((d) => d.page === 1 && d.pdfRect)
     .map((d) => {
       const r = d.pdfRect!;
       return { x: r.x, y: r.y, w: r.w, h: r.h };
     });
 
-  // Sanity: at least 2 rects (middle + at least one neighbour) means the
-  // expansion pass fired. A single rect = old behaviour, guaranteed leak.
-  const rectsCoveredAllFragments = pageRects.length >= FRAG_PHONE_PARTS.length;
+  const leadingItem = items.find((it) => it.str === FRAG_PHONE_PARTS[0]) ?? null;
+  const valueItems = items.filter((it) => FRAG_PHONE_FULL.includes(it.str) || it.str.includes(FRAG_PHONE_FULL));
+  const rects = pageRects.map((r) => ({ x0: r.x, x1: r.x + r.w, y0: r.y, y1: r.y + r.h }));
+  const leftmostRectX0 = rects.length ? Math.min(...rects.map((r) => r.x0)) : null;
+  const rightmostRectX1 = rects.length ? Math.max(...rects.map((r) => r.x1)) : null;
+  const valueLeft = valueItems.length ? Math.min(...valueItems.map((it) => it.x0)) : leadingItem?.x0 ?? 0;
+  const valueRight = valueItems.length ? Math.max(...valueItems.map((it) => it.x1)) : leadingItem?.x1 ?? 0;
+  const leadingCovered = !!leadingItem && rects.some((r) => r.x0 <= leadingItem.x0 && r.x1 >= leadingItem.x1);
+  const rectsCoveredAllFragments =
+    leftmostRectX0 !== null && rightmostRectX1 !== null && leftmostRectX0 <= valueLeft && rightmostRectX1 >= valueRight;
+  const geometry = { items, rects, leadingItem, leftmostRectX0, rightmostRectX1, leadingCovered };
 
   const pageMap = new Map<number, RedactionRectTL[]>([[0, pageRects]]);
   const rast = await rasterizeRedactedPagesInWorker(bytes, pageMap, {
@@ -318,6 +352,8 @@ export async function runFragmentedRedactionE2E(): Promise<FragProbe> {
         outcome: "blocked",
         rectsCoveredAllFragments,
         detectionRectCount: pageRects.length,
+        beforeText,
+        geometry,
         blockedMessage: err.message,
       };
     }
@@ -339,7 +375,9 @@ export async function runFragmentedRedactionE2E(): Promise<FragProbe> {
     outcome,
     rectsCoveredAllFragments,
     detectionRectCount: pageRects.length,
+    beforeText,
     extractedText: joined,
+    geometry,
     leadingSurvived,
     trailingSurvived,
     fullSurvived,

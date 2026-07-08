@@ -523,13 +523,18 @@ export async function detectPiiInPdf(
     if (meIdx < 0) return { leftChain: [], rightChain: [] };
 
     const MAX_GAP = rec.fontHeight * 0.5;
+    // pdf.js item advances are approximate: adjacent glyph runs from different
+    // fonts/sizes can overlap slightly in reported bounds even when they are a
+    // single visible token. Treat modest overlap as contiguous; only a large
+    // negative gap means a genuinely separate/overprinted run.
+    const MAX_OVERLAP = rec.fontHeight * 0.5;
     const leftChain: ItemRec[] = [];
     let cur: ItemRec = rec;
     for (let j = meIdx - 1; j >= 0; j--) {
       if (/^\s/.test(cur.str)) break;
       const prev = sameLine[j];
       const gap = cur.x0 - prev.x1;
-      if (gap < -1 || gap > MAX_GAP) break;
+      if (gap < -MAX_OVERLAP || gap > MAX_GAP) break;
       if (/\s$/.test(prev.str)) break;
       leftChain.push(prev);
       cur = prev;
@@ -540,7 +545,7 @@ export async function detectPiiInPdf(
       if (/\s$/.test(cur.str)) break;
       const next = sameLine[j];
       const gap = next.x0 - cur.x1;
-      if (gap < -1 || gap > MAX_GAP) break;
+      if (gap < -MAX_OVERLAP || gap > MAX_GAP) break;
       if (/^\s/.test(next.str)) break;
       rightChain.push(next);
       cur = next;
@@ -658,7 +663,8 @@ export async function detectPiiInPdf(
         }
         const gap = rec.x0 - prev.x1;
         const maxGap = Math.max(prev.fontHeight, rec.fontHeight) * 0.5;
-        const contiguous = gap >= -1 && gap <= maxGap && !/\s$/.test(prev.str) && !/^\s/.test(rec.str);
+        const maxOverlap = Math.max(prev.fontHeight, rec.fontHeight) * 0.5;
+        const contiguous = gap >= -maxOverlap && gap <= maxGap && !/\s$/.test(prev.str) && !/^\s/.test(rec.str);
         if (contiguous) run.push(rec);
         else {
           flushRun(run);
