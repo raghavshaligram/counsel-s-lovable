@@ -160,22 +160,52 @@ export async function runMixedRedactionE2E(): Promise<E2eProbe> {
     { page: 0, text: SECRET, label: "ssn" },
     { page: 0, text: NAME, label: "name" },
   ];
-  const gate = await enforceRedactionGate(rast.bytes, targets, {
-    rasterizedPages: rast.rasterizedPages,
-  });
+
+  let gate;
+  try {
+    gate = await enforceRedactionGate(rast.bytes, targets, {
+      rasterizedPages: rast.rasterizedPages,
+    });
+  } catch (e) {
+    // The gate refused to release bytes — no leaky file would ever reach
+    // the user. This is a correct safety outcome for the e2e.
+    const err = e as { name?: string; message?: string; result?: { vectors?: Record<string, number> } };
+    if (err?.name === "RedactionGateError") {
+      const blockedVectors: Record<string, number> = {};
+      if (err.result?.vectors) {
+        for (const [k, v] of Object.entries(err.result.vectors)) {
+          if (typeof v === "number" && v > 0) blockedVectors[k] = v;
+        }
+      }
+      return {
+        secret: SECRET,
+        name: NAME,
+        outcome: "blocked",
+        blockedMessage: err.message,
+        blockedVectors,
+      };
+    }
+    throw e;
+  }
 
   // Step 3 — independent post-hoc text extraction against the FINAL bytes.
+  // If the gate returned bytes but our fresh pdf.js pass STILL finds the
+  // secret, that's a real "text still traceable" regression.
   const perPageText = await extractTextPerPage(gate.bytes);
   const joined = perPageText.join("\n");
+  const secretInRawBytes = containsAnywhere(gate.bytes, SECRET);
+  const secretInExtractedText = joined.includes(SECRET) || joined.includes(NAME);
+  const outcome: E2eProbe["outcome"] =
+    secretInRawBytes || secretInExtractedText ? "leaked" : "clean";
 
   return {
     secret: SECRET,
     name: NAME,
-    secretInRawBytes: containsAnywhere(gate.bytes, SECRET),
-    secretInExtractedText: joined.includes(SECRET) || joined.includes(NAME),
+    outcome,
+    secretInRawBytes,
+    secretInExtractedText,
     perPageText,
     vectors: gate.verify.vectors,
-    ok: gate.verify.ok,
     outputBytes: gate.bytes.byteLength,
     rasterizedPages: gate.rasterizedPages,
   };
