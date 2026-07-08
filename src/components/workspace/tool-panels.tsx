@@ -1854,7 +1854,7 @@ function sanitizeStageLabel(stage: string): string {
         if (sideChannelInFlightRef.current === run) sideChannelInFlightRef.current = null;
       }
     },
-    [editorState, file, replaceFile],
+    [editorState, file, replaceFile, mergeSummary],
   );
 
   // Flush any pending debounced sanitize before Export runs its own commit.
