@@ -1920,9 +1920,14 @@ function sanitizeStageLabel(stage: string): string {
       if (!a.id.startsWith("redact-det-")) continue;
       stagedDetIds.add(a.id.slice("redact-det-".length));
     }
-    // Batch removals (unchecked items).
+    // Batch removals (unchecked items). ONLY remove if the detId is still
+    // present in `findings` — once a finding has been "locked in" by the
+    // Redact button (which drops it from the findings list), its on-canvas
+    // box must survive further selection changes in other categories.
+    const findingIds = new Set(findings.map((d) => d.id));
     const toRemove: string[] = [];
     for (const detId of stagedDetIds) {
+      if (!findingIds.has(detId)) continue;
       if (!selected.has(detId)) toRemove.push(`redact-det-${detId}`);
     }
     // Batch adds (newly checked page-vector items).
