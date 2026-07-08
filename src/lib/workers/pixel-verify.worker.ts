@@ -12,6 +12,7 @@
  * (the raw-stream + side-channel verifier already does that).
  */
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 export interface PixelRectTL { x: number; y: number; w: number; h: number }
 export interface PixelVerifyTarget { page: number; rect: PixelRectTL; label?: string }
@@ -61,7 +62,23 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
 
     const scale = m.scale;
     const pdfjs = await loadPdfjs();
-    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const inputBytesMB = Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10;
+    logHeap("pixel-verify.worker before bytes.slice", { inputBytesMB, pagesToCheck: pagesToCheck.size, targets: targets.length });
+    let pdfjsBytes: Uint8Array;
+    try {
+      pdfjsBytes = bytes.slice();
+    } catch (err) {
+      logAllocationFailure("pixel-verify.worker bytes.slice", err, { inputBytesMB });
+      throw new Error(allocationFailureMessage("pixel-verify.worker bytes.slice", err));
+    }
+    logHeap("pixel-verify.worker before pdfjs.getDocument", { inputBytesMB });
+    let doc: Awaited<ReturnType<Awaited<ReturnType<typeof loadPdfjs>>["getDocument"]>["promise"]>;
+    try {
+      doc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
+    } catch (err) {
+      logAllocationFailure("pixel-verify.worker pdfjs.getDocument", err, { inputBytesMB });
+      throw new Error(allocationFailureMessage("pixel-verify.worker pdfjs.getDocument", err));
+    }
 
     const byPage = new Map<number, PixelVerifyTarget[]>();
     for (const t of targets) {
