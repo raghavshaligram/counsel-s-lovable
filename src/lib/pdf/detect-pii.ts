@@ -711,7 +711,7 @@ export async function detectPiiInPdf(
     // the page — sparse-indexed to mirror `items`. Needed so token expansion
     // can walk to same-line neighbours by index without a second pass over
     // pdf.js item metrics.
-    const records: (ItemRec | null)[] = items.map((raw) => {
+    const records: (ItemRec | null)[] = items.map((raw, idx) => {
       const str = raw.str;
       if (!str || !str.trim()) return null;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
@@ -785,6 +785,7 @@ export async function detectPiiInPdf(
         joinedText += NER_SEP;
         const { leftChain, rightChain } = getChains();
         nerItems.push({
+          idx: itemRecord.idx,
           str,
           x0: itemRecord.x0,
           x1: itemRecord.x1,
