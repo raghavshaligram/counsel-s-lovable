@@ -38,6 +38,21 @@ export function computeQuads(
     const x2 = Math.min(rx2, Math.max(...line.map((l) => l.x + l.w)));
     const y = Math.min(...line.map((l) => l.y));
     const h = Math.max(...line.map((l) => l.h));
-    return { x, y, w: Math.max(2, x2 - x), h };
+    // pdf.js reports a text-run height close to the font's x-height / EM
+    // advance, not the full glyph bounding box. Digits and capitals extend
+    // above that band (ascender) and glyphs like 3/5/7/9/g/p/y drop below
+    // (descender), so a rect built from raw item metrics leaves visible
+    // slivers of the original text after burn. Pad the quad to the glyph
+    // bbox: ~35% of h above, ~25% below, plus a tiny horizontal cushion
+    // for italic slant / wide numerals. The burn rasterizer clamps to page
+    // bounds, so over-shooting the page edge is safe.
+    const padTop = h * 0.35;
+    const padBottom = h * 0.25;
+    const padX = Math.min(1.5, h * 0.12);
+    const px = x - padX;
+    const pw = Math.max(2, x2 - x + padX * 2);
+    const py = y - padTop;
+    const ph = h + padTop + padBottom;
+    return { x: px, y: py, w: pw, h: ph };
   });
 }
