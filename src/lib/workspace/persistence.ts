@@ -401,6 +401,39 @@ export function saveSidecarDebounced(name: string, size: number, rec: Omit<Sidec
   );
 }
 
+/**
+ * Immediate, non-debounced sidecar write. Use this before any operation that
+ * will force the workspace open-effect to re-parse the doc from a `File`
+ * (e.g. `replaceFile` after a sanitize/redact wipe) — the subsequent `LOAD`
+ * clears annotations and then `LOAD_SIDECAR` restores them from disk. If the
+ * debounced write hadn't flushed, the restore would use STALE annotations
+ * and the just-staged redact boxes would be silently dropped, so the export
+ * pipeline would find zero targets and skip the burn/verify gate entirely.
+ *
+ * Cancels any pending debounced timer for the same key so the immediate
+ * write is authoritative.
+ */
+export async function saveSidecarNow(
+  name: string,
+  size: number,
+  rec: Omit<SidecarRecord, "savedAt">,
+): Promise<void> {
+  const d = db();
+  if (!d) return;
+  const key = sidecarKey(name, size);
+  const t = sidecarTimers.get(key);
+  if (t) { clearTimeout(t); sidecarTimers.delete(key); }
+  sidecarPending.delete(key);
+  try {
+    const conn = await d;
+    const full: SidecarRecord = { ...rec, savedAt: Date.now() };
+    await conn.put(SIDECAR_STORE, full, key);
+  } catch (err) {
+    console.error("[persistence] saveSidecarNow failed", err);
+    throw err;
+  }
+}
+
 // Flush all pending sidecar writes immediately. Call before unload / tab close
 // so debounced writes are actually committed.
 export async function flushSidecars(): Promise<void> {
