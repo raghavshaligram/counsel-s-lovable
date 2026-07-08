@@ -2319,21 +2319,14 @@ function sanitizeStageLabel(stage: string): string {
             };
             const onChip = (key: string) => {
               const ids = idsForChip(key);
-              const allSel = ids.length > 0 && ids.every((id) => selected.has(id));
               startTransition(() => {
-                setActiveTab(key);
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (allSel) for (const id of ids) next.delete(id);
-                  else for (const id of ids) next.add(id);
-                  return next;
-                });
+                if (activeTab === key) {
+                  setSelected(new Set());
+                } else {
+                  setActiveTab(key);
+                  setSelected(new Set(ids));
+                }
               });
-            };
-            const stageSelected = async () => {
-              if (selected.size === 0) return;
-              await redactSelected();
-              setSelected(new Set());
             };
             return (
               <div className="flex items-start gap-1.5 border-b border-border/60 px-2 py-1.5">
@@ -2366,18 +2359,6 @@ function sanitizeStageLabel(stage: string): string {
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={stageSelected}
-                  disabled={selected.size === 0}
-                  className={cn(
-                    "shrink-0 rounded-md bg-vault px-2 py-0.5 text-[10.5px] font-medium text-vault-foreground hover:opacity-90",
-                    selected.size === 0 && "cursor-not-allowed opacity-50",
-                  )}
-                  title="Stage the currently selected findings. Stack multiple categories, then hit Export at the bottom."
-                >
-                  Redact{selected.size > 0 ? ` (${selected.size.toLocaleString()})` : ""}
-                </button>
               </div>
             );
           })()}
