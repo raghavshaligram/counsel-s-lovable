@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
 import type { Action as EditorAction, State as EditorState } from "@/lib/editor/state";
 import type { Anno, Reply } from "@/lib/editor/types";
+import { saveSidecarNow } from "@/lib/workspace/persistence";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Check, CornerDownRight, MessageSquare } from "lucide-react";
