@@ -767,15 +767,18 @@ export async function detectPiiInPdf(
           (s) => !(localEnd <= s.start || localStart >= s.end),
         );
         if (overlapsRegexName) continue;
-        emitBoxFor(
+        emitWithExpansion(
           page,
           item,
+          item.leftChain,
+          item.rightChain,
           localStart,
           localEnd - localStart,
           e.type === "PER" ? "name" : "org",
           "high",
           item.str.slice(localStart, localEnd),
         );
+
       }
       const added = detections.length - detectionsBeforeItem;
       if (added > 0) emittedByPage.set(page, (emittedByPage.get(page) ?? 0) + added);
