@@ -3385,15 +3385,20 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           const totalStaged = totalBoxes + (staged.sideStaged || 0);
           const canCommit = totalStaged > 0;
           const onCommit = async () => {
-            // Prefer the page-burn path when any page box is staged — the
-            // gate inside `exportRedacted` scrubs side-channels too, so ticked
-            // form-field/annotation/metadata items are covered by the same
-            // pass. Side-channel-only stages fall back to the sanitize+swap
-            // path published by AutoDetectSection.
+            // STEP 1 — Apply-NOW for any checked side-channel findings
+            // (form fields, annotations, metadata). These have no page
+            // rect, so live-staging never covered them; the sanitize
+            // step must run against the live bytes BEFORE the page burn
+            // so flatten/PDF-A can't promote a hidden value into page
+            // text. `sideCommit` is `redactSelected`, which handles the
+            // side-channel wipe and also re-adds any ticked page items
+            // (already deduped against existing redact keys).
+            if ((staged.sideStaged || 0) > 0 && staged.sideCommit) {
+              await staged.sideCommit();
+            }
+            // STEP 2 — Existing page-vector burn/flatten/verify/download.
             if (totalBoxes > 0) {
               await exportRedacted();
-            } else if (staged.sideCommit) {
-              await staged.sideCommit();
             }
           };
           return (
