@@ -44,6 +44,13 @@ const TEXT_ANNOT_SUBTYPES = new Set([
 export interface SanitizeOptions {
   onProgress?: (stage: string, done: number, total: number) => void;
   shouldAbort?: () => boolean;
+  /** When provided, ONLY form fields whose /T matches one of these names
+   *  are cleared. Annotations, metadata, embedded files, JavaScript, and
+   *  OCGs are still fully wiped (their non-page vectors have no per-item
+   *  targeting UI). When omitted, the standalone Sanitize tool's blanket
+   *  behavior is preserved: every form field is cleared and /AcroForm is
+   *  deleted wholesale. */
+  targetFieldNames?: string[];
 }
 
 export async function sanitizePdfBytes(bytes: Uint8Array): Promise<Uint8Array> {
@@ -104,20 +111,25 @@ export async function sanitizePdfBytesWithReport(
     hasAcroForm: !!acroForm,
     order: "clear /V + /DV and delete /AP before any flatten/PDF-A/export",
   });
+  const selective = Array.isArray(opts.targetFieldNames);
+  const targetSet = selective ? new Set(opts.targetFieldNames) : null;
+  const isTargeted = (name: string) => !targetSet || targetSet.has(name);
   if (acroForm) {
     report.acroForm = 1;
     const fieldsArr = acroForm.lookupMaybe(PDFName.of("Fields"), PDFArray);
     if (fieldsArr) {
       for (const item of fieldsArr.asArray()) {
-        const cleared = clearFormFieldTree(ctx, item, appearanceRefsToRemove);
+        const cleared = clearFormFieldTree(ctx, item, appearanceRefsToRemove, targetSet);
         report.acroFormFields += cleared;
       }
-      // Remove the fields from the live AcroForm tree before any downstream
-      // flatten call can bake their previous appearance into page content.
-      const emptied = PDFArray.withContext(ctx);
-      acroForm.set(PDFName.of("Fields"), emptied);
+      if (!selective) {
+        // Remove the fields from the live AcroForm tree before any downstream
+        // flatten call can bake their previous appearance into page content.
+        const emptied = PDFArray.withContext(ctx);
+        acroForm.set(PDFName.of("Fields"), emptied);
+      }
     }
-    catalog.delete(PDFName.of("AcroForm"));
+    if (!selective) catalog.delete(PDFName.of("AcroForm"));
   }
   // Belt and braces: even if /AcroForm was already missing, individual
   // field dicts can linger as orphans. Walk every indirect object and
@@ -129,13 +141,14 @@ export async function sanitizePdfBytesWithReport(
       if (!(obj instanceof PDFDict)) continue;
       const isFieldOrWidget = obj.has(PDFName.of("FT")) || nameStr(obj.get(PDFName.of("Subtype"))) === "/Widget";
       if (!isFieldOrWidget) continue;
-      const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan");
+      const cleared = clearFormFieldDict(ctx, obj, ref, appearanceRefsToRemove, "orphan-scan", targetSet);
       report.acroFormFields += cleared;
     }
   }
   // Also drop /Widget annotations on every page — the parent form fields
   // were just deleted, so the widgets are now orphans whose only purpose
-  // would be to carry leftover /AP streams.
+  // would be to carry leftover /AP streams. In selective mode, only drop
+  // widgets whose owning field name is targeted.
   for (const page of doc.getPages()) {
     const annotsArr2 = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
     if (!annotsArr2) continue;
@@ -144,6 +157,10 @@ export async function sanitizePdfBytesWithReport(
       const annot = resolveDict(ctx, item);
       if (!annot) { keep2.push(item); continue; }
       if (nameStr(annot.get(PDFName.of("Subtype"))) === "/Widget") {
+        if (selective) {
+          const wname = widgetFieldName(ctx, annot);
+          if (!isTargeted(wname)) { keep2.push(item); continue; }
+        }
         collectAppearanceRefs(ctx, annot, appearanceRefsToRemove);
         if (annot.has(PDFName.of("AP"))) annot.delete(PDFName.of("AP"));
         if (item && typeof item === "object" && "objectNumber" in item) {
@@ -159,13 +176,12 @@ export async function sanitizePdfBytesWithReport(
       page.node.set(PDFName.of("Annots"), next);
     }
   }
-  // Purge orphaned widget appearance streams (/Form XObjects pdf-lib
-  // tagged with /Tx BMC). Without this they survive in the saved file
-  // even though nothing references them — and they still carry the
-  // form-field glyph strings, which a raw-stream verifier rightly
-  // flags as a leak.
+  // Purge orphaned widget appearance streams. In selective mode, only the
+  // targeted field's appearance refs were collected above, so restrict this
+  // to those refs and skip the blanket /Tx BMC sweep (which would blank
+  // untargeted fields' appearances).
   for (const r of appearanceRefsToRemove) removeRef(ctx, r);
-  await purgeWidgetAppearanceStreams(ctx);
+  if (!selective) await purgeWidgetAppearanceStreams(ctx);
 
   // 3) Annotations — strip text from every annotation and remove
   //    text-bearing subtypes entirely so /Contents, /RC, /T, /Subj
@@ -394,18 +410,38 @@ async function purgeWidgetAppearanceStreams(ctx: PDFDocument["context"]): Promis
   for (const r of targets) removeRef(ctx, r);
 }
 
+/** Walk a widget's /Parent chain to find the owning field's /T name.
+ *  Widgets can be merged with the field (have /T themselves) or reference
+ *  a parent field via /Parent. Selective sanitize needs the effective name
+ *  to decide whether to drop the widget. */
+function widgetFieldName(ctx: PDFDocument["context"], widget: PDFDict): string {
+  let cur: PDFDict | undefined = widget;
+  const seen = new Set<PDFDict>();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const n = extractText(cur.get(PDFName.of("T")));
+    if (n) return n;
+    const parent = cur.get(PDFName.of("Parent"));
+    cur = resolveDict(ctx, parent);
+  }
+  return "";
+}
+
 /** Recursively clear /V (and /DV, /RV) on a form field tree.
  *  Returns the count of fields whose /V was non-empty before clearing.
- *  Logs before/after for each cleared field so a regression where the
- *  value is "covered but not removed" is immediately visible in DevTools. */
-function clearFormFieldTree(ctx: PDFDocument["context"], item: unknown, appearanceRefs: PDFRef[]): number {
+ *  When targetSet is provided, only fields whose /T is in the set are cleared. */
+function clearFormFieldTree(
+  ctx: PDFDocument["context"],
+  item: unknown,
+  appearanceRefs: PDFRef[],
+  targetSet: Set<string> | null,
+): number {
   const field = resolveDict(ctx, item);
   if (!field) return 0;
-  rememberRef(appearanceRefs, item);
-  let count = clearFormFieldDict(ctx, field, item, appearanceRefs, "AcroForm-tree");
+  let count = clearFormFieldDict(ctx, field, item, appearanceRefs, "AcroForm-tree", targetSet);
   const kids = field.lookupMaybe(PDFName.of("Kids"), PDFArray);
   if (kids) {
-    for (const k of kids.asArray()) count += clearFormFieldTree(ctx, k, appearanceRefs);
+    for (const k of kids.asArray()) count += clearFormFieldTree(ctx, k, appearanceRefs, targetSet);
   }
   return count;
 }
@@ -416,8 +452,15 @@ function clearFormFieldDict(
   ref: unknown,
   appearanceRefs: PDFRef[],
   source: "AcroForm-tree" | "orphan-scan",
+  targetSet: Set<string> | null,
 ): number {
   const name = extractText(field.get(PDFName.of("T"))) || "(anon)";
+  // Selective mode: only touch targeted fields. Widgets without /T need
+  // parent-chain resolution to compare against the target set.
+  if (targetSet) {
+    const effective = name !== "(anon)" ? name : widgetFieldName(ctx, field);
+    if (!effective || !targetSet.has(effective)) return 0;
+  }
   const beforeV = extractText(field.get(PDFName.of("V")));
   const beforeDV = extractText(field.get(PDFName.of("DV")));
   const hadAP = field.has(PDFName.of("AP"));
@@ -431,6 +474,7 @@ function clearFormFieldDict(
     dvBefore: beforeDV.slice(0, 160),
     hasAPBefore: hadAP,
     flattenOrder: "CLEAR_FIELD_THEN_FLATTEN",
+    selective: !!targetSet,
   });
   collectAppearanceRefs(ctx, field, appearanceRefs);
   rememberRef(appearanceRefs, ref);

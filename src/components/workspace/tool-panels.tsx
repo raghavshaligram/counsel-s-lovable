@@ -1728,9 +1728,13 @@ function sanitizeStageLabel(stage: string): string {
             return [full, snip].filter((s) => s.length >= 3);
           }),
         ));
+        const targetFieldNames = formFieldFindings
+          .map((d) => d.fieldName)
+          .filter((n): n is string => typeof n === "string" && n.length > 0);
         const { bytes: cleaned, report, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
           signal: abort.signal,
           sideVerifyStrings: sensitiveStrings,
+          targetFieldNames,
           onProgress: ({ stage, done, total }) => {
             if (stage === "verify-side-channel") {
               toast.loading(`Verifying hidden-vector wipe… (${done}/${Math.max(1, total)})`, {

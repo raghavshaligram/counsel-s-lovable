@@ -9,7 +9,7 @@ import { sanitizePdfBytesWithReport, type SanitizeReport } from "@/lib/pdf/sanit
 import type { VerifyLeak } from "@/lib/editor/verify-redaction";
 
 type InboundMsg =
-  | { kind: "sanitize"; id: string; bytes: ArrayBuffer; sideVerifyStrings?: string[] }
+  | { kind: "sanitize"; id: string; bytes: ArrayBuffer; sideVerifyStrings?: string[]; targetFieldNames?: string[] }
   | { kind: "cancel"; id: string };
 
 type OutboundMsg =
@@ -41,6 +41,9 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
           post({ kind: "progress", id: m.id, stage, done, total });
         },
         shouldAbort: () => entry.canceled,
+        ...(m.targetFieldNames && m.targetFieldNames.length > 0
+          ? { targetFieldNames: m.targetFieldNames }
+          : {}),
       });
       if (entry.canceled) throw new DOMException("Canceled", "AbortError");
       let sideLeaks: VerifyLeak[] | undefined;
