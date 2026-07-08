@@ -54,6 +54,11 @@ export function sanitizeInWorker(
      *  After the call, the caller's Uint8Array is empty. Use only when the
      *  caller will not read that byte buffer again. */
     stealBytes?: boolean;
+    /** When provided, ONLY these form fields (matched by /T) are cleared;
+     *  other form fields are left intact. Used by the redaction panel to
+     *  clear one selected finding at a time. Omit to keep the standalone
+     *  Sanitize tool's blanket-clear behavior. */
+    targetFieldNames?: string[];
   } = {},
 ): Promise<SanitizeResult> {
   return new Promise<SanitizeResult>((resolve, reject) => {
