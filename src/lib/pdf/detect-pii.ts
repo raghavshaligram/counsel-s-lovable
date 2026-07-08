@@ -608,25 +608,47 @@ export async function detectPiiInPdf(
     const NER_SEP = "\n"; // 1 char — offsets in joined string map cleanly to items
 
     const tr0 = performance.now();
-    for (const raw of items) {
+
+    // Precompute FULL geometry (including x1 = right edge) for every item on
+    // the page — sparse-indexed to mirror `items`. Needed so token expansion
+    // can walk to same-line neighbours by index without a second pass over
+    // pdf.js item metrics.
+    const records: (ItemRec | null)[] = items.map((raw) => {
       const str = raw.str;
-      if (!str || !str.trim()) continue;
-      itemCount++;
+      if (!str || !str.trim()) return null;
       const m = pdfjs.Util.transform(viewport.transform, raw.transform);
       const fontHeight = Math.hypot(m[2], m[3]);
       const itemWidth = raw.width * scale;
       const x0 = m[4];
+      const x1 = x0 + itemWidth;
       const y = m[5] - fontHeight;
       const pad = Math.max(2, fontHeight * 0.15);
       const fontName = (raw as { fontName?: string }).fontName;
       const charW = str.length > 0 ? itemWidth / str.length : itemWidth;
+      return { str, x0, x1, y, fontHeight, pad, charW, fontName, transform: raw.transform };
+    });
 
-      const itemRecord = { str, x0, y, fontHeight, pad, charW, fontName, transform: raw.transform };
+    for (let recIdx = 0; recIdx < items.length; recIdx++) {
+      const itemRecord = records[recIdx];
+      if (!itemRecord) continue;
+      const raw = items[recIdx];
+      const str = itemRecord.str;
+      itemCount++;
+
+      // Cheap gate: only pay for chain discovery if THIS item shows a match
+      // signal (regex hit / privilege term / NER eligibility). Chains stay
+      // undefined otherwise — the vast majority of items on a page.
+      let chains: { leftChain: ItemRec[]; rightChain: ItemRec[] } | null = null;
+      const getChains = () => (chains ??= computeChains(records, recIdx));
 
       // 1) Structured regex patterns + heuristic name match.
       const hits = matchAllCategories(str);
       for (const hit of hits) {
-        emitBoxFor(i, itemRecord, hit.start, hit.length, hit.category, hit.confidence, hit.text);
+        const { leftChain, rightChain } = getChains();
+        emitWithExpansion(
+          i, itemRecord, leftChain, rightChain,
+          hit.start, hit.length, hit.category, hit.confidence, hit.text,
+        );
       }
       const regexNameSpans = hits
         .filter((h) => h.category === "name")
@@ -636,10 +658,17 @@ export async function detectPiiInPdf(
       PRIVILEGE_TERMS_RE.lastIndex = 0;
       let pm: RegExpExecArray | null;
       while ((pm = PRIVILEGE_TERMS_RE.exec(str)) !== null) {
-        emitBoxFor(i, itemRecord, pm.index, pm[0].length, "privilegeContext", "low", pm[0]);
+        const { leftChain, rightChain } = getChains();
+        emitWithExpansion(
+          i, itemRecord, leftChain, rightChain,
+          pm.index, pm[0].length, "privilegeContext", "low", pm[0],
+        );
         const values = findValuesNearPrivilege(str, pm.index, pm.index + pm[0].length);
         for (const v of values) {
-          emitBoxFor(i, itemRecord, v.start, v.end - v.start, "privilegeValue", "low", v.text);
+          emitWithExpansion(
+            i, itemRecord, leftChain, rightChain,
+            v.start, v.end - v.start, "privilegeValue", "low", v.text,
+          );
         }
         if (pm[0].length === 0) PRIVILEGE_TERMS_RE.lastIndex++;
       }
@@ -654,15 +683,25 @@ export async function detectPiiInPdf(
         joinedText += str;
         const joinedEnd = joinedText.length;
         joinedText += NER_SEP;
+        const { leftChain, rightChain } = getChains();
         nerItems.push({
-          str, x0, y, fontHeight, pad, charW, fontName,
+          str,
+          x0: itemRecord.x0,
+          x1: itemRecord.x1,
+          y: itemRecord.y,
+          fontHeight: itemRecord.fontHeight,
+          pad: itemRecord.pad,
+          charW: itemRecord.charW,
+          fontName: itemRecord.fontName,
           transform: raw.transform,
           joinedStart, joinedEnd,
           regexNameSpans,
+          leftChain, rightChain,
         });
       }
     }
     tRegex += performance.now() - tr0;
+
 
     if (nerItems.length > 0) {
       pageNerWork.push({ page: i, joinedText, items: nerItems });
