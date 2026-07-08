@@ -1855,6 +1855,27 @@ function sanitizeStageLabel(stage: string): string {
     [findings],
   );
 
+  // Live-hide-on-check for side-channel findings (form fields, annotations,
+  // metadata). Page-vector items already stage immediately via the STAGE 5
+  // effect below; side-channel items have no page rect so they need their
+  // own sanitize pass. Debounce ~450ms so rapid multi-check settles into a
+  // single sanitize call. Unchecking before the timer fires cancels it.
+  useEffect(() => {
+    const checked = sideChannelFindings.filter((d) => selected.has(d.id));
+    if (checked.length === 0) return;
+    const timer = setTimeout(() => {
+      sideChannelTimerRef.current = null;
+      // Fire-and-forget: helper serializes internally via inFlightRef, so a
+      // second debounce firing during a slow sanitize will queue behind it.
+      void sanitizeSideChannelDets(checked);
+    }, 450);
+    sideChannelTimerRef.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (sideChannelTimerRef.current === timer) sideChannelTimerRef.current = null;
+    };
+  }, [selected, sideChannelFindings, sanitizeSideChannelDets]);
+
   // Publish current staging state to the module-level bridge so RedactPanel's
   // unified ledger can show a "Staged from AI scan" row + one-click commit.
   // On unmount we reset to zero so the row disappears when the panel closes.
