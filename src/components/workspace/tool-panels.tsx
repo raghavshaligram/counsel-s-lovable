@@ -3455,21 +3455,17 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 
   const downloadCertificate = useCallback(async () => {
-    if (!file || !verify || !lastBytes) return;
+    if (!file || !verify || !lastHashes) return;
     try {
       // Route ALL certificate downloads through the auth gate. Signed-out
       // users must create a free account first; "Not now" closes the gate
       // without producing a certificate. No bypass path exists here.
+      // MEMORY: we reuse the hashes computed during export — we never
+      // re-load the full source file or hold onto the exported bytes.
       const { requestCertificate } = await import("@/components/workspace/certificate-gate");
       const { buildRedactionCertificate } = await importChunk(() => import("@/lib/pdf/redaction-certificate"));
-      const hash = async (data: Uint8Array): Promise<string> => {
-        const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
-        return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
-      };
-      const [sourceHash, redactedHash] = await Promise.all([
-        hash(new Uint8Array(await file.arrayBuffer())),
-        hash(lastBytes),
-      ]);
+      const sourceHash = lastHashes.source;
+      const redactedHash = lastHashes.redacted;
       const categoryCounts: Record<string, number> = {};
       const perPageCounts: Record<number, number> = {};
       for (const a of redactAnnos) {
@@ -3508,7 +3504,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
       console.error("[redact] certificate failed", err);
       toast.error("Couldn't build certificate", { description: (err as Error).message });
     }
-  }, [file, verify, lastBytes, redactAnnos, editorState?.doc?.pages.length]);
+  }, [file, verify, lastHashes, redactAnnos, editorState?.doc?.pages.length]);
 
   if (!file) {
     return (
