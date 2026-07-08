@@ -11,6 +11,7 @@
  */
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 export interface RectTL { x: number; y: number; w: number; h: number }
 
@@ -80,8 +81,36 @@ async function rasterize(
   if (pageRedactions.size === 0) return { bytes, rasterizedPages: [] };
 
   const pdfjs = await loadPdfjs();
-  const srcDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-  const outDoc = await PDFDocument.load(bytes);
+  const inputBytesMB = Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10;
+  logHeap("rasterize.worker before pdfjs bytes.slice", {
+    inputBytesMB,
+    redactionPages: pageRedactions.size,
+    mode,
+    scale,
+  });
+  let pdfjsBytes: Uint8Array;
+  try {
+    pdfjsBytes = bytes.slice();
+  } catch (err) {
+    logAllocationFailure("rasterize.worker bytes.slice for pdfjs", err, { inputBytesMB });
+    throw new Error(allocationFailureMessage("rasterize.worker bytes.slice for pdfjs", err));
+  }
+  logHeap("rasterize.worker before pdfjs.getDocument", { inputBytesMB });
+  let srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
+  try {
+    srcDoc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
+  } catch (err) {
+    logAllocationFailure("rasterize.worker pdfjs.getDocument", err, { inputBytesMB });
+    throw new Error(allocationFailureMessage("rasterize.worker pdfjs.getDocument", err));
+  }
+  logHeap("rasterize.worker before PDFDocument.load", { inputBytesMB });
+  let outDoc: PDFDocument;
+  try {
+    outDoc = await PDFDocument.load(bytes);
+  } catch (err) {
+    logAllocationFailure("rasterize.worker PDFDocument.load", err, { inputBytesMB });
+    throw new Error(allocationFailureMessage("rasterize.worker PDFDocument.load", err));
+  }
   const rasterizedPages: number[] = [];
 
   const pageOrder = Array.from(pageRedactions.keys()).sort((a, b) => b - a);
@@ -101,8 +130,8 @@ async function rasterize(
 
       if (mode === "fallback") {
         const tc = await page.getTextContent();
-        const hit = tc.items.some((it) => {
-          if (!("str" in it)) return false;
+        const hit = (tc.items as unknown[]).some((it: unknown) => {
+          if (typeof it !== "object" || it === null || !("str" in it)) return false;
           const item = it as { str: string; transform: number[]; width?: number; height?: number };
           if (!item.str || !item.str.trim()) return false;
           const t = item.transform;
@@ -174,7 +203,20 @@ async function rasterize(
   }
 
   if (rasterizedPages.length === 0) return { bytes, rasterizedPages: [] };
-  const outBytes = await outDoc.save({ useObjectStreams: false, updateFieldAppearances: false });
+  logHeap("rasterize.worker before outDoc.save", {
+    inputBytesMB,
+    rasterizedPages: rasterizedPages.length,
+  });
+  let outBytes: Uint8Array;
+  try {
+    outBytes = await outDoc.save({ useObjectStreams: false, updateFieldAppearances: false });
+  } catch (err) {
+    logAllocationFailure("rasterize.worker outDoc.save", err, {
+      inputBytesMB,
+      rasterizedPages: rasterizedPages.length,
+    });
+    throw new Error(allocationFailureMessage("rasterize.worker outDoc.save", err));
+  }
   return { bytes: outBytes, rasterizedPages: rasterizedPages.slice().sort((a, b) => a - b) };
 }
 

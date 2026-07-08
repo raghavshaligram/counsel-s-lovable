@@ -14,11 +14,25 @@ import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } 
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
 import { importChunk } from "@/lib/chunk-import";
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
 export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
-  const srcDoc = await PDFDocument.load(doc.srcBytes);
+  logHeap("export.worker before exportEditedPdf PDFDocument.load", {
+    inputBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
+    pages: doc.pages.length,
+    annotations: doc.annotations.length,
+  });
+  let srcDoc: PDFDocument;
+  try {
+    srcDoc = await PDFDocument.load(doc.srcBytes);
+  } catch (err) {
+    logAllocationFailure("export.worker PDFDocument.load", err, {
+      inputBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
+    });
+    throw new Error(allocationFailureMessage("export.worker PDFDocument.load", err));
+  }
   const out = await PDFDocument.create();
   out.registerFontkit(fontkit);
   const fonts = {
@@ -192,7 +206,20 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   }
 
 
-  let bytes = await out.save();
+  logHeap("export.worker before exportEditedPdf out.save", {
+    sourceBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
+    outputPages: out.getPageCount(),
+  });
+  let bytes: Uint8Array;
+  try {
+    bytes = await out.save();
+  } catch (err) {
+    logAllocationFailure("export.worker out.save", err, {
+      sourceBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
+      outputPages: out.getPageCount(),
+    });
+    throw new Error(allocationFailureMessage("export.worker out.save", err));
+  }
 
   // Optional encryption + permissions
   if (settings?.protect && settings.protect.userPassword) {

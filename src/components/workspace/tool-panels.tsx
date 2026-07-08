@@ -131,6 +131,7 @@ import {
   tierLabel,
   type DeviceCapability,
 } from "@/lib/device/capability";
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -3162,6 +3163,13 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
   // needs the hashes, not the bytes — compute them once during export and
   // release the buffer immediately.
   const [lastHashes, setLastHashes] = useState<{ source: string; redacted: string } | null>(null);
+  useEffect(() => {
+    logHeap("panel mount", {
+      fileName: file?.name ?? null,
+      fileSizeMB: file ? Math.round((file.size / 1024 / 1024) * 10) / 10 : null,
+      pageCount: editorState?.doc?.pages.length ?? null,
+    });
+  }, []);
   const [reviewedSignOff, setReviewedSignOff] = useState(false);
   // "always" = rasterize every page that carries a redaction (default, safest).
   // "fallback" = attempt content-stream surgery first, rasterize only pages
@@ -3253,7 +3261,20 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         ? editorState.doc.srcBytes
         : new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
-      let bytes = await exportEditedPdfInWorker(exportDoc);
+      logHeap("before exportEditedPdfInWorker", {
+        sourceBytesMB: Math.round((freshBytes.byteLength / 1024 / 1024) * 10) / 10,
+        pages: exportDoc.pages.length,
+        annotations: exportDoc.annotations.length,
+      });
+      let bytes: Uint8Array;
+      try {
+        bytes = await exportEditedPdfInWorker(exportDoc);
+      } catch (err) {
+        logAllocationFailure("exportEditedPdfInWorker", err, {
+          sourceBytesMB: Math.round((freshBytes.byteLength / 1024 / 1024) * 10) / 10,
+        });
+        throw new Error(allocationFailureMessage("exportEditedPdfInWorker", err));
+      }
 
       // Region-rasterize redacted pages. Default ("always") rasterizes every
       // page with a redaction — text inside the box is physically replaced
@@ -3275,6 +3296,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         { kind: "redact-export", docId: jobDocId, docLabel: file.name },
         async ({ signal, onProgress }) => {
           const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
+          logHeap("before rasterizeRedactedPagesInWorker", {
+            inputBytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+            redactionPages: pageRedactions.size,
+            targets: targets.length,
+          });
           const rasterResult = await rasterizeRedactedPagesInWorker(bytes, pageRedactions, {
             mode: maxSecurity ? "always" : "fallback",
             scale: 2.5,
@@ -3291,6 +3317,11 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           // verification pipeline lives here anymore — a leak throws inside
           // the gate and the download never fires.
           const { enforceRedactionGate } = await importChunk(() => import("@/lib/editor/redaction-gate"));
+          logHeap("before enforceRedactionGate", {
+            inputBytesMB: Math.round((rasterResult.bytes.byteLength / 1024 / 1024) * 10) / 10,
+            rasterizedPages: rasterResult.rasterizedPages.length,
+            targets: targets.length,
+          });
           const gated = await enforceRedactionGate(rasterResult.bytes, targets, {
             rasterizedPages: rasterResult.rasterizedPages,
             signal,
@@ -3353,11 +3384,22 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         // MEMORY: hash the output BEFORE handing bytes to the download +
         // certificate flow, then release the local reference so GC can
         // reclaim the 500MB–1.5GB buffer as soon as the Blob URL is issued.
-        const hash = async (data: Uint8Array): Promise<string> => {
-          const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+        const hash = async (data: Uint8Array, label: string): Promise<string> => {
+          logHeap(`before certificate hash: ${label}`, {
+            bytesMB: Math.round((data.byteLength / 1024 / 1024) * 10) / 10,
+          });
+          let h: ArrayBuffer;
+          try {
+            h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+          } catch (err) {
+            logAllocationFailure(`certificate hash: ${label}`, err, {
+              bytesMB: Math.round((data.byteLength / 1024 / 1024) * 10) / 10,
+            });
+            throw new Error(allocationFailureMessage(`certificate hash: ${label}`, err));
+          }
           return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
         };
-        const redactedHash = await hash(bytes);
+        const redactedHash = await hash(bytes, "redacted output");
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
         // Release the export buffer from the job output and this closure —
         // the download has its own Blob-backed reference now and doesn't
@@ -3391,8 +3433,19 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           // heap simultaneously — a ~1.3GB peak on a 500MB doc that OOMed
           // right after export. Sequential lets the source copy GC before
           // (already-computed) redactedHash is even referenced again.
-          let srcCopy: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
-          const sourceHash = await hash(srcCopy);
+          logHeap("before certificate source file.arrayBuffer", {
+            fileSizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
+          });
+          let srcCopy: Uint8Array | null;
+          try {
+            srcCopy = new Uint8Array(await file.arrayBuffer());
+          } catch (err) {
+            logAllocationFailure("certificate source file.arrayBuffer", err, {
+              fileSizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
+            });
+            throw new Error(allocationFailureMessage("certificate source file.arrayBuffer", err));
+          }
+          const sourceHash = await hash(srcCopy, "source file");
           srcCopy = null; // release the full-source copy
           setLastHashes({ source: sourceHash, redacted: redactedHash });
           const categoryCounts: Record<string, number> = {};

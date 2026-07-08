@@ -21,6 +21,7 @@
  * redaction, which burns regions of the page itself.
  */
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, PDFString } from "pdf-lib";
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 export interface SanitizeReport {
   documentInfo: number;        // count of doc-info fields that had a value
@@ -62,7 +63,15 @@ export async function sanitizePdfBytesWithReport(
   bytes: Uint8Array,
   opts: SanitizeOptions = {},
 ): Promise<{ bytes: Uint8Array; report: SanitizeReport; pageCount: number }> {
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  const inputBytesMB = Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10;
+  logHeap("sanitize.worker before PDFDocument.load", { inputBytesMB });
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  } catch (err) {
+    logAllocationFailure("sanitize.worker PDFDocument.load", err, { inputBytesMB });
+    throw new Error(allocationFailureMessage("sanitize.worker PDFDocument.load", err));
+  }
 
   const throwIfAborted = () => {
     if (opts.shouldAbort?.()) throw new DOMException("Canceled", "AbortError");
@@ -326,7 +335,14 @@ export async function sanitizePdfBytesWithReport(
   }
 
   const pageCount = doc.getPageCount();
-  const outBytes = await doc.save({ updateFieldAppearances: false });
+  logHeap("sanitize.worker before doc.save", { inputBytesMB, pageCount });
+  let outBytes: Uint8Array;
+  try {
+    outBytes = await doc.save({ updateFieldAppearances: false });
+  } catch (err) {
+    logAllocationFailure("sanitize.worker doc.save", err, { inputBytesMB, pageCount });
+    throw new Error(allocationFailureMessage("sanitize.worker doc.save", err));
+  }
   return { bytes: outBytes, report, pageCount };
 }
 
