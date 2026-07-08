@@ -14,6 +14,7 @@
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from "pdf-lib";
 import { unzlibSync } from "fflate";
 import { loadPdfjs } from "@/lib/pdf/worker";
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 export interface RedactionTarget {
   /** 0-indexed page in the exported PDF. */
@@ -88,8 +89,17 @@ export async function verifyRedactionRemoval(
   // computation. Falls back gracefully if the file can't be parsed.
   let sharedDoc: PDFDocument | null = null;
   try {
+    logHeap("verify.worker before shared PDFDocument.load", {
+      inputBytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+      targets: targets.length,
+    });
     sharedDoc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
-  } catch { /* keep sharedDoc null — vector scans skip */ }
+  } catch (err) {
+    logAllocationFailure("verify.worker shared PDFDocument.load", err, {
+      inputBytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    });
+    /* keep sharedDoc null — vector scans skip */
+  }
 
   if (sharedDoc) {
     const vectorLeaks = await verifySideChannelVectorsWithDoc(sharedDoc, sensitiveStrings, {
@@ -138,7 +148,23 @@ async function verifyPageGeometry(
   const pdfjs = await loadPdfjs();
   // pdf.js may neuter/adopt the buffer; slice keeps the caller's bytes intact
   // for the raw-stream + side-channel scans that run after this pass.
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const inputBytesMB = Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10;
+  logHeap("verify.worker before page-geometry bytes.slice", { inputBytesMB, targets: regionTargets.length });
+  let pdfjsBytes: Uint8Array;
+  try {
+    pdfjsBytes = bytes.slice();
+  } catch (err) {
+    logAllocationFailure("verify.worker page-geometry bytes.slice", err, { inputBytesMB });
+    throw new Error(allocationFailureMessage("verify.worker page-geometry bytes.slice", err));
+  }
+  logHeap("verify.worker before page-geometry pdfjs.getDocument", { inputBytesMB });
+  let doc: Awaited<ReturnType<Awaited<ReturnType<typeof loadPdfjs>>["getDocument"]>["promise"]>;
+  try {
+    doc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
+  } catch (err) {
+    logAllocationFailure("verify.worker page-geometry pdfjs.getDocument", err, { inputBytesMB });
+    throw new Error(allocationFailureMessage("verify.worker page-geometry pdfjs.getDocument", err));
+  }
 
 
 
@@ -193,8 +219,15 @@ export async function verifySideChannelVectors(
 ): Promise<VerifyLeak[]> {
   let doc: PDFDocument;
   try {
+    logHeap("verify.worker before side-channel PDFDocument.load", {
+      inputBytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+      sensitiveStrings: sensitiveStrings.length,
+    });
     doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
-  } catch {
+  } catch (err) {
+    logAllocationFailure("verify.worker side-channel PDFDocument.load", err, {
+      inputBytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    });
     return [];
   }
   return verifySideChannelVectorsWithDoc(doc, sensitiveStrings, opts);
