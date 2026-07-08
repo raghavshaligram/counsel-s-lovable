@@ -1649,8 +1649,9 @@ function sanitizeStageLabel(stage: string): string {
           const { sanitizeInWorker } = await importChunk(
             () => import("@/lib/workers/sanitize-client"),
           );
-          const sourceBytes = editorState.doc.srcBytes.byteLength > 0
-            ? editorState.doc.srcBytes
+          const srcBytes = editorState?.doc?.srcBytes;
+          const sourceBytes = srcBytes && srcBytes.byteLength > 0
+            ? srcBytes
             : new Uint8Array(await file!.arrayBuffer());
           const sensitiveStrings = Array.from(new Set(
             dets.flatMap((d) => {
