@@ -1920,9 +1920,14 @@ function sanitizeStageLabel(stage: string): string {
       if (!a.id.startsWith("redact-det-")) continue;
       stagedDetIds.add(a.id.slice("redact-det-".length));
     }
-    // Batch removals (unchecked items).
+    // Batch removals (unchecked items). ONLY remove if the detId is still
+    // present in `findings` — once a finding has been "locked in" by the
+    // Redact button (which drops it from the findings list), its on-canvas
+    // box must survive further selection changes in other categories.
+    const findingIds = new Set(findings.map((d) => d.id));
     const toRemove: string[] = [];
     for (const detId of stagedDetIds) {
+      if (!findingIds.has(detId)) continue;
       if (!selected.has(detId)) toRemove.push(`redact-det-${detId}`);
     }
     // Batch adds (newly checked page-vector items).
@@ -2307,10 +2312,11 @@ function sanitizeStageLabel(stage: string): string {
             </span>
           </div>
           {tabList.length > 1 && (() => {
-            // Chip click = filter + toggle-select all findings in that
-            // category. Same chip clicked again deselects them. Lets the
-            // user work category-by-category: pick SSN → Redact → pick
-            // Phone → Redact → … → Export once at the end.
+            // Chip click = filter + ADD every finding in that category to
+            // the selection (never deselect — the live-stage effect would
+            // otherwise remove the on-canvas boxes, which surprised users).
+            // Once staged, click "Redact" to lock them in and move on to
+            // the next category.
             const idsForChip = (key: string): string[] => {
               if (key === "all") return redactableFindings.map((d) => d.id);
               const hi = categoryIds.hi.get(key as Cat2) ?? [];
@@ -2319,20 +2325,30 @@ function sanitizeStageLabel(stage: string): string {
             };
             const onChip = (key: string) => {
               const ids = idsForChip(key);
-              const allSel = ids.length > 0 && ids.every((id) => selected.has(id));
               startTransition(() => {
                 setActiveTab(key);
                 setSelected((prev) => {
                   const next = new Set(prev);
-                  if (allSel) for (const id of ids) next.delete(id);
-                  else for (const id of ids) next.add(id);
+                  for (const id of ids) next.add(id);
                   return next;
                 });
               });
             };
             const stageSelected = async () => {
               if (selected.size === 0) return;
+              const selectedIds = new Set(selected);
+              // Fires the same commit path used by the master button so
+              // side-channel items (form fields, comments, metadata) are
+              // sanitized immediately. Page-vector boxes are already on
+              // canvas via the live-stage effect, so redactSelected treats
+              // them as "already added" and leaves state untouched.
               await redactSelected();
+              // Lock the just-staged findings by dropping them from the
+              // list. The live-stage effect now ignores det-ids that are
+              // no longer in `findings`, so their boxes stay put even if
+              // the user changes the selection while working the next
+              // category.
+              setFindings((prev) => (prev ? prev.filter((d) => !selectedIds.has(d.id)) : prev));
               setSelected(new Set());
             };
             return (
@@ -2346,7 +2362,7 @@ function sanitizeStageLabel(stage: string): string {
                         ? "bg-vault text-white"
                         : "bg-surface-3 text-text-2 hover:text-foreground"
                     }`}
-                    title="Select every finding across all categories (click again to deselect)"
+                    title="Select every remaining finding across all categories"
                   >
                     All · {redactableFindings.length.toLocaleString()}
                   </button>
@@ -2360,7 +2376,7 @@ function sanitizeStageLabel(stage: string): string {
                           ? "bg-vault text-white"
                           : "bg-surface-3 text-text-2 hover:text-foreground"
                       }`}
-                      title={`Select all ${t.label} findings (click again to deselect)`}
+                      title={`Select all ${t.label} findings`}
                     >
                       {t.label} · {t.count.toLocaleString()}
                     </button>
@@ -2371,12 +2387,14 @@ function sanitizeStageLabel(stage: string): string {
                   onClick={stageSelected}
                   disabled={selected.size === 0}
                   className={cn(
-                    "shrink-0 rounded-md bg-vault px-2 py-0.5 text-[10.5px] font-medium text-vault-foreground hover:opacity-90",
-                    selected.size === 0 && "cursor-not-allowed opacity-50",
+                    "group inline-flex shrink-0 items-center gap-1 rounded-full border border-vault/40 bg-vault/15 px-2.5 py-1 text-[10.5px] font-semibold text-vault shadow-sm transition-all",
+                    "hover:bg-vault hover:text-vault-foreground hover:border-vault hover:shadow-md active:scale-[0.97]",
+                    selected.size === 0 && "cursor-not-allowed opacity-40 hover:bg-vault/15 hover:text-vault hover:border-vault/40 hover:shadow-sm",
                   )}
-                  title="Stage the currently selected findings. Stack multiple categories, then hit Export at the bottom."
+                  title="Lock the selected findings in as redactions, then pick the next category. Click Export at the bottom to finalize."
                 >
-                  Redact{selected.size > 0 ? ` (${selected.size.toLocaleString()})` : ""}
+                  <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+                  Redact{selected.size > 0 ? ` · ${selected.size.toLocaleString()}` : ""}
                 </button>
               </div>
             );
