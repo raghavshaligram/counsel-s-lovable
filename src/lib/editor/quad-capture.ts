@@ -9,6 +9,42 @@ export interface TextItemLite {
   x: number; y: number; w: number; h: number; str: string;
 }
 
+const TOKEN_BOUNDARY_RE = /[\s:;=|,]/;
+
+function isTokenBoundary(ch: string): boolean {
+  return TOKEN_BOUNDARY_RE.test(ch);
+}
+
+function expandStringSpanToToken(str: string, start: number, end: number): { start: number; end: number } {
+  if (!str.length) return { start: 0, end: 0 };
+  let s = Math.max(0, Math.min(start, str.length));
+  let e = Math.max(s, Math.min(end, str.length));
+  while (s > 0 && !isTokenBoundary(str[s - 1])) s--;
+  while (e < str.length && !isTokenBoundary(str[e])) e++;
+  return { start: s, end: e };
+}
+
+function tokenBoundsForHitItem(
+  it: TextItemLite,
+  rect: { x: number; y: number; w: number; h: number },
+): { x: number; x2: number } {
+  const strLen = it.str.length;
+  if (!strLen || it.w <= 0) return { x: it.x, x2: it.x + it.w };
+
+  const rx2 = rect.x + rect.w;
+  const charW = it.w / strLen;
+  const overlapStartX = Math.max(rect.x, it.x);
+  const overlapEndX = Math.min(rx2, it.x + it.w);
+  const rawStart = Math.floor((overlapStartX - it.x) / charW);
+  const rawEnd = Math.ceil((overlapEndX - it.x) / charW);
+  const expanded = expandStringSpanToToken(it.str, rawStart, rawEnd);
+
+  return {
+    x: it.x + expanded.start * charW,
+    x2: it.x + expanded.end * charW,
+  };
+}
+
 /**
  * Token expansion — the core defence against the "fragmented number" leak.
  *
@@ -115,8 +151,9 @@ export function computeQuads(
   }
 
   return lines.map((line) => {
-    let x = Math.max(rect.x, Math.min(...line.map((l) => l.x)));
-    let x2 = Math.min(rx2, Math.max(...line.map((l) => l.x + l.w)));
+    const tokenBounds = line.map((l) => tokenBoundsForHitItem(l, rect));
+    let x = Math.min(...tokenBounds.map((l) => l.x));
+    let x2 = Math.max(...tokenBounds.map((l) => l.x2));
     const y = Math.min(...line.map((l) => l.y));
     const h = Math.max(...line.map((l) => l.h));
 
