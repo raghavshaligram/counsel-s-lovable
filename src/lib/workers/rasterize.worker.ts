@@ -96,7 +96,7 @@ async function rasterize(
     throw new Error(allocationFailureMessage("rasterize.worker bytes.slice for pdfjs", err));
   }
   logHeap("rasterize.worker before pdfjs.getDocument", { inputBytesMB });
-  let srcDoc: Awaited<ReturnType<Awaited<ReturnType<typeof loadPdfjs>>["getDocument"]>["promise"]>;
+  let srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
   try {
     srcDoc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
   } catch (err) {

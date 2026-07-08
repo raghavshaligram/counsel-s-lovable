@@ -158,7 +158,7 @@ async function verifyPageGeometry(
     throw new Error(allocationFailureMessage("verify.worker page-geometry bytes.slice", err));
   }
   logHeap("verify.worker before page-geometry pdfjs.getDocument", { inputBytesMB });
-  let doc: Awaited<ReturnType<Awaited<ReturnType<typeof loadPdfjs>>["getDocument"]>["promise"]>;
+  let doc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
   try {
     doc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
   } catch (err) {

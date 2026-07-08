@@ -72,7 +72,7 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
       throw new Error(allocationFailureMessage("pixel-verify.worker bytes.slice", err));
     }
     logHeap("pixel-verify.worker before pdfjs.getDocument", { inputBytesMB });
-    let doc: Awaited<ReturnType<Awaited<ReturnType<typeof loadPdfjs>>["getDocument"]>["promise"]>;
+    let doc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
     try {
       doc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
     } catch (err) {
