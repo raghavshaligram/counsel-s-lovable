@@ -937,9 +937,16 @@ type StagedRedactBridge = {
    * page-text redactions (page burn would be a no-op in that case).
    */
   sideCommit: (() => Promise<void>) | null;
+  /**
+   * Flush any pending debounced side-channel sanitize (cancel the timer
+   * and await any in-flight worker call). Export calls this before its
+   * own commit so a fast Export within the debounce window doesn't race
+   * replaceFile with a mid-flight sanitize.
+   */
+  flushSide: (() => Promise<void>) | null;
 };
 const stagedRedactBridge: { current: StagedRedactBridge } = {
-  current: { selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null },
+  current: { selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null, flushSide: null },
 };
 const stagedRedactListeners = new Set<() => void>();
 function publishStagedRedact(next: StagedRedactBridge) {
@@ -949,7 +956,8 @@ function publishStagedRedact(next: StagedRedactBridge) {
     cur.total === next.total &&
     cur.sideStaged === next.sideStaged &&
     cur.commit === next.commit &&
-    cur.sideCommit === next.sideCommit
+    cur.sideCommit === next.sideCommit &&
+    cur.flushSide === next.flushSide
   ) return;
   stagedRedactBridge.current = next;
   for (const l of stagedRedactListeners) l();
@@ -1618,6 +1626,145 @@ function sanitizeStageLabel(stage: string): string {
 }
 
 
+  // Shared sanitize helper used by BOTH the Export commit path (via
+  // redactSelected/sideCommit) AND the live-hide-on-check debounced effect
+  // below. Extracted so both call sites run the SAME sanitize + reload +
+  // findings/selection-cleanup logic — the debounce doesn't duplicate the
+  // Export flow's guarantees. Returns the count actually wiped.
+  const sideChannelInFlightRef = useRef<Promise<unknown> | null>(null);
+  const sideChannelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sanitizeSideChannelDets = useCallback(
+    async (dets: Det[], extraAnnos: Anno[] = []): Promise<number> => {
+      if (dets.length === 0 || !editorState?.doc?.srcBytes) return 0;
+      // Serialize concurrent sanitize passes so a second debounce firing
+      // mid-sanitize doesn't race replaceFile with the first.
+      const prior = sideChannelInFlightRef.current;
+      if (prior) { try { await prior; } catch { /* prior errors surfaced already */ } }
+      const tid = "wsx-redact-apply-side";
+      const abort = new AbortController();
+      toast.loading("Cleaning form fields, comments, and metadata…", {
+        id: tid,
+        action: { label: "Cancel", onClick: () => abort.abort() },
+      });
+      const run = (async (): Promise<number> => {
+        try {
+          const formFieldFindings = dets.filter((d) => d.vector === "form-field");
+          // eslint-disable-next-line no-console
+          console.info("[redact:form-field] sanitize side-channel dets", {
+            count: dets.length,
+            formFields: formFieldFindings.map((d) => ({ sourceLabel: d.sourceLabel, fieldName: d.fieldName })),
+          });
+          const { sanitizeInWorker } = await importChunk(
+            () => import("@/lib/workers/sanitize-client"),
+          );
+          const srcBytes = editorState?.doc?.srcBytes;
+          const sourceBytes = srcBytes && srcBytes.byteLength > 0
+            ? srcBytes
+            : new Uint8Array(await file!.arrayBuffer());
+          const sensitiveStrings = Array.from(new Set(
+            dets.flatMap((d) => {
+              const full = (d.sensitiveText || "").trim();
+              const snip = (d.snippet || "").replace(/…$/, "").trim();
+              return [full, snip].filter((s) => s.length >= 3);
+            }),
+          ));
+          const targetFieldNames = formFieldFindings
+            .map((d) => d.fieldName)
+            .filter((n): n is string => typeof n === "string" && n.length > 0);
+          const { bytes: cleaned, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
+            signal: abort.signal,
+            sideVerifyStrings: sensitiveStrings,
+            targetFieldNames,
+            onProgress: ({ stage, done, total }) => {
+              if (stage === "verify-side-channel") {
+                toast.loading(`Verifying hidden-vector wipe… (${done}/${Math.max(1, total)})`, {
+                  id: tid, action: { label: "Cancel", onClick: () => abort.abort() },
+                });
+              } else if (done > 0 && done % 4000 === 0) {
+                toast.loading(`Cleaning ${sanitizeStageLabel(stage)}… (checked ${done.toLocaleString()} items)`, {
+                  id: tid, action: { label: "Cancel", onClick: () => abort.abort() },
+                });
+              }
+            },
+          });
+          if (sideLeaks.length > 0) {
+            throw new Error(
+              `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
+            );
+          }
+          const cleanedSize = cleaned.byteLength;
+          const mergedAnnos: Anno[] = [
+            ...(editorState?.doc?.annotations ?? []),
+            ...extraAnnos,
+          ];
+          const mergedPages = editorState?.doc?.pages ?? [];
+          const mergedOcr = editorState?.doc?.ocrLayer;
+          try {
+            await saveSidecarNow(file!.name, cleanedSize, {
+              fileName: file!.name,
+              size: cleanedSize,
+              annotations: mergedAnnos,
+              pages: mergedPages,
+              ocrLayer: mergedOcr,
+            });
+          } catch (persistErr) {
+            console.error("[redact:form-field] sidecar pre-flush failed", persistErr);
+            throw new Error(
+              "Could not persist staged redactions before wipe — aborting to avoid losing selections.",
+            );
+          }
+          replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
+          const wipedIds = new Set(dets.map((d) => d.id));
+          setFindings((prev) => (prev ? prev.filter((d) => !wipedIds.has(d.id)) : prev));
+          setSelected((prev) => {
+            const next = new Set(prev);
+            for (const d of dets) next.delete(d.id);
+            return next;
+          });
+          toast.success(
+            `${dets.length} hidden finding${dets.length === 1 ? "" : "s"} wiped`,
+            {
+              id: tid,
+              description:
+                "Form fields, annotations and metadata cleared from the document now.",
+            },
+          );
+          return dets.length;
+        } catch (e) {
+          const aborted = e instanceof DOMException && e.name === "AbortError";
+          if (aborted) {
+            toast.info("Wipe cancelled", { id: tid, description: "Document is unchanged." });
+          } else {
+            toast.error("Failed to wipe hidden findings", {
+              id: tid,
+              description: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return 0;
+        }
+      })();
+      sideChannelInFlightRef.current = run;
+      try {
+        return await run;
+      } finally {
+        if (sideChannelInFlightRef.current === run) sideChannelInFlightRef.current = null;
+      }
+    },
+    [editorState, file, replaceFile],
+  );
+
+  // Flush any pending debounced sanitize before Export runs its own commit.
+  // Cancels a not-yet-fired timer AND awaits an in-flight sanitize so
+  // Export doesn't race replaceFile with a mid-flight worker call.
+  const flushPendingSideChannel = useCallback(async () => {
+    if (sideChannelTimerRef.current) {
+      clearTimeout(sideChannelTimerRef.current);
+      sideChannelTimerRef.current = null;
+    }
+    const inflight = sideChannelInFlightRef.current;
+    if (inflight) { try { await inflight; } catch { /* already surfaced */ } }
+  }, []);
+
   const redactSelected = useCallback(async () => {
     if (!findings || selected.size === 0) return;
     let added = 0;
@@ -1631,8 +1778,7 @@ function sanitizeStageLabel(stage: string): string {
       // failed silently (form-field/annotation content was leaking around
       // flatten/PDF-A). Now we APPLY the removal IMMEDIATELY: sanitize the
       // live bytes and re-LOAD the editor doc so the values are gone right
-      // here in the workspace, not deferred. See the user-facing "apply
-      // now" requirement — every vector must be cleared at confirm time.
+      // here in the workspace, not deferred.
       if (d.vector && d.vector !== "page") {
         sideChannelDets.push(d);
         continue;
@@ -1671,11 +1817,6 @@ function sanitizeStageLabel(stage: string): string {
       });
       added++;
     }
-    // Batch-dispatch all page-rect redactions in a single reducer pass so
-    // 13k+ selections don't trigger 13k re-renders + O(N^2) array spreads.
-    // The verified-export gate on commit is unchanged — these annotations
-    // flow through the same rasterize → sanitize → verify pipeline as any
-    // manually drawn redaction.
     if (toAdd.length > 0) {
       if (toAdd.length > 2000) {
         toast.message(`Queuing ${toAdd.length.toLocaleString()} redactions…`);
@@ -1685,187 +1826,25 @@ function sanitizeStageLabel(stage: string): string {
       });
     }
 
-
-
-    // -- Apply-NOW for side-channel vectors --------------------------
-    // Run sanitize on the current bytes immediately so form-field /
-    // annotation / metadata values are removed from the working document
-    // before any flatten or PDF/A step can promote them into page text.
-    let sideChannelApplied = 0;
-    if (sideChannelDets.length > 0 && editorState?.doc?.srcBytes) {
-      const tid = "wsx-redact-apply-side";
-      const abort = new AbortController();
-      toast.loading("Cleaning form fields, comments, and metadata…", {
-        id: tid,
-        action: {
-          label: "Cancel",
-          onClick: () => abort.abort(),
-        },
-      });
-      try {
-        const formFieldFindings = sideChannelDets.filter((d) => d.vector === "form-field");
-        // eslint-disable-next-line no-console
-        console.info("[redact:form-field] apply-now branch", {
-          executes: true,
-          selectedSideChannels: sideChannelDets.length,
-          selectedFormFields: formFieldFindings.map((d) => ({
-            sourceLabel: d.sourceLabel,
-            snippet: d.snippet,
-            sensitiveText: d.sensitiveText,
-          })),
-          order: "sanitize/clear fields before any flatten, PDF/A conversion, or download",
-        });
-        const { sanitizeInWorker } = await importChunk(
-          () => import("@/lib/workers/sanitize-client"),
-        );
-        const sourceBytes = editorState.doc.srcBytes.byteLength > 0
-          ? editorState.doc.srcBytes
-          : new Uint8Array(await file!.arrayBuffer());
-        const sensitiveStrings = Array.from(new Set(
-          sideChannelDets.flatMap((d) => {
-            const full = (d.sensitiveText || "").trim();
-            const snip = (d.snippet || "").replace(/…$/, "").trim();
-            return [full, snip].filter((s) => s.length >= 3);
-          }),
-        ));
-        const targetFieldNames = formFieldFindings
-          .map((d) => d.fieldName)
-          .filter((n): n is string => typeof n === "string" && n.length > 0);
-        const { bytes: cleaned, report, sideLeaks = [] } = await sanitizeInWorker(sourceBytes, {
-          signal: abort.signal,
-          sideVerifyStrings: sensitiveStrings,
-          targetFieldNames,
-          onProgress: ({ stage, done, total }) => {
-            if (stage === "verify-side-channel") {
-              toast.loading(`Verifying hidden-vector wipe… (${done}/${Math.max(1, total)})`, {
-                id: tid,
-                action: { label: "Cancel", onClick: () => abort.abort() },
-              });
-            } else if (done > 0 && done % 4000 === 0) {
-              toast.loading(`Cleaning ${sanitizeStageLabel(stage)}… (checked ${done.toLocaleString()} items)`, {
-                id: tid,
-                action: { label: "Cancel", onClick: () => abort.abort() },
-              });
-            }
-          },
-        });
-        // eslint-disable-next-line no-console
-        console.info("[redact:form-field] apply-now sanitize report", {
-          acroForm: report.acroForm,
-          acroFormFieldsCleared: report.acroFormFields,
-          flattened: false,
-          order: "field values/AP cleared now; flatten/PDF-A can only run later",
-        });
-        // Targeted verification only — the wipe has no page-rect targets.
-        // It now runs inside the SAME sanitize worker after save, so the
-        // cleaned 5000-page PDF is not copied into a second worker and parsed
-        // again. Same fail-closed guarantee: any leak blocks the commit.
-        if (sideLeaks.length > 0) {
-          throw new Error(
-            `Immediate hidden-vector redaction failed — ${sideLeaks.length} value${sideLeaks.length === 1 ? "" : "s"} still recoverable.`,
-          );
-        }
-        // CORRECTNESS OVER SPEED. Previously this dispatched
-        // `SET_SRC_BYTES` to hot-swap `doc.srcBytes` without a re-parse,
-        // then called `replaceFile(...)`. That combination broke redaction
-        // byte propagation two ways:
-        //
-        //   1. `replaceFile` mutates `active.file`, which is a dependency
-        //      of the workspace open-effect. The open-effect re-parses the
-        //      PDF from scratch and dispatches `LOAD`, whose reducer
-        //      resets to `initialState` — wiping every redact annotation
-        //      just added by the same click's `ADD_ANNOS` batch.
-        //   2. The follow-up `LOAD_SIDECAR` restored annotations from the
-        //      IndexedDB sidecar, but the sidecar save is debounced (400ms
-        //      inside `saveSidecarDebounced`) and had not yet flushed the
-        //      just-added redact boxes. So the restore used STALE data —
-        //      zero redact targets, no burn, no gate, exported PDF still
-        //      contained the sensitive page text. This is exactly the
-        //      "OCR still finds redacted text" symptom.
-        //
-        // Fix: (a) persist the merged annotation list SYNCHRONOUSLY via
-        // `saveSidecarNow` before any file swap so the LOAD_SIDECAR that
-        // follows the reload sees the fresh redact boxes, and (b) let
-        // `replaceFile` drive a full LOAD re-parse so the viewer's cached
-        // `pdfDoc`, `state.doc.srcBytes`, and every downstream consumer
-        // agree on the cleaned bytes as the single source of truth. We
-        // do NOT re-dispatch `SET_SRC_BYTES` — it was a dead-code op that
-        // would be overwritten by the LOAD anyway and only served to make
-        // the sequencing look correct on paper.
-        const cleanedSize = cleaned.byteLength;
-        const mergedAnnos: Anno[] = [
-          ...(editorState?.doc?.annotations ?? []),
-          ...toAdd,
-        ];
-        const mergedPages = editorState?.doc?.pages ?? [];
-        const mergedOcr = editorState?.doc?.ocrLayer;
-        try {
-          await saveSidecarNow(file!.name, cleanedSize, {
-            fileName: file!.name,
-            size: cleanedSize,
-            annotations: mergedAnnos,
-            pages: mergedPages,
-            ocrLayer: mergedOcr,
-          });
-        } catch (persistErr) {
-          console.error("[redact:form-field] sidecar pre-flush failed", persistErr);
-          throw new Error(
-            "Could not persist staged redactions before wipe — aborting to avoid losing selections.",
-          );
-        }
-        replaceFile(new File([cleaned as BlobPart], file!.name, { type: "application/pdf" }));
-        // Drop wiped findings from the visible list so the user SEES them
-        // gone (and a re-scan would confirm clean).
-        const wipedIds = new Set(sideChannelDets.map((d) => d.id));
-        setFindings((prev) => (prev ? prev.filter((d) => !wipedIds.has(d.id)) : prev));
-        sideChannelApplied = sideChannelDets.length;
-        toast.success(
-          `${sideChannelApplied} hidden finding${sideChannelApplied === 1 ? "" : "s"} wiped`,
-          {
-            id: tid,
-            description:
-              "Form fields, annotations and metadata cleared from the document now.",
-          },
-        );
-      } catch (e) {
-        const aborted = e instanceof DOMException && e.name === "AbortError";
-        if (aborted) {
-          toast.info("Wipe cancelled", { id: tid, description: "Document is unchanged." });
-        } else {
-          toast.error("Failed to wipe hidden findings", {
-            id: tid,
-            description: e instanceof Error ? e.message : String(e),
-          });
-        }
-      }
-    }
-
+    // Delegate side-channel work to the shared helper (same logic runs from
+    // the live-hide-on-check debounce). Flush any pending debounce first so
+    // this pass sees the full checked set and doesn't race the debounce.
+    await flushPendingSideChannel();
+    const sideChannelApplied = await sanitizeSideChannelDets(sideChannelDets, toAdd);
 
     if (added > 0) {
       toast.success(`${added.toLocaleString()} redaction box${added === 1 ? "" : "es"} added`, {
         description:
           'Click "Redact, export & verify" below to burn page text into the PDF.',
       });
-      // Post-commit cleanup: the findings list describes staged detections
-      // that are now represented on-canvas as redact boxes. Keeping 13k
-      // <li>s mounted re-commits every stale finding on every dispatch
-      // and freezes the panel. Clear the list; a re-scan after burn is
-      // the source of truth. Does NOT affect what's queued for burn or
-      // the verification gate — those read from annotations, not findings.
       setFindings(null);
       setSelected(new Set());
       setExpandedGroups(new Set());
     } else if (sideChannelApplied === 0 && skipped > 0) {
       toast.info("Already added", { description: `${skipped} of these are already marked.` });
     }
-    if (sideChannelApplied > 0) {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        for (const d of sideChannelDets) next.delete(d.id);
-        return next;
-      });
-    }
-  }, [findings, selected, file, replaceFile, editorDispatch, editorState, existingRedactKeys]);
+  }, [findings, selected, editorDispatch, existingRedactKeys, flushPendingSideChannel, sanitizeSideChannelDets]);
+
 
   const pageRedactableFindings = useMemo(
     () => findings?.filter((d) => d.category !== "privilegeContext" && (!d.vector || d.vector === "page")) ?? [],
@@ -1884,6 +1863,27 @@ function sanitizeStageLabel(stage: string): string {
     [findings],
   );
 
+  // Live-hide-on-check for side-channel findings (form fields, annotations,
+  // metadata). Page-vector items already stage immediately via the STAGE 5
+  // effect below; side-channel items have no page rect so they need their
+  // own sanitize pass. Debounce ~450ms so rapid multi-check settles into a
+  // single sanitize call. Unchecking before the timer fires cancels it.
+  useEffect(() => {
+    const checked = sideChannelFindings.filter((d) => selected.has(d.id));
+    if (checked.length === 0) return;
+    const timer = setTimeout(() => {
+      sideChannelTimerRef.current = null;
+      // Fire-and-forget: helper serializes internally via inFlightRef, so a
+      // second debounce firing during a slow sanitize will queue behind it.
+      void sanitizeSideChannelDets(checked);
+    }, 450);
+    sideChannelTimerRef.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (sideChannelTimerRef.current === timer) sideChannelTimerRef.current = null;
+    };
+  }, [selected, sideChannelFindings, sanitizeSideChannelDets]);
+
   // Publish current staging state to the module-level bridge so RedactPanel's
   // unified ledger can show a "Staged from AI scan" row + one-click commit.
   // On unmount we reset to zero so the row disappears when the panel closes.
@@ -1898,11 +1898,12 @@ function sanitizeStageLabel(stage: string): string {
       sideStaged,
       commit: redactableFindings.length > 0 ? redactSelected : null,
       sideCommit: sideStaged > 0 ? redactSelected : null,
+      flushSide: flushPendingSideChannel,
     });
-  }, [selected, redactableFindings, sideChannelFindings, redactSelected]);
+  }, [selected, redactableFindings, sideChannelFindings, redactSelected, flushPendingSideChannel]);
   useEffect(() => {
     return () => {
-      publishStagedRedact({ selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null });
+      publishStagedRedact({ selected: 0, total: 0, sideStaged: 0, commit: null, sideCommit: null, flushSide: null });
     };
   }, []);
 
@@ -3390,14 +3391,17 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
           const totalStaged = totalBoxes + (staged.sideStaged || 0);
           const canCommit = totalStaged > 0;
           const onCommit = async () => {
-            // STEP 1 — Apply-NOW for any checked side-channel findings
-            // (form fields, annotations, metadata). These have no page
-            // rect, so live-staging never covered them; the sanitize
-            // step must run against the live bytes BEFORE the page burn
-            // so flatten/PDF-A can't promote a hidden value into page
-            // text. `sideCommit` is `redactSelected`, which handles the
-            // side-channel wipe and also re-adds any ticked page items
-            // (already deduped against existing redact keys).
+            // STEP 0 — Flush any pending/in-flight live-hide sanitize so
+            // Export never races replaceFile with a mid-flight worker call
+            // (fast Export within the 450ms debounce window, or during a
+            // slow ongoing sanitize).
+            if (staged.flushSide) await staged.flushSide();
+            // STEP 1 — Apply-NOW for any still-checked side-channel findings
+            // (a user who clicked Export before the debounce fired). These
+            // have no page rect, so the page-burn step can't touch them.
+            // `sideCommit` is `redactSelected`, which handles the wipe and
+            // also re-adds any ticked page items (deduped against existing
+            // redact keys).
             if ((staged.sideStaged || 0) > 0 && staged.sideCommit) {
               await staged.sideCommit();
             }
@@ -3406,6 +3410,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
               await exportRedacted();
             }
           };
+
           return (
             <>
               <label className={cn(
