@@ -3350,8 +3350,23 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
       setVerify(result);
       if (result.ok) {
+        // MEMORY: hash the output BEFORE handing bytes to the download +
+        // certificate flow, then release the local reference so GC can
+        // reclaim the 500MB–1.5GB buffer as soon as the Blob URL is issued.
+        const hash = async (data: Uint8Array): Promise<string> => {
+          const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+          return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
+        };
+        const redactedHash = await hash(bytes);
         await downloadPdf(bytes, file.name.replace(/\.pdf$/i, "") + "-redacted.pdf");
-        setLastBytes(bytes);
+        // Release the export buffer from the job output and this closure —
+        // the download has its own Blob-backed reference now and doesn't
+        // need our Uint8Array. Do NOT stash bytes into React state.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (jobOutput as any).bytes = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (rasterResult as any).bytes = null;
+        bytes = new Uint8Array(0);
         const flatNote = rasterResult.rasterizedPages.length
           ? ` · ${rasterResult.rasterizedPages.length} page${rasterResult.rasterizedPages.length === 1 ? "" : "s"} pixel-burned`
           : "";
@@ -3370,14 +3385,16 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         try {
           const { requestCertificate } = await import("@/components/workspace/certificate-gate");
           const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
-          const hash = async (data: Uint8Array): Promise<string> => {
-            const h = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
-            return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
-          };
-          const [sourceHash, redactedHash] = await Promise.all([
-            hash(new Uint8Array(await file.arrayBuffer())),
-            hash(bytes),
-          ]);
+          // MEMORY: hash source SEQUENTIALLY (not Promise.all with output).
+          // The old Promise.all held a full source-copy Uint8Array AND the
+          // full output buffer AND both SubtleCrypto internal buffers in the
+          // heap simultaneously — a ~1.3GB peak on a 500MB doc that OOMed
+          // right after export. Sequential lets the source copy GC before
+          // (already-computed) redactedHash is even referenced again.
+          let srcCopy: Uint8Array | null = new Uint8Array(await file.arrayBuffer());
+          const sourceHash = await hash(srcCopy);
+          srcCopy = null; // release the full-source copy
+          setLastHashes({ source: sourceHash, redacted: redactedHash });
           const categoryCounts: Record<string, number> = {};
           const perPageCounts: Record<number, number> = {};
           for (const a of (editorState?.doc?.annotations ?? [])) {
