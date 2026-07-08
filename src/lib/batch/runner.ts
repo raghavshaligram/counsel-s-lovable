@@ -15,6 +15,7 @@ import { zipSync, type Zippable } from "fflate";
 import { detectResources } from "@/lib/workers/resources";
 import { getBytes } from "@/lib/tray/blobs";
 import type { TrayEntry } from "@/lib/tray/store";
+import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
 
 export type BatchOp<O = unknown> = (bytes: Uint8Array, opts: O) => Promise<Uint8Array>;
 
@@ -98,7 +99,20 @@ export function zipBatchOutputs(p: BatchProgress, zipName = "counselpdf-batch.zi
 }
 
 export function downloadBytes(bytes: Uint8Array, filename: string, mime = "application/octet-stream") {
-  const blob = new Blob([new Uint8Array(bytes)], { type: mime });
+  logHeap("before download Blob", {
+    filename,
+    bytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+  });
+  let blob: Blob;
+  try {
+    blob = new Blob([new Uint8Array(bytes)], { type: mime });
+  } catch (err) {
+    logAllocationFailure("download Blob", err, {
+      filename,
+      bytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    });
+    throw new Error(allocationFailureMessage("download Blob", err));
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
