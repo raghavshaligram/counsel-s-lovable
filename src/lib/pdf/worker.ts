@@ -5,11 +5,7 @@
 type PdfjsModule = typeof import("pdfjs-dist");
 let cached: PdfjsModule | null = null;
 
-export async function loadPdfjs(): Promise<PdfjsModule> {
-  if (cached) return cached;
-  // pdf.js 5.x uses the TC39 Map upsert proposal in worker code paths. Some
-  // Chromium builds used by users/tests do not expose it yet, so polyfill in
-  // both window and dedicated-worker scopes before importing pdf.js.
+function ensurePdfjsMapUpsertPolyfills(): void {
   const mapProto = Map.prototype as unknown as {
     getOrInsertComputed?: (key: unknown, cb: (key: unknown) => unknown) => unknown;
   };
@@ -34,6 +30,16 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
       return value;
     };
   }
+}
+
+ensurePdfjsMapUpsertPolyfills();
+
+export async function loadPdfjs(): Promise<PdfjsModule> {
+  if (cached) return cached;
+  // pdf.js 5.x uses the TC39 Map upsert proposal in worker code paths. Some
+  // Chromium builds used by users/tests do not expose it yet, so polyfill in
+  // both window and dedicated-worker scopes before importing pdf.js.
+  ensurePdfjsMapUpsertPolyfills();
   // Allow both window (main thread) and WorkerGlobalScope (web workers).
   // Block only true SSR (no window AND no self/importScripts).
   const hasWindow = typeof window !== "undefined";
