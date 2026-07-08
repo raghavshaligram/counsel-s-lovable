@@ -1396,6 +1396,13 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const [capability, setCapability] = useState<DeviceCapability | null>(null);
   const [activeScanMode, setActiveScanMode] = useState<"quick" | "full" | null>(null);
+  // Persistent post-commit summary. Survives Export, findings-list reset,
+  // and file replaceFile from the sanitize path. Only cleared explicitly by
+  // "Start new scan" or when the document changes (see effect below).
+  const [lastSummary, setLastSummary] = useState<RedactionSummary | null>(null);
+  const mergeSummary = useCallback((partial: Partial<RedactionSummary>) => {
+    setLastSummary((prev) => mergeRedactionSummary(prev, partial));
+  }, []);
   const pageCount = editorState?.doc?.pages.length ?? 0;
   useEffect(() => {
     let alive = true;
