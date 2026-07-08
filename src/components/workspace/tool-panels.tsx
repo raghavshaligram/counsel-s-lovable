@@ -3007,6 +3007,88 @@ function sanitizeStageLabel(stage: string): string {
         </p>
       )}
 
+      {lastSummary && (() => {
+        const totalItems =
+          lastSummary.pageRedactions.reduce((n, r) => n + r.count, 0) +
+          lastSummary.sideChannel.reduce((n, r) => n + r.count, 0);
+        const allPages = new Set<number>();
+        for (const r of lastSummary.pageRedactions) for (const p of r.pages) allPages.add(p);
+        const when = new Date(lastSummary.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const vectorLabel = (v: string) =>
+          v === "form-field" ? "form field" : v === "annotation" ? "annotation" : "metadata entry";
+        const s = lastSummary.sanitize;
+        const sanitizeLines: string[] = [];
+        if (s) {
+          if (s.documentInfo > 0) sanitizeLines.push(`Document info removed (${s.documentInfo})`);
+          if (s.xmpMetadata > 0) sanitizeLines.push("XMP metadata removed");
+          if (s.embeddedFiles > 0) sanitizeLines.push(`${s.embeddedFiles} embedded file${s.embeddedFiles === 1 ? "" : "s"} removed`);
+          if (s.javascript > 0) sanitizeLines.push(`${s.javascript} JavaScript trigger${s.javascript === 1 ? "" : "s"} removed`);
+          if (s.annotations > 0) sanitizeLines.push(`${s.annotations} annotation${s.annotations === 1 ? "" : "s"} removed`);
+          if (s.hiddenLayers > 0) sanitizeLines.push(`${s.hiddenLayers} hidden layer${s.hiddenLayers === 1 ? "" : "s"} removed`);
+          if (s.additionalActions > 0) sanitizeLines.push("Auto-open triggers removed");
+        }
+        return (
+          <div className="mt-1 rounded-md border border-vault/40 bg-vault/[0.08] px-2.5 py-2 text-[11.5px] leading-relaxed text-text-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-vault">
+                Redaction summary
+              </div>
+              <div className="text-[10px] text-text-muted">{when}</div>
+            </div>
+            <div className="mt-1 font-medium">
+              Redacted {totalItems.toLocaleString()} item{totalItems === 1 ? "" : "s"}
+              {allPages.size > 0 ? ` across ${allPages.size} page${allPages.size === 1 ? "" : "s"}` : ""}.
+            </div>
+            {lastSummary.pageRedactions.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5">
+                {lastSummary.pageRedactions.map((r) => {
+                  const pagesLabel =
+                    r.pages.length === 0 ? "" :
+                    r.pages.length <= 6 ? ` (pages ${r.pages.join(", ")})` :
+                    ` (pages ${r.pages.slice(0, 6).join(", ")}, +${r.pages.length - 6} more)`;
+                  return (
+                    <li key={r.category} className="text-text-2">
+                      <span className="text-text-1">{r.label}</span> · {r.count.toLocaleString()}
+                      <span className="text-text-muted">{pagesLabel}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {lastSummary.sideChannel.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5">
+                {lastSummary.sideChannel.map((r) => (
+                  <li key={r.vector} className="text-text-2">
+                    {r.count.toLocaleString()} {vectorLabel(r.vector)}{r.count === 1 ? "" : "s"} cleared
+                  </li>
+                ))}
+              </ul>
+            )}
+            {sanitizeLines.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 border-t border-vault/20 pt-1.5">
+                {sanitizeLines.map((line) => (
+                  <li key={line} className="text-[10.5px] text-text-muted">{line}</li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setLastSummary(null);
+                setFindings(null);
+                setSelected(new Set());
+                setExpandedGroups(new Set());
+                void runScan(activeScanMode ?? "full");
+              }}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2 py-1 text-[11px] font-medium text-vault transition-colors hover:bg-vault/15"
+            >
+              <Sparkles className="h-3 w-3" strokeWidth={2.5} />
+              Start new scan
+            </button>
+          </div>
+        );
+      })()}
+
       {usedOcr && scannedPages.length === 0 && (
         <p className="text-[10.5px] leading-snug text-text-muted">
           Some pages were image-only — OCR ran on-device to read them. Findings
