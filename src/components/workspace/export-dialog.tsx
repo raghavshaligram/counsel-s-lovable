@@ -167,7 +167,13 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           async ({ signal, onProgress }) => {
             const { rasterizeRedactedPagesInWorker } = await importChunk(() => import("@/lib/workers/rasterize-client"));
             const rasterResult = await rasterizeRedactedPagesInWorker(bytes, pageRedactions, {
-              mode: "always",
+              // "fallback" only rasterizes pages where pdf.js text still
+              // intersects a redaction rect after content-stream removal.
+              // Pages where rewriteDocument already deleted the glyphs stay
+              // in compact text form — avoids ~250KB JPEG × N-page inflation.
+              // The redaction-gate below is the backstop: any surviving
+              // redacted text fails the gate and forces re-rasterization.
+              mode: "fallback",
               scale: 2.5,
               signal,
               onProgress: (done, total) => {
