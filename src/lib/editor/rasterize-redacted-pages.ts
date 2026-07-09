@@ -191,6 +191,14 @@ export async function rasterizeRedactedPages(
     try { (srcDoc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
   }
 
+  // eslint-disable-next-line no-console
+  console.info("[redact] rasterize summary", {
+    mode,
+    rasterizedPages: rasterizedPages.length,
+    totalPages: srcDoc.numPages,
+    redactionPages: pageRedactions.size,
+  });
+
   if (rasterizedPages.length === 0) return { bytes, rasterizedPages: [] };
 
   const out = await outDoc.save();
