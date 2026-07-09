@@ -209,7 +209,14 @@ async function rasterize(
   });
   let outBytes: Uint8Array;
   try {
-    outBytes = await outDoc.save({ useObjectStreams: false, updateFieldAppearances: false });
+    // Keep ObjectStreams ON (pdf-lib default). Turning it off on a 3000-page
+    // rasterized doc inflated output ~40× (17MB → 747MB) because every one
+    // of pdf-lib's ~thousands of small dicts becomes a full uncompressed
+    // indirect object plus a plaintext xref row. Verifier is indifferent
+    // to ObjStm layout: pdf-lib decodes /ObjStm on load, and per PDF spec
+    // §7.5.7 stream objects (the ones the raw-stream leak scan inflates)
+    // are ALWAYS stored as independent indirect objects regardless.
+    outBytes = await outDoc.save({ updateFieldAppearances: false });
   } catch (err) {
     logAllocationFailure("rasterize.worker outDoc.save", err, {
       inputBytesMB,
