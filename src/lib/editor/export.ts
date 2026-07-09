@@ -7,7 +7,15 @@
 // pdf.js canvas coordinates). pdf-lib uses bottom-left origin, so each draw
 // call converts: pdfY = pageHeight - (y + h).
 
-import { PDFDocument, rgb, degrees } from "pdf-lib";
+import {
+  PDFDocument,
+  rgb,
+  degrees,
+  pushGraphicsState,
+  popGraphicsState,
+  setTextRenderingMode,
+  TextRenderingMode,
+} from "pdf-lib";
 import { embedStandardFont } from "@/lib/pdf/fonts-pdfa";
 import fontkit from "@pdf-lib/fontkit";
 import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } from "./types";
@@ -133,13 +141,27 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     const annos = doc.annotations.filter((a) => a.page === i);
     for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
 
-    // Embed OCR sidecar tokens as invisible text (rendering mode 3 via
-    // opacity:0). Tied to source page so reorder/rotate respects them.
+    // Embed OCR sidecar tokens as invisible text (PDF text-rendering mode 3
+    // — glyph-shaped but neither stroked nor filled, so it's searchable
+    // without appearing on the page). Tied to source page so reorder/rotate
+    // respect it.
+    //
+    // MEMORY: previously used `drawText({ opacity: 0 })` per token. pdf-lib
+    // materializes a fresh `/ExtGState` dict for EVERY drawText call with an
+    // opacity option (see api/operations.js drawText → setGraphicsState).
+    // On a 3000-page OCR'd doc that produced tens of thousands of duplicate
+    // ExtGState dicts and inflated the output by hundreds of MB. Setting Tr
+    // once per page inside a single q/Q wrap costs one graphics-state save
+    // and reuses the shared `font` resource — no per-token dict is created.
     if (!op.blank && doc.ocrLayer) {
       const layer = doc.ocrLayer.find((p) => p.srcPage === op.srcPage);
-      if (layer) {
-        for (const t of layer.tokens) {
-          if (!t.text || t.w <= 0 || t.h <= 0) continue;
+      const drawable = layer?.tokens?.filter((t) => t.text && t.w > 0 && t.h > 0);
+      if (drawable && drawable.length) {
+        outPage.pushOperators(
+          pushGraphicsState(),
+          setTextRenderingMode(TextRenderingMode.Invisible),
+        );
+        for (const t of drawable) {
           const size = Math.max(4, t.h * 0.95);
           const measured = font.widthOfTextAtSize(t.text, size) || t.w;
           const adj = measured > 0 ? size * Math.min(1.6, Math.max(0.4, t.w / measured)) : size;
@@ -149,9 +171,9 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
             size: adj,
             font,
             color: rgb(0, 0, 0),
-            opacity: 0,
           });
         }
+        outPage.pushOperators(popGraphicsState());
       }
     }
 
