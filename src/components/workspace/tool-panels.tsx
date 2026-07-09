@@ -3261,6 +3261,26 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         ? editorState.doc.srcBytes
         : new Uint8Array(await file.arrayBuffer());
       const exportDoc = { ...editorState.doc, srcBytes: freshBytes };
+      // MEMORY: hash the SOURCE now, BEFORE export builds the (possibly
+      // 500MB+) output buffer. Previously we hashed the source AFTER export
+      // via a fresh `file.arrayBuffer()`, which held full source + full
+      // output simultaneously and drove the heap to ~3.8GB at export tail.
+      // Hashing `freshBytes` in place adds no extra copy — the digest
+      // internal buffer is a few KB — and the source can be released as
+      // soon as the export worker consumes it.
+      logHeap("before source hash (pre-export)", {
+        sourceBytesMB: Math.round((freshBytes.byteLength / 1024 / 1024) * 10) / 10,
+      });
+      let sourceHashPre: string;
+      try {
+        const h = await crypto.subtle.digest("SHA-256", freshBytes as unknown as ArrayBuffer);
+        sourceHashPre = Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      } catch (err) {
+        logAllocationFailure("source hash (pre-export)", err, {
+          sourceBytesMB: Math.round((freshBytes.byteLength / 1024 / 1024) * 10) / 10,
+        });
+        throw new Error(allocationFailureMessage("source hash (pre-export)", err));
+      }
       logHeap("before exportEditedPdfInWorker", {
         sourceBytesMB: Math.round((freshBytes.byteLength / 1024 / 1024) * 10) / 10,
         pages: exportDoc.pages.length,
