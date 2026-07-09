@@ -209,7 +209,7 @@ async function rasterize(
   });
   let outBytes: Uint8Array;
   try {
-    outBytes = await outDoc.save({ useObjectStreams: false, updateFieldAppearances: false });
+    outBytes = await outDoc.save({ updateFieldAppearances: false });
   } catch (err) {
     logAllocationFailure("rasterize.worker outDoc.save", err, {
       inputBytesMB,
