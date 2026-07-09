@@ -452,44 +452,6 @@ function randomHexString(byteLen: number): PDFHexString {
   return PDFHexString.of(hex);
 }
 
-const TRAILER_ID_RE = /\/ID\s*\[\s*<[0-9a-fA-F]{32}>\s*<[0-9a-fA-F]{32}>\s*\]/;
-
-function makeFileIdHex(byteLen = 16): string {
-  return randomHexString(byteLen).asString();
-}
-
-function setTrailerId(doc: PDFDocument, firstHex = makeFileIdHex(), secondHex = firstHex): [string, string] {
-  const id = doc.context.obj([
-    PDFHexString.of(firstHex),
-    PDFHexString.of(secondHex),
-  ]);
-  (doc.context.trailerInfo as { ID?: unknown }).ID = id;
-  return [firstHex, secondHex];
-}
-
-function hasSerializedTrailerId(bytes: Uint8Array): boolean {
-  return TRAILER_ID_RE.test(new TextDecoder("latin1").decode(bytes));
-}
-
-function ensureSerializedTrailerId(bytes: Uint8Array, ids: [string, string]): Uint8Array {
-  if (hasSerializedTrailerId(bytes)) return bytes;
-
-  const text = new TextDecoder("latin1").decode(bytes);
-  const trailerIdx = text.lastIndexOf("trailer");
-  if (trailerIdx < 0) return bytes;
-
-  const dictStart = text.indexOf("<<", trailerIdx);
-  if (dictStart < 0) return bytes;
-
-  const insertion = new TextEncoder().encode(`\n/ID [<${ids[0]}> <${ids[1]}>]`);
-  const insertAt = dictStart + 2;
-  const out = new Uint8Array(bytes.byteLength + insertion.byteLength);
-  out.set(bytes.slice(0, insertAt), 0);
-  out.set(insertion, insertAt);
-  out.set(bytes.slice(insertAt), insertAt + insertion.byteLength);
-  return out;
-}
-
 export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
   const step = async <T,>(name: string, fn: () => Promise<T> | T): Promise<T> => {
     // eslint-disable-next-line no-console
@@ -618,13 +580,18 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
   });
 
   // 6) Trailer /ID — clause 6.1.3 requires a non-empty File Identifier.
-  const trailerIds = await step("write trailer /ID", () => setTrailerId(doc));
+  await step("write trailer /ID", () => {
+    const id = PDFArray.withContext(ctx);
+    id.push(randomHexString(16));
+    id.push(randomHexString(16));
+    (ctx.trailerInfo as { ID?: PDFArray }).ID = id;
+  });
 
   const saved = await step("save (no object streams, header 1.7)", () =>
     doc.save({ updateFieldAppearances: false, useObjectStreams: false }),
   );
 
-  const out = ensureSerializedTrailerId(ensurePdfHeader(saved, "1.7"), trailerIds);
+  const out = ensurePdfHeader(saved, "1.7");
 
   // Final self-check — programmatic gate. We refuse to return a buffer
   // labeled "court-ready" if any structural requirement still fails.
@@ -702,7 +669,7 @@ function xmpDatesValid(xmpText: string): boolean {
 
 export async function verifyPdfAStructuralAsync(bytes: Uint8Array): Promise<PdfAStructuralReport> {
   const text = new TextDecoder("latin1").decode(bytes);
-  const trailerId = TRAILER_ID_RE.test(text);
+  const trailerId = /\/ID\s*\[\s*<[0-9a-fA-F]+>\s*<[0-9a-fA-F]+>\s*\]/.test(text);
 
   let fonts: FontDiagnostic[] = [];
   let outputIntents: OutputIntentDiagnostic[] = [];
@@ -827,7 +794,7 @@ export function verifyPdfAStructural(bytes: Uint8Array): {
   const outputIntent = /\/OutputIntents\b/.test(text) && /GTS_PDFA1/.test(text);
   const xmpPart = /<pdfaid:part>\s*2\s*<\/pdfaid:part>/.test(text);
   const xmpConformance = /<pdfaid:conformance>\s*B\s*<\/pdfaid:conformance>/.test(text);
-  const trailerId = TRAILER_ID_RE.test(text);
+  const trailerId = /\/ID\s*\[\s*<[0-9a-fA-F]+>\s*<[0-9a-fA-F]+>\s*\]/.test(text);
   return {
     outputIntent, xmpPart, xmpConformance, trailerId,
     ok: outputIntent && xmpPart && xmpConformance && trailerId,
