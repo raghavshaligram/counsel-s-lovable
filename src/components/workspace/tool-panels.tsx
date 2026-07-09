@@ -2476,18 +2476,11 @@ function sanitizeStageLabel(stage: string): string {
                   }
                   return next;
                 });
-                // Keep the list view aligned with the user's intent:
-                // "All" chip or multi-category staging → show all, so
-                // nothing they picked is hidden behind a filter tab.
-                if (key === "all") {
-                  setActiveTab("all");
-                } else if (activeTab !== "all" && activeTab !== key) {
-                  setActiveTab("all");
-                } else if (!active && activeTab === "all") {
-                  // Leave on "all" so multi-select stays visible.
-                }
+                // List filter is derived from which chips are fully staged
+                // (see activeChipKeys) — no activeTab bookkeeping needed.
               });
             };
+
             const allActive = chipActive("all");
             return (
               <div className="flex items-start gap-1.5 border-b border-border/60 px-2 py-1.5">
