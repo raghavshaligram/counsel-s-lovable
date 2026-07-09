@@ -87,17 +87,40 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     imageCache.set(a.dataUrl, img);
   }
 
+  // Batch-copy ALL source pages in a single copyPages() call.
+  // pdf-lib only dedupes shared resources (fonts, images, XObjects) WITHIN
+  // one call — calling copyPages once per page in a 3000-page loop
+  // duplicates every shared resource 3000×, inflating an 18MB source to
+  // 1.3GB. Batching keeps peak output size proportional to the source.
+  const srcIndices: number[] = [];
+  const srcSlot: number[] = []; // parallel array: doc.pages[i] -> position in copiedPages
+  for (let i = 0; i < doc.pages.length; i++) {
+    if (!doc.pages[i].blank) {
+      srcSlot[i] = srcIndices.length;
+      srcIndices.push(doc.pages[i].srcPage);
+    } else {
+      srcSlot[i] = -1;
+    }
+  }
+  logHeap("export.worker before batch copyPages", {
+    pagesToCopy: srcIndices.length,
+    totalPages: doc.pages.length,
+  });
+  const copiedPages = srcIndices.length
+    ? await out.copyPages(srcDoc, srcIndices)
+    : [];
+
   // Add pages in working order
   for (let i = 0; i < doc.pages.length; i++) {
     // Yield to the event loop every 25 pages so a thousands-of-pages
-    // export doesn't freeze the main thread while pdf-lib copies pages.
+    // export doesn't freeze the main thread while pdf-lib assembles pages.
     if (i > 0 && i % 25 === 0) await new Promise<void>((r) => setTimeout(r, 0));
     const op = doc.pages[i];
     let outPage;
     if (op.blank) {
       outPage = out.addPage([op.width, op.height]);
     } else {
-      const [copied] = await out.copyPages(srcDoc, [op.srcPage]);
+      const copied = copiedPages[srcSlot[i]];
       // Apply additional rotation on top of any source rotation
       if (op.rotation !== 0) {
         const cur = copied.getRotation().angle;
