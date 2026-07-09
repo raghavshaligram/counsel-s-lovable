@@ -16,7 +16,7 @@
  * All processing is in-browser via pdf-lib — no upload.
  */
 import {
-  PDFDocument, PDFName, PDFHexString, PDFString, PDFDict, PDFStream, PDFNumber,
+  PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFDict, PDFStream, PDFNumber,
 } from "pdf-lib";
 import { srgbIccBytes } from "./srgb-icc";
 import { embedStandard14Fallbacks } from "./embed-standard14";
