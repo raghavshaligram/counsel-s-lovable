@@ -302,7 +302,10 @@ function Editor() {
           async ({ signal, onProgress }) => {
             const { rasterizeRedactedPages } = await import("@/lib/editor/rasterize-redacted-pages");
             const rasterResult = await rasterizeRedactedPages(bytes, pageRedactions, {
-              mode: "always", scale: 2.5, signal,
+              // "fallback": skip rasterization on pages where content-stream
+              // removal already deleted glyphs; the redaction gate below is
+              // the backstop for any page where text survives.
+              mode: "fallback", scale: 2.5, signal,
               onProgress: (done, total) => onProgress({ fraction: total ? (done / total) * 0.7 : 0, step: `Burning ${done}/${total}` }),
             });
             let outBytes = rasterResult.bytes;
