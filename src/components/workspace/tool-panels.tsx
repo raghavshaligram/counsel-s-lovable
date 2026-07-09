@@ -2424,27 +2424,53 @@ function sanitizeStageLabel(stage: string): string {
             </span>
           </div>
           {tabList.length > 1 && (() => {
-            // Chip click = filter + toggle-select all findings in that
-            // category. Same chip clicked again deselects them. Lets the
-            // user work category-by-category: pick SSN → Redact → pick
-            // Phone → Redact → … → Export once at the end.
+            // Chip click = toggle that category's findings in the current
+            // selection (additive multi-select). Click SSN + Phone to stage
+            // both together, then Redact once. Clicking "All" selects every
+            // finding; clicking it again clears everything. The list view
+            // switches to "all" whenever more than one category is staged
+            // so the user can see everything they've picked.
             const idsForChip = (key: string): string[] => {
               if (key === "all") return redactableFindings.map((d) => d.id);
               const hi = categoryIds.hi.get(key as Cat2) ?? [];
               const lo = categoryIds.lo.get(key as Cat2) ?? [];
               return [...hi, ...lo];
             };
+            // A chip is "active" when every one of its ids is currently
+            // selected — that's what tells the user "this category is
+            // fully staged" regardless of which tab is being viewed.
+            const chipActive = (key: string): boolean => {
+              const ids = idsForChip(key);
+              if (ids.length === 0) return false;
+              for (const id of ids) if (!selected.has(id)) return false;
+              return true;
+            };
             const onChip = (key: string) => {
               const ids = idsForChip(key);
+              const active = chipActive(key);
               startTransition(() => {
-                if (activeTab === key) {
-                  setSelected(new Set());
-                } else {
-                  setActiveTab(key);
-                  setSelected(new Set(ids));
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  if (active) {
+                    for (const id of ids) next.delete(id);
+                  } else {
+                    for (const id of ids) next.add(id);
+                  }
+                  return next;
+                });
+                // Keep the list view aligned with the user's intent:
+                // "All" chip or multi-category staging → show all, so
+                // nothing they picked is hidden behind a filter tab.
+                if (key === "all") {
+                  setActiveTab("all");
+                } else if (activeTab !== "all" && activeTab !== key) {
+                  setActiveTab("all");
+                } else if (!active && activeTab === "all") {
+                  // Leave on "all" so multi-select stays visible.
                 }
               });
             };
+            const allActive = chipActive("all");
             return (
               <div className="flex items-start gap-1.5 border-b border-border/60 px-2 py-1.5">
                 <div className="flex min-w-0 flex-1 flex-wrap gap-1">
@@ -2452,33 +2478,37 @@ function sanitizeStageLabel(stage: string): string {
                     type="button"
                     onClick={() => onChip("all")}
                     className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                      activeTab === "all"
+                      allActive
                         ? "bg-vault text-white"
                         : "bg-surface-3 text-text-2 hover:text-foreground"
                     }`}
-                    title="Select every finding across all categories (click again to deselect)"
+                    title="Stage every finding across all categories (click again to clear)"
                   >
                     All · {redactableFindings.length.toLocaleString()}
                   </button>
-                  {tabList.map((t) => (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => onChip(t.key)}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                        activeTab === t.key
-                          ? "bg-vault text-white"
-                          : "bg-surface-3 text-text-2 hover:text-foreground"
-                      }`}
-                      title={`Select all ${t.label} findings (click again to deselect)`}
-                    >
-                      {t.label} · {t.count.toLocaleString()}
-                    </button>
-                  ))}
+                  {tabList.map((t) => {
+                    const active = chipActive(t.key);
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => onChip(t.key)}
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                          active
+                            ? "bg-vault text-white"
+                            : "bg-surface-3 text-text-2 hover:text-foreground"
+                        }`}
+                        title={`Add all ${t.label} findings to selection (click again to remove)`}
+                      >
+                        {t.label} · {t.count.toLocaleString()}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             );
           })()}
+
           <ul className="max-h-[280px] overflow-y-auto py-1">
             {grouped?.filter(([cat]) => showPageCat(String(cat))).map(([cat, allGroups]) => {
               // Split groups into high-conf and low-conf. A group is
