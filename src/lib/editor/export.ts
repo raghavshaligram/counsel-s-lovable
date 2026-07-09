@@ -118,10 +118,49 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     ? await out.copyPages(srcDoc, srcIndices)
     : [];
 
-  // Add pages in working order
+  // === PIPELINE BYTE-SIZE MEASUREMENT (diagnostic) ===
+  // Serializes `out` at each stage so we can pinpoint where inflation happens.
+  // save() is non-destructive but expensive; the diagnostic is intentional.
+  const measure = async (stage: string, extra: Record<string, unknown> = {}) => {
+    try {
+      const t0 = performance.now();
+      const b = await out.save({ useObjectStreams: true });
+      const mb = Math.round((b.byteLength / 1024 / 1024) * 10) / 10;
+      // eslint-disable-next-line no-console
+      console.info("[export:size]", {
+        stage, mb, bytes: b.byteLength,
+        pages: out.getPageCount(),
+        ms: Math.round(performance.now() - t0),
+        ...extra,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[export:size] measure failed", { stage, err: (err as Error).message });
+    }
+  };
+  const inputMB = Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10;
+  // eslint-disable-next-line no-console
+  console.info("[export:size]", {
+    stage: "1_source_input", mb: inputMB, bytes: doc.srcBytes.byteLength,
+  });
+
+  // Count distinct pages that actually carry redactions (vs total pages).
+  const redactPages = new Set<number>();
+  let redactBoxCount = 0;
+  for (const a of doc.annotations) {
+    if (a.kind === "redact") { redactPages.add(a.page); redactBoxCount++; }
+  }
+  // eslint-disable-next-line no-console
+  console.info("[export:size] redaction-distribution", {
+    totalPages: doc.pages.length,
+    pagesWithRedactions: redactPages.size,
+    redactBoxCount,
+    annotationCount: doc.annotations.length,
+  });
+
+  // Add pages in working order (PASS A — geometry only: addPage + rotation + crop).
+  const outPageRefs: import("pdf-lib").PDFPage[] = new Array(doc.pages.length);
   for (let i = 0; i < doc.pages.length; i++) {
-    // Yield to the event loop every 25 pages so a thousands-of-pages
-    // export doesn't freeze the main thread while pdf-lib assembles pages.
     if (i > 0 && i % 25 === 0) await new Promise<void>((r) => setTimeout(r, 0));
     const op = doc.pages[i];
     let outPage;
@@ -129,61 +168,16 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       outPage = out.addPage([op.width, op.height]);
     } else {
       const copied = copiedPages[srcSlot[i]];
-      // Apply additional rotation on top of any source rotation
       if (op.rotation !== 0) {
         const cur = copied.getRotation().angle;
         copied.setRotation(degrees((cur + op.rotation) % 360));
       }
       outPage = out.addPage(copied);
     }
+    outPageRefs[i] = outPage;
 
-    const { width: pw, height: ph } = outPage.getSize();
-    const annos = doc.annotations.filter((a) => a.page === i);
-    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
-
-    // Embed OCR sidecar tokens as invisible text (PDF text-rendering mode 3
-    // — glyph-shaped but neither stroked nor filled, so it's searchable
-    // without appearing on the page). Tied to source page so reorder/rotate
-    // respect it.
-    //
-    // MEMORY: previously used `drawText({ opacity: 0 })` per token. pdf-lib
-    // materializes a fresh `/ExtGState` dict for EVERY drawText call with an
-    // opacity option (see api/operations.js drawText → setGraphicsState).
-    // On a 3000-page OCR'd doc that produced tens of thousands of duplicate
-    // ExtGState dicts and inflated the output by hundreds of MB. Setting Tr
-    // once per page inside a single q/Q wrap costs one graphics-state save
-    // and reuses the shared `font` resource — no per-token dict is created.
-    if (!op.blank && doc.ocrLayer) {
-      const layer = doc.ocrLayer.find((p) => p.srcPage === op.srcPage);
-      const drawable = layer?.tokens?.filter((t) => t.text && t.w > 0 && t.h > 0);
-      if (drawable && drawable.length) {
-        outPage.pushOperators(
-          pushGraphicsState(),
-          setTextRenderingMode(TextRenderingMode.Invisible),
-        );
-        for (const t of drawable) {
-          const size = Math.max(4, t.h * 0.95);
-          const measured = font.widthOfTextAtSize(t.text, size) || t.w;
-          const adj = measured > 0 ? size * Math.min(1.6, Math.max(0.4, t.w / measured)) : size;
-          outPage.drawText(t.text, {
-            x: t.x,
-            y: ph - (t.y + t.h),
-            size: adj,
-            font,
-            color: rgb(0, 0, 0),
-          });
-        }
-        outPage.pushOperators(popGraphicsState());
-      }
-    }
-
-    // Watermark (drawn on top of annotations so it is visible)
-    if (settings?.watermark && settings.watermark.text.trim()) {
-      drawWatermark(outPage, settings.watermark, font, pw, ph);
-    }
-
-    // Page crop — convert top-left rect to PDF bottom-left, set CropBox + MediaBox.
     if (op.cropBox && !op.blank) {
+      const { width: pw, height: ph } = outPage.getSize();
       const r = op.cropBox;
       const x = Math.max(0, Math.min(r.x, pw));
       const w = Math.max(1, Math.min(r.w, pw - x));
@@ -193,8 +187,51 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       outPage.setCropBox(x, y, w, h);
       outPage.setMediaBox(x, y, w, h);
     }
-
   }
+  await measure("3_after_addPages_only");
+
+  // PASS B — annotations + watermark
+  for (let i = 0; i < doc.pages.length; i++) {
+    if (i > 0 && i % 50 === 0) await new Promise<void>((r) => setTimeout(r, 0));
+    const op = doc.pages[i];
+    const outPage = outPageRefs[i];
+    const { width: pw, height: ph } = outPage.getSize();
+    const annos = doc.annotations.filter((a) => a.page === i);
+    for (const a of annos) drawAnno(outPage, a, font, pw, ph, imageCache, fonts, bundledFonts);
+    if (settings?.watermark && settings.watermark.text.trim()) {
+      drawWatermark(outPage, settings.watermark, font, pw, ph);
+    }
+  }
+  await measure("4_after_annotations_and_watermark");
+
+  // PASS C — OCR invisible-text sidecar
+  let ocrPagesTouched = 0;
+  let ocrTokensDrawn = 0;
+  if (doc.ocrLayer) {
+    for (let i = 0; i < doc.pages.length; i++) {
+      if (i > 0 && i % 25 === 0) await new Promise<void>((r) => setTimeout(r, 0));
+      const op = doc.pages[i];
+      if (op.blank) continue;
+      const outPage = outPageRefs[i];
+      const { height: ph } = outPage.getSize();
+      const layer = doc.ocrLayer.find((p) => p.srcPage === op.srcPage);
+      const drawable = layer?.tokens?.filter((t) => t.text && t.w > 0 && t.h > 0);
+      if (!drawable || !drawable.length) continue;
+      ocrPagesTouched++;
+      outPage.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible));
+      for (const t of drawable) {
+        const size = Math.max(4, t.h * 0.95);
+        const measured = font.widthOfTextAtSize(t.text, size) || t.w;
+        const adj = measured > 0 ? size * Math.min(1.6, Math.max(0.4, t.w / measured)) : size;
+        outPage.drawText(t.text, { x: t.x, y: ph - (t.y + t.h), size: adj, font, color: rgb(0, 0, 0) });
+        ocrTokensDrawn++;
+      }
+      outPage.pushOperators(popGraphicsState());
+    }
+  }
+  await measure("5_after_ocr_sidecar", { ocrPagesTouched, ocrTokensDrawn });
+
+
 
   // Destructive content-stream surgery. For text-edit annotations we keep
   // string-equality replacement of Tj/' literals. For redact annotations we
@@ -249,6 +286,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       ...stats,
     });
   }
+  await measure("6_after_redact_rewrites", { rewritePages: rewrites.size });
 
 
   logHeap("export.worker before exportEditedPdf out.save", {
@@ -265,6 +303,13 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     });
     throw new Error(allocationFailureMessage("export.worker out.save", err));
   }
+  // eslint-disable-next-line no-console
+  console.info("[export:size]", {
+    stage: "7_final_out_save",
+    mb: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    bytes: bytes.byteLength,
+    pages: out.getPageCount(),
+  });
 
   // Optional encryption + permissions
   if (settings?.protect && settings.protect.userPassword) {
