@@ -2265,8 +2265,26 @@ function sanitizeStageLabel(stage: string): string {
     if (!tabList.some((t) => t.key === activeTab)) setActiveTab("all");
   }, [tabList, activeTab]);
 
-  const showPageCat = (cat: string) => activeTab === "all" || activeTab === cat;
-  const showSideVector = (v: string) => activeTab === "all" || activeTab === v;
+  // Category chips are additive: any category whose findings are fully
+  // staged is considered "active" and filters the list. Zero active
+  // categories → show everything (nothing staged yet, browse freely).
+  const activeChipKeys = useMemo(() => {
+    const active = new Set<string>();
+    for (const t of tabList) {
+      const hi = categoryIds.hi.get(t.key as Cat2) ?? [];
+      const lo = categoryIds.lo.get(t.key as Cat2) ?? [];
+      const ids = [...hi, ...lo];
+      if (ids.length === 0) continue;
+      let allSelected = true;
+      for (const id of ids) if (!selected.has(id)) { allSelected = false; break; }
+      if (allSelected) active.add(t.key);
+    }
+    return active;
+  }, [tabList, categoryIds, selected]);
+
+  const showPageCat = (cat: string) => activeChipKeys.size === 0 || activeChipKeys.has(cat);
+  const showSideVector = (v: string) => activeChipKeys.size === 0 || activeChipKeys.has(v);
+
 
 
 
@@ -2458,18 +2476,11 @@ function sanitizeStageLabel(stage: string): string {
                   }
                   return next;
                 });
-                // Keep the list view aligned with the user's intent:
-                // "All" chip or multi-category staging → show all, so
-                // nothing they picked is hidden behind a filter tab.
-                if (key === "all") {
-                  setActiveTab("all");
-                } else if (activeTab !== "all" && activeTab !== key) {
-                  setActiveTab("all");
-                } else if (!active && activeTab === "all") {
-                  // Leave on "all" so multi-select stays visible.
-                }
+                // List filter is derived from which chips are fully staged
+                // (see activeChipKeys) — no activeTab bookkeeping needed.
               });
             };
+
             const allActive = chipActive("all");
             return (
               <div className="flex items-start gap-1.5 border-b border-border/60 px-2 py-1.5">
