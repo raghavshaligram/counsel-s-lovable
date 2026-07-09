@@ -3447,26 +3447,12 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         try {
           const { requestCertificate } = await import("@/components/workspace/certificate-gate");
           const { buildRedactionCertificate } = await import("@/lib/pdf/redaction-certificate");
-          // MEMORY: hash source SEQUENTIALLY (not Promise.all with output).
-          // The old Promise.all held a full source-copy Uint8Array AND the
-          // full output buffer AND both SubtleCrypto internal buffers in the
-          // heap simultaneously — a ~1.3GB peak on a 500MB doc that OOMed
-          // right after export. Sequential lets the source copy GC before
-          // (already-computed) redactedHash is even referenced again.
-          logHeap("before certificate source file.arrayBuffer", {
-            fileSizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
-          });
-          let srcCopy: Uint8Array | null;
-          try {
-            srcCopy = new Uint8Array(await file.arrayBuffer());
-          } catch (err) {
-            logAllocationFailure("certificate source file.arrayBuffer", err, {
-              fileSizeMB: Math.round((file.size / 1024 / 1024) * 10) / 10,
-            });
-            throw new Error(allocationFailureMessage("certificate source file.arrayBuffer", err));
-          }
-          const sourceHash = await hash(srcCopy, "source file");
-          srcCopy = null; // release the full-source copy
+          // MEMORY: source hash was computed BEFORE export ran (see
+          // sourceHashPre above). We deliberately do NOT reload the source
+          // via file.arrayBuffer() here — doing so at this point would put
+          // full source + full output in the heap simultaneously and drove
+          // the previous ~3.8GB tail spike. Reuse the pre-computed digest.
+          const sourceHash = sourceHashPre;
           setLastHashes({ source: sourceHash, redacted: redactedHash });
           const categoryCounts: Record<string, number> = {};
           const perPageCounts: Record<number, number> = {};
