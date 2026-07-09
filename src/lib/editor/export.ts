@@ -286,6 +286,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       ...stats,
     });
   }
+  await measure("6_after_redact_rewrites", { rewritePages: rewrites.size });
 
 
   logHeap("export.worker before exportEditedPdf out.save", {
@@ -302,6 +303,13 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     });
     throw new Error(allocationFailureMessage("export.worker out.save", err));
   }
+  // eslint-disable-next-line no-console
+  console.info("[export:size]", {
+    stage: "7_final_out_save",
+    mb: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    bytes: bytes.byteLength,
+    pages: out.getPageCount(),
+  });
 
   // Optional encryption + permissions
   if (settings?.protect && settings.protect.userPassword) {
