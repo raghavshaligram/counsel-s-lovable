@@ -2102,6 +2102,7 @@ function sanitizeStageLabel(stage: string): string {
     const onClear = () => {
       setSelected(new Set());
       autoSelectedRef.current = new Set();
+      setChipFilter(new Set());
     };
     window.addEventListener("redact:unstage-det", onUnstage as EventListener);
     window.addEventListener("redact:clear-selection", onClear);
