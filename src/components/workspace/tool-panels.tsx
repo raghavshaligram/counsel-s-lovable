@@ -3177,6 +3177,90 @@ function sanitizeStageLabel(stage: string): string {
         </p>
       )}
     </div>
+    <RasterReasonsDialog
+      open={rasterReportOpen}
+      onOpenChange={setRasterReportOpen}
+      report={rasterReport}
+    />
+    </>
+  );
+}
+
+function RasterReasonsDialog({
+  open,
+  onOpenChange,
+  report,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  report: ClassifyResult | null;
+}) {
+  if (!report) return null;
+  const order: RasterReason[] = ["form-xobject", "annotation-ap", "image-only", "type3-font", "text-rewrite-ok"];
+  const summaryLines = [
+    `${report.totalPages}-page document`,
+    ``,
+    `Pages rewriteable (text surgery): ${report.rewriteable}`,
+    `Pages needing raster fallback: ${report.rasterizable}`,
+    ``,
+    `Reasons:`,
+    ...order
+      .filter((r) => r !== "text-rewrite-ok" && report.counts[r] > 0)
+      .map((r) => `- ${REASON_LABELS[r]}: ${report.counts[r]} page${report.counts[r] === 1 ? "" : "s"}`),
+  ].join("\n");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Raster fallback diagnostic</DialogTitle>
+          <DialogDescription>
+            Why each page would require raster fallback on export.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-md border border-border/60 bg-surface-2/40 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-text-muted">Total pages</div>
+              <div className="text-lg font-semibold">{report.totalPages}</div>
+            </div>
+            <div className="rounded-md border border-border/60 bg-surface-2/40 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-text-muted">Raster fallback</div>
+              <div className="text-lg font-semibold text-amber-500">{report.rasterizable}</div>
+            </div>
+          </div>
+          <div className="rounded-md border border-border/60 bg-surface-2/40 p-2">
+            <div className="text-[10px] uppercase tracking-wide text-text-muted mb-1">Reasons</div>
+            {order.map((r) => {
+              const n = report.counts[r];
+              if (n === 0) return null;
+              return (
+                <div key={r} className="flex justify-between py-0.5 text-xs">
+                  <span className={r === "text-rewrite-ok" ? "text-text-muted" : ""}>{REASON_LABELS[r]}</span>
+                  <span className="font-mono">{n}</span>
+                </div>
+              );
+            })}
+          </div>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-surface-2/40 p-2 text-[11px]">{summaryLines}</pre>
+        </div>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => { void navigator.clipboard.writeText(summaryLines); toast.success("Copied"); }}
+            className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-surface-2"
+          >
+            Copy summary
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded-md bg-vault px-3 py-1.5 text-xs text-white hover:bg-vault/90"
+          >
+            Close
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
