@@ -2282,8 +2282,8 @@ function sanitizeStageLabel(stage: string): string {
     return active;
   }, [tabList, categoryIds, selected]);
 
-  const showPageCat = (cat: string) => activeChipKeys.size === 0 || activeChipKeys.has(cat);
-  const showSideVector = (v: string) => activeChipKeys.size === 0 || activeChipKeys.has(v);
+  const showPageCat = (cat: string) => chipFilter.size === 0 || chipFilter.has(cat);
+  const showSideVector = (v: string) => chipFilter.size === 0 || chipFilter.has(v);
 
 
 
