@@ -1379,6 +1379,34 @@ export function matchAllCategories(str: string): CatHit[] {
     }
     if (nm[0].length === 0) nameGlobal.lastIndex++;
   }
+  // ALL-CAPS names — only emit when the item text has a strong context
+  // signal (Client / Name / SSN / DOB / title honorific / /s/ …). Without a
+  // signal these are almost always headings ("EXECUTIVE SUMMARY", "UNITED
+  // STATES DISTRICT COURT" — the latter also rejected by NON_NAME_WORDS).
+  if (NAME_CONTEXT_SIGNAL_RE.test(str)) {
+    const upperGlobal = new RegExp(NAME_CANDIDATE_UPPER_RE.source, "g");
+    let um: RegExpExecArray | null;
+    while ((um = upperGlobal.exec(str)) !== null) {
+      const verdict = classifyName(str, um[0], um.index, { skipHeadingCheck: true });
+      const s = um.index;
+      const e = s + um[0].length;
+      if (verdict.ok) {
+        const overlap = hits.some(
+          (h) => h.category === "name" && !(e <= h.start || s >= h.start + h.length),
+        );
+        if (!overlap) {
+          hits.push({
+            category: "name",
+            confidence: "high",
+            start: s,
+            length: um[0].length,
+            text: um[0],
+          });
+        }
+      }
+      if (um[0].length === 0) upperGlobal.lastIndex++;
+    }
+  }
   // Case caption "X v. Y" / "X vs. Y" — flag BOTH party names. Parties may
   // be people or organizations; we tag both as "name" so the redaction UI
   // groups them with the other person/party suggestions.
