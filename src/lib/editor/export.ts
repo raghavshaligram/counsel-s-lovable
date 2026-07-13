@@ -118,26 +118,6 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     ? await out.copyPages(srcDoc, srcIndices)
     : [];
 
-  // === PIPELINE BYTE-SIZE MEASUREMENT (diagnostic) ===
-  // Serializes `out` at each stage so we can pinpoint where inflation happens.
-  // save() is non-destructive but expensive; the diagnostic is intentional.
-  const measure = async (stage: string, extra: Record<string, unknown> = {}) => {
-    try {
-      const t0 = performance.now();
-      const b = await out.save({ useObjectStreams: true });
-      const mb = Math.round((b.byteLength / 1024 / 1024) * 10) / 10;
-      // eslint-disable-next-line no-console
-      console.info("[export:size]", {
-        stage, mb, bytes: b.byteLength,
-        pages: out.getPageCount(),
-        ms: Math.round(performance.now() - t0),
-        ...extra,
-      });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[export:size] measure failed", { stage, err: (err as Error).message });
-    }
-  };
   const inputMB = Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10;
   // eslint-disable-next-line no-console
   console.info("[export:size]", {
