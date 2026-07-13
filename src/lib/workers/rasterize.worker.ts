@@ -22,7 +22,7 @@
  */
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
+import { logHeap } from "@/lib/memory-log";
 
 export interface RectTL { x: number; y: number; w: number; h: number }
 
