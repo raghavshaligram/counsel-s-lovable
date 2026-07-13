@@ -1423,6 +1423,12 @@ export function RedactPage() {
         </div>
         </TooltipProvider>
       )}
+      <RasterReasonsDialog
+        open={rasterReportOpen}
+        onOpenChange={setRasterReportOpen}
+        report={rasterReport}
+        fileName={file?.name}
+      />
     </AppShell>
   );
 }
