@@ -2330,6 +2330,7 @@ function sanitizeStageLabel(stage: string): string {
 
 
   return (
+    <>
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12px] font-medium text-foreground">
