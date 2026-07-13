@@ -132,6 +132,9 @@ import {
   type DeviceCapability,
 } from "@/lib/device/capability";
 import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { classifyRasterReasons, REASON_LABELS, type ClassifyResult, type RasterReason } from "@/lib/pdf/classify-raster-reasons";
+import { loadPdfjs } from "@/lib/pdf/worker";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
@@ -1405,6 +1408,9 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   // and file replaceFile from the sanitize path. Only cleared explicitly by
   // "Start new scan" or when the document changes (see effect below).
   const [lastSummary, setLastSummary] = useState<RedactionSummary | null>(null);
+  // TEMP DIAGNOSTIC: raster-fallback classification report shown after scan.
+  const [rasterReport, setRasterReport] = useState<ClassifyResult | null>(null);
+  const [rasterReportOpen, setRasterReportOpen] = useState(false);
   const mergeSummary = useCallback((partial: Partial<RedactionSummary>) => {
     setLastSummary((prev) => mergeRedactionSummary(prev, partial));
   }, []);
@@ -1658,6 +1664,34 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
           });
         }
       }
+
+      // TEMP DIAGNOSTIC: after scan completes, classify every page by WHY it
+      // would need raster fallback during redaction export. Opens a modal
+      // popup with the breakdown so the user can see e.g. "2891/3000 pages:
+      // Form XObject". No re-parse — opens the file fresh in pdf.js.
+      try {
+        updateScanProgress(ownerDocId, "Analyzing pages for raster fallback…");
+        const pdfjs = await loadPdfjs();
+        const bytes = new Uint8Array(await ownerFile.arrayBuffer());
+        const diagDoc = await pdfjs.getDocument({ data: bytes }).promise;
+        try {
+          const report = await classifyRasterReasons(
+            diagDoc as unknown as Parameters<typeof classifyRasterReasons>[0],
+            {
+              onProgress: (done, total) =>
+                updateScanProgress(ownerDocId, `Analyzing raster reasons ${done}/${total}`),
+            },
+          );
+          setRasterReport(report);
+          setRasterReportOpen(true);
+        } finally {
+          try { (diagDoc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        }
+      } catch (e) {
+        console.warn("[auto-detect] raster classifier failed", e);
+      }
+
+
 
     } catch (err) {
       const aborted = err instanceof DOMException && err.name === "AbortError";
@@ -2296,6 +2330,7 @@ function sanitizeStageLabel(stage: string): string {
 
 
   return (
+    <>
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12px] font-medium text-foreground">
@@ -3143,6 +3178,90 @@ function sanitizeStageLabel(stage: string): string {
         </p>
       )}
     </div>
+    <RasterReasonsDialog
+      open={rasterReportOpen}
+      onOpenChange={setRasterReportOpen}
+      report={rasterReport}
+    />
+    </>
+  );
+}
+
+function RasterReasonsDialog({
+  open,
+  onOpenChange,
+  report,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  report: ClassifyResult | null;
+}) {
+  if (!report) return null;
+  const order: RasterReason[] = ["form-xobject", "annotation-ap", "image-only", "type3-font", "text-rewrite-ok"];
+  const summaryLines = [
+    `${report.totalPages}-page document`,
+    ``,
+    `Pages rewriteable (text surgery): ${report.rewriteable}`,
+    `Pages needing raster fallback: ${report.rasterizable}`,
+    ``,
+    `Reasons:`,
+    ...order
+      .filter((r) => r !== "text-rewrite-ok" && report.counts[r] > 0)
+      .map((r) => `- ${REASON_LABELS[r]}: ${report.counts[r]} page${report.counts[r] === 1 ? "" : "s"}`),
+  ].join("\n");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Raster fallback diagnostic</DialogTitle>
+          <DialogDescription>
+            Why each page would require raster fallback on export.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-md border border-border/60 bg-surface-2/40 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-text-muted">Total pages</div>
+              <div className="text-lg font-semibold">{report.totalPages}</div>
+            </div>
+            <div className="rounded-md border border-border/60 bg-surface-2/40 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-text-muted">Raster fallback</div>
+              <div className="text-lg font-semibold text-amber-500">{report.rasterizable}</div>
+            </div>
+          </div>
+          <div className="rounded-md border border-border/60 bg-surface-2/40 p-2">
+            <div className="text-[10px] uppercase tracking-wide text-text-muted mb-1">Reasons</div>
+            {order.map((r) => {
+              const n = report.counts[r];
+              if (n === 0) return null;
+              return (
+                <div key={r} className="flex justify-between py-0.5 text-xs">
+                  <span className={r === "text-rewrite-ok" ? "text-text-muted" : ""}>{REASON_LABELS[r]}</span>
+                  <span className="font-mono">{n}</span>
+                </div>
+              );
+            })}
+          </div>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-surface-2/40 p-2 text-[11px]">{summaryLines}</pre>
+        </div>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => { void navigator.clipboard.writeText(summaryLines); toast.success("Copied"); }}
+            className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-surface-2"
+          >
+            Copy summary
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded-md bg-vault px-3 py-1.5 text-xs text-white hover:bg-vault/90"
+          >
+            Close
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
