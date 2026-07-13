@@ -1823,3 +1823,94 @@ function BoxOverlay({
     </Popover>
   );
 }
+
+// ────────── raster-fallback diagnostic dialog ──────────
+
+function RasterReasonsDialog({
+  open,
+  onOpenChange,
+  report,
+  fileName,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  report: ClassifyResult | null;
+  fileName?: string;
+}) {
+  if (!report) return null;
+  const reasons: RasterReason[] = ["form-xobject", "annotation-ap", "image-only", "type3-font"];
+  const summary = [
+    `${report.totalPages}-page document${fileName ? ` (${fileName})` : ""}`,
+    "",
+    `Pages rewriteable (text surgery): ${report.rewriteable}`,
+    `Pages needing raster fallback: ${report.rasterizable}`,
+    "",
+    "Reasons:",
+    ...reasons
+      .filter((r) => report.counts[r] > 0)
+      .map((r) => `- ${REASON_LABELS[r]}: ${report.counts[r]} page${report.counts[r] === 1 ? "" : "s"}`),
+  ].join("\n");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Raster fallback diagnostic</DialogTitle>
+          <DialogDescription>
+            Heuristic classification of every page — why redaction would need to
+            rasterize instead of rewriting text.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <Stat label="Total pages" value={report.totalPages} />
+            <Stat label="Text-rewriteable" value={report.rewriteable} tone="ok" />
+            <Stat label="Raster fallback" value={report.rasterizable} tone="warn" />
+            <Stat label="Rewrite ratio" value={`${Math.round((report.rewriteable / Math.max(1, report.totalPages)) * 100)}%`} />
+          </div>
+          <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Reasons</div>
+            <ul className="space-y-1">
+              {reasons.map((r) => (
+                <li key={r} className="flex items-center justify-between">
+                  <span>{REASON_LABELS[r]}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {report.counts[r]} page{report.counts[r] === 1 ? "" : "s"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <details className="rounded-md border border-border/60 bg-muted/20 p-3">
+            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Copyable summary
+            </summary>
+            <pre className="mt-2 whitespace-pre-wrap text-xs">{summary}</pre>
+          </details>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              try { navigator.clipboard.writeText(summary); toast.success("Copied summary"); }
+              catch { /* ignore */ }
+            }}
+          >
+            Copy
+          </Button>
+          <Button size="sm" onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: number | string; tone?: "ok" | "warn" }) {
+  const color = tone === "ok" ? "text-emerald-400" : tone === "warn" ? "text-amber-400" : "text-foreground";
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`text-lg font-semibold tabular-nums ${color}`}>{value}</div>
+    </div>
+  );
+}
