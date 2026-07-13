@@ -511,3 +511,45 @@ function OptionRow({
     </div>
   );
 }
+
+function AuditSummarySection({ run }: { run: AuditRun }) {
+  const MB = (n: number) => Math.round((n / 1024 / 1024) * 100) / 100;
+  return (
+    <div className="mt-2 rounded-md border border-vault/30 bg-accent-soft/40 p-2 text-[11px]">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="font-medium text-foreground">Object-graph audit</span>
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(serializeRun(run));
+            toast.success("Audit JSON copied");
+          }}
+          className="rounded-sm border border-vault/40 bg-surface-2 px-2 py-0.5 text-[10.5px] text-vault hover:bg-vault/10"
+        >
+          Copy JSON
+        </button>
+      </div>
+      <div className="mb-1 text-[10.5px] text-text-muted">
+        {run.perRun.length} stage{run.perRun.length === 1 ? "" : "s"} · {run.diffs.length} transition{run.diffs.length === 1 ? "" : "s"} · full data on <code>window.__vaultAudit</code>
+      </div>
+      <div className="flex flex-col gap-1">
+        {run.diffs.map((d, i) => {
+          const top = d.duplicated[0];
+          return (
+            <div key={i} className="flex items-center justify-between gap-2 rounded-sm bg-surface-2/60 px-1.5 py-1">
+              <span className="font-mono text-[10.5px] text-text-2">{String(d.from)} → {String(d.to)}</span>
+              <span className="font-mono text-[10.5px]">Δ {MB(d.fileBytesDelta)} MB</span>
+              {top ? (
+                <span className="truncate font-mono text-[10.5px] text-amber-500">
+                  dup {top.kind} {MB(top.bytesEach)}MB {top.copiesBefore}→{top.copiesAfter}× (wasted {MB(top.wastedBytesDelta)}MB)
+                </span>
+              ) : (
+                <span className="text-[10.5px] text-text-muted">no new dupes</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
