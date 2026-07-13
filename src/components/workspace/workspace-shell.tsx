@@ -58,6 +58,8 @@ import {
   FileCheck2,
   Settings as SettingsIcon,
   Wrench,
+  Eye,
+  EyeOff,
   Printer,
   ShieldOff,
   BookOpen,
@@ -382,6 +384,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   // Pending close (for the unsaved-changes guard).
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
+  const [unlockPromptFile, setUnlockPromptFile] = useState<File | null>(null);
   const [pendingHomeClose, setPendingHomeClose] = useState(false); // legacy guard
   // Immediate visual affordance when the user triggers "open file". The
   // OS file picker doesn't block us, but under CPU load from a running
@@ -1225,14 +1228,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
         console.log("[open-effect:arrayBuffer-read]", { tabId, byteLength: bytes.byteLength });
-        const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
-        const pdfjs = await loadPdfjs();
-        // Hand bytes straight to pdf.js — the worker transfers the buffer.
-        // For 400p PDFs slicing here copies tens of MB on the main thread
-        // and freezes the open path. Keep this transfer fast; export re-
-        // reads fresh bytes from the active File on demand.
+        const { openPdfjs } = await importChunk(() => import("@/lib/pdf/pdf-open"));
+        // Suppress the built-in window.prompt — we surface our own dialog on
+        // EncryptedPdfError so password-protected PDFs get an "Unlock" flow
+        // instead of the misleading "repair" toast.
         console.log("[open-effect:getDocument-start]", { tabId });
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        const doc = await openPdfjs(bytes, { onPassword: () => null });
         console.log("[open-effect:getDocument-done]", { tabId, numPages: doc.numPages });
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
@@ -1277,6 +1278,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       } catch (err) {
         console.error("[workspace] open failed", err);
         const failed = f;
+        // Password-protected PDFs: surface an Unlock dialog instead of the
+        // misleading "repair" toast. openPdfjs throws EncryptedPdfError when
+        // the onPassword handler returns null (see above).
+        const errName = (err as { name?: string } | null)?.name;
+        if (errName === "EncryptedPdfError") {
+          toast.info("This PDF is password-protected", {
+            description: "Enter the password to unlock and open it.",
+            action: {
+              label: "Unlock",
+              onClick: () => setUnlockPromptFile(failed),
+            },
+          });
+          setUnlockPromptFile(failed);
+          return;
+        }
         toast.error("Couldn't open this PDF", {
           description: "The file may be damaged. Try to repair it?",
           action: {
@@ -2296,6 +2312,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         />
       )}
 
+      {unlockPromptFile && (
+        <UnlockDialog
+          file={unlockPromptFile}
+          onCancel={() => setUnlockPromptFile(null)}
+          onUnlocked={(unlocked) => {
+            setUnlockPromptFile(null);
+            const dt = new DataTransfer();
+            dt.items.add(unlocked);
+            openInNewTabRef.current = false;
+            onFiles(dt.files);
+          }}
+        />
+      )}
+
       <ExportDialog
         open={exportOpen}
         onOpenChange={setExportOpen}
@@ -2375,6 +2405,128 @@ function UnsavedChangesDialog({
     </div>
   );
 }
+
+/* -------------------- Unlock (password) dialog ---------------------- */
+
+function UnlockDialog({
+  file,
+  onCancel,
+  onUnlocked,
+}: {
+  file: File;
+  onCancel: () => void;
+  onUnlocked: (unlocked: File) => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel, busy]);
+
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { unlockPdf, WrongPasswordError } = await importChunk(
+        () => import("@/lib/pdf/unlock"),
+      );
+      try {
+        const res = await unlockPdf(file, password);
+        const unlocked = new File([res.blob], file.name, { type: "application/pdf" });
+        onUnlocked(unlocked);
+      } catch (err) {
+        if (err instanceof WrongPasswordError) {
+          setError("Wrong password. Try again.");
+          setPassword("");
+        } else {
+          console.error("[workspace] unlock failed", err);
+          setError("Couldn't unlock this PDF.");
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm"
+      onClick={() => { if (!busy) onCancel(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Unlock PDF"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[min(440px,92vw)] border border-border bg-surface-1 p-5"
+        style={{ borderRadius: 14, boxShadow: "var(--shadow-float)" }}
+      >
+        <div className="flex items-center gap-2">
+          <Lock className="h-4 w-4 text-vault" />
+          <div className="font-display text-[18px] leading-tight">Password-protected PDF</div>
+        </div>
+        <p className="mt-1.5 text-[12.5px] text-text-2 leading-snug">
+          “{file.name}” is encrypted. Enter the password to unlock and open it.
+          Decryption happens on your device — nothing is uploaded.
+        </p>
+        <div className="relative mt-4">
+          <input
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(null); }}
+            placeholder="Enter the PDF password"
+            autoFocus
+            disabled={busy}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); void submit(); }
+            }}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-vault/40"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPw((s) => !s)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-2 hover:text-foreground"
+            aria-label={showPw ? "Hide password" : "Show password"}
+          >
+            {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {error && (
+          <div className="mt-2 text-[12px] text-red-400">{error}</div>
+        )}
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-md px-3 py-1.5 text-[12.5px] text-text-2 hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => { void submit(); }}
+            disabled={busy || !password}
+            className="inline-flex items-center gap-1.5 rounded-md bg-vault px-3 py-1.5 text-[12.5px] font-medium text-vault-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            <KeyRound className="h-3.5 w-3.5" strokeWidth={2.5} />
+            {busy ? "Unlocking…" : "Unlock & open"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
 /* ----------------------- Floating tooltip ---------------------------- */
 
