@@ -44,6 +44,20 @@ import {
   findKeywordInPdf,
   type KeywordMatch,
 } from "@/lib/pdf/detect-pii";
+import {
+  classifyRasterReasons,
+  REASON_LABELS,
+  type ClassifyResult,
+  type RasterReason,
+} from "@/lib/pdf/classify-raster-reasons";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import { buildRedactionCertificate } from "@/lib/pdf/redaction-certificate";
 import { importChunk } from "@/lib/chunk-import";
