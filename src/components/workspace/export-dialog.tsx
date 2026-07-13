@@ -223,19 +223,32 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         bytes = await promise;
         // eslint-disable-next-line no-console
         console.log("[pipeline:size] RASTERIZE+GATE (after redaction burn)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength });
+        if (auditActive) await captureStage("rasterize+gate", bytes);
       }
 
 
       const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
       // eslint-disable-next-line no-console
       console.log("[pipeline:size] FINAL (handed to downloadPdf)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength, name: outName });
+      if (auditActive) await captureStage("final", bytes);
       await downloadPdf(bytes, outName);
 
       toast.success("Saved", { id: tid });
-      onOpenChange(false);
+      if (auditActive) {
+        const run = endAuditRun();
+        setAuditRun(run);
+        // Keep dialog open so the user can grab the Copy JSON payload.
+        if (!run || run.perRun.length < 2) onOpenChange(false);
+      } else {
+        onOpenChange(false);
+      }
       reset();
     } catch (err) {
       console.error("[export-flow] failed", err);
+      if (auditActive) {
+        const run = endAuditRun();
+        setAuditRun(run);
+      }
       if (isChunkLoadError(err)) {
         toast.error("App was updated — reloading…", { id: tid });
         reloadForFreshChunks();
@@ -246,6 +259,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       setBusy(false);
     }
   }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, batesAlreadyStamped, currentBatesFingerprint, pnFormat, headerText, footerText, onOpenChange]);
+
 
   const anyOn = pnOn || hfOn || flOn || batesOn;
 
