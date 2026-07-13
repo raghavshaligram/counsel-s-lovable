@@ -237,6 +237,16 @@ async function rasterize(
     });
     throw new Error(allocationFailureMessage("rasterize.worker outDoc.save", err));
   }
+  // eslint-disable-next-line no-console
+  console.log("[rasterize:diagnostic] after save", {
+    inputBytesMB,
+    outputBytesMB: Math.round((outBytes.byteLength / 1024 / 1024) * 10) / 10,
+    rasterizedPagesActual: rasterizedPages.length,
+    totalPages: srcDoc.numPages,
+    mode,
+    scale,
+    inflationX: Math.round((outBytes.byteLength / Math.max(1, bytes.byteLength)) * 10) / 10,
+  });
   return { bytes: outBytes, rasterizedPages: rasterizedPages.slice().sort((a, b) => a - b) };
 }
 
