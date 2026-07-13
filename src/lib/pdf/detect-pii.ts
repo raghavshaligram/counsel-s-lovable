@@ -389,6 +389,7 @@ function classifyName(
   fullStr: string,
   matchText: string,
   matchIndex: number,
+  opts?: { skipHeadingCheck?: boolean },
 ): { ok: boolean; confidence?: "high" | "low" } {
   const tokens = matchText.split(/\s+/);
   if (tokens.length < 2) return { ok: false };
@@ -414,22 +415,33 @@ function classifyName(
     if (anyNonName) return { ok: false };
   }
 
+  const before = fullStr.slice(0, matchIndex);
+  const after = fullStr.slice(matchIndex + matchText.length);
+  const hasLabelPrefix = LABEL_PREFIX_RE.test(before);
+
   // Reject when the surrounding text item is structurally a heading and the
-  // match basically IS the heading.
-  if (isLikelyHeading(fullStr) && matchText.trim().length >= fullStr.trim().length * 0.8) {
+  // match basically IS the heading — UNLESS a field label precedes it
+  // ("Client Name: John Smith") or the caller has already established a
+  // strong non-heading context signal (upper-case path).
+  if (
+    !opts?.skipHeadingCheck &&
+    !hasLabelPrefix &&
+    isLikelyHeading(fullStr) &&
+    matchText.trim().length >= fullStr.trim().length * 0.8
+  ) {
     return { ok: false };
   }
 
-  // Strong signal: title prefix, name suffix, middle initial, or apostrophe
-  // / hyphen typical of surnames.
-  const before = fullStr.slice(0, matchIndex);
-  const after = fullStr.slice(matchIndex + matchText.length);
+  // Strong signal: title prefix, name suffix, middle initial, apostrophe /
+  // hyphen typical of surnames, or a field label like "Client Name:".
   const hasPrefix = NAME_PREFIX_RE.test(before);
   const hasSuffix = NAME_SUFFIX_RE.test(after);
   const hasMiddleInitial = /\b[A-Z]\.\s/.test(matchText);
   const hasNameMark = /['’]|(?:^|\s)(?:O['’]|D['’]|Mc|Mac|St\.)/.test(matchText);
   const confidence: "high" | "low" =
-    hasPrefix || hasSuffix || hasMiddleInitial || hasNameMark ? "high" : "low";
+    hasPrefix || hasSuffix || hasMiddleInitial || hasNameMark || hasLabelPrefix
+      ? "high"
+      : "low";
   return { ok: true, confidence };
 }
 
