@@ -1393,6 +1393,10 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   // made "Commit staged" impossible mid-scan (selection kept resetting).
   const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Explicit chip-based list filter. Empty = show every category. Only
+  // mutated by chip clicks (see onChip) — never derived from selection,
+  // so unchecking an item never hides its category.
+  const [chipFilter, setChipFilter] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<string>("all");
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const [capability, setCapability] = useState<DeviceCapability | null>(null);
@@ -1430,6 +1434,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setTotalPagesScanned(0);
       setSelected(new Set());
       autoSelectedRef.current = new Set();
+      setChipFilter(new Set());
       return;
     }
     setFindings(scanRecord.findings);
@@ -2097,6 +2102,7 @@ function sanitizeStageLabel(stage: string): string {
     const onClear = () => {
       setSelected(new Set());
       autoSelectedRef.current = new Set();
+      setChipFilter(new Set());
     };
     window.addEventListener("redact:unstage-det", onUnstage as EventListener);
     window.addEventListener("redact:clear-selection", onClear);
@@ -2282,8 +2288,8 @@ function sanitizeStageLabel(stage: string): string {
     return active;
   }, [tabList, categoryIds, selected]);
 
-  const showPageCat = (cat: string) => activeChipKeys.size === 0 || activeChipKeys.has(cat);
-  const showSideVector = (v: string) => activeChipKeys.size === 0 || activeChipKeys.has(v);
+  const showPageCat = (cat: string) => chipFilter.size === 0 || chipFilter.has(cat);
+  const showSideVector = (v: string) => chipFilter.size === 0 || chipFilter.has(v);
 
 
 
@@ -2466,20 +2472,28 @@ function sanitizeStageLabel(stage: string): string {
             const onChip = (key: string) => {
               const ids = idsForChip(key);
               const active = chipActive(key);
-              startTransition(() => {
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (active) {
-                    for (const id of ids) next.delete(id);
-                  } else {
-                    for (const id of ids) next.add(id);
-                  }
-                  return next;
-                });
-                // List filter is derived from which chips are fully staged
-                // (see activeChipKeys) — no activeTab bookkeeping needed.
-              });
-            };
+        startTransition(() => {
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (active) {
+              for (const id of ids) next.delete(id);
+            } else {
+              for (const id of ids) next.add(id);
+            }
+            return next;
+          });
+          setChipFilter((prev) => {
+            const next = new Set(prev);
+            if (key === "all") {
+              next.clear();
+              return next;
+            }
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+          });
+        });
+      };
 
             const allActive = chipActive("all");
             return (
