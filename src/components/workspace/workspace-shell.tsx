@@ -1226,14 +1226,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // real per-page dims lazily as pages scroll in.
         const bytes = new Uint8Array(await f.arrayBuffer());
         console.log("[open-effect:arrayBuffer-read]", { tabId, byteLength: bytes.byteLength });
-        const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
-        const pdfjs = await loadPdfjs();
-        // Hand bytes straight to pdf.js — the worker transfers the buffer.
-        // For 400p PDFs slicing here copies tens of MB on the main thread
-        // and freezes the open path. Keep this transfer fast; export re-
-        // reads fresh bytes from the active File on demand.
+        const { openPdfjs } = await importChunk(() => import("@/lib/pdf/pdf-open"));
+        // Suppress the built-in window.prompt — we surface our own dialog on
+        // EncryptedPdfError so password-protected PDFs get an "Unlock" flow
+        // instead of the misleading "repair" toast.
         console.log("[open-effect:getDocument-start]", { tabId });
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        const doc = await openPdfjs(bytes, { onPassword: () => null });
         console.log("[open-effect:getDocument-done]", { tabId, numPages: doc.numPages });
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
