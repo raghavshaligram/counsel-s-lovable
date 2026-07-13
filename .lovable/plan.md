@@ -1,33 +1,109 @@
-## Conformance level check — clear to fix
+# Redact inspector — findings redesign
 
-Every PDF/A reference in the codebase targets **PDF/A-2b**. No PDF/A-1b claim exists anywhere.
+Scope is deliberately narrow: **restructure how findings are displayed and selected after a scan runs**. Everything else stays exactly as it is today.
 
-### Evidence
+---
 
-| Location | Claim |
-|---|---|
-| `src/lib/pdf/to-pdfa.ts:110–111` | XMP writes `pdfaid:part=2` + `pdfaid:conformance=B` |
-| `src/lib/pdf/to-pdfa.ts:543, 568` | Producer string `"CounselPDF (PDF/A-2b)"` |
-| `src/lib/pdf/to-pdfa.ts:564` | Step name `"write XMP metadata (pdfaid part=2 conformance=B)"` |
-| `src/lib/pdf/to-pdfa.ts:5, 626` | Header comment + structural verifier: "ISO 19005-2 / PDF/A-2b" |
-| `src/lib/pdf/download.ts:3–5, 59` | Comments + user toast: "PDF/A-2b saved" |
-| `src/components/workspace/export-format-row.tsx:3, 63, 125` | User-facing label "PDF/A-2b" in the export format picker |
-| `src/components/workspace/workflow-builder-panel.tsx:266–268` | Automation step "Convert to PDF/A-2b" |
-| `src/lib/automation/registry.ts:74, 85` | Automation description + error message "PDF/A-2b" |
-| `src/lib/pdf/embed-standard14.ts:4` | Font embedder comment: "PDF/A-2" |
-| `src/lib/pdf/fonts-pdfa.ts` | Font module scoped to PDF/A-2 rules |
+## Preserve (unchanged)
 
-Zero occurrences of `"PDF/A-1"`, `pdfaid:part=1`, or `conformance=A`.
+- Redact heading and the honest info banner at the top.
+- **Quick scan / Full scan** buttons with device-aware time estimates as the scan entry point.
+- Keyword / pattern search inputs.
+- Manual box-drawing input.
+- Redaction mode toggle (Maximum / Standard).
+- Review-confirmation checkbox.
+- On-device trust line.
+- Amber "Suggestions only — never reported as complete" banner.
+- All burn/verify/gate internals: `exportEditedPdf`, `verifyRedactionRemoval`, `verifySideChannelInWorker`, `SET_SRC_BYTES`, side-channel worker path.
+- PDF viewer, open-tab lifecycle, editor-canvas, samplePageBg.
+- Batched `ADD_ANNOS` action for all multi-select staging (no per-item dispatch).
 
-### Implication
+---
 
-PDF/A-2b (ISO 19005-2) explicitly **allows** cross-reference streams and object streams — only PDF/A-1b (ISO 19005-1, based on PDF 1.4) forbids them. Flipping `useObjectStreams: false → true` at `src/lib/pdf/to-pdfa.ts:591` stays fully conformant with the level the app already claims, verifies, and ships in its UI.
+## New — findings display after a scan
 
-### Revised plan
+### 1. Scan-summary card (top of findings)
 
-1. **`src/lib/pdf/to-pdfa.ts:591`** — change `useObjectStreams: false` to `useObjectStreams: true`. Add a one-line comment: `// PDF/A-2b (ISO 19005-2) permits object streams; PDF/A-1b did not — do not flip back without also downgrading the pdfaid:part in the XMP.`
-2. **`src/lib/test/redaction-e2e-harness.ts:114, 271`** — flip both to `true` for consistency (test-only, no shipped impact, but prevents the pattern from being copied back into a production path).
-3. **Do not touch** `compress.ts`, `export.ts` (already `true`), the gate, burn correctness, or the structural verifier — the verifier keys off XMP + OutputIntent + trailer /ID, none of which are affected by the object-stream flag.
-4. **Verify after the change** by running one PDF/A export end-to-end: the `[pdfa] self-check` in `to-pdfa.ts:601` must still pass (it will — object streams don't touch any checked marker) and file size on the 3000-page redacted doc should collapse from 747MB back toward the ~18MB export baseline plus a small PDF/A overhead.
+One at-a-glance line summarising what the scan found:
 
-No diagnostic logging pass needed anymore — the conformance audit + the earlier grep together already localize the bloat to this single line.
+> Reviewed **N pages**. Found: **X** SSNs · **X** credit cards · **X** emails · **X** phone numbers · **X** IBANs · **X** dates · **X** names & organizations (Y distinct) · **X** form fields · **X** comments/annotations · metadata.
+
+Categories with zero hits are hidden from the line. Numbers are `.toLocaleString()`.
+
+### 2. Category groups with master checkboxes
+
+Replace the current flat list with collapsible category sections. Each header row has:
+
+- Master checkbox (checked / indeterminate / unchecked) — toggling stages/unstages every item in the category via one batched `ADD_ANNOS` / `DELETE_ANNOS` dispatch.
+- Category label + total count.
+- "(Y distinct)" suffix for categories where identical text collapses (names, emails, phones).
+- Expand/collapse chevron.
+
+Category order (highest-risk first, matches the summary line):
+
+1. SSNs
+2. Credit cards
+3. IBANs / bank accounts
+4. Emails
+5. Phone numbers
+6. Dates
+7. Names & organizations
+8. Form fields
+9. Comments / annotations
+10. Metadata
+
+### 3. Within each category — distinct values
+
+Expanding shows the distinct-value groups (already computed by `grouped`), each with:
+
+- Checkbox (checked / indeterminate / unchecked) reflecting selection across its occurrences.
+- The matched text.
+- Occurrence count.
+- Sample occurrences: first 10 rows with page + jump link, then "and N more — jump to next".
+
+### 4. Low-confidence subsection
+
+Any finding with confidence below the auto-select threshold goes into a separate **"Review to include (N)"** sub-section at the bottom of its category, **unchecked by default**, labelled "review to include." Ticking the sub-section header stages all low-confidence items in that category.
+
+### 5. Live staged count + one commit button
+
+- Persistent footer bar shows **"N items staged for redaction"** — updates on every check/uncheck (no debounce needed; count comes from `selected.size + sideSelected`).
+- **One** primary button: **"Redact & verify (N items)"**. Disabled when N = 0.
+- Remove the current dual "Redact selected" vs "Redact, export & verify" buttons and the separate "Wipe hidden items" button — checking a hidden-vector item stages it live like every other category, and the single commit button drives the existing hybrid burn path (page items → burn; side-channel items → sanitize worker + `SET_SRC_BYTES` + verify).
+
+---
+
+## Staging behaviour (unchanged semantics, batched dispatch)
+
+- Checking a page-vector item stages `redact-det-<id>` immediately (already implemented, keep as-is).
+- Checking a side-channel item marks it staged in the selection set only — the actual cleaning still happens in the commit path (`sanitizeInWorker` → `verifySideChannelInWorker` → `SET_SRC_BYTES`) so we never partially wipe form fields mid-review.
+- All bulk toggles (category master, low-conf master, top-level select-all) route through `startTransition` and dispatch **one** `ADD_ANNOS` / `DELETE_ANNOS` per toggle — never a loop of single dispatches. This is the fix that keeps 13k-item selects instant on 5000-page docs.
+
+---
+
+## Files touched
+
+- `src/components/workspace/tool-panels.tsx` — `AutoDetectSection` (lines ~1280–2500 and its render block ~2016+). New sub-components stay in-file to avoid a cross-file refactor.
+  - Add `SummaryCard` (renders the category-totals line).
+  - Replace the current `<ul>` findings tree with `CategoryGroup` components (header + distinct-value list + low-conf subsection).
+  - Replace the footer button row with `StagedFooter` (live count + single commit button).
+  - Keep `redactSelected` as the single commit handler — no new burn code.
+
+No changes to:
+- `src/lib/editor/state.ts` (`ADD_ANNOS` / `DELETE_ANNOS` / `SET_SRC_BYTES` already exist).
+- `src/lib/workers/verify.worker.ts`, `verify-client.ts`.
+- `src/lib/pdf/detect-pii.ts` (categories are already emitted).
+- `RedactPanel` shell (heading, banner, scan buttons, mode toggle, review-confirm, trust line, pattern search, manual box tool).
+
+---
+
+## Acceptance test (from the brief)
+
+1. Scan a large doc → summary card lists category totals.
+2. Tick "Form fields (12)" only → footer shows "12 items staged", nothing else selected.
+3. Tick "SSNs (1,222)" also → footer shows "1,234 items staged".
+4. Expand "Names" → deselect one distinct name (3 occurrences) → footer count drops by 3.
+5. Click "Redact & verify (1,231 items)" → single commit runs page burn + side-channel wipe + verify → verified output.
+6. On a 13k-finding scan, master-checkbox toggles feel instant (batched dispatch, `startTransition`).
+
+Say **go** and I'll ship it.
