@@ -1408,6 +1408,9 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   // and file replaceFile from the sanitize path. Only cleared explicitly by
   // "Start new scan" or when the document changes (see effect below).
   const [lastSummary, setLastSummary] = useState<RedactionSummary | null>(null);
+  // TEMP DIAGNOSTIC: raster-fallback classification report shown after scan.
+  const [rasterReport, setRasterReport] = useState<ClassifyResult | null>(null);
+  const [rasterReportOpen, setRasterReportOpen] = useState(false);
   const mergeSummary = useCallback((partial: Partial<RedactionSummary>) => {
     setLastSummary((prev) => mergeRedactionSummary(prev, partial));
   }, []);
