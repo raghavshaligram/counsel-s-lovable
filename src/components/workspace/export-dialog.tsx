@@ -27,6 +27,7 @@ import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk
 import { downloadPdf } from "@/lib/pdf/download";
 import { ExportFormatRow } from "./export-format-row";
 import { CourtReadinessSection } from "./court-readiness";
+import { beginAuditRun, captureStage, endAuditRun, isAuditEnabled, serializeRun, type AuditRun } from "@/lib/pdf/audit-store";
 
 type Props = {
   open: boolean;
