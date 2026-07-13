@@ -83,7 +83,12 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           ? new Uint8Array(await file.arrayBuffer())
           : doc.srcBytes;
       const exportDoc = { ...doc, srcBytes: liveBytes };
+      const _mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
+      // eslint-disable-next-line no-console
+      console.log("[pipeline:size] INPUT", { mb: _mb(liveBytes.byteLength), bytes: liveBytes.byteLength, pages: doc.pages.length });
       let bytes = await exportEditedPdf(exportDoc);
+      // eslint-disable-next-line no-console
+      console.log("[pipeline:size] EXPORT (after exportEditedPdf)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength });
 
       if (pnOn) {
         const { addPageNumbers } = await importChunk(() => import("@/lib/batch/ops/page-numbers"));
@@ -205,10 +210,14 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           },
         );
         bytes = await promise;
+        // eslint-disable-next-line no-console
+        console.log("[pipeline:size] RASTERIZE+GATE (after redaction burn)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength });
       }
 
 
       const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
+      // eslint-disable-next-line no-console
+      console.log("[pipeline:size] FINAL (handed to downloadPdf)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength, name: outName });
       await downloadPdf(bytes, outName);
 
       toast.success("Saved", { id: tid });

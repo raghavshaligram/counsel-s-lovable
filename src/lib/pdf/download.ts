@@ -31,6 +31,9 @@ export async function downloadPdf(
   opts: { format?: ExportFormat; verify?: boolean } = {},
 ): Promise<void> {
   const fmt = opts.format ?? getExportFormat();
+  const _mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
+  // eslint-disable-next-line no-console
+  console.log("[pipeline:size] DOWNLOAD entry", { mb: _mb(bytes.byteLength), format: fmt, filename });
   if (fmt !== "pdf-a") {
     downloadBytes(bytes, filename, "application/pdf");
     return;
@@ -40,6 +43,8 @@ export async function downloadPdf(
   try {
     const { toPdfA, verifyPdfAStructuralAsync, logPdfAChecklist } = await import("@/lib/pdf/to-pdfa");
     const out = await toPdfA(bytes);
+    // eslint-disable-next-line no-console
+    console.log("[pipeline:size] PDF/A (after toPdfA)", { inMb: _mb(bytes.byteLength), outMb: _mb(out.byteLength), deltaMb: _mb(out.byteLength - bytes.byteLength) });
     const report = await verifyPdfAStructuralAsync(out);
     logPdfAChecklist(report, `downloadPdf:${filename}`);
     if (opts.verify !== false && !report.ok) {
