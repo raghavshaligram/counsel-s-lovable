@@ -238,27 +238,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   
 
 
-  logHeap("export.worker before exportEditedPdf out.save", {
-    sourceBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
-    outputPages: out.getPageCount(),
-  });
-  let bytes: Uint8Array;
-  try {
-    bytes = await out.save();
-  } catch (err) {
-    logAllocationFailure("export.worker out.save", err, {
-      sourceBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
-      outputPages: out.getPageCount(),
-    });
-    throw new Error(allocationFailureMessage("export.worker out.save", err));
-  }
-  // eslint-disable-next-line no-console
-  console.info("[export:size]", {
-    stage: "7_final_out_save",
-    mb: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
-    bytes: bytes.byteLength,
-    pages: out.getPageCount(),
-  });
+  let bytes = await out.save();
 
   // Optional encryption + permissions
   if (settings?.protect && settings.protect.userPassword) {
@@ -281,6 +261,15 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     bytes = await cantooDoc.save();
   }
 
+  // Release export-only caches so their embedded font/image buffers can be
+  // GC'd immediately once the caller has taken the output bytes.
+  imageCache.clear();
+  bundledFonts.clear();
+
+  logHeap("export.worker end", {
+    outputBytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    outputPages: out.getPageCount(),
+  });
   return bytes;
 }
 
