@@ -474,6 +474,27 @@ export function RedactPage() {
           });
         }
       }
+
+      // TEMP DIAGNOSTIC: classify every page by why it would need raster
+      // fallback and open a summary dialog. Runs on the already-parsed
+      // pdf.js doc — no re-parse, no export required.
+      const diagDoc = docRef.current;
+      if (diagDoc) {
+        try {
+          setDetectStatus("Analyzing pages for raster reasons…");
+          const report = await classifyRasterReasons(
+            diagDoc as unknown as Parameters<typeof classifyRasterReasons>[0],
+            {
+              onProgress: (done, total) =>
+                setDetectStatus(`Analyzing pages ${done}/${total}`),
+            },
+          );
+          setRasterReport(report);
+          setRasterReportOpen(true);
+        } catch (e) {
+          console.warn("[redact] raster classifier failed", e);
+        }
+      }
     } catch (err) {
       console.error(err);
       toast.error("Auto-detect failed");
