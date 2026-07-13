@@ -210,10 +210,14 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           },
         );
         bytes = await promise;
+        // eslint-disable-next-line no-console
+        console.log("[pipeline:size] RASTERIZE+GATE (after redaction burn)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength });
       }
 
 
       const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
+      // eslint-disable-next-line no-console
+      console.log("[pipeline:size] FINAL (handed to downloadPdf)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength, name: outName });
       await downloadPdf(bytes, outName);
 
       toast.success("Saved", { id: tid });
