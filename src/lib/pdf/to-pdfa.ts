@@ -587,8 +587,11 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     (ctx.trailerInfo as { ID?: PDFArray }).ID = id;
   });
 
-  const saved = await step("save (no object streams, header 1.7)", () =>
-    doc.save({ updateFieldAppearances: false, useObjectStreams: false }),
+  // PDF/A-2b (ISO 19005-2) permits object streams; PDF/A-1b did not — do not
+  // flip back to false without also downgrading the pdfaid:part in the XMP.
+  // Leaving object streams disabled inflates large redacted docs 5–10x.
+  const saved = await step("save (object streams on, header 1.7)", () =>
+    doc.save({ updateFieldAppearances: false, useObjectStreams: true }),
   );
 
   const out = ensurePdfHeader(saved, "1.7");
