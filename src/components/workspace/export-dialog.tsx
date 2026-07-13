@@ -107,6 +107,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           fontSize: 10,
           margin: 24,
         });
+        if (auditActive) await captureStage("page-numbers", bytes);
       }
 
       if (hfOn) {
@@ -120,11 +121,13 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           rule: "all",
           filename: doc.fileName,
         });
+        if (auditActive) await captureStage("header-footer", bytes);
       }
 
       if (flOn) {
         const { flatten } = await importChunk(() => import("@/lib/batch/ops/flatten"));
         bytes = await flatten(bytes, { forms: true, annotations: true });
+        if (auditActive) await captureStage("flatten", bytes);
       }
 
       if (batesOn) {
@@ -140,6 +143,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
             digits: bates.digits, position: bates.position,
             fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
           });
+          if (auditActive) await captureStage("bates", bytes);
         }
       }
 
