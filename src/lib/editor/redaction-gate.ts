@@ -182,7 +182,9 @@ export async function enforceRedactionGate(
       signal: opts.signal,
       stealBytes: true,
     });
+    }
   }
+
 
   if (!result.ok) {
     const byVector: Record<string, number> = {};
