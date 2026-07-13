@@ -1665,6 +1665,34 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
         }
       }
 
+      // TEMP DIAGNOSTIC: after scan completes, classify every page by WHY it
+      // would need raster fallback during redaction export. Opens a modal
+      // popup with the breakdown so the user can see e.g. "2891/3000 pages:
+      // Form XObject". No re-parse — opens the file fresh in pdf.js.
+      try {
+        updateScanProgress(ownerDocId, "Analyzing pages for raster fallback…");
+        const pdfjs = await loadPdfjs();
+        const bytes = new Uint8Array(await ownerFile.arrayBuffer());
+        const diagDoc = await pdfjs.getDocument({ data: bytes }).promise;
+        try {
+          const report = await classifyRasterReasons(
+            diagDoc as unknown as Parameters<typeof classifyRasterReasons>[0],
+            {
+              onProgress: (done, total) =>
+                updateScanProgress(ownerDocId, `Analyzing raster reasons ${done}/${total}`),
+            },
+          );
+          setRasterReport(report);
+          setRasterReportOpen(true);
+        } finally {
+          try { (diagDoc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
+        }
+      } catch (e) {
+        console.warn("[auto-detect] raster classifier failed", e);
+      }
+
+
+
     } catch (err) {
       const aborted = err instanceof DOMException && err.name === "AbortError";
       failScan(ownerDocId, err instanceof Error ? err.message : String(err), aborted);
