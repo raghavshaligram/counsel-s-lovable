@@ -102,33 +102,10 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       srcSlot[i] = -1;
     }
   }
-  logHeap("export.worker before batch copyPages", {
-    pagesToCopy: srcIndices.length,
-    totalPages: doc.pages.length,
-  });
   const copiedPages = srcIndices.length
     ? await out.copyPages(srcDoc, srcIndices)
     : [];
 
-  const inputMB = Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10;
-  // eslint-disable-next-line no-console
-  console.info("[export:size]", {
-    stage: "1_source_input", mb: inputMB, bytes: doc.srcBytes.byteLength,
-  });
-
-  // Count distinct pages that actually carry redactions (vs total pages).
-  const redactPages = new Set<number>();
-  let redactBoxCount = 0;
-  for (const a of doc.annotations) {
-    if (a.kind === "redact") { redactPages.add(a.page); redactBoxCount++; }
-  }
-  // eslint-disable-next-line no-console
-  console.info("[export:size] redaction-distribution", {
-    totalPages: doc.pages.length,
-    pagesWithRedactions: redactPages.size,
-    redactBoxCount,
-    annotationCount: doc.annotations.length,
-  });
 
   // Add pages in working order (PASS A — geometry only: addPage + rotation + crop).
   const outPageRefs: import("pdf-lib").PDFPage[] = new Array(doc.pages.length);
