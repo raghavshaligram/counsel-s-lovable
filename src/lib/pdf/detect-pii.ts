@@ -283,6 +283,25 @@ function looksStructured(text: string): boolean {
 const NAME_CANDIDATE_RE =
   /\b[A-Z][a-z'’\-]{1,}(?:\s+(?:[A-Z]\.?|de|la|le|van|von|da|del|der|di|du|el|al|bin|ben|mc|mac|st\.?|[A-Z][a-z'’\-]{1,})){1,3}\b/;
 
+// 2–4 ALL-CAPS tokens. High false-positive risk on section headings
+// ("EXECUTIVE SUMMARY", "UNITED STATES DISTRICT COURT"), so callers MUST
+// gate emission on both:
+//   (a) NON_NAME_WORDS rejection via classifyName, and
+//   (b) a nearby context signal (NAME_CONTEXT_SIGNAL_RE) in the same run.
+const NAME_CANDIDATE_UPPER_RE =
+  /\b[A-Z][A-Z'’\-]{1,}(?:\s+(?:[A-Z]\.?|[A-Z][A-Z'’\-]{1,})){1,3}\b/;
+
+// Words that, when present in the same text run as an ALL-CAPS candidate,
+// promote it from "probable heading" to "probable person name".
+const NAME_CONTEXT_SIGNAL_RE =
+  /(?:\b(?:client|name|patient|borrower|defendant|plaintiff|petitioner|respondent|witness|deponent|declarant|affiant|attorney|counsel|ssn|dob|dl|mr|mrs|ms|miss|mx|dr|prof|hon|rev|sir|madam|jr|sr|esq|esquire|phd|md|jd)\b|\/s\/)/i;
+
+// Field-label prefix ("Client Name:", "Patient:", "By:"). When a title-case
+// name follows one of these, classifyName's heading rejection is bypassed —
+// a labelled data row is not a heading even if it capitalizes every token.
+const LABEL_PREFIX_RE =
+  /(?:^|\s)(?:client(?:\s+name)?|name|patient|borrower|defendant|plaintiff|petitioner|respondent|witness|deponent|declarant|affiant|attorney|counsel|from|to|re|by|signed\s+by)\s*[:\-–]\s*$/i;
+
 // Strong "person follows" signals — when present, confidence is "high".
 const NAME_PREFIX_RE =
   /(?:^|[\s(])(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Hon|Atty|Rev|Sir|Madam|Sen|Rep|Gov|Justice|Judge|Officer|Captain|Lt|Sgt|by|signed\s+by|prepared\s+by|authored\s+by|executed\s+by|attorney\s+for|counsel\s+for|witness|deponent|declarant|plaintiff|defendant|petitioner|respondent|affiant|notary|on\s+behalf\s+of|\/s\/)\.?\s*$/i;
