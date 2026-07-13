@@ -283,6 +283,25 @@ function looksStructured(text: string): boolean {
 const NAME_CANDIDATE_RE =
   /\b[A-Z][a-z'’\-]{1,}(?:\s+(?:[A-Z]\.?|de|la|le|van|von|da|del|der|di|du|el|al|bin|ben|mc|mac|st\.?|[A-Z][a-z'’\-]{1,})){1,3}\b/;
 
+// 2–4 ALL-CAPS tokens. High false-positive risk on section headings
+// ("EXECUTIVE SUMMARY", "UNITED STATES DISTRICT COURT"), so callers MUST
+// gate emission on both:
+//   (a) NON_NAME_WORDS rejection via classifyName, and
+//   (b) a nearby context signal (NAME_CONTEXT_SIGNAL_RE) in the same run.
+const NAME_CANDIDATE_UPPER_RE =
+  /\b[A-Z][A-Z'’\-]{1,}(?:\s+(?:[A-Z]\.?|[A-Z][A-Z'’\-]{1,})){1,3}\b/;
+
+// Words that, when present in the same text run as an ALL-CAPS candidate,
+// promote it from "probable heading" to "probable person name".
+const NAME_CONTEXT_SIGNAL_RE =
+  /(?:\b(?:client|name|patient|borrower|defendant|plaintiff|petitioner|respondent|witness|deponent|declarant|affiant|attorney|counsel|ssn|dob|dl|mr|mrs|ms|miss|mx|dr|prof|hon|rev|sir|madam|jr|sr|esq|esquire|phd|md|jd)\b|\/s\/)/i;
+
+// Field-label prefix ("Client Name:", "Patient:", "By:"). When a title-case
+// name follows one of these, classifyName's heading rejection is bypassed —
+// a labelled data row is not a heading even if it capitalizes every token.
+const LABEL_PREFIX_RE =
+  /(?:^|\s)(?:client(?:\s+name)?|name|patient|borrower|defendant|plaintiff|petitioner|respondent|witness|deponent|declarant|affiant|attorney|counsel|from|to|re|by|signed\s+by)\s*[:\-–]\s*$/i;
+
 // Strong "person follows" signals — when present, confidence is "high".
 const NAME_PREFIX_RE =
   /(?:^|[\s(])(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Hon|Atty|Rev|Sir|Madam|Sen|Rep|Gov|Justice|Judge|Officer|Captain|Lt|Sgt|by|signed\s+by|prepared\s+by|authored\s+by|executed\s+by|attorney\s+for|counsel\s+for|witness|deponent|declarant|plaintiff|defendant|petitioner|respondent|affiant|notary|on\s+behalf\s+of|\/s\/)\.?\s*$/i;
@@ -370,6 +389,7 @@ function classifyName(
   fullStr: string,
   matchText: string,
   matchIndex: number,
+  opts?: { skipHeadingCheck?: boolean },
 ): { ok: boolean; confidence?: "high" | "low" } {
   const tokens = matchText.split(/\s+/);
   if (tokens.length < 2) return { ok: false };
@@ -395,22 +415,33 @@ function classifyName(
     if (anyNonName) return { ok: false };
   }
 
+  const before = fullStr.slice(0, matchIndex);
+  const after = fullStr.slice(matchIndex + matchText.length);
+  const hasLabelPrefix = LABEL_PREFIX_RE.test(before);
+
   // Reject when the surrounding text item is structurally a heading and the
-  // match basically IS the heading.
-  if (isLikelyHeading(fullStr) && matchText.trim().length >= fullStr.trim().length * 0.8) {
+  // match basically IS the heading — UNLESS a field label precedes it
+  // ("Client Name: John Smith") or the caller has already established a
+  // strong non-heading context signal (upper-case path).
+  if (
+    !opts?.skipHeadingCheck &&
+    !hasLabelPrefix &&
+    isLikelyHeading(fullStr) &&
+    matchText.trim().length >= fullStr.trim().length * 0.8
+  ) {
     return { ok: false };
   }
 
-  // Strong signal: title prefix, name suffix, middle initial, or apostrophe
-  // / hyphen typical of surnames.
-  const before = fullStr.slice(0, matchIndex);
-  const after = fullStr.slice(matchIndex + matchText.length);
+  // Strong signal: title prefix, name suffix, middle initial, apostrophe /
+  // hyphen typical of surnames, or a field label like "Client Name:".
   const hasPrefix = NAME_PREFIX_RE.test(before);
   const hasSuffix = NAME_SUFFIX_RE.test(after);
   const hasMiddleInitial = /\b[A-Z]\.\s/.test(matchText);
   const hasNameMark = /['’]|(?:^|\s)(?:O['’]|D['’]|Mc|Mac|St\.)/.test(matchText);
   const confidence: "high" | "low" =
-    hasPrefix || hasSuffix || hasMiddleInitial || hasNameMark ? "high" : "low";
+    hasPrefix || hasSuffix || hasMiddleInitial || hasNameMark || hasLabelPrefix
+      ? "high"
+      : "low";
   return { ok: true, confidence };
 }
 
@@ -1347,6 +1378,34 @@ export function matchAllCategories(str: string): CatHit[] {
       });
     }
     if (nm[0].length === 0) nameGlobal.lastIndex++;
+  }
+  // ALL-CAPS names — only emit when the item text has a strong context
+  // signal (Client / Name / SSN / DOB / title honorific / /s/ …). Without a
+  // signal these are almost always headings ("EXECUTIVE SUMMARY", "UNITED
+  // STATES DISTRICT COURT" — the latter also rejected by NON_NAME_WORDS).
+  if (NAME_CONTEXT_SIGNAL_RE.test(str)) {
+    const upperGlobal = new RegExp(NAME_CANDIDATE_UPPER_RE.source, "g");
+    let um: RegExpExecArray | null;
+    while ((um = upperGlobal.exec(str)) !== null) {
+      const verdict = classifyName(str, um[0], um.index, { skipHeadingCheck: true });
+      const s = um.index;
+      const e = s + um[0].length;
+      if (verdict.ok) {
+        const overlap = hits.some(
+          (h) => h.category === "name" && !(e <= h.start || s >= h.start + h.length),
+        );
+        if (!overlap) {
+          hits.push({
+            category: "name",
+            confidence: "high",
+            start: s,
+            length: um[0].length,
+            text: um[0],
+          });
+        }
+      }
+      if (um[0].length === 0) upperGlobal.lastIndex++;
+    }
   }
   // Case caption "X v. Y" / "X vs. Y" — flag BOTH party names. Parties may
   // be people or organizations; we tag both as "name" so the redaction UI
