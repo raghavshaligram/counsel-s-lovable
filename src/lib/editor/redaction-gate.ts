@@ -150,9 +150,23 @@ export async function enforceRedactionGate(
     }
     const leakedPages = new Map<number, { x: number; y: number; w: number; h: number }[]>();
     for (const leak of pageLeaks) {
+      // Prevent double-rasterization: a page rasterized in pass 1 that still
+      // reports a page-vector leak is a verifier artifact on burned pixels
+      // (the JPEG has no extractable text), not something a second JPEG
+      // burn can fix. Skip it here — a *real* leak elsewhere will fail the
+      // final `result.ok` check below and throw via RedactionGateError.
+      if (rasterizedPages.has(leak.page!)) {
+        // eslint-disable-next-line no-console
+        console.warn("[redact] gate: skipping second rasterize on already-burned page", { page: leak.page });
+        continue;
+      }
       const pageRects = rectsByPage.get(leak.page!) ?? [leak.rect!];
       leakedPages.set(leak.page!, pageRects);
     }
+    if (leakedPages.size === 0) {
+      // Nothing new to burn — fall through to the final verify-and-throw.
+    } else {
+
     const forced = await rasterizeRedactedPagesInWorker(bytes!, leakedPages, {
       mode: "always",
       scale: 2.5,
