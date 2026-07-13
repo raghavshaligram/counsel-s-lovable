@@ -225,6 +225,13 @@ export function RedactPage() {
   const [pendingDetections, setPendingDetections] = useState<Detection[] | null>(null);
   const [pendingUsedOcr, setPendingUsedOcr] = useState(false);
 
+  // Diagnostic: after a scan, we classify every page by WHY it would need
+  // raster fallback (Form XObject / annotation appearance / image-only /
+  // Type3). Temp visibility for troubleshooting redaction rewrite failures.
+  const [rasterReport, setRasterReport] = useState<ClassifyResult | null>(null);
+  const [rasterReportOpen, setRasterReportOpen] = useState(false);
+
+
   // Export settings (persisted)
   const [stripMetadata, setStripMetadata] = useState(true);
   const [defaultLabel, setDefaultLabel] = useState<string>("");
