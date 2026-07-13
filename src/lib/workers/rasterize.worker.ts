@@ -93,35 +93,18 @@ async function rasterize(
 
   const pdfjs = await loadPdfjs();
   const inputBytesMB = Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10;
-  logHeap("rasterize.worker before pdfjs bytes.slice", {
+  logHeap("rasterize.worker start", {
     inputBytesMB,
     redactionPages: pageRedactions.size,
     mode,
     scale,
   });
-  let pdfjsBytes: Uint8Array;
-  try {
-    pdfjsBytes = bytes.slice();
-  } catch (err) {
-    logAllocationFailure("rasterize.worker bytes.slice for pdfjs", err, { inputBytesMB });
-    throw new Error(allocationFailureMessage("rasterize.worker bytes.slice for pdfjs", err));
-  }
-  logHeap("rasterize.worker before pdfjs.getDocument", { inputBytesMB });
-  let srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
-  try {
-    srcDoc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
-  } catch (err) {
-    logAllocationFailure("rasterize.worker pdfjs.getDocument", err, { inputBytesMB });
-    throw new Error(allocationFailureMessage("rasterize.worker pdfjs.getDocument", err));
-  }
-  logHeap("rasterize.worker before PDFDocument.load", { inputBytesMB });
-  let srcPdfLib: PDFDocument;
-  try {
-    srcPdfLib = await PDFDocument.load(bytes);
-  } catch (err) {
-    logAllocationFailure("rasterize.worker PDFDocument.load", err, { inputBytesMB });
-    throw new Error(allocationFailureMessage("rasterize.worker PDFDocument.load", err));
-  }
+  // Parse pdf-lib first (eager parse into its own object graph), then hand
+  // the same underlying buffer to pdf.js — pdf.js takes ownership and may
+  // detach it, so we drop our `bytes` reference right after.
+  const srcPdfLib = await PDFDocument.load(bytes);
+  const srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> } =
+    await pdfjs.getDocument({ data: bytes }).promise;
   const outDoc = await PDFDocument.create();
 
   // Preserve document metadata — a fresh PDFDocument.create() starts with
