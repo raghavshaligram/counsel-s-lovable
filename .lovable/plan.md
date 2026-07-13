@@ -1,109 +1,32 @@
-# Redact inspector — findings redesign
+## Problem
 
-Scope is deliberately narrow: **restructure how findings are displayed and selected after a scan runs**. Everything else stays exactly as it is today.
+When opening a password-protected PDF in the workspace, `workspace-shell.tsx` calls `pdfjs.getDocument({ data: bytes })` directly (line 1235). That throws a `PasswordException`, which falls into the generic catch at line 1277 and shows the misleading "The file may be damaged. Try to repair it?" toast. Repair on an encrypted PDF then fails too.
 
----
+The project already has the right primitives:
+- `openPdfjs()` in `src/lib/pdf/pdf-open.ts` wraps `getDocument` and throws a typed `EncryptedPdfError` when the file is password-protected (and `MalformedPdfError` when actually corrupt).
+- `unlockPdf()` in `src/lib/unlock.ts` (used by `/unlock`) accepts a password and returns a decrypted `File`.
 
-## Preserve (unchanged)
+## Fix — scoped to the workspace open path
 
-- Redact heading and the honest info banner at the top.
-- **Quick scan / Full scan** buttons with device-aware time estimates as the scan entry point.
-- Keyword / pattern search inputs.
-- Manual box-drawing input.
-- Redaction mode toggle (Maximum / Standard).
-- Review-confirmation checkbox.
-- On-device trust line.
-- Amber "Suggestions only — never reported as complete" banner.
-- All burn/verify/gate internals: `exportEditedPdf`, `verifyRedactionRemoval`, `verifySideChannelInWorker`, `SET_SRC_BYTES`, side-channel worker path.
-- PDF viewer, open-tab lifecycle, editor-canvas, samplePageBg.
-- Batched `ADD_ANNOS` action for all multi-select staging (no per-item dispatch).
+Edit only `src/components/workspace/workspace-shell.tsx`:
 
----
+1. Replace the direct `pdfjs.getDocument({ data: bytes }).promise` call (~line 1235) with `openPdfjs(bytes)` from `@/lib/pdf/pdf-open`. Pass an `onPassword` handler that returns `null` so the first attempt fails fast with `EncryptedPdfError` — we want our own UI, not a `window.prompt`.
 
-## New — findings display after a scan
+2. In the `catch (err)` block (~line 1277), branch on error type:
+   - `err instanceof EncryptedPdfError` → show a distinct toast: *"This PDF is password-protected"* with an **Unlock** action. On click, open a small password dialog (reuse the pattern from `src/routes/unlock.tsx` — password input + show/hide eye, Enter to submit). On submit, call `unlockPdf(file, password)`; on `WrongPasswordError` re-prompt; on success, feed the returned unlocked `File` back through `onFiles(...)` (same mechanism the repair path already uses) so it opens normally in the same tab.
+   - `err instanceof MalformedPdfError` (or any other error) → keep the existing "Couldn't open this PDF / Repair" toast unchanged.
 
-### 1. Scan-summary card (top of findings)
+3. For the password dialog: add lightweight local state in `WorkspaceShell` (`unlockPromptFile: File | null`) and render a small `Dialog` (shadcn, already used elsewhere in the shell) at the bottom of the component. Keep it minimal — input + Unlock + Cancel — no new files needed.
 
-One at-a-glance line summarising what the scan found:
+## Out of scope
 
-> Reviewed **N pages**. Found: **X** SSNs · **X** credit cards · **X** emails · **X** phone numbers · **X** IBANs · **X** dates · **X** names & organizations (Y distinct) · **X** form fields · **X** comments/annotations · metadata.
+- No changes to `pdf-open.ts`, `unlock.ts`, or `/unlock` route.
+- No changes to `repair.ts` or the repair flow itself.
+- No changes to any other open path (chat extract, redact, etc.) — this fix targets the workspace shell where the user reported the bug. Those paths already use `openPdfjs` and surface encryption cleanly.
 
-Categories with zero hits are hidden from the line. Numbers are `.toLocaleString()`.
+## Verification
 
-### 2. Category groups with master checkboxes
-
-Replace the current flat list with collapsible category sections. Each header row has:
-
-- Master checkbox (checked / indeterminate / unchecked) — toggling stages/unstages every item in the category via one batched `ADD_ANNOS` / `DELETE_ANNOS` dispatch.
-- Category label + total count.
-- "(Y distinct)" suffix for categories where identical text collapses (names, emails, phones).
-- Expand/collapse chevron.
-
-Category order (highest-risk first, matches the summary line):
-
-1. SSNs
-2. Credit cards
-3. IBANs / bank accounts
-4. Emails
-5. Phone numbers
-6. Dates
-7. Names & organizations
-8. Form fields
-9. Comments / annotations
-10. Metadata
-
-### 3. Within each category — distinct values
-
-Expanding shows the distinct-value groups (already computed by `grouped`), each with:
-
-- Checkbox (checked / indeterminate / unchecked) reflecting selection across its occurrences.
-- The matched text.
-- Occurrence count.
-- Sample occurrences: first 10 rows with page + jump link, then "and N more — jump to next".
-
-### 4. Low-confidence subsection
-
-Any finding with confidence below the auto-select threshold goes into a separate **"Review to include (N)"** sub-section at the bottom of its category, **unchecked by default**, labelled "review to include." Ticking the sub-section header stages all low-confidence items in that category.
-
-### 5. Live staged count + one commit button
-
-- Persistent footer bar shows **"N items staged for redaction"** — updates on every check/uncheck (no debounce needed; count comes from `selected.size + sideSelected`).
-- **One** primary button: **"Redact & verify (N items)"**. Disabled when N = 0.
-- Remove the current dual "Redact selected" vs "Redact, export & verify" buttons and the separate "Wipe hidden items" button — checking a hidden-vector item stages it live like every other category, and the single commit button drives the existing hybrid burn path (page items → burn; side-channel items → sanitize worker + `SET_SRC_BYTES` + verify).
-
----
-
-## Staging behaviour (unchanged semantics, batched dispatch)
-
-- Checking a page-vector item stages `redact-det-<id>` immediately (already implemented, keep as-is).
-- Checking a side-channel item marks it staged in the selection set only — the actual cleaning still happens in the commit path (`sanitizeInWorker` → `verifySideChannelInWorker` → `SET_SRC_BYTES`) so we never partially wipe form fields mid-review.
-- All bulk toggles (category master, low-conf master, top-level select-all) route through `startTransition` and dispatch **one** `ADD_ANNOS` / `DELETE_ANNOS` per toggle — never a loop of single dispatches. This is the fix that keeps 13k-item selects instant on 5000-page docs.
-
----
-
-## Files touched
-
-- `src/components/workspace/tool-panels.tsx` — `AutoDetectSection` (lines ~1280–2500 and its render block ~2016+). New sub-components stay in-file to avoid a cross-file refactor.
-  - Add `SummaryCard` (renders the category-totals line).
-  - Replace the current `<ul>` findings tree with `CategoryGroup` components (header + distinct-value list + low-conf subsection).
-  - Replace the footer button row with `StagedFooter` (live count + single commit button).
-  - Keep `redactSelected` as the single commit handler — no new burn code.
-
-No changes to:
-- `src/lib/editor/state.ts` (`ADD_ANNOS` / `DELETE_ANNOS` / `SET_SRC_BYTES` already exist).
-- `src/lib/workers/verify.worker.ts`, `verify-client.ts`.
-- `src/lib/pdf/detect-pii.ts` (categories are already emitted).
-- `RedactPanel` shell (heading, banner, scan buttons, mode toggle, review-confirm, trust line, pattern search, manual box tool).
-
----
-
-## Acceptance test (from the brief)
-
-1. Scan a large doc → summary card lists category totals.
-2. Tick "Form fields (12)" only → footer shows "12 items staged", nothing else selected.
-3. Tick "SSNs (1,222)" also → footer shows "1,234 items staged".
-4. Expand "Names" → deselect one distinct name (3 occurrences) → footer count drops by 3.
-5. Click "Redact & verify (1,231 items)" → single commit runs page burn + side-channel wipe + verify → verified output.
-6. On a 13k-finding scan, master-checkbox toggles feel instant (batched dispatch, `startTransition`).
-
-Say **go** and I'll ship it.
+- Open a password-protected PDF in the workspace → password dialog appears (no "repair" toast).
+- Enter correct password → PDF opens in the same tab.
+- Enter wrong password → toast/inline error, dialog stays open.
+- Open a genuinely corrupt PDF → existing "Repair" toast still appears.
