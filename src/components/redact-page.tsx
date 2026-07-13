@@ -44,20 +44,6 @@ import {
   findKeywordInPdf,
   type KeywordMatch,
 } from "@/lib/pdf/detect-pii";
-import {
-  classifyRasterReasons,
-  REASON_LABELS,
-  type ClassifyResult,
-  type RasterReason,
-} from "@/lib/pdf/classify-raster-reasons";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 import { buildRedactionCertificate } from "@/lib/pdf/redaction-certificate";
 import { importChunk } from "@/lib/chunk-import";
@@ -224,13 +210,6 @@ export function RedactPage() {
   // Two-step auto-detect: scan results are staged here until the user commits.
   const [pendingDetections, setPendingDetections] = useState<Detection[] | null>(null);
   const [pendingUsedOcr, setPendingUsedOcr] = useState(false);
-
-  // Diagnostic: after a scan, we classify every page by WHY it would need
-  // raster fallback (Form XObject / annotation appearance / image-only /
-  // Type3). Temp visibility for troubleshooting redaction rewrite failures.
-  const [rasterReport, setRasterReport] = useState<ClassifyResult | null>(null);
-  const [rasterReportOpen, setRasterReportOpen] = useState(false);
-
 
   // Export settings (persisted)
   const [stripMetadata, setStripMetadata] = useState(true);
@@ -472,27 +451,6 @@ export function RedactPage() {
             description: "OCR can miss low-quality or handwritten text — give scanned pages a manual review.",
             duration: 10000,
           });
-        }
-      }
-
-      // TEMP DIAGNOSTIC: classify every page by why it would need raster
-      // fallback and open a summary dialog. Runs on the already-parsed
-      // pdf.js doc — no re-parse, no export required.
-      const diagDoc = docRef.current;
-      if (diagDoc) {
-        try {
-          setDetectStatus("Analyzing pages for raster reasons…");
-          const report = await classifyRasterReasons(
-            diagDoc as unknown as Parameters<typeof classifyRasterReasons>[0],
-            {
-              onProgress: (done, total) =>
-                setDetectStatus(`Analyzing pages ${done}/${total}`),
-            },
-          );
-          setRasterReport(report);
-          setRasterReportOpen(true);
-        } catch (e) {
-          console.warn("[redact] raster classifier failed", e);
         }
       }
     } catch (err) {
@@ -1423,12 +1381,6 @@ export function RedactPage() {
         </div>
         </TooltipProvider>
       )}
-      <RasterReasonsDialog
-        open={rasterReportOpen}
-        onOpenChange={setRasterReportOpen}
-        report={rasterReport}
-        fileName={file?.name}
-      />
     </AppShell>
   );
 }
@@ -1821,96 +1773,5 @@ function BoxOverlay({
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-// ────────── raster-fallback diagnostic dialog ──────────
-
-function RasterReasonsDialog({
-  open,
-  onOpenChange,
-  report,
-  fileName,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  report: ClassifyResult | null;
-  fileName?: string;
-}) {
-  if (!report) return null;
-  const reasons: RasterReason[] = ["form-xobject", "annotation-ap", "image-only", "type3-font"];
-  const summary = [
-    `${report.totalPages}-page document${fileName ? ` (${fileName})` : ""}`,
-    "",
-    `Pages rewriteable (text surgery): ${report.rewriteable}`,
-    `Pages needing raster fallback: ${report.rasterizable}`,
-    "",
-    "Reasons:",
-    ...reasons
-      .filter((r) => report.counts[r] > 0)
-      .map((r) => `- ${REASON_LABELS[r]}: ${report.counts[r]} page${report.counts[r] === 1 ? "" : "s"}`),
-  ].join("\n");
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Raster fallback diagnostic</DialogTitle>
-          <DialogDescription>
-            Heuristic classification of every page — why redaction would need to
-            rasterize instead of rewriting text.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 text-sm">
-          <div className="grid grid-cols-2 gap-2">
-            <Stat label="Total pages" value={report.totalPages} />
-            <Stat label="Text-rewriteable" value={report.rewriteable} tone="ok" />
-            <Stat label="Raster fallback" value={report.rasterizable} tone="warn" />
-            <Stat label="Rewrite ratio" value={`${Math.round((report.rewriteable / Math.max(1, report.totalPages)) * 100)}%`} />
-          </div>
-          <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Reasons</div>
-            <ul className="space-y-1">
-              {reasons.map((r) => (
-                <li key={r} className="flex items-center justify-between">
-                  <span>{REASON_LABELS[r]}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {report.counts[r]} page{report.counts[r] === 1 ? "" : "s"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <details className="rounded-md border border-border/60 bg-muted/20 p-3">
-            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Copyable summary
-            </summary>
-            <pre className="mt-2 whitespace-pre-wrap text-xs">{summary}</pre>
-          </details>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              try { navigator.clipboard.writeText(summary); toast.success("Copied summary"); }
-              catch { /* ignore */ }
-            }}
-          >
-            Copy
-          </Button>
-          <Button size="sm" onClick={() => onOpenChange(false)}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Stat({ label, value, tone }: { label: string; value: number | string; tone?: "ok" | "warn" }) {
-  const color = tone === "ok" ? "text-emerald-400" : tone === "warn" ? "text-amber-400" : "text-foreground";
-  return (
-    <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold tabular-nums ${color}`}>{value}</div>
-    </div>
   );
 }

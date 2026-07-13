@@ -27,7 +27,6 @@ import { importChunk, isChunkLoadError, reloadForFreshChunks } from "@/lib/chunk
 import { downloadPdf } from "@/lib/pdf/download";
 import { ExportFormatRow } from "./export-format-row";
 import { CourtReadinessSection } from "./court-readiness";
-import { beginAuditRun, captureStage, endAuditRun, isAuditEnabled, serializeRun, type AuditRun } from "@/lib/pdf/audit-store";
 
 type Props = {
   open: boolean;
@@ -64,7 +63,6 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const [footerText, setFooterText] = useState("Page {page} of {pages}");
 
   const [busy, setBusy] = useState(false);
-  const [auditRun, setAuditRun] = useState<AuditRun | null>(null);
 
   const reset = () => {
     setBusy(false);
@@ -73,9 +71,6 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const run = useCallback(async () => {
     if (!doc) return;
     setBusy(true);
-    setAuditRun(null);
-    const auditActive = isAuditEnabled();
-    if (auditActive) beginAuditRun();
     const tid = "wsx-export-flow";
     toast.loading("Building PDF…", { id: tid });
     try {
@@ -91,11 +86,9 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       const _mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
       // eslint-disable-next-line no-console
       console.log("[pipeline:size] INPUT", { mb: _mb(liveBytes.byteLength), bytes: liveBytes.byteLength, pages: doc.pages.length });
-      if (auditActive) await captureStage("source", liveBytes);
       let bytes = await exportEditedPdf(exportDoc);
       // eslint-disable-next-line no-console
       console.log("[pipeline:size] EXPORT (after exportEditedPdf)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength });
-      if (auditActive) await captureStage("export", bytes);
 
       if (pnOn) {
         const { addPageNumbers } = await importChunk(() => import("@/lib/batch/ops/page-numbers"));
@@ -107,7 +100,6 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           fontSize: 10,
           margin: 24,
         });
-        if (auditActive) await captureStage("page-numbers", bytes);
       }
 
       if (hfOn) {
@@ -121,13 +113,11 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           rule: "all",
           filename: doc.fileName,
         });
-        if (auditActive) await captureStage("header-footer", bytes);
       }
 
       if (flOn) {
         const { flatten } = await importChunk(() => import("@/lib/batch/ops/flatten"));
         bytes = await flatten(bytes, { forms: true, annotations: true });
-        if (auditActive) await captureStage("flatten", bytes);
       }
 
       if (batesOn) {
@@ -143,7 +133,6 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
             digits: bates.digits, position: bates.position,
             fontSize: bates.fontSize, color: bates.color, margin: bates.margin,
           });
-          if (auditActive) await captureStage("bates", bytes);
         }
       }
 
@@ -223,32 +212,19 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
         bytes = await promise;
         // eslint-disable-next-line no-console
         console.log("[pipeline:size] RASTERIZE+GATE (after redaction burn)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength });
-        if (auditActive) await captureStage("rasterize+gate", bytes);
       }
 
 
       const outName = doc.fileName.replace(/\.pdf$/i, "") + "-edited.pdf";
       // eslint-disable-next-line no-console
       console.log("[pipeline:size] FINAL (handed to downloadPdf)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength, name: outName });
-      if (auditActive) await captureStage("final", bytes);
       await downloadPdf(bytes, outName);
 
       toast.success("Saved", { id: tid });
-      if (auditActive) {
-        const run = endAuditRun();
-        setAuditRun(run);
-        // Keep dialog open so the user can grab the Copy JSON payload.
-        if (!run || run.perRun.length < 2) onOpenChange(false);
-      } else {
-        onOpenChange(false);
-      }
+      onOpenChange(false);
       reset();
     } catch (err) {
       console.error("[export-flow] failed", err);
-      if (auditActive) {
-        const run = endAuditRun();
-        setAuditRun(run);
-      }
       if (isChunkLoadError(err)) {
         toast.error("App was updated — reloading…", { id: tid });
         reloadForFreshChunks();
@@ -259,7 +235,6 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       setBusy(false);
     }
   }, [doc, file, pnOn, hfOn, flOn, batesOn, bates, batesAlreadyStamped, currentBatesFingerprint, pnFormat, headerText, footerText, onOpenChange]);
-
 
   const anyOn = pnOn || hfOn || flOn || batesOn;
 
@@ -431,12 +406,6 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           />
         )}
 
-        {auditRun && auditRun.perRun.length > 0 && (
-          <AuditSummarySection run={auditRun} />
-        )}
-
-
-
         <div className="mt-2 flex items-center justify-between gap-2">
           <button
             type="button"
@@ -508,48 +477,6 @@ function OptionRow({
           {children}
         </div>
       )}
-    </div>
-  );
-}
-
-function AuditSummarySection({ run }: { run: AuditRun }) {
-  const MB = (n: number) => Math.round((n / 1024 / 1024) * 100) / 100;
-  return (
-    <div className="mt-2 rounded-md border border-vault/30 bg-accent-soft/40 p-2 text-[11px]">
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="font-medium text-foreground">Object-graph audit</span>
-        <button
-          type="button"
-          onClick={() => {
-            void navigator.clipboard.writeText(serializeRun(run));
-            toast.success("Audit JSON copied");
-          }}
-          className="rounded-sm border border-vault/40 bg-surface-2 px-2 py-0.5 text-[10.5px] text-vault hover:bg-vault/10"
-        >
-          Copy JSON
-        </button>
-      </div>
-      <div className="mb-1 text-[10.5px] text-text-muted">
-        {run.perRun.length} stage{run.perRun.length === 1 ? "" : "s"} · {run.diffs.length} transition{run.diffs.length === 1 ? "" : "s"} · full data on <code>window.__vaultAudit</code>
-      </div>
-      <div className="flex flex-col gap-1">
-        {run.diffs.map((d, i) => {
-          const top = d.duplicated[0];
-          return (
-            <div key={i} className="flex items-center justify-between gap-2 rounded-sm bg-surface-2/60 px-1.5 py-1">
-              <span className="font-mono text-[10.5px] text-text-2">{String(d.from)} → {String(d.to)}</span>
-              <span className="font-mono text-[10.5px]">Δ {MB(d.fileBytesDelta)} MB</span>
-              {top ? (
-                <span className="truncate font-mono text-[10.5px] text-amber-500">
-                  dup {top.kind} {MB(top.bytesEach)}MB {top.copiesBefore}→{top.copiesAfter}× (wasted {MB(top.wastedBytesDelta)}MB)
-                </span>
-              ) : (
-                <span className="text-[10.5px] text-text-muted">no new dupes</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
