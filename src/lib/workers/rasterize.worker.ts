@@ -117,6 +117,18 @@ async function rasterize(
   let done = 0;
   const total = pageOrder.length;
 
+  // DIAGNOSTIC — Issue 1: identify whether every page is being rasterized.
+  // eslint-disable-next-line no-console
+  console.log("[rasterize:diagnostic] before loop", {
+    totalPages: srcDoc.numPages,
+    pagesWithRedactions: pageRedactions.size,
+    rasterizedPagesRequested: pageOrder.length,
+    mode,
+    scale,
+    jpegQuality: 0.92,
+    inputBytesMB: inputBytesMB,
+  });
+
   try {
     for (const pageIdx of pageOrder) {
       if (canceled()) throw new DOMException("Canceled", "AbortError");
