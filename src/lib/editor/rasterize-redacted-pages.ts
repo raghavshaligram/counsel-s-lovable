@@ -115,7 +115,7 @@ export async function rasterizeRedactedPages(
       let canvas: HTMLCanvasElement | null = document.createElement("canvas");
       canvas.width = Math.max(1, Math.ceil(vp.width));
       canvas.height = Math.max(1, Math.ceil(vp.height));
-      const ctx = canvas.getContext("2d");
+      let ctx: CanvasRenderingContext2D | null = canvas.getContext("2d");
       if (!ctx) {
         try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* ignore */ }
         throw new Error("Canvas 2D context unavailable");
@@ -152,7 +152,12 @@ export async function rasterizeRedactedPages(
             if (!blob) return reject(new Error("canvas.toBlob failed"));
             blob
               .arrayBuffer()
-              .then((bb) => resolve(new Uint8Array(bb)))
+              .then((bb) => {
+                const u = new Uint8Array(bb);
+                // Drop the Blob reference immediately so its backing
+                // storage can be reclaimed before we embed.
+                resolve(u);
+              })
               .catch(reject);
           },
           "image/jpeg",
@@ -160,10 +165,11 @@ export async function rasterizeRedactedPages(
         );
       });
 
-      // Free the canvas bitmap NOW — peak memory === 1 canvas + 1 JPEG.
+      // Free the canvas bitmap + context NOW — peak memory === 1 canvas + 1 JPEG.
       canvas.width = 0;
       canvas.height = 0;
       canvas = null;
+      ctx = null;
 
       // Stream the embed: remove old page, insert a new one, draw the JPEG,
       // and drop the JPEG bytes before moving on.
