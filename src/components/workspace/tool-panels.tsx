@@ -1434,6 +1434,7 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
       setTotalPagesScanned(0);
       setSelected(new Set());
       autoSelectedRef.current = new Set();
+      setChipFilter(new Set());
       return;
     }
     setFindings(scanRecord.findings);
