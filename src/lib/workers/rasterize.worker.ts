@@ -3,11 +3,22 @@
  * Rasterize worker — burns black rectangles into redacted pages OFF the
  * main thread.
  *
- * Runs pdf.js render + pdf-lib page swap page-by-page inside a dedicated
- * worker. Frees the canvas and JPEG bytes after each page so peak memory
- * stays at ~1 page's bitmap regardless of document size. When the worker
- * finishes it is terminated by the main-thread client, releasing its
- * entire heap in one shot.
+ * Runs pdf.js render + pdf-lib fresh-document build page-by-page inside a
+ * dedicated worker. Frees the canvas and JPEG bytes after each page so
+ * peak memory stays at ~1 page's bitmap regardless of document size. When
+ * the worker finishes it is terminated by the main-thread client,
+ * releasing its entire heap in one shot.
+ *
+ * Fresh-document build (fix for 18 MB → 747 MB inflation):
+ *   Previously we mutated the loaded PDFDocument via removePage/insertPage,
+ *   which left every original Page dict + content stream + resources
+ *   reachable from `/Outlines`, `/Names/Dests`, `/StructTreeRoot`, etc.
+ *   pdf-lib has no GC on save, so those originals got re-serialized on top
+ *   of the JPEG-per-page payload. We now build a fresh PDFDocument, copy
+ *   only untouched pages via copyPages, and draw a single JPEG for each
+ *   rasterized page. Outlines and cross-page link annotations targeting
+ *   rasterized pages are intentionally dropped — that is the trade-off
+ *   for breaking the retention chain.
  */
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
@@ -104,64 +115,109 @@ async function rasterize(
     throw new Error(allocationFailureMessage("rasterize.worker pdfjs.getDocument", err));
   }
   logHeap("rasterize.worker before PDFDocument.load", { inputBytesMB });
-  let outDoc: PDFDocument;
+  let srcPdfLib: PDFDocument;
   try {
-    outDoc = await PDFDocument.load(bytes);
+    srcPdfLib = await PDFDocument.load(bytes);
   } catch (err) {
     logAllocationFailure("rasterize.worker PDFDocument.load", err, { inputBytesMB });
     throw new Error(allocationFailureMessage("rasterize.worker PDFDocument.load", err));
   }
-  const rasterizedPages: number[] = [];
+  const outDoc = await PDFDocument.create();
 
-  const pageOrder = Array.from(pageRedactions.keys()).sort((a, b) => b - a);
-  let done = 0;
-  const total = pageOrder.length;
+  // Preserve document metadata — a fresh PDFDocument.create() starts with
+  // empty Info, and downstream (Bates, PDF/A) relies on these being set.
+  try {
+    const t = srcPdfLib.getTitle(); if (t) outDoc.setTitle(t);
+    const a = srcPdfLib.getAuthor(); if (a) outDoc.setAuthor(a);
+    const s = srcPdfLib.getSubject(); if (s) outDoc.setSubject(s);
+    const k = srcPdfLib.getKeywords(); if (k) outDoc.setKeywords([k]);
+    const cr = srcPdfLib.getCreator(); if (cr) outDoc.setCreator(cr);
+    const pr = srcPdfLib.getProducer(); if (pr) outDoc.setProducer(pr);
+    const cd = srcPdfLib.getCreationDate(); if (cd) outDoc.setCreationDate(cd);
+    const md = srcPdfLib.getModificationDate(); if (md) outDoc.setModificationDate(md);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[rasterize] metadata copy failed (non-fatal)", err);
+  }
 
-  // DIAGNOSTIC — Issue 1: identify whether every page is being rasterized.
+  const totalPages = srcPdfLib.getPageCount();
+
+  // Decide up front which pages will be rasterized. In "fallback" mode we
+  // skip pages whose text-hit test misses every rect (content-stream
+  // surgery already cleared them); in "always" mode every requested page
+  // is rasterized.
+  const toRasterize = new Set<number>();
+  for (const pageIdx of pageRedactions.keys()) {
+    if (pageIdx < 0 || pageIdx >= totalPages) continue;
+    const rects = pageRedactions.get(pageIdx);
+    if (!rects || !rects.length) continue;
+    if (mode === "always") {
+      toRasterize.add(pageIdx);
+      continue;
+    }
+    // fallback: probe text before committing to rasterize.
+    const page = await srcDoc.getPage(pageIdx + 1);
+    const viewport1 = page.getViewport({ scale: 1 });
+    const ph = viewport1.height;
+    const tc = await page.getTextContent();
+    const hit = (tc.items as unknown[]).some((it: unknown) => {
+      if (typeof it !== "object" || it === null || !("str" in it)) return false;
+      const item = it as { str: string; transform: number[]; width?: number; height?: number };
+      if (!item.str || !item.str.trim()) return false;
+      const t = item.transform;
+      if (!t) return false;
+      const fontH = Math.hypot(t[2], t[3]) || item.height || 1;
+      const x = t[4];
+      const yTop = ph - t[5];
+      const w = Math.max(item.width ?? fontH * 0.5, 0.5);
+      const r = { x, y: yTop, w, h: fontH };
+      return rects.some((rr) => r.x < rr.x + rr.w && r.x + r.w > rr.x && r.y < rr.y + rr.h && r.y + r.h > rr.y);
+    });
+    try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* noop */ }
+    if (hit) toRasterize.add(pageIdx);
+  }
+
   // eslint-disable-next-line no-console
   console.log("[rasterize:diagnostic] before loop", {
-    totalPages: srcDoc.numPages,
+    totalPages,
     pagesWithRedactions: pageRedactions.size,
-    rasterizedPagesRequested: pageOrder.length,
+    pagesToRasterize: toRasterize.size,
     mode,
     scale,
     jpegQuality: 0.92,
-    inputBytesMB: inputBytesMB,
+    inputBytesMB,
   });
 
+  const rasterizedPages: number[] = [];
+  let done = 0;
+  const total = totalPages;
+
   try {
-    for (const pageIdx of pageOrder) {
+    // Single ascending pass over every page — rasterize or copy.
+    for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
       if (canceled()) throw new DOMException("Canceled", "AbortError");
-      const rects = pageRedactions.get(pageIdx);
-      if (!rects || !rects.length) continue;
-      if (pageIdx < 0 || pageIdx >= srcDoc.numPages) continue;
 
-      const page = await srcDoc.getPage(pageIdx + 1);
-      const viewport1 = page.getViewport({ scale: 1 });
-      const ph = viewport1.height;
-
-      if (mode === "fallback") {
-        const tc = await page.getTextContent();
-        const hit = (tc.items as unknown[]).some((it: unknown) => {
-          if (typeof it !== "object" || it === null || !("str" in it)) return false;
-          const item = it as { str: string; transform: number[]; width?: number; height?: number };
-          if (!item.str || !item.str.trim()) return false;
-          const t = item.transform;
-          if (!t) return false;
-          const fontH = Math.hypot(t[2], t[3]) || item.height || 1;
-          const x = t[4];
-          const yTop = ph - t[5];
-          const w = Math.max(item.width ?? fontH * 0.5, 0.5);
-          const r = { x, y: yTop, w, h: fontH };
-          return rects.some((rr) => r.x < rr.x + rr.w && r.x + r.w > rr.x && r.y < rr.y + rr.h && r.y + r.h > rr.y);
-        });
-        if (!hit) {
-          try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* noop */ }
-          done++; onProgress(done, total);
-          continue;
+      if (!toRasterize.has(pageIdx)) {
+        // Copy the untouched page from the source doc. copyPages carries
+        // per-page resources (fonts, images) via pdf-lib's ref remap, so
+        // this branch does NOT retain rasterized-page originals.
+        try {
+          const [copied] = await outDoc.copyPages(srcPdfLib, [pageIdx]);
+          outDoc.addPage(copied);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn("[rasterize] copyPages failed for page — inserting blank placeholder", { pageIdx, err });
+          const srcPage = srcPdfLib.getPage(pageIdx);
+          const { width, height } = srcPage.getSize();
+          outDoc.addPage([width, height]);
         }
+        done++; onProgress(done, total);
+        continue;
       }
 
+      // Rasterize path.
+      const page = await srcDoc.getPage(pageIdx + 1);
+      const rects = pageRedactions.get(pageIdx)!;
       const vp = page.getViewport({ scale });
       let canvas: OffscreenCanvas | null = new OffscreenCanvas(
         Math.max(1, Math.ceil(vp.width)),
@@ -194,16 +250,12 @@ async function rasterize(
       // Free canvas immediately.
       canvas.width = 0; canvas.height = 0; canvas = null;
 
-      const pages = outDoc.getPages();
-      const existing = pages[pageIdx];
-      if (existing) {
-        const { width, height } = existing.getSize();
-        const img = await outDoc.embedJpg(jpegBytes);
-        outDoc.removePage(pageIdx);
-        const newPage = outDoc.insertPage(pageIdx, [width, height]);
-        newPage.drawImage(img, { x: 0, y: 0, width, height });
-        rasterizedPages.push(pageIdx);
-      }
+      const srcPage = srcPdfLib.getPage(pageIdx);
+      const { width, height } = srcPage.getSize();
+      const img = await outDoc.embedJpg(jpegBytes);
+      const newPage = outDoc.addPage([width, height]);
+      newPage.drawImage(img, { x: 0, y: 0, width, height });
+      rasterizedPages.push(pageIdx);
       jpegBytes = null;
 
       done++; onProgress(done, total);
@@ -218,11 +270,15 @@ async function rasterize(
   console.info("[redact] rasterize summary", {
     mode,
     rasterizedPages: rasterizedPages.length,
-    totalPages: srcDoc.numPages,
+    totalPages,
     redactionPages: pageRedactions.size,
   });
 
-  if (rasterizedPages.length === 0) return { bytes, rasterizedPages: [] };
+  if (rasterizedPages.length === 0 && toRasterize.size === 0) {
+    // Nothing changed — return source bytes untouched.
+    return { bytes, rasterizedPages: [] };
+  }
+
   logHeap("rasterize.worker before outDoc.save", {
     inputBytesMB,
     rasterizedPages: rasterizedPages.length,
@@ -242,7 +298,7 @@ async function rasterize(
     inputBytesMB,
     outputBytesMB: Math.round((outBytes.byteLength / 1024 / 1024) * 10) / 10,
     rasterizedPagesActual: rasterizedPages.length,
-    totalPages: srcDoc.numPages,
+    totalPages,
     mode,
     scale,
     inflationX: Math.round((outBytes.byteLength / Math.max(1, bytes.byteLength)) * 10) / 10,
