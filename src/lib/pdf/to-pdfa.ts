@@ -585,6 +585,14 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     id.push(randomHexString(16));
     id.push(randomHexString(16));
     (ctx.trailerInfo as { ID?: PDFArray }).ID = id;
+    // DIAGNOSTIC — Issue 2: confirm /ID is actually set on trailerInfo pre-save.
+    const preId = (ctx.trailerInfo as { ID?: unknown }).ID;
+    // eslint-disable-next-line no-console
+    console.log("[pdfa:trailer] BEFORE save", {
+      hasID: !!preId,
+      idType: preId ? (preId as object).constructor?.name : null,
+      idLen: preId && typeof (preId as { size?: () => number }).size === "function" ? (preId as { size: () => number }).size() : null,
+    });
   });
 
   const saved = await step("save (no object streams, header 1.7)", () =>
@@ -592,6 +600,18 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
   );
 
   const out = ensurePdfHeader(saved, "1.7");
+  // DIAGNOSTIC — Issue 2: confirm /ID survived serialization.
+  {
+    const text = new TextDecoder("latin1").decode(out.slice(Math.max(0, out.byteLength - 4096)));
+    const idMatch = /\/ID\s*\[[^\]]+\]/.exec(text);
+    // eslint-disable-next-line no-console
+    console.log("[pdfa:trailer] AFTER save", {
+      trailerIdPresentInBytes: !!idMatch,
+      match: idMatch ? idMatch[0].slice(0, 120) : null,
+      bytesMB: Math.round((out.byteLength / 1024 / 1024) * 10) / 10,
+    });
+  }
+
 
   // Final self-check — programmatic gate. We refuse to return a buffer
   // labeled "court-ready" if any structural requirement still fails.
