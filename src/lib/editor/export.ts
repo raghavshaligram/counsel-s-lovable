@@ -22,25 +22,17 @@ import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } 
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
 import { importChunk } from "@/lib/chunk-import";
-import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
+import { logHeap } from "@/lib/memory-log";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
 export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
-  logHeap("export.worker before exportEditedPdf PDFDocument.load", {
+  logHeap("export.worker start", {
     inputBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
     pages: doc.pages.length,
     annotations: doc.annotations.length,
   });
-  let srcDoc: PDFDocument;
-  try {
-    srcDoc = await PDFDocument.load(doc.srcBytes);
-  } catch (err) {
-    logAllocationFailure("export.worker PDFDocument.load", err, {
-      inputBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
-    });
-    throw new Error(allocationFailureMessage("export.worker PDFDocument.load", err));
-  }
+  const srcDoc = await PDFDocument.load(doc.srcBytes);
   const out = await PDFDocument.create();
   out.registerFontkit(fontkit);
   const fonts = {
@@ -110,33 +102,10 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       srcSlot[i] = -1;
     }
   }
-  logHeap("export.worker before batch copyPages", {
-    pagesToCopy: srcIndices.length,
-    totalPages: doc.pages.length,
-  });
   const copiedPages = srcIndices.length
     ? await out.copyPages(srcDoc, srcIndices)
     : [];
 
-  const inputMB = Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10;
-  // eslint-disable-next-line no-console
-  console.info("[export:size]", {
-    stage: "1_source_input", mb: inputMB, bytes: doc.srcBytes.byteLength,
-  });
-
-  // Count distinct pages that actually carry redactions (vs total pages).
-  const redactPages = new Set<number>();
-  let redactBoxCount = 0;
-  for (const a of doc.annotations) {
-    if (a.kind === "redact") { redactPages.add(a.page); redactBoxCount++; }
-  }
-  // eslint-disable-next-line no-console
-  console.info("[export:size] redaction-distribution", {
-    totalPages: doc.pages.length,
-    pagesWithRedactions: redactPages.size,
-    redactBoxCount,
-    annotationCount: doc.annotations.length,
-  });
 
   // Add pages in working order (PASS A — geometry only: addPage + rotation + crop).
   const outPageRefs: import("pdf-lib").PDFPage[] = new Array(doc.pages.length);
@@ -269,27 +238,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   
 
 
-  logHeap("export.worker before exportEditedPdf out.save", {
-    sourceBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
-    outputPages: out.getPageCount(),
-  });
-  let bytes: Uint8Array;
-  try {
-    bytes = await out.save();
-  } catch (err) {
-    logAllocationFailure("export.worker out.save", err, {
-      sourceBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
-      outputPages: out.getPageCount(),
-    });
-    throw new Error(allocationFailureMessage("export.worker out.save", err));
-  }
-  // eslint-disable-next-line no-console
-  console.info("[export:size]", {
-    stage: "7_final_out_save",
-    mb: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
-    bytes: bytes.byteLength,
-    pages: out.getPageCount(),
-  });
+  let bytes = await out.save();
 
   // Optional encryption + permissions
   if (settings?.protect && settings.protect.userPassword) {
@@ -312,6 +261,15 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     bytes = await cantooDoc.save();
   }
 
+  // Release export-only caches so their embedded font/image buffers can be
+  // GC'd immediately once the caller has taken the output bytes.
+  imageCache.clear();
+  bundledFonts.clear();
+
+  logHeap("export.worker end", {
+    outputBytesMB: Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10,
+    outputPages: out.getPageCount(),
+  });
   return bytes;
 }
 

@@ -22,7 +22,7 @@
  */
 import { PDFDocument } from "pdf-lib";
 import { loadPdfjs } from "@/lib/pdf/worker";
-import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
+import { logHeap } from "@/lib/memory-log";
 
 export interface RectTL { x: number; y: number; w: number; h: number }
 
@@ -93,35 +93,17 @@ async function rasterize(
 
   const pdfjs = await loadPdfjs();
   const inputBytesMB = Math.round((bytes.byteLength / 1024 / 1024) * 10) / 10;
-  logHeap("rasterize.worker before pdfjs bytes.slice", {
+  logHeap("rasterize.worker start", {
     inputBytesMB,
     redactionPages: pageRedactions.size,
     mode,
     scale,
   });
-  let pdfjsBytes: Uint8Array;
-  try {
-    pdfjsBytes = bytes.slice();
-  } catch (err) {
-    logAllocationFailure("rasterize.worker bytes.slice for pdfjs", err, { inputBytesMB });
-    throw new Error(allocationFailureMessage("rasterize.worker bytes.slice for pdfjs", err));
-  }
-  logHeap("rasterize.worker before pdfjs.getDocument", { inputBytesMB });
-  let srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
-  try {
-    srcDoc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
-  } catch (err) {
-    logAllocationFailure("rasterize.worker pdfjs.getDocument", err, { inputBytesMB });
-    throw new Error(allocationFailureMessage("rasterize.worker pdfjs.getDocument", err));
-  }
-  logHeap("rasterize.worker before PDFDocument.load", { inputBytesMB });
-  let srcPdfLib: PDFDocument;
-  try {
-    srcPdfLib = await PDFDocument.load(bytes);
-  } catch (err) {
-    logAllocationFailure("rasterize.worker PDFDocument.load", err, { inputBytesMB });
-    throw new Error(allocationFailureMessage("rasterize.worker PDFDocument.load", err));
-  }
+  // pdf-lib holds subarray views into the source buffer for lazy stream
+  // reads, so we cannot let pdf.js detach it. Give pdf.js its own slice.
+  const srcPdfLib = await PDFDocument.load(bytes);
+  const srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> } =
+    await pdfjs.getDocument({ data: bytes.slice() }).promise;
   const outDoc = await PDFDocument.create();
 
   // Preserve document metadata — a fresh PDFDocument.create() starts with
@@ -177,17 +159,6 @@ async function rasterize(
     if (hit) toRasterize.add(pageIdx);
   }
 
-  // eslint-disable-next-line no-console
-  console.log("[rasterize:diagnostic] before loop", {
-    totalPages,
-    pagesWithRedactions: pageRedactions.size,
-    pagesToRasterize: toRasterize.size,
-    mode,
-    scale,
-    jpegQuality: 0.92,
-    inputBytesMB,
-  });
-
   const rasterizedPages: number[] = [];
   let done = 0;
   const total = totalPages;
@@ -223,7 +194,7 @@ async function rasterize(
         Math.max(1, Math.ceil(vp.width)),
         Math.max(1, Math.ceil(vp.height)),
       );
-      const ctx = canvas.getContext("2d");
+      let ctx: OffscreenCanvasRenderingContext2D | null = canvas.getContext("2d");
       if (!ctx) {
         try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* noop */ }
         throw new Error("OffscreenCanvas 2D context unavailable");
@@ -244,11 +215,14 @@ async function rasterize(
       }
       try { (page as unknown as { cleanup?: () => void }).cleanup?.(); } catch { /* noop */ }
 
-      const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
-      let jpegBytes: Uint8Array | null = new Uint8Array(await blob.arrayBuffer());
+      let blob: Blob | null = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
+      let jpegBuf: ArrayBuffer | null = await blob.arrayBuffer();
+      blob = null;
+      let jpegBytes: Uint8Array | null = new Uint8Array(jpegBuf);
+      jpegBuf = null;
 
-      // Free canvas immediately.
-      canvas.width = 0; canvas.height = 0; canvas = null;
+      // Free canvas + context immediately.
+      canvas.width = 0; canvas.height = 0; canvas = null; ctx = null;
 
       const srcPage = srcPdfLib.getPage(pageIdx);
       const { width, height } = srcPage.getSize();
@@ -263,7 +237,10 @@ async function rasterize(
       await new Promise<void>((r) => setTimeout(r, 0));
     }
   } finally {
-    try { (srcDoc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* noop */ }
+    // Destroy the pdf.js document immediately once page iteration is done —
+    // releases its worker-side page cache before pdf-lib's save allocates
+    // the output buffer.
+    try { await (srcDoc as unknown as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* noop */ }
   }
 
   // eslint-disable-next-line no-console
@@ -279,29 +256,11 @@ async function rasterize(
     return { bytes, rasterizedPages: [] };
   }
 
-  logHeap("rasterize.worker before outDoc.save", {
-    inputBytesMB,
-    rasterizedPages: rasterizedPages.length,
-  });
-  let outBytes: Uint8Array;
-  try {
-    outBytes = await outDoc.save({ updateFieldAppearances: false });
-  } catch (err) {
-    logAllocationFailure("rasterize.worker outDoc.save", err, {
-      inputBytesMB,
-      rasterizedPages: rasterizedPages.length,
-    });
-    throw new Error(allocationFailureMessage("rasterize.worker outDoc.save", err));
-  }
-  // eslint-disable-next-line no-console
-  console.log("[rasterize:diagnostic] after save", {
+  const outBytes = await outDoc.save({ updateFieldAppearances: false });
+  logHeap("rasterize.worker end", {
     inputBytesMB,
     outputBytesMB: Math.round((outBytes.byteLength / 1024 / 1024) * 10) / 10,
-    rasterizedPagesActual: rasterizedPages.length,
-    totalPages,
-    mode,
-    scale,
-    inflationX: Math.round((outBytes.byteLength / Math.max(1, bytes.byteLength)) * 10) / 10,
+    rasterizedPages: rasterizedPages.length,
   });
   return { bytes: outBytes, rasterizedPages: rasterizedPages.slice().sort((a, b) => a - b) };
 }
