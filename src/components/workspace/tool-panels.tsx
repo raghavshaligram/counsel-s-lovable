@@ -2470,20 +2470,28 @@ function sanitizeStageLabel(stage: string): string {
             const onChip = (key: string) => {
               const ids = idsForChip(key);
               const active = chipActive(key);
-              startTransition(() => {
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (active) {
-                    for (const id of ids) next.delete(id);
-                  } else {
-                    for (const id of ids) next.add(id);
-                  }
-                  return next;
-                });
-                // List filter is derived from which chips are fully staged
-                // (see activeChipKeys) — no activeTab bookkeeping needed.
-              });
-            };
+        startTransition(() => {
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (active) {
+              for (const id of ids) next.delete(id);
+            } else {
+              for (const id of ids) next.add(id);
+            }
+            return next;
+          });
+          setChipFilter((prev) => {
+            const next = new Set(prev);
+            if (key === "all") {
+              next.clear();
+              return next;
+            }
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+          });
+        });
+      };
 
             const allActive = chipActive("all");
             return (
