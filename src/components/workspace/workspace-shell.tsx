@@ -382,6 +382,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
 
   // Pending close (for the unsaved-changes guard).
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
+  const [unlockPromptFile, setUnlockPromptFile] = useState<File | null>(null);
   const [pendingHomeClose, setPendingHomeClose] = useState(false); // legacy guard
   // Immediate visual affordance when the user triggers "open file". The
   // OS file picker doesn't block us, but under CPU load from a running
