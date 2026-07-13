@@ -73,6 +73,9 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const run = useCallback(async () => {
     if (!doc) return;
     setBusy(true);
+    setAuditRun(null);
+    const auditActive = isAuditEnabled();
+    if (auditActive) beginAuditRun();
     const tid = "wsx-export-flow";
     toast.loading("Building PDF…", { id: tid });
     try {
@@ -88,9 +91,11 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
       const _mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
       // eslint-disable-next-line no-console
       console.log("[pipeline:size] INPUT", { mb: _mb(liveBytes.byteLength), bytes: liveBytes.byteLength, pages: doc.pages.length });
+      if (auditActive) await captureStage("source", liveBytes);
       let bytes = await exportEditedPdf(exportDoc);
       // eslint-disable-next-line no-console
       console.log("[pipeline:size] EXPORT (after exportEditedPdf)", { mb: _mb(bytes.byteLength), bytes: bytes.byteLength });
+      if (auditActive) await captureStage("export", bytes);
 
       if (pnOn) {
         const { addPageNumbers } = await importChunk(() => import("@/lib/batch/ops/page-numbers"));
