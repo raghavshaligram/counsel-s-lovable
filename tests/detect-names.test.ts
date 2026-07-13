@@ -4,10 +4,10 @@
  * still rejecting genuine section headings.
  */
 import { describe, it, expect } from "vitest";
-import { __testMatchAllCategories } from "@/lib/pdf/detect-pii";
+import { matchAllCategories } from "@/lib/pdf/detect-pii";
 
 function names(str: string): string[] {
-  return __testMatchAllCategories(str)
+  return matchAllCategories(str)
     .filter((h) => h.category === "name")
     .map((h) => h.text);
 }
