@@ -431,6 +431,12 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
           />
         )}
 
+        {auditRun && auditRun.perRun.length > 0 && (
+          <AuditSummarySection run={auditRun} />
+        )}
+
+
+
         <div className="mt-2 flex items-center justify-between gap-2">
           <button
             type="button"
