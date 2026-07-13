@@ -99,12 +99,11 @@ async function rasterize(
     mode,
     scale,
   });
-  // Parse pdf-lib first (eager parse into its own object graph), then hand
-  // the same underlying buffer to pdf.js — pdf.js takes ownership and may
-  // detach it, so we drop our `bytes` reference right after.
+  // pdf-lib holds subarray views into the source buffer for lazy stream
+  // reads, so we cannot let pdf.js detach it. Give pdf.js its own slice.
   const srcPdfLib = await PDFDocument.load(bytes);
   const srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> } =
-    await pdfjs.getDocument({ data: bytes }).promise;
+    await pdfjs.getDocument({ data: bytes.slice() }).promise;
   const outDoc = await PDFDocument.create();
 
   // Preserve document metadata — a fresh PDFDocument.create() starts with
