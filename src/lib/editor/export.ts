@@ -27,20 +27,12 @@ import { logHeap } from "@/lib/memory-log";
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
 export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings): Promise<Uint8Array> {
-  logHeap("export.worker before exportEditedPdf PDFDocument.load", {
+  logHeap("export.worker start", {
     inputBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
     pages: doc.pages.length,
     annotations: doc.annotations.length,
   });
-  let srcDoc: PDFDocument;
-  try {
-    srcDoc = await PDFDocument.load(doc.srcBytes);
-  } catch (err) {
-    logAllocationFailure("export.worker PDFDocument.load", err, {
-      inputBytesMB: Math.round((doc.srcBytes.byteLength / 1024 / 1024) * 10) / 10,
-    });
-    throw new Error(allocationFailureMessage("export.worker PDFDocument.load", err));
-  }
+  const srcDoc = await PDFDocument.load(doc.srcBytes);
   const out = await PDFDocument.create();
   out.registerFontkit(fontkit);
   const fonts = {
