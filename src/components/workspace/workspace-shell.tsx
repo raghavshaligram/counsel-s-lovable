@@ -1276,6 +1276,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       } catch (err) {
         console.error("[workspace] open failed", err);
         const failed = f;
+        // Password-protected PDFs: surface an Unlock dialog instead of the
+        // misleading "repair" toast. openPdfjs throws EncryptedPdfError when
+        // the onPassword handler returns null (see above).
+        const errName = (err as { name?: string } | null)?.name;
+        if (errName === "EncryptedPdfError") {
+          toast.info("This PDF is password-protected", {
+            description: "Enter the password to unlock and open it.",
+            action: {
+              label: "Unlock",
+              onClick: () => setUnlockPromptFile(failed),
+            },
+          });
+          setUnlockPromptFile(failed);
+          return;
+        }
         toast.error("Couldn't open this PDF", {
           description: "The file may be damaged. Try to repair it?",
           action: {
