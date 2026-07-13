@@ -1393,6 +1393,10 @@ function AutoDetectSensitive({ ctx }: { ctx: ToolPanelCtx }) {
   // made "Commit staged" impossible mid-scan (selection kept resetting).
   const autoSelectedRef = useRef<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Explicit chip-based list filter. Empty = show every category. Only
+  // mutated by chip clicks (see onChip) — never derived from selection,
+  // so unchecking an item never hides its category.
+  const [chipFilter, setChipFilter] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<string>("all");
   const [meta, setMeta] = useState<typeof import("@/lib/pdf/detect-pii").CATEGORY_META | null>(null);
   const [capability, setCapability] = useState<DeviceCapability | null>(null);
