@@ -64,6 +64,7 @@ export function ExportDialog({ open, onOpenChange, doc, file }: Props) {
   const [footerText, setFooterText] = useState("Page {page} of {pages}");
 
   const [busy, setBusy] = useState(false);
+  const [auditRun, setAuditRun] = useState<AuditRun | null>(null);
 
   const reset = () => {
     setBusy(false);
