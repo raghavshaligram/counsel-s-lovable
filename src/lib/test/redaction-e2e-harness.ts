@@ -111,7 +111,7 @@ async function buildFixture(): Promise<{ bytes: Uint8Array; rect: RedactionRectT
   if (existing) existing.push(annotRef);
   else page.node.set(PDFName.of("Annots"), ctx.obj([annotRef]));
 
-  const bytes = await doc.save({ useObjectStreams: false });
+  const bytes = await doc.save({ useObjectStreams: true });
   // Redaction rect covers the sensitive line. Top-left origin (editor convention).
   const rect: RedactionRectTL = {
     x: 72 - 2,
@@ -268,7 +268,7 @@ async function buildFragmentedFixture(): Promise<{ bytes: Uint8Array; rectApprox
   page.drawText(FRAG_PHONE_PARTS[0], { x, y, size, font: bold });
   x += bold.widthOfTextAtSize(FRAG_PHONE_PARTS[0], size) - 1.4;
   page.drawText(FRAG_PHONE_PARTS[1], { x, y, size, font: helv });
-  const bytes = await doc.save({ useObjectStreams: false });
+  const bytes = await doc.save({ useObjectStreams: true });
   return { bytes, rectApproxY: y };
 }
 
