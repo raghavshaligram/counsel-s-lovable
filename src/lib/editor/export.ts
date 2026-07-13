@@ -22,7 +22,7 @@ import type { Anno, EditorDoc, ExportSettings, PageOp, RGB, WatermarkSettings } 
 import { rewriteDocument, type PageRewrite } from "./text-rewrite";
 import { FONT_META, loadFontBytes, type FontKey } from "./fonts";
 import { importChunk } from "@/lib/chunk-import";
-import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
+import { logHeap } from "@/lib/memory-log";
 
 const col = (c: RGB) => rgb(c.r, c.g, c.b);
 
