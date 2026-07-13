@@ -168,7 +168,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       outPage.setMediaBox(x, y, w, h);
     }
   }
-  await measure("3_after_addPages_only");
+  
 
   // PASS B — annotations + watermark
   for (let i = 0; i < doc.pages.length; i++) {
@@ -182,7 +182,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       drawWatermark(outPage, settings.watermark, font, pw, ph);
     }
   }
-  await measure("4_after_annotations_and_watermark");
+  
 
   // PASS C — OCR invisible-text sidecar
   let ocrPagesTouched = 0;
@@ -209,7 +209,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       outPage.pushOperators(popGraphicsState());
     }
   }
-  await measure("5_after_ocr_sidecar", { ocrPagesTouched, ocrTokensDrawn });
+  
 
 
 
@@ -266,7 +266,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       ...stats,
     });
   }
-  await measure("6_after_redact_rewrites", { rewritePages: rewrites.size });
+  
 
 
   logHeap("export.worker before exportEditedPdf out.save", {
