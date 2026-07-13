@@ -132,6 +132,9 @@ import {
   type DeviceCapability,
 } from "@/lib/device/capability";
 import { allocationFailureMessage, logAllocationFailure, logHeap } from "@/lib/memory-log";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { classifyRasterReasons, REASON_LABELS, type ClassifyResult, type RasterReason } from "@/lib/pdf/classify-raster-reasons";
+import { loadPdfjs } from "@/lib/pdf/worker";
 
 export type OcrCtx = {
   run: (opts?: { languages?: string[]; highAccuracy?: boolean }) => void | Promise<void>;
