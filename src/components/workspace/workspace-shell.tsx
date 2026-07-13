@@ -2310,6 +2310,20 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         />
       )}
 
+      {unlockPromptFile && (
+        <UnlockDialog
+          file={unlockPromptFile}
+          onCancel={() => setUnlockPromptFile(null)}
+          onUnlocked={(unlocked) => {
+            setUnlockPromptFile(null);
+            const dt = new DataTransfer();
+            dt.items.add(unlocked);
+            openInNewTabRef.current = false;
+            onFiles(dt.files);
+          }}
+        />
+      )}
+
       <ExportDialog
         open={exportOpen}
         onOpenChange={setExportOpen}
