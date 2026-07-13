@@ -58,6 +58,8 @@ import {
   FileCheck2,
   Settings as SettingsIcon,
   Wrench,
+  Eye,
+  EyeOff,
   Printer,
   ShieldOff,
   BookOpen,
