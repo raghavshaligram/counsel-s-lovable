@@ -1189,7 +1189,7 @@ export function EditorCanvas({
           color: textColor,
           WebkitTextFillColor: textColor,
           fontSize: `${a.fontSize * scale}px`,
-          fontFamily: fam,
+          fontFamily: famWithRaw,
           fontWeight,
           fontStyle: isItalic ? "italic" : "normal",
           fontSynthesis: a.kind === "text-edit" ? "weight style" : undefined,
