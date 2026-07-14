@@ -91,6 +91,19 @@ function isOpaquePdfjsFontId(name: string | undefined): boolean {
   return !!name && OPAQUE_PDFJS_FONT_ID.test(name);
 }
 
+function createXfaLinkService() {
+  return {
+    addLinkAttributes(link: HTMLAnchorElement, url?: string, newWindow?: boolean) {
+      const safeUrl = typeof url === "string" && /^(https?:|mailto:|tel:)/i.test(url) ? url : "#";
+      link.href = safeUrl;
+      if (newWindow) {
+        link.target = "_blank";
+        link.rel = "noopener noreferrer nofollow";
+      }
+    },
+  };
+}
+
 // Ask pdf.js for the real Font descriptor for every font id referenced by a
 // page's text content. Uses the callback form of commonObjs.get, which fires
 // as soon as the descriptor is available — descriptors are populated during
@@ -584,6 +597,8 @@ export function EditorCanvas({
                 div: layerDiv,
                 xfaHtml,
                 page,
+                annotationStorage: (pdfDoc as { annotationStorage?: unknown } | undefined)?.annotationStorage,
+                linkService: createXfaLinkService(),
                 intent: "display",
               });
               layerDiv.style.display = "block";
