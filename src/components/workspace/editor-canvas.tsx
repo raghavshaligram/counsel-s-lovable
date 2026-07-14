@@ -32,9 +32,15 @@ interface TextItem {
   italic: boolean;
   transform: number[];
   fontName?: string;
+  /** Raw opaque pdf.js font id (e.g. "g_d0_f1"). Kept SEPARATE from
+   *  `fontName` so it never leaks into a CSS family or matcher input, but
+   *  can be prepended to the textarea's font-family stack to reuse the
+   *  exact embedded font bytes pdf.js injected into the DOM. */
+  rawPdfjsFontId?: string;
   /** Resolved CSS family from pdf.js `styles` map — richer than the raw
    *  PostScript fontName and used as a secondary signal for matchPdfFont. */
   cssFamily?: string;
+
   fontKey?: FontKey;
   fontApprox?: boolean;
   fontWeight?: number | string;
