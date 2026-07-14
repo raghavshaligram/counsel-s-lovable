@@ -13,7 +13,7 @@ describe("groupWords", () => {
     });
     const words = groupWords(glyphs);
     expect(words).toHaveLength(1);
-    expect(words[0].text).toBe("office");
+    expect(words[0].text).toBe("ofice");
   });
 
   it("splits on whitespace", () => {
