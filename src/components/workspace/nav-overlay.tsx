@@ -17,6 +17,7 @@ import {
   Bookmark,
   Check,
   CornerDownRight,
+  Eye,
   EyeOff,
   FileText,
   MessageSquare,
@@ -25,6 +26,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import type { Anno, NoteAnno } from "@/lib/editor/types";
 import {
