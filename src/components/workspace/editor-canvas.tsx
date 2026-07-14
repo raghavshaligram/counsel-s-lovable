@@ -1256,11 +1256,11 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
-      return {
-        color: it.color,
-        bg: samplePageBg(ctx, sx, sy, sw, sh),
-      };
+      const bg = samplePageBg(ctx, sx, sy, sw, sh);
+      const color = sampleInkColor(ctx, sx, sy, sw, sh, bg, it.color);
+      return { color, bg };
     })();
+
     // Cover bbox: expand generously around the captured glyph bounds so
     // anti-aliased thick strokes, italic skew, and ascenders/descenders
     // never leak through. Pad more vertically because pdf.js' glyph bbox
