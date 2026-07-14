@@ -1781,7 +1781,7 @@ export function EditorCanvas({
   void onRequestOcr;
 
   return (
-    <div className="relative inline-block" style={{ background: pageBgColor ? rgbCss(pageBgColor) : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
+    <div className="relative inline-block" style={{ background: "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
 
 
