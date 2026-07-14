@@ -347,6 +347,23 @@ function BookmarksTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
+  const [outlineOverrides, setOutlineOverrides] = useState<OutlineOverrides>({});
+
+  // Load per-document outline overrides.
+  useEffect(() => {
+    setOutlineOverrides(loadOverrides(fileName, fileSize));
+  }, [fileName, fileSize]);
+
+  const patchOverride = useCallback((id: string, patch: OutlineOverride | null) => {
+    setOutlineOverrides((cur) => {
+      const next = { ...cur };
+      if (patch === null) delete next[id];
+      else next[id] = { ...next[id], ...patch };
+      saveOverrides(fileName, fileSize, next);
+      return next;
+    });
+  }, [fileName, fileSize]);
+
 
   // Load user bookmarks for this document.
   useEffect(() => {
