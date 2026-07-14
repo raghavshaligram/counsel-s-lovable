@@ -10954,11 +10954,12 @@ function ResizePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     return orient === "landscape" ? { w: s.h, h: s.w } : s;
   })();
 
-  const parsed = scope === "range" ? parseRanges(range, pageCount) : { pages: [] as number[], error: null as string | null };
+  const parsed = scope === "range" ? parseRanges(range, pageCount) : { groups: [] as number[][], error: undefined as string | undefined };
+  const rangePages: number[] = parsed.groups.flat();
   const indexes: number[] = (() => {
     if (scope === "all") return doc.pages.map((_, i) => i);
     if (scope === "current") return [current];
-    return parsed.pages.map((p) => p - 1);
+    return rangePages.map((p: number) => p - 1);
   })();
 
   const apply = () => {
