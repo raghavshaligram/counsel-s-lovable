@@ -1712,14 +1712,15 @@ export function EditorCanvas({
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
           const bgCss = rgbCss(a.bg);
-          const cover = { background: bgCss };
-          if (backgroundConfidence < 0.9) {
-            cover.background = "transparent";
-          }
+          const cover: { mode: "solid" | "transparent"; background: string } = {
+            mode: backgroundConfidence < 0.9 ? "transparent" : "solid",
+            background: bgCss,
+          };
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
+              mode: cover.mode,
               background: cover.background,
               backgroundConfidence,
               sampledBg: a.bg,
@@ -1736,7 +1737,7 @@ export function EditorCanvas({
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: cover.background,
+                background: cover.mode === "solid" ? cover.background : "transparent",
                 pointerEvents: "none",
                 zIndex: 1,
               }}
