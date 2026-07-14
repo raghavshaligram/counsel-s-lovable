@@ -17,7 +17,7 @@ import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
 import { resolveToFontKey } from "@/lib/fonts/bridge";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
-import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
+import type { Anno, PageOp, RGB, TextAnno, TextEditAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
 
 
@@ -399,6 +399,92 @@ function samplePageBg(
   // Truly nothing to read — infer from ink: return black if ink is light,
   // white otherwise. No hardcoded white bias.
   return inkLum > 128 ? { r: 0, g: 0, b: 0 } : { r: 1, g: 1, b: 1 };
+}
+
+type TextEditSource = TextSource & { textOpIndex?: number; textRunIndex?: number };
+
+function isTextEditAnnoWithSource(a: Anno): a is TextEditAnno & { source: TextEditSource } {
+  return a.kind === "text-edit" && !!a.source?.originalString;
+}
+
+interface TextOperator {
+  index: number;
+  text: string;
+}
+
+function operatorGlyphText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value) return "";
+  if (Array.isArray(value)) return value.map(operatorGlyphText).join("");
+  if (typeof value === "object") {
+    const glyph = value as { unicode?: unknown; char?: unknown; str?: unknown };
+    if (typeof glyph.unicode === "string") return glyph.unicode;
+    if (typeof glyph.char === "string") return glyph.char;
+    if (typeof glyph.str === "string") return glyph.str;
+  }
+  return "";
+}
+
+function collectTextOperators(
+  operatorList: { fnArray: number[]; argsArray: unknown[][] },
+  OPS: Record<string, number> | undefined,
+): TextOperator[] {
+  if (!OPS) return [];
+  const textFns = new Set([
+    OPS.showText,
+    OPS.showSpacedText,
+    OPS.nextLineShowText,
+    OPS.nextLineSetSpacingShowText,
+  ].filter((n): n is number => typeof n === "number"));
+  const out: TextOperator[] = [];
+  for (let i = 0; i < operatorList.fnArray.length; i++) {
+    if (!textFns.has(operatorList.fnArray[i])) continue;
+    const args = operatorList.argsArray[i] ?? [];
+    const text = operatorGlyphText(args[0]) || operatorGlyphText(args[args.length - 1]);
+    if (text) out.push({ index: i, text });
+  }
+  return out;
+}
+
+function comparableText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function findNextTextOpIndex(textOps: TextOperator[], text: string, startPos: number): number | null {
+  const needle = comparableText(text);
+  if (!needle) return null;
+  for (let i = Math.max(0, startPos); i < textOps.length; i++) {
+    const hay = comparableText(textOps[i].text);
+    if (hay === needle || hay.includes(needle)) return textOps[i].index;
+  }
+  for (let i = 0; i < Math.max(0, startPos); i++) {
+    const hay = comparableText(textOps[i].text);
+    if (hay === needle || hay.includes(needle)) return textOps[i].index;
+  }
+  return null;
+}
+
+function resolveTextEditSkipOps(
+  textOps: TextOperator[],
+  masks: Array<{ originalString: string; textOpIndex?: number; textRunIndex?: number }>,
+): Set<number> {
+  const skipped = new Set<number>();
+  for (const mask of masks) {
+    if (typeof mask.textOpIndex === "number" && textOps.some((op) => op.index === mask.textOpIndex)) {
+      skipped.add(mask.textOpIndex);
+      continue;
+    }
+    if (typeof mask.textRunIndex === "number") {
+      const op = textOps[mask.textRunIndex];
+      if (op && comparableText(op.text) === comparableText(mask.originalString)) {
+        skipped.add(op.index);
+        continue;
+      }
+    }
+    const found = findNextTextOpIndex(textOps.filter((op) => !skipped.has(op.index)), mask.originalString, 0);
+    if (found != null) skipped.add(found);
+  }
+  return skipped;
 }
 
 export interface EditorCanvasProps {
