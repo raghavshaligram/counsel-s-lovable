@@ -731,8 +731,6 @@ export function EditorCanvas({
     };
   }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
 
-  // When a text-edit annotation is removed, re-render the page canvas so the
-  // pixels erased by onClickEditHit's clearRect come back.
   // When a text-edit annotation is removed, restore the pixels that
   // onClickEditHit's row-inpaint painted over. Blit directly from the
   // pristine snapshot when available (instant, no pdf.js re-render);
