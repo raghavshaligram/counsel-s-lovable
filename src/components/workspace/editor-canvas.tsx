@@ -1145,11 +1145,8 @@ export function EditorCanvas({
         const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
         const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
         const lh = a.lineHeight ?? 1.15;
-        // Baseline compensation for the <textarea> ONLY (does not move the
-        // canvas mask): browser textareas anchor glyphs at the em-box top,
-        // so typed text renders ~10% above the original PDF baseline. Push
-        // it down by 10% of the font size so it sits on the PDF baseline.
-        const BASELINE_FACTOR = 0.10;
+        // Tuned to 0.12 to bridge browser top-down em-box rendering and PDF baseline anchoring
+        const BASELINE_FACTOR = 0.12;
         const baselineComp = a.kind === "text-edit" ? BASELINE_FACTOR * a.fontSize * scale : 0;
         const padTop = padTopPt * scale + baselineComp;
         const padLeft = padLeftPt * scale;
@@ -1159,36 +1156,33 @@ export function EditorCanvas({
         const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
         const isUnderline = !!a.underline;
-        // While editing a freshly-added text box, give it visible chrome so the
-        // user can see where they're typing. text-edit (replacing existing PDF
-        // text) keeps the transparent skin so it blends with surrounding glyphs.
         const showEditChrome = isEditing && a.kind === "text";
         const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
-          width: "100%", height: "100%",
-          background: bg,
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          background: "transparent",
           color: textColor,
           WebkitTextFillColor: textColor,
-          fontSize: a.fontSize * scale,
+          fontSize: `${a.fontSize * scale}px`,
           fontFamily: fam,
           fontWeight,
           fontStyle: isItalic ? "italic" : "normal",
-          // If the resolved family only has a regular face loaded, let the
-          // browser synthesize the bold weight rather than silently rendering
-          // a bold run in regular. Only meaningful for text-edit overlays.
           fontSynthesis: a.kind === "text-edit" ? "weight style" : undefined,
           textDecoration: isUnderline ? "underline" : "none",
           textAlign: align,
-          lineHeight: a.lineHeight ?? 1.15,
-          letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
+          lineHeight: a.lineHeight ?? 1,
+          letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal",
           whiteSpace: a.kind === "text-edit" && !a.text.includes("\n") ? "pre" : "pre-wrap",
           wordBreak: a.kind === "text-edit" && !a.text.includes("\n") ? "normal" : "break-word",
           overflow: "hidden",
           padding: 0,
-          paddingTop: padTop,
-          paddingLeft: padLeft,
-          paddingRight: padRight,
-          paddingBottom: padBottom,
+          paddingTop: `${padTop}px`,
+          paddingLeft: `${padLeft}px`,
+          paddingRight: `${padRight}px`,
+          paddingBottom: `${padBottom}px`,
           boxSizing: "border-box",
           margin: 0,
           border: "none",
@@ -1208,36 +1202,18 @@ export function EditorCanvas({
             placeholder={a.kind === "text" ? "Type here…" : ""}
             onChange={(e) => onTextChange(e.target.value)}
             onBlur={(e) => {
-              // If focus is moving to the floating mini-toolbar (or anything
-              // inside the same page wrapper), keep editing alive — the user
-              // is just nudging a control. Only collapse / auto-delete when
-              // focus truly leaves the text box context.
               const next = e.relatedTarget as HTMLElement | null;
-              if (next && next.closest('[data-text-toolbar="1"]')) return;
-              // Read the textarea's value directly to avoid a stale closure on
-              // `a.text` when blur fires before React flushes the last keystroke.
+              // Do not blur if focus moved to the toolbar or another text-edit target
+              if (next && (next.closest('[data-text-toolbar="1"]') || next.closest('[data-edit-text-hit="1"]'))) return;
               const finalText = e.currentTarget.value;
-              const taRect = e.currentTarget.getBoundingClientRect();
-              console.log("[text-edit-commit]", {
-                annotationId: a.id,
-                editId: editingId,
-                phase: "blur",
-                originalString: a.kind === "text-edit" ? a.source?.originalString ?? "" : "",
-                committedText: finalText,
-                changed: finalText !== (a.kind === "text-edit" ? a.source?.originalString ?? "" : ""),
-                extractedWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
-                coverWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
-                textareaWidthPt: taRect.width / scale,
-                textTargetWidthPt: a.kind === "text-edit" ? a.w : null,
-                willDelete: !finalText.trim() && a.kind === "text",
-              });
               if (finalText !== a.text) {
                 dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
               }
               if (!finalText.trim() && a.kind === "text") {
                 dispatch({ type: "DELETE_ANNO", id: a.id });
               }
-              setEditingId(null);
+              // Prevent race condition: only nullify if this exact annotation is still the active edit ID
+              setEditingId((cur) => (cur === a.id ? null : cur));
             }}
             onKeyDown={(e) => {
               if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
@@ -1381,6 +1357,7 @@ export function EditorCanvas({
     // at its true top (`it.y`), extended downward to swallow descenders.
     // The pristine snapshot captured after render is kept so deleting the
     // anno restores the original pixels in full.
+    // Safe Perimeter Gradient Inpainting — masks old glyphs without smearing ink or painting solid RGB blocks
     if (canvas) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (ctx) {
@@ -1388,53 +1365,35 @@ export function EditorCanvas({
         const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
         const dprX = canvas.width / Math.max(1, cssW);
         const dprY = canvas.height / Math.max(1, cssH);
-        // Adjacent-pixel patching: clone a 2px-tall strip of the actual
-        // rendered background from directly above the glyph box and tile
-        // it vertically down across the glyph bounds. This preserves
-        // gradients, paper textures, and shaded card backgrounds without
-        // leaving a solid RGB seam.
-        const boxX = Math.max(0, Math.floor((it.x - coverPadX) * scale * dprX));
-        const boxY = Math.max(0, Math.floor(it.y * scale * dprY));
-        const boxW = Math.min(
-          canvas.width - boxX,
-          Math.ceil((it.w + coverPadX * 2) * scale * dprX),
-        );
-        const boxH = Math.min(
-          canvas.height - boxY,
-          Math.ceil((it.h + coverPadBottom) * scale * dprY),
-        );
-        const stripThickness = Math.max(1, Math.round(2 * scale * dprY));
-        const sliceY = Math.max(0, boxY - stripThickness);
-        const sliceH = Math.min(stripThickness, boxY - sliceY);
-        if (boxW > 0 && boxH > 0 && sliceH > 0) {
-          ctx.save();
-          try {
-            const bgSlice = ctx.getImageData(boxX, sliceY, boxW, sliceH);
-            const patch = document.createElement("canvas");
-            patch.width = boxW;
-            patch.height = sliceH;
-            const pctx = patch.getContext("2d");
-            if (pctx) {
-              pctx.putImageData(bgSlice, 0, 0);
-              for (let y = 0; y < boxH; y += sliceH) {
-                ctx.drawImage(
-                  patch,
-                  0,
-                  0,
-                  boxW,
-                  sliceH,
-                  boxX,
-                  boxY + y,
-                  boxW,
-                  Math.min(sliceH, boxH - y),
-                );
-              }
-            }
-          } catch {
-            // getImageData can throw on tainted canvases; fall through.
-          }
-          ctx.restore();
+        const maskX = (it.x - coverPadX) * scale * dprX;
+        const maskY = it.y * scale * dprY;
+        const maskW = (it.w + coverPadX * 2) * scale * dprX;
+        const maskH = (it.h + coverPadBottom) * scale * dprY;
+        ctx.save();
+        // Sample clean background reference pixels 4 points to the left of the text box (strictly outside glyph ink)
+        const sampleX = Math.max(0, Math.floor((it.x - coverPadX - 4) * scale * dprX));
+        const topY = Math.max(0, Math.floor(maskY));
+        const botY = Math.min(canvas.height - 1, Math.floor(maskY + maskH));
+        let topColor = "rgb(255,255,255)";
+        let botColor = "rgb(255,255,255)";
+        try {
+          const topData = ctx.getImageData(sampleX, topY, 1, 1).data;
+          const botData = ctx.getImageData(sampleX, botY, 1, 1).data;
+          if (topData[3] >= 128) topColor = `rgb(${topData[0]},${topData[1]},${topData[2]})`;
+          if (botData[3] >= 128) botColor = `rgb(${botData[0]},${botData[1]},${botData[2]})`;
+        } catch {
+          const bg = sampled.bg;
+          const fallbackRgb = `rgb(${Math.round(bg.r * 255)},${Math.round(bg.g * 255)},${Math.round(bg.b * 255)})`;
+          topColor = fallbackRgb;
+          botColor = fallbackRgb;
         }
+        // Build a vertical linear gradient to seamlessly continue card shading and background textures
+        const gradient = ctx.createLinearGradient(0, maskY, 0, maskY + maskH);
+        gradient.addColorStop(0, topColor);
+        gradient.addColorStop(1, botColor);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(maskX, maskY, maskW, maskH);
+        ctx.restore();
       }
     }
 
