@@ -573,7 +573,7 @@ function BookmarksTab({
         )}
       </section>
 
-      {/* PDF outline — read-only navigation aid */}
+      {/* PDF outline — inline rename / hide overrides persist per document */}
       {outline && outline.length > 0 && (
         <section>
           <h3 className="mb-1.5 px-1 text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
@@ -581,7 +581,14 @@ function BookmarksTab({
           </h3>
           <ul className="space-y-0.5 text-[12.5px]">
             {outline.map((n) => (
-              <OutlineRow key={n.id} node={n} onJump={onJump} onJumpClose={onJumpAndClose} />
+              <OutlineRow
+                key={n.id}
+                node={n}
+                overrides={outlineOverrides}
+                onPatch={patchOverride}
+                onJump={onJump}
+                onJumpClose={onJumpAndClose}
+              />
             ))}
           </ul>
         </section>
@@ -594,15 +601,26 @@ function BookmarksTab({
 
 function OutlineRow({
   node,
+  overrides,
+  onPatch,
   onJump,
   onJumpClose,
 }: {
   node: OutlineFlat;
+  overrides: OutlineOverrides;
+  onPatch: (id: string, patch: OutlineOverride | null) => void;
   onJump: (n: number) => void;
   onJumpClose: (n: number) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const ov = overrides[node.id] ?? {};
+  const displayTitle = ov.title ?? node.title;
+  const [draft, setDraft] = useState(displayTitle);
+  useEffect(() => { setDraft(displayTitle); }, [displayTitle]);
+  if (ov.hidden) return null;
   const hasChildren = node.children.length > 0;
+
   return (
     <li>
       <div className="flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: node.depth * 12 }}>
