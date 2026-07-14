@@ -8828,15 +8828,6 @@ function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
         Change or remove
       </div>
 
-      <button
-        type="button"
-        onClick={clearSettings}
-        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40"
-      >
-        <Trash2 className="h-3.5 w-3.5" strokeWidth={2.5} />
-        Clear stamp settings
-      </button>
-
       <Section title="Remove existing stamps" icon={<ShieldOff className="h-3 w-3" />}>
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1">

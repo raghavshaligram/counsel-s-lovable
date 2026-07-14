@@ -41,8 +41,12 @@ function escapeRegExp(s: string) {
 function buildPattern(f: BatesRemoveFormat): RegExp {
   const min = Math.max(1, f.digits - 2);
   const max = f.digits + 2;
+  // Global, case-insensitive — allow the stamp anywhere in the joined line
+  // (pdf.js frequently splits "ABC000123" into "ABC" + "000123" items and
+  // may include neighbouring page-number/header text on the same baseline).
   return new RegExp(
-    `^\\s*${escapeRegExp(f.prefix ?? "")}\\d{${min},${max}}${escapeRegExp(f.suffix ?? "")}\\s*$`,
+    `${escapeRegExp(f.prefix ?? "")}\\d{${min},${max}}${escapeRegExp(f.suffix ?? "")}`,
+    "gi",
   );
 }
 
@@ -54,11 +58,12 @@ function inCorner(
   pageW: number,
   pageH: number,
 ): boolean {
-  const top = y >= pageH * 0.85;
-  const bottom = y <= pageH * 0.15;
-  const left = x <= pageW * 0.35;
-  const right = x >= pageW * 0.55;
-  const center = x > pageW * 0.25 && x < pageW * 0.75;
+  // Widened bands — real stamps sometimes sit ~20% from the edge, not 15%.
+  const top = y >= pageH * 0.78;
+  const bottom = y <= pageH * 0.22;
+  const left = x <= pageW * 0.45;
+  const right = x >= pageW * 0.5;
+  const center = x > pageW * 0.15 && x < pageW * 0.85;
   switch (corner) {
     case "tl": return top && left;
     case "tc": return top && center;
@@ -82,17 +87,58 @@ export async function findBatesStamps(
       const vp = page.getViewport({ scale: 1 });
       const content = await page.getTextContent();
       type Item = { str: string; transform: number[]; width: number; height: number };
+      // Group items by baseline (rounded y) so split runs like ["ABC","000123"]
+      // can be matched together.
+      const lines = new Map<number, Array<Item & { x: number; y: number }>>();
       for (const raw of content.items as unknown[]) {
         const it = raw as Item;
-        if (!it.str || !pattern.test(it.str)) continue;
+        if (!it.str) continue;
         const t = it.transform;
         if (!Array.isArray(t) || t.length < 6) continue;
         const x = t[4];
         const y = t[5];
-        const h = it.height || Math.abs(t[3]) || 10;
-        const w = it.width || 0;
-        if (!inCorner(format.corner, x, y, vp.width, vp.height)) continue;
-        out.push({ pageIndex: i, x, y: y - h * 0.2, w, h: h * 1.4, text: it.str });
+        const key = Math.round(y);
+        const arr = lines.get(key) ?? [];
+        arr.push({ ...it, x, y });
+        lines.set(key, arr);
+      }
+      for (const items of lines.values()) {
+        items.sort((a, b) => a.x - b.x);
+        const joined = items.map((it) => it.str).join("");
+        pattern.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = pattern.exec(joined)) !== null) {
+          const start = m.index;
+          const end = start + m[0].length;
+          // Locate items covering [start, end)
+          let cursor = 0;
+          let bx = Infinity;
+          let by = Infinity;
+          let bxEnd = -Infinity;
+          let bh = 0;
+          for (const it of items) {
+            const s = cursor;
+            const e = cursor + it.str.length;
+            cursor = e;
+            if (e <= start || s >= end) continue;
+            const iw = it.width || 0;
+            const ih = it.height || Math.abs(it.transform[3]) || 10;
+            bx = Math.min(bx, it.x);
+            by = Math.min(by, it.y);
+            bxEnd = Math.max(bxEnd, it.x + iw);
+            bh = Math.max(bh, ih);
+          }
+          if (!isFinite(bx) || !isFinite(by)) continue;
+          if (!inCorner(format.corner, bx, by, vp.width, vp.height)) continue;
+          out.push({
+            pageIndex: i,
+            x: bx,
+            y: by - bh * 0.2,
+            w: Math.max(bxEnd - bx, bh * 0.5),
+            h: bh * 1.4,
+            text: m[0],
+          });
+        }
       }
       try { page.cleanup(); } catch { /* noop */ }
     }
