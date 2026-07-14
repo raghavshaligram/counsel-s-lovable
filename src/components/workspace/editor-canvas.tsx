@@ -447,13 +447,10 @@ export function EditorCanvas({
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Sampled page background colour (from canvas corners, large samples — much
-  // more reliable than sampling around a single glyph). Painted on the page
-  // wrapper so text-edit covers can be transparent and reveal it.
-  const [pageBgColor, setPageBgColor] = useState<RGB | null>(null);
-  // 0..1 confidence that the page background is uniform. When low, text-edit
-  // covers stay transparent instead of painting a potentially wrong solid band.
-  const [backgroundConfidence, setBackgroundConfidence] = useState(1);
+  // Text-edit covers are always transparent (Acrobat / Foxit parity — no
+  // colored patch is painted under edited text). Original glyphs are erased
+  // from the base canvas via clearRect in onClickEditHit; that erased hole
+  // shows the wrapper's plain paper colour underneath.
   // Bumped whenever a text-edit annotation is removed, so the page re-renders
   // and restores the original glyph pixels that clearRect erased at edit time.
   const [renderTick, setRenderTick] = useState(0);
