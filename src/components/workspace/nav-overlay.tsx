@@ -35,12 +35,11 @@ import {
 
 /* ------------------------ Overlay geometry ------------------------ */
 
-type Rect = { right: number; top: number; width: number; height: number };
+type Rect = { right: number; top: number; width: number; height: number | null };
 const RECT_KEY = "vault:nav-overlay-rect";
-// Default sits clear of the canvas scrollbar (right ≥ 20px) with a wider
-// pane so titles don't wrap. Height defaults to 560 so the bookmarks + outline
-// both breathe without immediately hitting the "maxHeight" clamp.
-const DEFAULT_RECT: Rect = { right: 24, top: 56, width: 380, height: 560 };
+// Default hugs content (height=null → auto). User's manual resize sets an
+// explicit height that persists across sessions.
+const DEFAULT_RECT: Rect = { right: 24, top: 56, width: 380, height: null };
 const MIN_W = 280;
 const MIN_H = 220;
 
@@ -50,11 +49,12 @@ function readRect(): Rect {
     const raw = window.localStorage.getItem(RECT_KEY);
     if (!raw) return DEFAULT_RECT;
     const p = JSON.parse(raw) as Partial<Rect>;
+    const h = p.height == null ? null : Math.max(MIN_H, Number(p.height));
     return {
       right: Math.max(0, Number(p.right ?? DEFAULT_RECT.right)),
       top: Math.max(0, Number(p.top ?? DEFAULT_RECT.top)),
       width: Math.max(MIN_W, Number(p.width ?? DEFAULT_RECT.width)),
-      height: Math.max(MIN_H, Number(p.height ?? DEFAULT_RECT.height)),
+      height: h,
     };
   } catch {
     return DEFAULT_RECT;
@@ -63,6 +63,7 @@ function readRect(): Rect {
 function writeRect(r: Rect) {
   try { window.localStorage.setItem(RECT_KEY, JSON.stringify(r)); } catch { /* ignore */ }
 }
+
 
 /* ---------------- Outline overrides (rename / hide) --------------- */
 
@@ -204,11 +205,13 @@ export function NavOverlay(props: Props) {
   }, [rect.right, rect.top]);
 
   const startResize = useCallback((e: React.MouseEvent) => {
-    resizeRef.current = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+    const currentH = rect.height ?? (ref.current?.getBoundingClientRect().height ?? MIN_H);
+    resizeRef.current = { x: e.clientX, y: e.clientY, w: rect.width, h: currentH };
     document.body.style.userSelect = "none";
     e.preventDefault();
     e.stopPropagation();
   }, [rect.width, rect.height]);
+
 
   if (!open) return null;
 
@@ -225,10 +228,12 @@ export function NavOverlay(props: Props) {
         right: rect.right,
         top: rect.top,
         width: rect.width,
-        height: rect.height,
+        height: rect.height ?? undefined,
+        maxHeight: "calc(100% - 80px)",
         borderRadius: 12,
         boxShadow: "var(--shadow-float)",
       }}
+
     >
       <header
         onMouseDown={startDrag}
