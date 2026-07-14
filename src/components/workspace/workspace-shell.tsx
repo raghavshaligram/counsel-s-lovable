@@ -464,6 +464,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [agentQuery, setAgentQuery] = useState<{ id: number; text: string } | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [toolbarPinned, setToolbarPinned] = useToolbarPin();
+
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
   const [fitNonce, setFitNonce] = useState(0);
