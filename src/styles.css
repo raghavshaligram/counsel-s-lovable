@@ -288,3 +288,33 @@
     display: none;
   }
 }
+
+/* Minimal styles for pdf.js XFA layer (LiveCycle Designer forms).
+   Extracted from pdfjs-dist/web/pdf_viewer.css — we can't import that
+   file directly because Lightning CSS rejects its ambiguous url() in
+   custom properties. */
+.xfaLayer {
+  background-color: transparent;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  font-family: sans-serif;
+  color: #000;
+  line-height: 1.2;
+}
+.xfaLayer * { color: inherit; font: inherit; }
+.xfaLayer input,
+.xfaLayer textarea,
+.xfaLayer select,
+.xfaLayer button {
+  background: rgba(0, 54, 255, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  padding: 1px 2px;
+  font: inherit;
+  color: inherit;
+}
+.xfaLayer a { color: #0066cc; text-decoration: underline; }
+.xfaPage { position: relative; overflow: hidden; }
+.xfaContentarea { position: absolute; }
+
