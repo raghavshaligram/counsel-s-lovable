@@ -123,6 +123,8 @@ import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
+import { useToolbarPin } from "@/lib/workspace/toolbar-pin";
+
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 import { importChunk } from "@/lib/chunk-import";
