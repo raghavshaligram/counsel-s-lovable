@@ -782,8 +782,9 @@ function OutlineRow({
             <button
               type="button"
               aria-label="Rename"
+              title="Rename bookmark"
               onClick={() => { setDraft(displayTitle); setEditing(true); }}
-              className="opacity-0 group-hover:opacity-100 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+              className="grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
             >
               <Pencil className="h-3 w-3" />
             </button>
@@ -792,7 +793,7 @@ function OutlineRow({
               aria-label="Hide from list"
               title="Hide from this list (does not modify the PDF)"
               onClick={() => onPatch(node.id, { hidden: true })}
-              className="opacity-0 group-hover:opacity-100 mr-1 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+              className="mr-1 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
             >
               <EyeOff className="h-3 w-3" />
             </button>
