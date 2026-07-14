@@ -1432,20 +1432,25 @@ export function EditorCanvas({
     // matcher already strips `AAAAAA+` subset prefixes internally.
     const psName = it.fontName && !isOpaquePdfjsFontId(it.fontName) ? it.fontName : undefined;
     const cssFam = it.cssFamily && !isOpaquePdfjsFontId(it.cssFamily) ? it.cssFamily : undefined;
-    const resolvedEdit = resolveToFontKey({
-      postscriptName: psName,
-      cssFamily: cssFam,
-      italicHint: it.italic,
-      weightHint: it.bold ? 700 : undefined,
-    });
+    // Pass-through resolution: prefer the native CSS family / PostScript name
+    // from the PDF's own font dictionary. Only fall back to the metric-twin
+    // bridge (Arimo/Tinos/Cousine/Carlito/Caladea) when neither is usable.
+    const nativeFontName = cssFam || psName;
+    const resolvedEdit = nativeFontName
+      ? { matched: true, fontFamily: nativeFontName, fontWeight: it.fontWeight ?? (it.bold ? 700 : 400) }
+      : resolveToFontKey({
+          postscriptName: psName,
+          cssFamily: cssFam,
+          italicHint: it.italic,
+          weightHint: it.bold ? 700 : undefined,
+        });
     const matched = {
       matched: resolvedEdit.matched,
       fontFamily: resolvedEdit.fontFamily,
       fontWeight: String(resolvedEdit.fontWeight),
     };
-    const cssFamFallback = cssFam;
-    const fontFamilyOverride = matched.matched ? matched.fontFamily : (cssFamFallback ?? matched.fontFamily);
-    const fontWeight = numericFontWeight(matched.matched ? matched.fontWeight : (it.fontWeight ?? undefined), it.bold);
+    const fontFamilyOverride = matched.fontFamily;
+    const fontWeight = numericFontWeight(matched.fontWeight, it.bold);
     console.log("[text-edit-font] extraction", {
       rawPdfFontName: it.fontName,
       pdfCssFamily: it.cssFamily,
