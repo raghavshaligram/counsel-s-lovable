@@ -1848,6 +1848,17 @@ export function EditorCanvas({
     <div className="relative inline-block" style={{ background: "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
 
+      {/* XFA HTML layer — populated only for LiveCycle / XFA forms;
+          otherwise stays empty and display:none. */}
+      <div
+        ref={xfaLayerRef}
+        className="xfaLayer"
+        style={{ position: "absolute", inset: 0, display: "none", pointerEvents: "auto", overflow: "hidden" }}
+        aria-hidden={false}
+      />
+
+
+
 
       <div
         ref={overlayRef}
