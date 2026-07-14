@@ -1460,17 +1460,14 @@ export function EditorCanvas({
     const baselineNudge = 0;
     dispatch({ type: "ADD_ANNO", a: {
       id, kind: "text-edit", page: pageIndex,
-      // Anchor the editable box to the ORIGINAL glyph bounds so the
-      // textarea, caret, and selection ring sit exactly where the user
-      // sees the source text. The padded `cover` rectangle below is a
-      // separate masking layer that hides anti-aliased glyph edges and
-      // descenders without affecting the visible edit chrome.
-      x: it.x, y: it.y + baselineNudge,
-      // Box height must be >= fontSize * lineHeight or the textarea clips
-      // the bottom ~15% of every glyph. Keep fontSize separate from box h.
-      w: it.w, h: it.h * (it.lineHeight ?? 1.15),
+      // Anchor STRICTLY to the top of the pdf.js glyph bbox — no baseline
+      // nudge, no negative y adjustment. The mask above is anchored the
+      // same way, so the textarea and the masked band start at identical
+      // pixels and typed glyphs sit on the original PDF baseline.
+      x: it.x, y: it.y,
+      w: it.w, h: it.h,
       boxW: it.w + coverPadX * 2,
-      boxH: (it.h * (it.lineHeight ?? 1.15)) + coverPadTop + coverPadBottom,
+      boxH: it.h + coverPadBottom,
       color: sampled.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
@@ -1481,10 +1478,11 @@ export function EditorCanvas({
       fontApproximate: !!it.fontApprox,
       bold: it.bold, italic: it.italic,
       fontWeight,
-      lineHeight: it.lineHeight ?? 1.15,
+      // line-height === font-size (numeric 1) so the DOM line-box exactly
+      // matches the PDF glyph height (`it.h * scale`) and the typed
+      // baseline lands on the original PDF baseline.
+      lineHeight: 1,
       letterSpacing: it.letterSpacing ?? 0,
-      // Keep the data model at the original glyph bounds; renderAnno expands
-      // the visible edit wrapper to the cover rect and adds matching padding.
       textOffsetX: 0,
       textOffsetY: 0,
       textPadBottom: 0,
@@ -1495,7 +1493,7 @@ export function EditorCanvas({
       id,
       originalGlyphPdf: originalGlyph,
       coverPdf: cover,
-      annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
+      annoPdf: { x: it.x, y: it.y, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
       sampledBg: sampled.bg,
       intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
