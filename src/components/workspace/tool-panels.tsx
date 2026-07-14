@@ -10821,19 +10821,18 @@ function DeletePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     setSelectedBlanks(new Set());
     try {
       const bytes = new Uint8Array(await ctx.file.arrayBuffer());
-      const pdf = await openPdfjs({ data: bytes });
+      const pdf = await openPdfjs(bytes);
       const found: number[] = [];
       for (let i = 0; i < pdf.numPages; i++) {
         const page = await pdf.getPage(i + 1);
         const tc = await page.getTextContent();
-        const textLen = tc.items.reduce((n, it) => n + (("str" in it ? String(it.str).trim().length : 0)), 0);
+        const textLen = tc.items.reduce((n: number, it) => n + (("str" in it ? String(it.str).trim().length : 0)), 0);
         const opList = await page.getOperatorList();
         // Heuristic: no text glyphs AND very few drawing operators => probably blank.
         const opCount = opList.fnArray.length;
         if (textLen === 0 && opCount < 20) found.push(i);
         page.cleanup();
       }
-      await pdf.destroy();
       setBlankPages(found);
       setSelectedBlanks(new Set(found));
       toast.success(`Found ${found.length} blank page${found.length === 1 ? "" : "s"}`);
