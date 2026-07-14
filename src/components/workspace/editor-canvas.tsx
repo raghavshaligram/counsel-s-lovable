@@ -1822,10 +1822,9 @@ export function EditorCanvas({
         }}
         style={{ position: "absolute", inset: 0, width: screenW, height: screenH, cursor: cursorByTool[state.tool] ?? "default" }}
       >
-        {/* Fixed cover rectangles for text-edit annotations — drawn FIRST so
-            they sit beneath the editable text box but always hide the
-            original glyphs at their captured bounds (independent of the
-            auto-grown text box size). */}
+        {/* Text-edit replacements render as glyphs only. The original PDF text
+            operation is skipped during canvas render; no cover rectangle is
+            painted underneath. */}
         {(() => {
           // Count rendered text-edit overlays per annotation id for the
           // duplicate-text audit.
@@ -1845,46 +1844,6 @@ export function EditorCanvas({
           }
           return null;
         })()}
-        {annos.map((a) => {
-          if (a.kind !== "text-edit" || !a.cover) return null;
-          // A text-edit annotation is a PERMANENT replacement of the
-          // underlying PDF glyphs. The cover must always be painted —
-          // even when the typed text still matches the original — or the
-          // PDF canvas glyphs will show through and double up with the
-          // overlay textarea on top, producing duplicate text.
-          const isEditing = editingId === a.id;
-          const tl = toScreen(a.cover.x, a.cover.y);
-          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          // Acrobat / Foxit parity: no background is painted under edited
-          // text. Original glyphs were erased from the base canvas at edit
-          // time (clearRect in onClickEditHit); the textarea paints the
-          // replacement glyphs on top.
-          const cover = { background: "transparent" as const };
-          if (isEditing) {
-            console.log("[text-edit-cover]", {
-              id: a.id,
-              editing: true,
-              background: cover.background,
-              coverPdf: a.cover,
-              coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
-            });
-          }
-          return (
-            <div
-              key={`cover-${a.id}`}
-              data-vault-element="text-edit-cover"
-              data-anno-id={a.id}
-              style={{
-                position: "absolute",
-                left: tl.x, top: tl.y,
-                width: br.x - tl.x, height: br.y - tl.y,
-                background: cover.background,
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
-            />
-          );
-        })}
         {annos.map(renderAnno)}
         {editTextOverlays.map((it, i) => {
           const tl = toScreen(it.x, it.y);
