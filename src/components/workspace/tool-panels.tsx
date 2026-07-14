@@ -5538,7 +5538,7 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 /* ============================== Extract ============================== */
 
-type ExtractMode = "pages" | "data";
+type ExtractMode = "pages" | "data" | "tx";
 
 function ExtractPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [mode, setMode] = useState<ExtractMode>("pages");
@@ -5558,15 +5558,18 @@ function ExtractPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
         {modeBtn("pages", "Pages → PDF")}
         {modeBtn("data", "Data → Excel")}
+        {modeBtn("tx", "Transactions")}
       </div>
       <div className="flex-1 min-h-0">
         {mode === "pages" ? (
           <ExtractPagesPanel ctx={ctx} />
-        ) : (
+        ) : mode === "data" ? (
           <ExtractDataPanel ctx={ctx} />
+        ) : (
+          <TransactionsPanel ctx={ctx} />
         )}
       </div>
     </div>
@@ -5855,6 +5858,293 @@ function ExtractDataPanel({ ctx }: { ctx: ToolPanelCtx }) {
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
+    </div>
+  );
+}
+
+/* ---------- Transactions (typed extraction) ---------- */
+
+type TxDocType = "auto" | "bank_statement" | "invoice" | "ledes" | "generic";
+type TxLocale = "auto" | "US" | "EU";
+type TxState = import("@/lib/pdf/transactions").ExtractTxResult;
+
+function TransactionsPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const [type, setType] = useState<TxDocType>("auto");
+  const [locale, setLocale] = useState<TxLocale>("auto");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [result, setResult] = useState<TxState | null>(null);
+
+  // Re-extract when file changes.
+  useEffect(() => { setResult(null); }, [file]);
+
+  const run = useCallback(async () => {
+    if (!file) return;
+    setBusy(true);
+    setStatus("Reading PDF locally…");
+    try {
+      const { extractTransactions } = await importChunk(
+        () => import("@/lib/pdf/transactions"),
+      );
+      const res = await extractTransactions(file, {
+        typeOverride: type,
+        localeOverride: locale,
+        onProgress: (p) => {
+          setStatus(
+            p.stage === "ocr"
+              ? `OCR page ${p.page} of ${p.totalPages}…`
+              : `Reading page ${p.page} of ${p.totalPages}…`,
+          );
+        },
+      });
+      setResult(res);
+      if (res.rows.length === 0) {
+        toast.info("No transactions detected. Try a different document type.");
+      } else {
+        toast.success(`Extracted ${res.rows.length} transaction${res.rows.length === 1 ? "" : "s"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Couldn't parse that PDF.");
+    } finally {
+      setBusy(false);
+      setStatus(null);
+    }
+  }, [file, type, locale]);
+
+  // Re-parse on type/locale change without re-extracting tables.
+  const reparseIfLoaded = useCallback(
+    async (nextType: TxDocType, nextLocale: TxLocale) => {
+      if (!result) return;
+      const { reparse } = await importChunk(() => import("@/lib/pdf/transactions"));
+      const resolvedType = nextType === "auto" ? result.detected.type : nextType;
+      const resolvedLocale: "US" | "EU" =
+        nextLocale === "auto" ? result.locale : nextLocale;
+      setResult(reparse(result, resolvedType, resolvedLocale));
+    },
+    [result],
+  );
+
+  const onTypeChange = (v: TxDocType) => {
+    setType(v);
+    void reparseIfLoaded(v, locale);
+  };
+  const onLocaleChange = (v: TxLocale) => {
+    setLocale(v);
+    void reparseIfLoaded(type, v);
+  };
+
+  const downloadCsv = useCallback(async () => {
+    if (!result || !file) return;
+    const { rowsToTypedCsv } = await importChunk(() => import("@/lib/pdf/transactions"));
+    const csv = rowsToTypedCsv(result);
+    const base = file.name.replace(/\.pdf$/i, "") || "transactions";
+    await triggerDownload(new Blob([csv], { type: "text/csv" }), `${base}.csv`);
+  }, [result, file]);
+
+  const copyCsv = useCallback(async () => {
+    if (!result) return;
+    const { rowsToTypedCsv } = await importChunk(() => import("@/lib/pdf/transactions"));
+    await navigator.clipboard.writeText(rowsToTypedCsv(result));
+    toast.success("CSV copied to clipboard");
+  }, [result]);
+
+  const downloadXlsx = useCallback(async () => {
+    if (!result || !file) return;
+    const { downloadTypedXlsx } = await importChunk(() => import("@/lib/pdf/transactions"));
+    const base = file.name.replace(/\.pdf$/i, "") || "transactions";
+    await downloadTypedXlsx(result, `${base}.xlsx`);
+  }, [result, file]);
+
+  if (!file) {
+    return (
+      <InspectorEmpty>Open a PDF in the workspace to extract transactions.</InspectorEmpty>
+    );
+  }
+
+  const typeLabel: Record<Exclude<TxDocType, "auto">, string> = {
+    bank_statement: "Bank statement",
+    invoice: "Invoice / receipt",
+    ledes: "Legal billing",
+    generic: "Generic table",
+  };
+
+  return (
+    <div className="flex h-full flex-col gap-3 overflow-hidden">
+      <Section title="Document type" icon={<TableIcon className="h-3 w-3" />}>
+        <select
+          value={type}
+          onChange={(e) => onTypeChange(e.target.value as TxDocType)}
+          className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-foreground"
+        >
+          <option value="auto">Auto-detect{result ? ` · ${typeLabel[result.detected.type]} (${result.detected.confidence})` : ""}</option>
+          <option value="bank_statement">Bank statement</option>
+          <option value="invoice">Invoice / receipt</option>
+          <option value="ledes">Legal billing (LEDES)</option>
+          <option value="generic">Generic table</option>
+        </select>
+      </Section>
+
+      <Section title="Number format" icon={<Hash className="h-3 w-3" />}>
+        <div className="grid grid-cols-3 gap-1.5">
+          {(["auto", "US", "EU"] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => onLocaleChange(l)}
+              className={cn(
+                "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+                locale === l
+                  ? "border-vault/60 bg-accent-soft text-foreground"
+                  : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+              )}
+            >
+              {l === "auto" ? "Auto" : l === "US" ? "US 1,234.56" : "EU 1.234,56"}
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      {!result && (
+        <button
+          type="button"
+          onClick={run}
+          disabled={busy}
+          className={cn(
+            "inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground transition-opacity",
+            busy ? "cursor-not-allowed opacity-50" : "hover:opacity-90",
+          )}
+        >
+          {busy ? (
+            <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> {status ?? "Extracting…"}</>
+          ) : (
+            <><Download className="h-3.5 w-3.5" /> Extract transactions</>
+          )}
+        </button>
+      )}
+
+      {result && (
+        <>
+          <div className="flex items-center gap-1.5 text-[10.5px] text-text-2">
+            <span className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5">
+              {typeLabel[result.type as Exclude<TxDocType, "auto">] ?? "Generic"}
+            </span>
+            <span>{result.rows.length} row{result.rows.length === 1 ? "" : "s"}</span>
+            <span className="text-text-muted">· {result.locale}</span>
+            <button
+              type="button"
+              onClick={run}
+              className="ml-auto rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[10.5px] text-text-2 hover:text-foreground"
+              disabled={busy}
+            >
+              {busy ? "…" : "Re-run"}
+            </button>
+          </div>
+
+          {result.warnings.length > 0 && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
+              {result.warnings.map((w, i) => (
+                <div key={i} className="flex gap-1"><AlertTriangle className="mt-[1px] h-3 w-3 shrink-0" />{w}</div>
+              ))}
+            </div>
+          )}
+
+          <TxPreviewTable result={result} onChange={(rows) => setResult({ ...result, rows })} />
+
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              type="button"
+              onClick={copyCsv}
+              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-text-2 hover:text-foreground"
+            >
+              Copy CSV
+            </button>
+            <button
+              type="button"
+              onClick={downloadCsv}
+              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-text-2 hover:text-foreground"
+            >
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={downloadXlsx}
+              className="inline-flex items-center justify-center gap-1 rounded-md bg-vault px-2 py-1.5 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
+            >
+              <Download className="h-3 w-3" /> Excel
+            </button>
+          </div>
+        </>
+      )}
+
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+function TxPreviewTable({
+  result,
+  onChange,
+}: {
+  result: TxState;
+  onChange: (rows: TxState["rows"]) => void;
+}) {
+  if (result.rows.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-3 text-[11px] text-text-muted">
+        No rows parsed. Try a different document type or the "Data → Excel" mode.
+      </div>
+    );
+  }
+  const maxRows = 200;
+  const shown = result.rows.slice(0, maxRows);
+  const updateCell = (rowIdx: number, key: string, value: string) => {
+    const next = result.rows.slice();
+    const original = next[rowIdx];
+    next[rowIdx] = { ...original, [key]: value };
+    onChange(next);
+  };
+  return (
+    <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border bg-surface-2">
+      <table className="min-w-full text-[10.5px]">
+        <thead className="sticky top-0 bg-surface-2 text-text-2">
+          <tr>
+            {result.schema.map((s) => (
+              <th key={s.key} className="border-b border-border px-1.5 py-1 text-left font-medium">
+                {s.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((r, i) => (
+            <tr key={i} className="odd:bg-surface-3/40">
+              {result.schema.map((s) => {
+                const v = r[s.key];
+                const display = v == null ? "" : String(v);
+                return (
+                  <td key={s.key} className="border-b border-border/50 px-1.5 py-0.5">
+                    <input
+                      value={display}
+                      onChange={(e) => updateCell(i, s.key, e.target.value)}
+                      className="w-full bg-transparent text-foreground outline-none focus:bg-surface-1"
+                    />
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {result.rows.length > maxRows && (
+        <div className="border-t border-border px-2 py-1 text-[10px] text-text-muted">
+          Showing first {maxRows} of {result.rows.length}. Full set exports.
+        </div>
+      )}
     </div>
   );
 }

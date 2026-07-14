@@ -1,80 +1,87 @@
-# Auto-Bookmark (Heuristic, No AI)
+# Transactional Data Extraction
 
-Detect a PDF's structure from its text layer, propose an outline, let the user review, and write it back as native PDF bookmarks. 100% on-device, deterministic, no network. Falls back to silently running OCR when the doc is a pure scan.
+Add a **Transactions** mode to the existing Extract tool that turns the raw tables already produced by `extract-tables.ts` into typed rows for bank statements, invoices/receipts, and legal (LEDES-style) billing, plus a generic table extractor. Preview → edit → export CSV / XLSX. 100% on-device, no AI, no network.
 
 ## User flow
 
-1. Open a PDF in the workspace → left rail → **Outline** panel (existing) gets a new **Auto-detect** button.
-2. If the doc has a text layer → detection runs immediately (typically <1s per 100 pages).
-3. If not → toast "Running OCR to detect headings…" → existing `ocr-pdf.ts` pipeline runs into the sidecar `ocrLayer` → detection re-runs on the OCR text.
-4. Panel shows a tree preview: title, page, indent by level, checkbox per node, "collapse/expand all".
-5. User can edit titles inline, drag to re-nest, uncheck to drop.
-6. **Apply** writes the outline into the sidecar (annotation-store extension). Export bakes it into the PDF via pdf-lib.
+1. Left rail → **Extract** → new third mode chip **Transactions → CSV/Excel** (next to "Pages → PDF" and "Data → Excel").
+2. Panel shows a **Document type** picker (`Auto-detect · Bank statement · Invoice/Receipt · Legal billing · Generic table`) with the auto-detected type pre-selected.
+3. Click **Extract transactions** → runs the existing `extractTables` pipeline (silent OCR fallback stays intact), then the semantic parser for the chosen type.
+4. Preview table in the inspector: columns are typed per document type. Each cell is editable; header row shows the mapped source column with a dropdown to remap if auto-mapping is wrong.
+5. **Copy CSV**, **Download CSV**, **Download XLSX** buttons. XLSX includes a summary sheet for statements (opening/closing balance, totals by month, totals by category-guess).
 
-## Detection engine
+## Detection engine (`src/lib/pdf/transactions/detect-type.ts`)
 
-New module `src/lib/outline/auto-detect.ts` (pure TS, worker-safe).
+Sniff the first 2 pages of text to pick a type:
 
-Signals per text run (from `pdf.js getTextContent` — already used in `remove-bates.ts`):
+- **Bank statement** — presence of `\b(Statement|Account) (period|summary|number)\b`, `Beginning balance`, `Ending balance`, `Deposits/Credits`, `Withdrawals/Debits`, or a header row containing `Date` + `Description` + `Amount|Debit|Credit|Balance`.
+- **LEDES / legal billing** — headers like `Timekeeper`, `Task Code`, `Hours`, `Rate`, `Amount`, or a pipe-delimited LEDES 1998B block (`INVOICE_DATE|INVOICE_NUMBER|CLIENT_ID|LAW_FIRM_MATTER_ID|...`).
+- **Invoice / receipt** — `Invoice #`, `Bill To`, `Subtotal`, `Tax`, `Total`, or a line-item table with `Qty` + `Unit price` + `Amount`.
+- **Fallback** — generic table.
 
-- **Font size** — cluster all run sizes; runs ≥ 1.15× median body size are heading candidates. Cluster candidates into up to 4 size tiers → H1…H4.
-- **Font weight / name** — bold in the PDF font name (`Bold`, `Black`, `Semibold`) promotes a run one tier.
-- **Position** — runs that start a line and sit in the top 60% of the page score higher; runs indented far right are demoted.
-- **Length** — 3–120 chars, no trailing period (except numbered), not ending in `,` or `;`.
-- **Numbering patterns** — regex ladder assigns level directly and overrides font-size tier:
-  - `^\d+\.\s` → L1, `^\d+\.\d+\s` → L2, `^\d+\.\d+\.\d+\s` → L3
-  - `^[IVXLC]+\.\s` (roman) → L1
-  - `^(ARTICLE|SECTION|CHAPTER|PART|APPENDIX|EXHIBIT|SCHEDULE)\s+[\dIVXLC]+` → L1
-  - `^(Section|Article|Chapter)\s+[\dIVXLC]+\.\d+` → L2
-  - `^[A-Z]\.\s` at line start after an L1 → L2
-- **All-caps short lines** (≤ 80 chars, ≥ 60% letters uppercase, not mid-paragraph) → promote one tier.
-- **De-dupe** — running header/footer detector: any candidate that appears at nearly identical (x, y) on ≥ 60% of pages is discarded (same primitive as the watermark scanner in `remove-watermark.ts`).
-- **Cap** — if > 500 headings survive on a < 200-page doc, tighten thresholds and re-run once. Prevents flooding.
+Return `{ type, confidence, evidence }` so the UI can show a small "detected: Bank statement (high)" chip.
 
-Output: `OutlineNode[]` with `{ title, pageIndex, level, y }`, already nested by level.
+## Semantic parsers (`src/lib/pdf/transactions/parsers/`)
 
-## Scan fallback (silent OCR)
+Each parser takes the raw `ExtractedTable[]` from `extractTables()` and returns a typed `Transaction[]` plus a `TransactionSchema` describing the output columns.
 
-- Detect "no text layer" via `getTextContent` returning empty on the first 3 pages.
-- Call existing `runOcr` (already wired for the OCR tool) with progress reported into the panel: "Preparing scan… page N of M".
-- Store OCR result in the sidecar `ocrLayer` — same three-layer contract as everywhere else, srcBytes untouched.
-- Re-run detection on OCR text runs (they carry bbox + font size proxies from Tesseract).
-- OCR text often lacks reliable font-size differences → detector falls back to numbering-pattern + all-caps + position signals only when < 3 distinct size tiers are found.
+- `bank-statement.ts` — output columns: `date | description | debit | credit | amount | balance | category?`
+  - Date regexes: `MM/DD/YYYY`, `DD/MM/YYYY`, `Mon DD`, `YYYY-MM-DD`. Locale sniffed from the statement (US vs EU) via header text; user can override.
+  - Amount parser handles `1,234.56`, `1.234,56`, trailing `CR/DR`, parentheses for negatives, `$/€/£` prefixes. Signed based on debit/credit column when present, else on parentheses/sign.
+  - Balance column detected as the rightmost monetary column that increases monotonically in one direction.
+  - Simple category guess (rules only): payroll, transfer, fee, atm, card, check, deposit — pure regex on description, no AI.
 
-## Writing bookmarks
+- `invoice.ts` — output columns: `line_no | description | qty | unit_price | amount | tax?` plus a `header` object (`vendor, invoice_no, invoice_date, due_date, subtotal, tax, total, currency`).
+  - Header extracted from key/value pairs above the line-item table (regex on labels).
+  - Line items detected as rows where at least two numeric-looking columns exist to the right of a description.
+  - Sanity check: `Σ amount ≈ subtotal ± 0.02` — flags a warning row in the preview when it doesn't reconcile.
 
-- Sidecar gets a new `outline` slice in `src/lib/annotate/store.ts` (or a new small store `outline-store.ts` to stay isolated). Shape mirrors detector output.
-- Export path: extend `src/lib/editor/export.ts` (or the existing `outline/write.ts` if it already handles pdf-lib registration — reuse it) so `exportEditedPdf` walks the outline tree and calls `pdf-lib`'s catalog `/Outlines` writer with `Fit` destinations `[page, /XYZ, 0, pageHeight, null]`.
-- Preserves existing bookmarks by default; "Replace existing" toggle in the panel.
+- `ledes.ts` — output columns: `date | timekeeper_id | timekeeper_name | task_code | activity_code | expense_code | hours | rate | amount | narrative`.
+  - Two paths: pipe-delimited LEDES 1998B (parse as CSV with `|`), or human-readable attorney invoice (map header text like `Atty`, `Hours`, `Rate`, `Amount`, `Description`).
+  - Task/activity codes validated against the standard UTBMS list (bundled JSON, ~200 codes) so bad column mappings surface as `?` in the preview.
 
-## UI
+- `generic.ts` — passes rows through, but promotes the first row to headers if all cells are non-numeric, and normalizes amount-looking cells (parses to Number when possible).
 
-- `src/components/workspace/outline-panel.tsx` (new) — mounted from `tool-panels.tsx` under case `"outline"`. If an outline panel doesn't already exist in the rail, add it under **Layout** in `workspace-shell.tsx` (icon `ListTree`, label "Outline & bookmarks").
-- Sections:
-  1. **Auto-detect** button + last-run stats ("42 headings across 3 levels").
-  2. Tree view (uses shadcn `Collapsible` + drag-handle from existing patterns) with inline rename, level nudge (◄ ►), checkbox.
-  3. **Apply to document** (writes to sidecar) and **Export PDF with bookmarks** (calls export pipeline).
-- Empty state: "No outline yet — click Auto-detect."
+## Shared amount / date normalizers (`src/lib/pdf/transactions/normalize.ts`)
+
+Pure functions used by every parser:
+
+- `parseAmount(raw, locale)` → `{ value: number | null, negative: boolean, currency?: string }`.
+- `parseDate(raw, locale)` → ISO `YYYY-MM-DD` or null. Two-digit years pivot at 70/69.
+- `guessLocale(pageText)` → `"US" | "EU"` based on `$`/`€/£`, decimal-separator frequency, and month name spellings.
+
+## Column mapper
+
+Every parser returns a `mapping: Record<TypedColumn, number | null>` (index into the raw rows). The inspector renders a small mapping strip so the user can reassign columns before export — same primitive as the Bates format editor. Changes re-run the parser in-place (cheap, all in-memory).
+
+## Preview + export UI (`src/components/workspace/transactions-panel.tsx`)
+
+- Header: file name, detected type chip, page count, row count.
+- Column-mapping strip (collapsible).
+- Editable data grid (virtualized when >200 rows) using existing table components.
+- Footer buttons: **Copy CSV**, **Download CSV**, **Download XLSX** (single sheet for invoices/LEDES; statements get `Transactions` + `Summary` sheets — totals by month/category, opening/closing balance).
+- Locale toggle (`Auto / US / EU`) that re-runs normalizers.
+- Empty state after run: "No transactions detected. Try a different document type or use the raw table extractor."
+
+## Wire-up
+
+- **New** `src/lib/pdf/transactions/{types,detect-type,normalize,parsers/{bank-statement,invoice,ledes,generic}}.ts`
+- **New** `src/lib/pdf/transactions/utbms.ts` (bundled code list for LEDES validation)
+- **New** `src/components/workspace/transactions-panel.tsx`
+- **Edit** `src/components/workspace/tool-panels.tsx` — add third mode chip in the Extract wrapper (around line 5560); import + render `TransactionsPanel`.
+- **Reuse** `xlsx` (already a dep, used by `extract-tables.ts`) for XLSX output.
 
 ## Technical notes
 
-- Pure TS + pdf.js + pdf-lib; no new npm deps.
-- Runs in the main thread for now; wrap in a worker later if needed (200-page doc measured target < 800ms after text extraction).
-- Follows the three-layer contract: srcBytes read-only, outline stored in sidecar, only baked in at export.
-- Persists in IndexedDB alongside annotations under the same `name::size` key.
-
-## Files touched
-
-- **New** `src/lib/outline/auto-detect.ts` — heuristic engine.
-- **New** `src/lib/outline/outline-store.ts` (or extend `annotate/store.ts`) — sidecar slice.
-- **New** `src/components/workspace/outline-panel.tsx`.
-- **Edit** `src/lib/outline/write.ts` — accept `OutlineNode[]` from the sidecar.
-- **Edit** `src/lib/editor/export.ts` — call the outline writer when the sidecar has entries.
-- **Edit** `src/components/workspace/tool-panels.tsx` — register `case "outline"`.
-- **Edit** `src/components/workspace/workspace-shell.tsx` — rail entry (only if not already present).
+- Sits on top of `extractTables()` — reuses OCR fallback, no new PDF parsing loop.
+- Zero new dependencies.
+- Pure functions everywhere → easy unit tests for the normalizers and parsers with sample rows.
+- Follows the three-layer contract: srcBytes untouched; parser output is derived state, not sidecar.
+- Persistence: nothing saved by default. If the user turns on the case-session save, the extracted table gets stored under `case.transactions[fileName]` for later reuse by the roadmap's Categorize/Expense Report block.
 
 ## Out of scope
 
-- AI-based renaming / hierarchy inference (deferred; can slot in later as an "Enhance" button).
-- Cross-document outline merging (already handled by exhibit-binder).
-- Rendered TOC page (separate block in the pivot plan).
+- AI-assisted extraction (deferred — Hybrid path documented for later).
+- Multi-statement reconciliation across files (would live in a workflow node).
+- Custom user schemas / column-rename presets (add if a user asks).
+- Direct push to accounting software (Xero, QuickBooks) — export CSV meets 99% of that need today.
