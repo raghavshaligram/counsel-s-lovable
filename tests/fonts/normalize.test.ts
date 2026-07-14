@@ -5,7 +5,7 @@ describe("normalizePsName", () => {
   const cases: Array<[string, string, number, boolean]> = [
     ["ArialMT",                       "arial",           400, false],
     ["Arial-BoldMT",                  "arial",           700, false],
-    ["ABCDE+ArialMT",                 "arial",           400, false],
+    ["ABCDEF+ArialMT",                "arial",           400, false],
     ["HelveticaNeueLTStd-Roman",      "helveticaneue",   400, false],
     ["TimesNewRomanPSMT",             "timesnewroman",   400, false],
     ["TimesNewRomanPS-BoldItalicMT",  "timesnewroman",   700, true],

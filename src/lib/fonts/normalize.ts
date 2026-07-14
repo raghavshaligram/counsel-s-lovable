@@ -142,8 +142,19 @@ export function normalizePsName(raw: string | undefined | null): NormalizedName 
   }
 
   // Trim trailing style tokens that leaked into the family (e.g. a name
-  // like "AptosDisplayBold" without a hyphen).
-  while (familyTokens.length > 1 && isStyleToken(familyTokens[familyTokens.length - 1])) {
+  // like "AptosDisplayBold" without a hyphen). Restrict to unambiguous
+  // style words — never pop "Roman" / "Book" / "Regular" / "Normal" because
+  // they appear inside real family names ("Times New Roman", "Book Antiqua").
+  const strongStyleTail = new Set([
+    "thin", "hairline", "extralight", "ultralight", "light",
+    "medium", "semibold", "demibold", "demi", "bold",
+    "extrabold", "ultrabold", "heavy", "black",
+    "italic", "oblique", "it",
+  ]);
+  while (
+    familyTokens.length > 1 &&
+    strongStyleTail.has(familyTokens[familyTokens.length - 1].toLowerCase())
+  ) {
     consumeStyle(familyTokens.pop() as string);
   }
 
