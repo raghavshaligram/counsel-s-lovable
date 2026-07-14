@@ -12,6 +12,9 @@
  * inspector; this file is just the page surface + pointer logic.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+// pdf.js viewer styles — needed for the XFA HTML layer to lay out
+// correctly (fonts, colours, form field boxes). Side-effect import.
+import "pdfjs-dist/web/pdf_viewer.css";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
@@ -396,6 +399,7 @@ export function EditorCanvas({
   // avoiding a full pdf.js re-render.
   const pristineCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const xfaLayerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   // Tracks the in-flight pdf.js RenderTask for this canvas so we can cancel
   // it before starting a new render. pdf.js throws "Cannot use the same
@@ -551,6 +555,52 @@ export function EditorCanvas({
           }
         } catch { /* ignore */ }
 
+        // XFA layer — for LiveCycle Designer / dynamic forms, page.render()
+        // to canvas is often blank because the form content lives in an
+        // XML packet, not the page's content stream. Render it as an HTML
+        // overlay so users see the actual form fields, labels, and
+        // instructions instead of a blank white page.
+        try {
+          const xfaHtml = await (page as unknown as { getXfa?: () => Promise<unknown> })
+            .getXfa?.();
+          const layerDiv = xfaLayerRef.current;
+          if (xfaHtml && layerDiv) {
+            layerDiv.innerHTML = "";
+            const XfaLayer = (pdfjs as unknown as {
+              XfaLayer?: {
+                render: (p: {
+                  viewport: unknown;
+                  div: HTMLElement;
+                  xfaHtml: unknown;
+                  page?: unknown;
+                  annotationStorage?: unknown;
+                  linkService?: unknown;
+                  intent?: string;
+                }) => unknown;
+              };
+            }).XfaLayer;
+            if (XfaLayer && typeof XfaLayer.render === "function") {
+              const xfaVp = (cssVp as unknown as { clone: (o: { dontFlip: boolean }) => unknown })
+                .clone({ dontFlip: true });
+              XfaLayer.render({
+                viewport: xfaVp,
+                div: layerDiv,
+                xfaHtml,
+                page,
+                intent: "display",
+              });
+              layerDiv.style.display = "block";
+            }
+          } else if (layerDiv) {
+            layerDiv.innerHTML = "";
+            layerDiv.style.display = "none";
+          }
+        } catch (xfaErr) {
+          console.warn("[workspace EditorCanvas] XFA layer render failed", xfaErr);
+        }
+
+
+
 
         const baseVp = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
@@ -567,6 +617,9 @@ export function EditorCanvas({
         if (cancelled) return;
         const items: TextItem[] = rawItems.flatMap((it) => {
           if (!it.str || !it.str.trim()) return [];
+          // XFA text items don't carry a `transform` matrix — skip so we
+          // don't crash Util.transform. The canvas render still works.
+          if (!it.transform || it.transform.length < 6) return [];
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
           const styleEntry = it.fontName ? styles[it.fontName] : undefined;
@@ -1797,6 +1850,17 @@ export function EditorCanvas({
   return (
     <div className="relative inline-block" style={{ background: "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
+
+      {/* XFA HTML layer — populated only for LiveCycle / XFA forms;
+          otherwise stays empty and display:none. */}
+      <div
+        ref={xfaLayerRef}
+        className="xfaLayer"
+        style={{ position: "absolute", inset: 0, display: "none", pointerEvents: "auto", overflow: "hidden" }}
+        aria-hidden={false}
+      />
+
+
 
 
       <div
