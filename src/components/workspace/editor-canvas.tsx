@@ -1388,16 +1388,53 @@ export function EditorCanvas({
         const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
         const dprX = canvas.width / Math.max(1, cssW);
         const dprY = canvas.height / Math.max(1, cssH);
-        const bg = sampled.bg;
-        ctx.save();
-        ctx.fillStyle = `rgb(${Math.round(bg.r * 255)},${Math.round(bg.g * 255)},${Math.round(bg.b * 255)})`;
-        ctx.fillRect(
-          (it.x - coverPadX) * scale * dprX,
-          it.y * scale * dprY,
-          (it.w + coverPadX * 2) * scale * dprX,
-          (it.h + coverPadBottom) * scale * dprY,
+        // Adjacent-pixel patching: clone a 2px-tall strip of the actual
+        // rendered background from directly above the glyph box and tile
+        // it vertically down across the glyph bounds. This preserves
+        // gradients, paper textures, and shaded card backgrounds without
+        // leaving a solid RGB seam.
+        const boxX = Math.max(0, Math.floor((it.x - coverPadX) * scale * dprX));
+        const boxY = Math.max(0, Math.floor(it.y * scale * dprY));
+        const boxW = Math.min(
+          canvas.width - boxX,
+          Math.ceil((it.w + coverPadX * 2) * scale * dprX),
         );
-        ctx.restore();
+        const boxH = Math.min(
+          canvas.height - boxY,
+          Math.ceil((it.h + coverPadBottom) * scale * dprY),
+        );
+        const stripThickness = Math.max(1, Math.round(2 * scale * dprY));
+        const sliceY = Math.max(0, boxY - stripThickness);
+        const sliceH = Math.min(stripThickness, boxY - sliceY);
+        if (boxW > 0 && boxH > 0 && sliceH > 0) {
+          ctx.save();
+          try {
+            const bgSlice = ctx.getImageData(boxX, sliceY, boxW, sliceH);
+            const patch = document.createElement("canvas");
+            patch.width = boxW;
+            patch.height = sliceH;
+            const pctx = patch.getContext("2d");
+            if (pctx) {
+              pctx.putImageData(bgSlice, 0, 0);
+              for (let y = 0; y < boxH; y += sliceH) {
+                ctx.drawImage(
+                  patch,
+                  0,
+                  0,
+                  boxW,
+                  sliceH,
+                  boxX,
+                  boxY + y,
+                  boxW,
+                  Math.min(sliceH, boxH - y),
+                );
+              }
+            }
+          } catch {
+            // getImageData can throw on tainted canvases; fall through.
+          }
+          ctx.restore();
+        }
       }
     }
 
