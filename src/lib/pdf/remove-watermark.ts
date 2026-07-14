@@ -95,8 +95,9 @@ export async function scanForWatermarks(
     }
   }
 
-  // 2. Count repeated Form XObject usage.
+  // 2. Count repeated Form XObject usage AND note tagged watermark stamps.
   const xoUsage = new Map<string, number>();
+  const tagged = new Set<string>();
   for (const page of pages) {
     const resources = page.node.Resources();
     if (!resources) continue;
@@ -119,17 +120,27 @@ export async function scanForWatermarks(
       if (seenOnPage.has(key)) continue;
       seenOnPage.add(key);
       xoUsage.set(key, (xoUsage.get(key) ?? 0) + 1);
+      // CounselPDF's own watermark tool tags its stamp XObject with this
+      // marker. When present, surface the XObject regardless of how many
+      // pages it appears on — single-page files still deserve one-click
+      // watermark removal.
+      const marker = target.dict.get(PDFName.of(WATERMARK_MARKER));
+      if (marker) tagged.add(key);
     }
   }
 
   const repeated: WatermarkScan["repeatedXObjects"] = [];
+  const seenRef = new Set<string>();
   for (const [ref, count] of xoUsage.entries()) {
     const percent = totalPages > 0 ? count / totalPages : 0;
-    if (percent >= 0.6 && totalPages >= 2) {
+    const isTagged = tagged.has(ref);
+    if (isTagged || (percent >= 0.6 && totalPages >= 2)) {
       repeated.push({ ref, pageCount: count, totalPages, percent });
+      seenRef.add(ref);
     }
   }
   repeated.sort((a, b) => b.pageCount - a.pageCount);
+
 
   return { annotationCount, repeatedXObjects: repeated, totalPages };
 }
