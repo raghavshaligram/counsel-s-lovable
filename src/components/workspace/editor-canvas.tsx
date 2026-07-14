@@ -396,6 +396,7 @@ export function EditorCanvas({
   // avoiding a full pdf.js re-render.
   const pristineCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const xfaLayerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   // Tracks the in-flight pdf.js RenderTask for this canvas so we can cancel
   // it before starting a new render. pdf.js throws "Cannot use the same
