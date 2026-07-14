@@ -2873,9 +2873,18 @@ function FloatingToolbar({
       <ToolbarBtn label="Redo" onClick={onRedo}>
         <Redo2 className="h-[15px] w-[15px]" />
       </ToolbarBtn>
+      <span className="mx-1 h-5 w-px bg-border" />
+      <ToolbarBtn
+        label={pinned ? "Unpin toolbar (float)" : "Pin toolbar to top"}
+        active={pinned}
+        onClick={onTogglePin}
+      >
+        {pinned ? <PinOff className="h-[15px] w-[15px]" /> : <Pin className="h-[15px] w-[15px]" />}
+      </ToolbarBtn>
     </div>
   );
 }
+
 
 
 function ToolbarBtn({
