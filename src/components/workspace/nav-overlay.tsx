@@ -597,18 +597,103 @@ function BookmarksTab({
   );
 }
 
+function countHidden(nodes: OutlineFlat[], overrides: OutlineOverrides): number {
+  let n = 0;
+  for (const node of nodes) {
+    if (overrides[node.id]?.hidden) n++;
+    n += countHidden(node.children, overrides);
+  }
+  return n;
+}
+
+function collectAllIds(nodes: OutlineFlat[], out: string[] = []): string[] {
+  for (const node of nodes) {
+    out.push(node.id);
+    collectAllIds(node.children, out);
+  }
+  return out;
+}
+
+function OutlineSection({
+  outline,
+  overrides,
+  onPatch,
+  onJump,
+  onJumpClose,
+}: {
+  outline: OutlineFlat[];
+  overrides: OutlineOverrides;
+  onPatch: (id: string, patch: OutlineOverride | null) => void;
+  onJump: (n: number) => void;
+  onJumpClose: (n: number) => void;
+}) {
+  const [showHidden, setShowHidden] = useState(false);
+  const hiddenCount = countHidden(outline, overrides);
+  const restoreAll = () => {
+    for (const id of collectAllIds(outline)) {
+      if (overrides[id]?.hidden) onPatch(id, { hidden: false });
+    }
+    setShowHidden(false);
+  };
+  return (
+    <section>
+      <div className="mb-1.5 flex items-center justify-between px-1">
+        <h3 className="text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
+          PDF outline
+        </h3>
+        {hiddenCount > 0 && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowHidden((v) => !v)}
+              className="rounded-md px-1.5 py-0.5 text-[11px] text-vault hover:bg-surface-2"
+            >
+              {showHidden ? "Hide hidden" : `Show hidden (${hiddenCount})`}
+            </button>
+            {showHidden && (
+              <button
+                type="button"
+                onClick={restoreAll}
+                className="rounded-md px-1.5 py-0.5 text-[11px] text-text-2 hover:bg-surface-2 hover:text-foreground"
+                title="Restore all hidden outline entries"
+              >
+                Restore all
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <ul className="space-y-0.5 text-[12.5px]">
+        {outline.map((n) => (
+          <OutlineRow
+            key={n.id}
+            node={n}
+            overrides={overrides}
+            onPatch={onPatch}
+            onJump={onJump}
+            onJumpClose={onJumpClose}
+            showHidden={showHidden}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function OutlineRow({
   node,
   overrides,
   onPatch,
   onJump,
   onJumpClose,
+  showHidden,
 }: {
   node: OutlineFlat;
   overrides: OutlineOverrides;
   onPatch: (id: string, patch: OutlineOverride | null) => void;
   onJump: (n: number) => void;
   onJumpClose: (n: number) => void;
+  showHidden: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -616,12 +701,19 @@ function OutlineRow({
   const displayTitle = ov.title ?? node.title;
   const [draft, setDraft] = useState(displayTitle);
   useEffect(() => { setDraft(displayTitle); }, [displayTitle]);
-  if (ov.hidden) return null;
+  const isHidden = !!ov.hidden;
+  if (isHidden && !showHidden) return null;
   const hasChildren = node.children.length > 0;
 
   return (
     <li>
-      <div className="group flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: node.depth * 12 }}>
+      <div
+        className={cn(
+          "group flex items-center gap-1 rounded-md hover:bg-surface-2",
+          isHidden && "opacity-50",
+        )}
+        style={{ paddingLeft: node.depth * 12 }}
+      >
         {hasChildren ? (
           <button
             type="button"
@@ -665,6 +757,7 @@ function OutlineRow({
               node.pageIndex === null && "text-text-muted",
               node.bold && "font-semibold",
               node.italic && "italic",
+              isHidden && "line-through",
             )}
             title={displayTitle}
           >
@@ -674,23 +767,37 @@ function OutlineRow({
         {node.pageIndex !== null && (
           <span className="shrink-0 px-1 text-[11px] tabular-nums text-text-muted">{node.pageIndex + 1}</span>
         )}
-        <button
-          type="button"
-          aria-label="Rename"
-          onClick={() => { setDraft(displayTitle); setEditing(true); }}
-          className="opacity-0 group-hover:opacity-100 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-        <button
-          type="button"
-          aria-label="Hide from list"
-          title="Hide from this list (does not modify the PDF)"
-          onClick={() => onPatch(node.id, { hidden: true })}
-          className="opacity-0 group-hover:opacity-100 mr-1 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
-        >
-          <EyeOff className="h-3 w-3" />
-        </button>
+        {isHidden ? (
+          <button
+            type="button"
+            aria-label="Unhide"
+            title="Restore to list"
+            onClick={() => onPatch(node.id, { hidden: false })}
+            className="mr-1 grid h-6 w-6 place-items-center rounded text-vault hover:bg-surface-1"
+          >
+            <Eye className="h-3 w-3" />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              aria-label="Rename"
+              onClick={() => { setDraft(displayTitle); setEditing(true); }}
+              className="opacity-0 group-hover:opacity-100 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              aria-label="Hide from list"
+              title="Hide from this list (does not modify the PDF)"
+              onClick={() => onPatch(node.id, { hidden: true })}
+              className="opacity-0 group-hover:opacity-100 mr-1 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+            >
+              <EyeOff className="h-3 w-3" />
+            </button>
+          </>
+        )}
       </div>
       {hasChildren && open && (
         <ul className="space-y-0.5">
@@ -702,14 +809,15 @@ function OutlineRow({
               onPatch={onPatch}
               onJump={onJump}
               onJumpClose={onJumpClose}
+              showHidden={showHidden}
             />
           ))}
         </ul>
       )}
     </li>
-
   );
 }
+
 
 /* ----------------------------- Pages ----------------------------- */
 
