@@ -10806,10 +10806,11 @@ function DeletePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   if (!doc) return <InspectorEmpty>Open a PDF to delete pages.</InspectorEmpty>;
 
-  const parsed = mode === "range" ? parseRanges(range, pageCount) : { pages: [] as number[], error: null as string | null };
+  const parsed = mode === "range" ? parseRanges(range, pageCount) : { groups: [] as number[][], error: undefined as string | undefined };
+  const rangePages: number[] = parsed.groups.flat();
   const targets: number[] = (() => {
     if (mode === "current") return [current];
-    if (mode === "range") return parsed.pages.map((p) => p - 1);
+    if (mode === "range") return rangePages.map((p: number) => p - 1);
     return [...selectedBlanks];
   })();
 
