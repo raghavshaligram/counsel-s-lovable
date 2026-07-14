@@ -381,6 +381,14 @@ export function EditorCanvas({
 }: EditorCanvasProps) {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Pristine offscreen snapshot of the freshly-rendered page canvas. Used to
+  // non-destructively "hide" original glyphs under a text-edit overlay by
+  // sampling a horizontal band immediately above the glyph and painting it
+  // across the cover region — preserves horizontal separators, gradients,
+  // and local page shading that a destructive clearRect would blow away.
+  // Also used to instantly restore pixels when a text-edit anno is deleted,
+  // avoiding a full pdf.js re-render.
+  const pristineCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   // Tracks the in-flight pdf.js RenderTask for this canvas so we can cancel
