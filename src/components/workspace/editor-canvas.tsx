@@ -608,7 +608,22 @@ export function EditorCanvas({
 
           const det = { key: resolved.key, approximate: resolved.approximate };
           const matchedFont = { matched: resolved.matched, fontFamily: resolved.fontFamily, fontWeight: String(resolved.fontWeight) };
-          const resolvedFontFamily = matchedFont.matched ? matchedFont.fontFamily : genericStack;
+          // Never demote an embedded PDF font to a generic system stack when
+          // pdf.js already gave us the real family name. Preserve the exact
+          // face pdf.js resolved from the embedded font dictionary; only fall
+          // back to the generic family when we have no usable name at all.
+          const preservedCssFamily = sanitizedCssFamily
+            ? (/[",]/.test(sanitizedCssFamily) ? sanitizedCssFamily : `"${sanitizedCssFamily}"`)
+            : "";
+          const preservedPsFamily = sanitizedFontName
+            ? `"${sanitizedFontName}"`
+            : "";
+          const fallbackStack = [preservedCssFamily, preservedPsFamily, genericStack]
+            .filter(Boolean)
+            .join(", ");
+          const resolvedFontFamily = matchedFont.matched
+            ? matchedFont.fontFamily
+            : (fallbackStack || genericStack);
           const fontWeight = numericFontWeight(matchedFont.matched ? matchedFont.fontWeight : undefined, bold);
           const fontKey = det.key;
           const fontApprox = det.approximate;
@@ -1766,7 +1781,7 @@ export function EditorCanvas({
   void onRequestOcr;
 
   return (
-    <div className="relative inline-block" style={{ background: pageBgColor ? rgbCss(pageBgColor) : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
+    <div className="relative inline-block" style={{ background: "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
 
 
@@ -1804,48 +1819,10 @@ export function EditorCanvas({
           }
           return null;
         })()}
-        {annos.map((a) => {
-          if (a.kind !== "text-edit" || !a.cover) return null;
-          // A text-edit annotation is a PERMANENT replacement of the
-          // underlying PDF glyphs. The cover must always be painted —
-          // even when the typed text still matches the original — or the
-          // PDF canvas glyphs will show through and double up with the
-          // overlay textarea on top, producing duplicate text.
-          const isEditing = editingId === a.id;
-          const tl = toScreen(a.cover.x, a.cover.y);
-          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg);
-          const cover = { background: bgCss };
-          if (backgroundConfidence < 0.9) {
-            cover.background = "transparent";
-          }
-          if (isEditing) {
-            console.log("[text-edit-cover]", {
-              id: a.id,
-              editing: true,
-              background: cover.background,
-              backgroundConfidence,
-              sampledBg: a.bg,
-              coverPdf: a.cover,
-              coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
-            });
-          }
-          return (
-            <div
-              key={`cover-${a.id}`}
-              data-vault-element="text-edit-cover"
-              data-anno-id={a.id}
-              style={{
-                position: "absolute",
-                left: tl.x, top: tl.y,
-                width: br.x - tl.x, height: br.y - tl.y,
-                background: cover.background,
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
-            />
-          );
-        })}
+        {/* text-edit-cover render loop removed: the base canvas is now
+            non-destructively repaired by the row-inpaint step in
+            onClickEditHit, so no HTML masking patch is needed and the
+            teal/dark sampled bg never appears behind edited text. */}
         {annos.map(renderAnno)}
         {editTextOverlays.map((it, i) => {
           const tl = toScreen(it.x, it.y);
