@@ -205,11 +205,13 @@ export function NavOverlay(props: Props) {
   }, [rect.right, rect.top]);
 
   const startResize = useCallback((e: React.MouseEvent) => {
-    resizeRef.current = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+    const currentH = rect.height ?? (ref.current?.getBoundingClientRect().height ?? MIN_H);
+    resizeRef.current = { x: e.clientX, y: e.clientY, w: rect.width, h: currentH };
     document.body.style.userSelect = "none";
     e.preventDefault();
     e.stopPropagation();
   }, [rect.width, rect.height]);
+
 
   if (!open) return null;
 
