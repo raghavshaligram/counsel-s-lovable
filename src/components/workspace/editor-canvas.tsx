@@ -15,10 +15,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
+import { resolveToFontKey } from "@/lib/fonts/bridge";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
-import { matchPdfFont } from "@/lib/utils/fontMatcher";
+
 
 interface TextItem {
   x: number;
@@ -478,8 +479,15 @@ export function EditorCanvas({
             family === "serif" ? '"Times New Roman", Times, serif' :
             family === "mono" ? '"Courier New", Courier, monospace' :
             "Helvetica, Arial, sans-serif";
-          const det = detectFontKey(sanitizedFontName || sanitizedCssFamily, family, sanitizedCssFamily);
-          const matchedFont = matchPdfFont(sanitizedFontName || sanitizedCssFamily || "");
+          const resolved = resolveToFontKey({
+            postscriptName: sanitizedFontName || undefined,
+            pdfFamily: family,
+            cssFamily: sanitizedCssFamily || undefined,
+            italicHint: italic,
+            weightHint: bold ? 700 : undefined,
+          });
+          const det = { key: resolved.key, approximate: resolved.approximate };
+          const matchedFont = { matched: resolved.matched, fontFamily: resolved.fontFamily, fontWeight: String(resolved.fontWeight) };
           const resolvedFontFamily = matchedFont.matched ? matchedFont.fontFamily : genericStack;
           const fontWeight = numericFontWeight(matchedFont.matched ? matchedFont.fontWeight : undefined, bold);
           const fontKey = det.key;
@@ -912,7 +920,7 @@ export function EditorCanvas({
         // Cover is rendered as a separate fixed-position layer (see below);
         // the text box itself stays transparent so it can grow without
         // changing the cover area.
-        const bg = "transparent";
+          const bg = "transparent";
         const fam = resolveTextFontFamily(a);
         const cover = a.kind === "text-edit" ? a.cover : undefined;
         const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
@@ -939,7 +947,7 @@ export function EditorCanvas({
         const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
-          background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
+          background: bg,
           color: textColor,
           WebkitTextFillColor: textColor,
           fontSize: a.fontSize * scale,
@@ -964,11 +972,12 @@ export function EditorCanvas({
           paddingBottom: padBottom,
           boxSizing: "border-box",
           margin: 0,
-          border: showEditChrome ? "1.5px solid var(--vault)" : "none",
-          outline: "none",
+          border: "none",
+          outline: showEditChrome ? "1px solid rgba(76,127,184,0.9)" : "none",
+          outlineOffset: showEditChrome ? 1 : 0,
           resize: "none",
-          borderRadius: showEditChrome ? 3 : 0,
-          boxShadow: showEditChrome ? "0 0 0 3px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.25)" : "none",
+          borderRadius: showEditChrome ? 2 : 0,
+          boxShadow: showEditChrome ? "0 0 0 3px rgba(76,127,184,0.18)" : "none",
           caretColor: rgbCss(a.color),
         };
         const onTextChange = (text: string) =>
@@ -1158,23 +1167,26 @@ export function EditorCanvas({
     // Try the PostScript name first (richest signal), then fall back to the
     // CSS family pdf.js resolved from the embedded font dictionary. The
     // matcher already strips `AAAAAA+` subset prefixes internally.
-    const tryNames = [it.fontName, it.cssFamily].filter((n): n is string => !!n && !isOpaquePdfjsFontId(n));
-    let matched: ReturnType<typeof matchPdfFont> | null = null;
-    for (const n of tryNames) {
-      const r = matchPdfFont(n);
-      matched = r;
-      if (r.matched) break;
-    }
-    // If the matcher couldn't identify the font, fall back to the sanitised
-    // css family from extraction (already a real loadable stack). Never let
-    // an opaque pdf.js id like "g_d0_f1" reach fontFamilyOverride.
-    const cssFamFallback = it.cssFamily && !isOpaquePdfjsFontId(it.cssFamily) ? it.cssFamily : undefined;
-    const fontFamilyOverride = matched?.matched ? matched.fontFamily : (cssFamFallback ?? matched?.fontFamily);
-    const fontWeight = numericFontWeight(matched?.matched ? matched.fontWeight : (it.fontWeight ?? undefined), it.bold);
+    const psName = it.fontName && !isOpaquePdfjsFontId(it.fontName) ? it.fontName : undefined;
+    const cssFam = it.cssFamily && !isOpaquePdfjsFontId(it.cssFamily) ? it.cssFamily : undefined;
+    const resolvedEdit = resolveToFontKey({
+      postscriptName: psName,
+      cssFamily: cssFam,
+      italicHint: it.italic,
+      weightHint: it.bold ? 700 : undefined,
+    });
+    const matched = {
+      matched: resolvedEdit.matched,
+      fontFamily: resolvedEdit.fontFamily,
+      fontWeight: String(resolvedEdit.fontWeight),
+    };
+    const cssFamFallback = cssFam;
+    const fontFamilyOverride = matched.matched ? matched.fontFamily : (cssFamFallback ?? matched.fontFamily);
+    const fontWeight = numericFontWeight(matched.matched ? matched.fontWeight : (it.fontWeight ?? undefined), it.bold);
     console.log("[text-edit-font] extraction", {
       rawPdfFontName: it.fontName,
       pdfCssFamily: it.cssFamily,
-      matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
+      matchedFontName: matched.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
       fontFamilyOverride: fontFamilyOverride ?? "",
       fontKey,
       fontApproximate: !!it.fontApprox,

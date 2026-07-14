@@ -632,10 +632,56 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, [active.id, active.activeToolId, active.editor.tool]);
 
 
+  // Hidden file picker for the "Insert image" tool. Selecting the tool from
+  // the floating toolbar arms this input; a chosen image is dispatched as
+  // SET_PENDING_IMAGE and the editor canvas drops it on the next click.
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const setEditorTool = useCallback(
     (t: EditorTool) => {
+      if (t === "image") {
+        const el = imageInputRef.current;
+        if (el) {
+          el.value = "";
+          el.click();
+        }
+        return;
+      }
       editorDispatch({ type: "SET_TOOL", t });
       if (t !== "select" && t !== "note") patchActive({ isDirty: true });
+    },
+    [editorDispatch, patchActive],
+  );
+
+  const onImagePicked = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.currentTarget.files?.[0];
+      e.currentTarget.value = "";
+      if (!file) return;
+      if (!/^image\//.test(file.type)) {
+        toast.error("Pick a PNG or JPEG image");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || "");
+        if (!dataUrl) return;
+        const img = new Image();
+        img.onload = () => {
+          const mime: "image/png" | "image/jpeg" =
+            file.type === "image/jpeg" ? "image/jpeg" : "image/png";
+          editorDispatch({
+            type: "SET_PENDING_IMAGE",
+            img: { dataUrl, mime, w: img.naturalWidth, h: img.naturalHeight },
+          });
+          editorDispatch({ type: "SET_TOOL", t: "image" });
+          patchActive({ isDirty: true });
+          toast.success(`"${file.name}" armed — click a page to place`);
+        };
+        img.onerror = () => toast.error("Couldn't read that image");
+        img.src = dataUrl;
+      };
+      reader.onerror = () => toast.error("Couldn't read that image");
+      reader.readAsDataURL(file);
     },
     [editorDispatch, patchActive],
   );
@@ -1642,6 +1688,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         accept="application/pdf"
         className="hidden"
         onChange={(e) => onFiles(e.target.files)}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg"
+        className="hidden"
+        onChange={onImagePicked}
       />
 
       {/* TOP BAR */}
