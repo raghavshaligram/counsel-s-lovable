@@ -22,6 +22,9 @@ import {
   PDFRawStream,
 } from "pdf-lib";
 
+/** Dict key CounselPDF's own watermark tool stamps onto its Form XObjects. */
+export const WATERMARK_MARKER = "CounselPDFWatermark";
+
 export interface WatermarkScan {
   annotationCount: number;
   repeatedXObjects: Array<{
