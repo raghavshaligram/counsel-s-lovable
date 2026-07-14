@@ -1784,40 +1784,54 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                 (t) => !t.hidden && t.groupLabel === groupLabel,
               );
               if (groupTools.length === 0) return null;
+              const collapsed = !!collapsedGroups[groupLabel];
               return (
                 <div key={groupLabel} className="mb-4 last:mb-0">
-                  <div className="px-2 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-text-muted">
-                    {groupLabel}
-                  </div>
-                  <ul className="flex flex-col gap-0.5">
-                    {groupTools.map((tool) => {
-                      const isActive = activeToolId === tool.id && inspectorOpen;
-                      const Icon = tool.icon;
-                      const locked = PAID_TOOL_IDS.has(tool.id) && !isPro;
-                      return (
-                        <li key={tool.id}>
-                          <button
-                            type="button"
-                            onClick={() => openTool(tool.id)}
-                            aria-label={locked ? `${tool.label} (Pro)` : tool.label}
-                            aria-pressed={isActive}
-                            title={locked ? `${tool.label} — Pro feature` : tool.label}
-                            className={cn(
-                              "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors",
-                              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                              isActive
-                                ? "bg-accent-soft text-vault"
-                                : "text-text-2 hover:bg-surface-2 hover:text-foreground",
-                            )}
-                          >
-                            <Icon className="h-4 w-4 shrink-0" />
-                            <span className="truncate">{tool.label}</span>
-                            {locked && <LockBadge className="ml-auto" />}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(groupLabel)}
+                    aria-expanded={!collapsed}
+                    className="flex w-full items-center justify-between rounded px-2 pb-1.5 pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-text-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span>{groupLabel}</span>
+                    <ChevronDown
+                      className={cn(
+                        "h-3 w-3 shrink-0 transition-transform",
+                        collapsed && "-rotate-90",
+                      )}
+                    />
+                  </button>
+                  {!collapsed && (
+                    <ul className="flex flex-col gap-0.5">
+                      {groupTools.map((tool) => {
+                        const isActive = activeToolId === tool.id && inspectorOpen;
+                        const Icon = tool.icon;
+                        const locked = PAID_TOOL_IDS.has(tool.id) && !isPro;
+                        return (
+                          <li key={tool.id}>
+                            <button
+                              type="button"
+                              onClick={() => openTool(tool.id)}
+                              aria-label={locked ? `${tool.label} (Pro)` : tool.label}
+                              aria-pressed={isActive}
+                              title={locked ? `${tool.label} — Pro feature` : tool.label}
+                              className={cn(
+                                "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] font-medium transition-colors",
+                                "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                isActive
+                                  ? "bg-accent-soft text-vault border-l-2 border-vault"
+                                  : "text-text-2 hover:bg-surface-2 hover:text-foreground",
+                              )}
+                            >
+                              <Icon className="h-4 w-4 shrink-0" />
+                              <span className="truncate">{tool.label}</span>
+                              {locked && <LockBadge className="ml-auto" />}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </div>
               );
             })}
