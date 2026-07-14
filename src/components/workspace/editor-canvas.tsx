@@ -1155,6 +1155,12 @@ export function EditorCanvas({
         // changing the cover area.
           const bg = "transparent";
         const fam = resolveTextFontFamily(a);
+        // Prepend the opaque pdf.js font id so the browser reuses the exact
+        // embedded font bytes pdf.js injected for the underlying glyphs.
+        // The sanitized `fam` stack remains as fallback for the export path.
+        const rawPdfjsFontId = (a as { rawPdfjsFontId?: string }).rawPdfjsFontId;
+        const famWithRaw = rawPdfjsFontId ? `"${rawPdfjsFontId}", ${fam}` : fam;
+
         const cover = a.kind === "text-edit" ? a.cover : undefined;
         const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
         const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
