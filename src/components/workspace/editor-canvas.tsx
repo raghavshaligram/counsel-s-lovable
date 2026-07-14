@@ -1381,6 +1381,7 @@ export function EditorCanvas({
     // at its true top (`it.y`), extended downward to swallow descenders.
     // The pristine snapshot captured after render is kept so deleting the
     // anno restores the original pixels in full.
+    // Safe Perimeter Gradient Inpainting — masks old glyphs without smearing ink or painting solid RGB blocks
     if (canvas) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (ctx) {
@@ -1388,53 +1389,35 @@ export function EditorCanvas({
         const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
         const dprX = canvas.width / Math.max(1, cssW);
         const dprY = canvas.height / Math.max(1, cssH);
-        // Adjacent-pixel patching: clone a 2px-tall strip of the actual
-        // rendered background from directly above the glyph box and tile
-        // it vertically down across the glyph bounds. This preserves
-        // gradients, paper textures, and shaded card backgrounds without
-        // leaving a solid RGB seam.
-        const boxX = Math.max(0, Math.floor((it.x - coverPadX) * scale * dprX));
-        const boxY = Math.max(0, Math.floor(it.y * scale * dprY));
-        const boxW = Math.min(
-          canvas.width - boxX,
-          Math.ceil((it.w + coverPadX * 2) * scale * dprX),
-        );
-        const boxH = Math.min(
-          canvas.height - boxY,
-          Math.ceil((it.h + coverPadBottom) * scale * dprY),
-        );
-        const stripThickness = Math.max(1, Math.round(2 * scale * dprY));
-        const sliceY = Math.max(0, boxY - stripThickness);
-        const sliceH = Math.min(stripThickness, boxY - sliceY);
-        if (boxW > 0 && boxH > 0 && sliceH > 0) {
-          ctx.save();
-          try {
-            const bgSlice = ctx.getImageData(boxX, sliceY, boxW, sliceH);
-            const patch = document.createElement("canvas");
-            patch.width = boxW;
-            patch.height = sliceH;
-            const pctx = patch.getContext("2d");
-            if (pctx) {
-              pctx.putImageData(bgSlice, 0, 0);
-              for (let y = 0; y < boxH; y += sliceH) {
-                ctx.drawImage(
-                  patch,
-                  0,
-                  0,
-                  boxW,
-                  sliceH,
-                  boxX,
-                  boxY + y,
-                  boxW,
-                  Math.min(sliceH, boxH - y),
-                );
-              }
-            }
-          } catch {
-            // getImageData can throw on tainted canvases; fall through.
-          }
-          ctx.restore();
+        const maskX = (it.x - coverPadX) * scale * dprX;
+        const maskY = it.y * scale * dprY;
+        const maskW = (it.w + coverPadX * 2) * scale * dprX;
+        const maskH = (it.h + coverPadBottom) * scale * dprY;
+        ctx.save();
+        // Sample clean background reference pixels 4 points to the left of the text box (strictly outside glyph ink)
+        const sampleX = Math.max(0, Math.floor((it.x - coverPadX - 4) * scale * dprX));
+        const topY = Math.max(0, Math.floor(maskY));
+        const botY = Math.min(canvas.height - 1, Math.floor(maskY + maskH));
+        let topColor = "rgb(255,255,255)";
+        let botColor = "rgb(255,255,255)";
+        try {
+          const topData = ctx.getImageData(sampleX, topY, 1, 1).data;
+          const botData = ctx.getImageData(sampleX, botY, 1, 1).data;
+          if (topData[3] >= 128) topColor = `rgb(${topData[0]},${topData[1]},${topData[2]})`;
+          if (botData[3] >= 128) botColor = `rgb(${botData[0]},${botData[1]},${botData[2]})`;
+        } catch {
+          const bg = sampled.bg;
+          const fallbackRgb = `rgb(${Math.round(bg.r * 255)},${Math.round(bg.g * 255)},${Math.round(bg.b * 255)})`;
+          topColor = fallbackRgb;
+          botColor = fallbackRgb;
         }
+        // Build a vertical linear gradient to seamlessly continue card shading and background textures
+        const gradient = ctx.createLinearGradient(0, maskY, 0, maskY + maskH);
+        gradient.addColorStop(0, topColor);
+        gradient.addColorStop(1, botColor);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(maskX, maskY, maskW, maskH);
+        ctx.restore();
       }
     }
 
