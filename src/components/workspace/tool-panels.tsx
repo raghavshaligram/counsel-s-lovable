@@ -6139,7 +6139,8 @@ function TransactionsPanel({ ctx }: { ctx: ToolPanelCtx }) {
             <button
               type="button"
               onClick={downloadXlsx}
-              className="inline-flex items-center justify-center gap-1 rounded-md bg-vault px-2 py-1.5 text-[11.5px] font-medium text-vault-foreground hover:opacity-90"
+              disabled={!selectedCols || selectedCols.size === 0}
+              className="inline-flex items-center justify-center gap-1 rounded-md bg-vault px-2 py-1.5 text-[11.5px] font-medium text-vault-foreground hover:opacity-90 disabled:opacity-40"
             >
               <Download className="h-3 w-3" /> Excel
             </button>
