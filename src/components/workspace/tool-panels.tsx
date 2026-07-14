@@ -5538,7 +5538,7 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
 /* ============================== Extract ============================== */
 
-type ExtractMode = "pages" | "data";
+type ExtractMode = "pages" | "data" | "tx";
 
 function ExtractPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [mode, setMode] = useState<ExtractMode>("pages");
@@ -5558,15 +5558,18 @@ function ExtractPanel({ ctx }: { ctx: ToolPanelCtx }) {
   );
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
         {modeBtn("pages", "Pages → PDF")}
         {modeBtn("data", "Data → Excel")}
+        {modeBtn("tx", "Transactions")}
       </div>
       <div className="flex-1 min-h-0">
         {mode === "pages" ? (
           <ExtractPagesPanel ctx={ctx} />
-        ) : (
+        ) : mode === "data" ? (
           <ExtractDataPanel ctx={ctx} />
+        ) : (
+          <TransactionsPanel ctx={ctx} />
         )}
       </div>
     </div>
