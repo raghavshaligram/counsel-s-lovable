@@ -1689,6 +1689,13 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         className="hidden"
         onChange={(e) => onFiles(e.target.files)}
       />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg"
+        className="hidden"
+        onChange={onImagePicked}
+      />
 
       {/* TOP BAR */}
       <header className="flex h-[46px] shrink-0 items-center justify-between border-b border-border bg-surface-1 px-3">
