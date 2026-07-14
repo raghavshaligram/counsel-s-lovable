@@ -1713,7 +1713,10 @@ export function EditorCanvas({
     const el = measureRef.current;
     if (!el) return;
     const a = activeText;
-    const fam = resolveTextFontFamily(a);
+    const famBase = resolveTextFontFamily(a);
+    const rawPdfjsFontId = (a as { rawPdfjsFontId?: string }).rawPdfjsFontId;
+    const fam = rawPdfjsFontId ? `"${rawPdfjsFontId}", ${famBase}` : famBase;
+
     const cover = a.kind === "text-edit" ? a.cover : undefined;
     const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
     const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;
