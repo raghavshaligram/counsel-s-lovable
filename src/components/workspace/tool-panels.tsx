@@ -8793,25 +8793,6 @@ function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
     }
   }, [file, scan]);
 
-  const applyToActive = useCallback(async () => {
-    if (!file || !scan || scan.length === 0) return;
-    setBusy("removing");
-    try {
-      const { removeBatesStamps } = await importChunk(
-        () => import("@/lib/pdf/remove-bates"),
-      );
-      const source = new Uint8Array(await file.arrayBuffer());
-      const out = await removeBatesStamps(source, scan);
-      replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
-      toast.success("Bates numbers removed from active tab");
-      setScan(null);
-    } catch (err) {
-      console.error("[bates-remove] apply failed", err);
-      toast.error("Apply failed", { description: (err as Error).message });
-    } finally {
-      setBusy("idle");
-    }
-  }, [file, scan, replaceFile]);
 
   const corners: Array<{ id: typeof corner; label: string; hint: string }> = [
     { id: "tl", label: "Top", hint: "Left" },
