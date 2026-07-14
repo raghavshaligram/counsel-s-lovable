@@ -8887,6 +8887,15 @@ function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
         {busy === "scanning" ? "Scanning…" : "Detect stamps"}
       </button>
 
+      <button
+        type="button"
+        onClick={clearSettings}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40"
+      >
+        <Trash2 className="h-3.5 w-3.5" strokeWidth={2.5} />
+        Clear stamp settings
+      </button>
+
       {scan && scan.length > 0 && (
         <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2 text-[11.5px]">
           <div className="text-foreground">
@@ -8900,39 +8909,17 @@ function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <button
-          type="button"
-          onClick={runRemove}
-          disabled={busy !== "idle" || !scan || scan.length === 0}
-          className={cn(
-            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
-            (busy !== "idle" || !scan || scan.length === 0) && "cursor-not-allowed opacity-60",
-          )}
-        >
-          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {busy === "removing" ? "Removing…" : "Remove & download"}
-        </button>
-        <button
-          type="button"
-          onClick={applyToActive}
-          disabled={busy !== "idle" || !scan || scan.length === 0}
-          className={cn(
-            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
-            (busy !== "idle" || !scan || scan.length === 0) && "cursor-not-allowed opacity-60",
-          )}
-        >
-          Apply to active tab
-        </button>
-      </div>
-
       <button
         type="button"
-        onClick={clearSettings}
-        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40"
+        onClick={runRemove}
+        disabled={busy !== "idle" || !scan || scan.length === 0}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+          (busy !== "idle" || !scan || scan.length === 0) && "cursor-not-allowed opacity-60",
+        )}
       >
-        <Trash2 className="h-3.5 w-3.5" strokeWidth={2.5} />
-        Clear stamp settings
+        <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy === "removing" ? "Removing…" : "Remove & download"}
       </button>
     </div>
   );
