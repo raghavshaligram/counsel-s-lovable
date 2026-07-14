@@ -1723,18 +1723,16 @@ export function EditorCanvas({
           const isEditing = editingId === a.id;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg);
-          const cover = { background: bgCss };
-          if (backgroundConfidence < 0.9) {
-            cover.background = "transparent";
-          }
+          // Acrobat / Foxit parity: no background is painted under edited
+          // text. Original glyphs were erased from the base canvas at edit
+          // time (clearRect in onClickEditHit); the textarea paints the
+          // replacement glyphs on top.
+          const cover = { background: "transparent" as const };
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
               background: cover.background,
-              backgroundConfidence,
-              sampledBg: a.bg,
               coverPdf: a.cover,
               coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
             });
