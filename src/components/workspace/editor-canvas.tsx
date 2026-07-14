@@ -947,7 +947,7 @@ export function EditorCanvas({
         const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
           width: "100%", height: "100%",
-          background: showEditChrome ? "rgba(255,255,255,0.96)" : bg,
+          background: bg,
           color: textColor,
           WebkitTextFillColor: textColor,
           fontSize: a.fontSize * scale,
@@ -972,11 +972,12 @@ export function EditorCanvas({
           paddingBottom: padBottom,
           boxSizing: "border-box",
           margin: 0,
-          border: showEditChrome ? "1.5px solid var(--vault)" : "none",
-          outline: "none",
+          border: "none",
+          outline: showEditChrome ? "1px solid rgba(76,127,184,0.9)" : "none",
+          outlineOffset: showEditChrome ? 1 : 0,
           resize: "none",
-          borderRadius: showEditChrome ? 3 : 0,
-          boxShadow: showEditChrome ? "0 0 0 3px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.25)" : "none",
+          borderRadius: showEditChrome ? 2 : 0,
+          boxShadow: showEditChrome ? "0 0 0 3px rgba(76,127,184,0.18)" : "none",
           caretColor: rgbCss(a.color),
         };
         const onTextChange = (text: string) =>
