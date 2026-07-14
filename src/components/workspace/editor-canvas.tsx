@@ -1310,10 +1310,9 @@ export function EditorCanvas({
     };
 
     // Erase the original glyph pixels from the base canvas so nothing bleeds
-    // through the (now transparent) cover element. The page wrapper below
-    // paints the sampled page-corner colour, so this hole reveals the true
-    // page colour without visible seams. On anno deletion, renderTick bumps
-    // and the page re-renders to restore the pixels.
+    // through the transparent cover element (Acrobat-style — nothing is
+    // painted under edited text). On anno deletion, renderTick bumps and the
+    // page re-renders to restore the pixels.
     if (canvas) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (ctx) {
