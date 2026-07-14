@@ -93,6 +93,41 @@ function isOpaquePdfjsFontId(name: string | undefined): boolean {
   return !!name && OPAQUE_PDFJS_FONT_ID.test(name);
 }
 
+// Weight keyword → numeric mapping for FontDescriptor real-name parsing.
+const WEIGHT_TOKENS: Array<[RegExp, number]> = [
+  [/thin|hairline/i, 100],
+  [/extralight|ultralight/i, 200],
+  [/light/i, 300],
+  [/regular|roman|book|normal/i, 400],
+  [/medium/i, 500],
+  [/semibold|demibold|demi/i, 600],
+  [/extrabold|ultrabold/i, 800],
+  [/black|heavy/i, 900],
+  [/bold/i, 700],
+];
+function weightFromRealName(name: string | undefined): number | undefined {
+  if (!name) return undefined;
+  for (const [rx, w] of WEIGHT_TOKENS) if (rx.test(name)) return w;
+  return undefined;
+}
+
+// Strip subset prefix ("ABCDEF+") and style/weight suffixes from a raw font
+// name so the result is a real CSS-usable family — e.g.
+// "AAAAAA+HelveticaNeue-Bold" → "Helvetica Neue",
+// "TimesNewRomanPS-BoldItalicMT" → "Times New Roman".
+function cleanFamilyName(raw: string | undefined): string {
+  if (!raw) return "";
+  let s = raw.replace(/^[A-Z]{6}\+/, "").trim();
+  // Drop the -Style/-Weight suffix chain.
+  s = s.replace(/[-_](?:bold|italic|oblique|regular|roman|book|light|medium|semibold|demibold|extrabold|ultrabold|thin|hairline|black|heavy)(?=$|[-_ ])/gi, "");
+  // Drop Apple/Adobe PS suffixes.
+  s = s.replace(/PSMT$|PS-.*$|MT$|-Roman$/g, "");
+  // CamelCase → spaced ("HelveticaNeue" → "Helvetica Neue").
+  s = s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  if (isOpaquePdfjsFontId(s)) return "";
+  return s;
+}
+
 // Ask pdf.js for the real Font descriptor for every font id referenced by a
 // page's text content. Uses the callback form of commonObjs.get, which fires
 // as soon as the descriptor is available — descriptors are populated during
@@ -100,18 +135,22 @@ function isOpaquePdfjsFontId(name: string | undefined): boolean {
 async function resolvePdfFontInfo(
   page: { commonObjs: { get: (id: string, cb: (font: unknown) => void) => void } },
   ids: Iterable<string>,
-): Promise<Map<string, { bold: boolean; italic: boolean; realName: string }>> {
-  const out = new Map<string, { bold: boolean; italic: boolean; realName: string }>();
+): Promise<Map<string, { bold: boolean; italic: boolean; realName: string; weight?: number }>> {
+  const out = new Map<string, { bold: boolean; italic: boolean; realName: string; weight?: number }>();
   await Promise.all([...new Set(ids)].map((id) => new Promise<void>((resolve) => {
     let done = false;
     const finish = (f: unknown) => {
       if (done) return; done = true;
       const fo = f as { bold?: boolean; black?: boolean; italic?: boolean; name?: string; loadedName?: string } | null;
       if (fo) {
+        const realName = String(fo.name ?? fo.loadedName ?? id);
+        const nameWeight = weightFromRealName(realName);
+        const weight = nameWeight ?? (fo.black ? 900 : fo.bold ? 700 : undefined);
         out.set(id, {
           bold: !!(fo.bold || fo.black),
           italic: !!fo.italic,
-          realName: String(fo.name ?? fo.loadedName ?? id),
+          realName,
+          weight,
         });
       }
       resolve();
