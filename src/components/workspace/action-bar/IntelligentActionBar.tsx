@@ -15,7 +15,7 @@
  * contexts instead of hard-swapping.
  */
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpToLine,
   ArrowDownToLine,
