@@ -1941,9 +1941,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   onRedo={() => editorDispatch({ type: "REDO" })}
                   onToggleNav={() => setNavOpen((v) => !v)}
                   navOpen={navOpen}
+                  pinned={toolbarPinned}
+                  onTogglePin={() => setToolbarPinned(!toolbarPinned)}
                 />
 
-                <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
+                <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} pinned={toolbarPinned} />
+
                 <NavOverlay
                   open={navOpen}
                   defaultTab={navTab}
