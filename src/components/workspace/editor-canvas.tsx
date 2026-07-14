@@ -1825,6 +1825,8 @@ export function EditorCanvas({
           return (
             <div
               key={i}
+              data-edit-text-hit="1"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onClickEditHit(it); }}
               title={it.str}
               style={{
