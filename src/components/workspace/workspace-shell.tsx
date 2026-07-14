@@ -186,6 +186,7 @@ const TOOLS: RailTool[] = [
   // Edit & sign — add content or sign.
   { id: "sign", label: "Sign & Fill", icon: PenLine, group: "edit", groupLabel: "Edit & sign" },
   { id: "watermark", label: "Watermark", icon: Stamp, group: "edit", groupLabel: "Edit & sign" },
+  { id: "remove-watermark", label: "Remove Watermark", icon: Eraser, group: "edit", groupLabel: "Edit & sign" },
   { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Edit & sign" },
 
   // Convert & compress — another form or smaller.
