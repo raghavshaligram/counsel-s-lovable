@@ -513,6 +513,22 @@ export function EditorCanvas({
         }
         if (cancelled) return;
 
+        // Snapshot the pristine render so text-edit overlays can hide the
+        // original glyphs non-destructively (row-inpaint) and restore pixels
+        // on delete without a full pdf.js re-render.
+        try {
+          const snap = pristineCanvasRef.current ?? document.createElement("canvas");
+          snap.width = canvas.width;
+          snap.height = canvas.height;
+          const sctx = snap.getContext("2d");
+          if (sctx) {
+            sctx.clearRect(0, 0, snap.width, snap.height);
+            sctx.drawImage(canvas, 0, 0);
+            pristineCanvasRef.current = snap;
+          }
+        } catch { /* ignore */ }
+
+
         const baseVp = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
         if (cancelled) return;
