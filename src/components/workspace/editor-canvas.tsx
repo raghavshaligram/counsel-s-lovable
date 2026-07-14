@@ -670,10 +670,15 @@ export function EditorCanvas({
             transform: it.transform,
             // Store SANITISED names so the click-to-edit path never sees "g_d0_f1"
             fontName: sanitizedFontName || undefined,
+            // Capture the raw opaque pdf.js id separately — used ONLY as a
+            // CSS font-family prefix so the browser can render with the
+            // exact embedded font bytes pdf.js injected.
+            rawPdfjsFontId: it.fontName,
             cssFamily: resolvedFontFamily,
             fontKey, fontApprox, fontWeight,
             lineHeight: 1.15, letterSpacing, color, bg,
           }];
+
         });
 
         // Merge sidecar OCR tokens for this SOURCE page (top-left PDF
