@@ -35,6 +35,14 @@ interface TextItem {
   /** Resolved CSS family from pdf.js `styles` map — richer than the raw
    *  PostScript fontName and used as a secondary signal for matchPdfFont. */
   cssFamily?: string;
+  /** Cleaned real family name from the PDF FontDescriptor (subset prefix
+   *  and style/weight suffixes stripped) — e.g. "Inter", "Helvetica Neue",
+   *  "Times New Roman". Used as the primary font-family on the edit overlay
+   *  so the user sees the real family, not a metric twin, when installed. */
+  realFamily?: string;
+  /** Numeric weight (100..900) from the FontDescriptor / real name tokens,
+   *  when the PDF gives us a signal richer than bold-or-not. */
+  descriptorWeight?: number;
   fontKey?: FontKey;
   fontApprox?: boolean;
   fontWeight?: number | string;
