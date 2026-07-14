@@ -1652,16 +1652,6 @@ export function EditorCanvas({
         scale,
         text: activeText.text,
       });
-      // Bounds audit — query the cover DOM and compare screen rects of
-      // original glyphs vs cover vs textarea. Also surface intended vs
-      // computed background so we can prove whether the transparent branch
-      // ran and whether another rule overrides it.
-      const coverEl = document.querySelector<HTMLElement>(
-        `[data-vault-element='text-edit-cover'][data-anno-id='${activeText.id}']`,
-      );
-      const coverRect = coverEl?.getBoundingClientRect();
-      const coverComputed = coverEl ? window.getComputedStyle(coverEl) : null;
-      const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
       // Textarea visibility audit — computed paint properties that can hide
       // glyphs (color match, opacity, -webkit-text-fill-color, visibility).
       console.log("[text-edit-style]", {
@@ -1681,13 +1671,9 @@ export function EditorCanvas({
       });
       console.log("[text-edit-layers]", {
         id: activeText.id,
-        coverZIndex: coverComputed?.zIndex ?? "(no cover)",
+        coverZIndex: "(no cover element)",
         textareaZIndex: computed.zIndex,
-        // The cover is fixed below the editable annotation wrapper so it can
-        // hide the PDF canvas glyphs without covering the live textarea text.
-        coverDomIndex: coverEl
-          ? Array.from(coverEl.parentElement?.children ?? []).indexOf(coverEl)
-          : -1,
+        coverDomIndex: -1,
         textareaWrapperDomIndex: (() => {
           const wrapAnno = el.parentElement; // baseStyle wrapper for the anno
           const parent = wrapAnno?.parentElement;
@@ -1707,16 +1693,14 @@ export function EditorCanvas({
         coverPadXApproxPt:
           ((activeText.cover?.w ?? 0) - activeText.w) / 2,
         note:
-          "The textarea wrapper uses the padded cover rect so it cannot appear shorter; the text content is inset back onto the original glyph bounds.",
+          "The textarea wrapper uses the stored padded rect for sizing only; no background cover is rendered.",
       });
       console.log("[text-edit-bounds]", {
         id: activeText.id,
-        intendedBackground,
-        computedBackground: coverComputed?.backgroundColor ?? "(no cover element)",
-        coverInlineStyle: coverEl?.style.background ?? "(no cover element)",
-        coverScreen: coverRect && wrapRect
-          ? { x: coverRect.left - wrapRect.left, y: coverRect.top - wrapRect.top, w: coverRect.width, h: coverRect.height }
-          : null,
+        intendedBackground: "transparent / no cover element",
+        computedBackground: "(no cover element)",
+        coverInlineStyle: "(no cover element)",
+        coverScreen: null,
         textareaScreen: wrapRect
           ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
           : null,
