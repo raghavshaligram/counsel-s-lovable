@@ -17,7 +17,7 @@ import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
 import { resolveToFontKey } from "@/lib/fonts/bridge";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
-import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
+import type { Anno, PageOp, RGB, TextAnno, TextEditAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
 
 
@@ -48,6 +48,8 @@ interface TextItem {
   fontWeight?: number | string;
   lineHeight?: number;
   letterSpacing?: number;
+  textRunIndex?: number;
+  textOpIndex?: number;
   color: RGB;
   bg: RGB;
 }
@@ -263,19 +265,16 @@ function sampleInkColor(
 
 
 
-// Sample the page background by reading a RING just outside the glyph bbox
-// and returning the MODAL (most frequent) color quantized to 8-step bins per
-// channel. This handles any page color (white, cream, gray, dark) without
-// being fooled by adjacent glyphs that sneak into the strips, and avoids any
-// hardcoded white fallback.
-function samplePageBg(
+// Local backdrop sample used only to separate glyph ink from surrounding
+// pixels when preserving text color. It is never painted/stored as a text
+// background.
+function sampleInkBackdrop(
   ctx: CanvasRenderingContext2D,
   sx: number,
   sy: number,
   sw: number,
   sh: number,
 ): RGB {
-  console.count("samplePageBg");
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   const bx = Math.max(0, Math.floor(sx));
   const by = Math.max(0, Math.floor(sy));
@@ -399,6 +398,92 @@ function samplePageBg(
   return inkLum > 128 ? { r: 0, g: 0, b: 0 } : { r: 1, g: 1, b: 1 };
 }
 
+type TextEditSource = TextSource & { textOpIndex?: number; textRunIndex?: number };
+
+function isTextEditAnnoWithSource(a: Anno): a is TextEditAnno & { source: TextEditSource } {
+  return a.kind === "text-edit" && !!a.source?.originalString;
+}
+
+interface TextOperator {
+  index: number;
+  text: string;
+}
+
+function operatorGlyphText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value) return "";
+  if (Array.isArray(value)) return value.map(operatorGlyphText).join("");
+  if (typeof value === "object") {
+    const glyph = value as { unicode?: unknown; char?: unknown; str?: unknown };
+    if (typeof glyph.unicode === "string") return glyph.unicode;
+    if (typeof glyph.char === "string") return glyph.char;
+    if (typeof glyph.str === "string") return glyph.str;
+  }
+  return "";
+}
+
+function collectTextOperators(
+  operatorList: { fnArray: number[]; argsArray: unknown[][] },
+  OPS: Record<string, number> | undefined,
+): TextOperator[] {
+  if (!OPS) return [];
+  const textFns = new Set([
+    OPS.showText,
+    OPS.showSpacedText,
+    OPS.nextLineShowText,
+    OPS.nextLineSetSpacingShowText,
+  ].filter((n): n is number => typeof n === "number"));
+  const out: TextOperator[] = [];
+  for (let i = 0; i < operatorList.fnArray.length; i++) {
+    if (!textFns.has(operatorList.fnArray[i])) continue;
+    const args = operatorList.argsArray[i] ?? [];
+    const text = operatorGlyphText(args[0]) || operatorGlyphText(args[args.length - 1]);
+    if (text) out.push({ index: i, text });
+  }
+  return out;
+}
+
+function comparableText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function findNextTextOpIndex(textOps: TextOperator[], text: string, startPos: number): number | null {
+  const needle = comparableText(text);
+  if (!needle) return null;
+  for (let i = Math.max(0, startPos); i < textOps.length; i++) {
+    const hay = comparableText(textOps[i].text);
+    if (hay === needle || hay.includes(needle)) return textOps[i].index;
+  }
+  for (let i = 0; i < Math.max(0, startPos); i++) {
+    const hay = comparableText(textOps[i].text);
+    if (hay === needle || hay.includes(needle)) return textOps[i].index;
+  }
+  return null;
+}
+
+function resolveTextEditSkipOps(
+  textOps: TextOperator[],
+  masks: Array<{ originalString: string; textOpIndex?: number; textRunIndex?: number }>,
+): Set<number> {
+  const skipped = new Set<number>();
+  for (const mask of masks) {
+    if (typeof mask.textOpIndex === "number" && textOps.some((op) => op.index === mask.textOpIndex)) {
+      skipped.add(mask.textOpIndex);
+      continue;
+    }
+    if (typeof mask.textRunIndex === "number") {
+      const op = textOps[mask.textRunIndex];
+      if (op && comparableText(op.text) === comparableText(mask.originalString)) {
+        skipped.add(op.index);
+        continue;
+      }
+    }
+    const found = findNextTextOpIndex(textOps.filter((op) => !skipped.has(op.index)), mask.originalString, 0);
+    if (found != null) skipped.add(found);
+  }
+  return skipped;
+}
+
 export interface EditorCanvasProps {
   pageIndex: number;
   op: PageOp;
@@ -447,14 +532,17 @@ export function EditorCanvas({
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Text-edit covers are always transparent (Acrobat / Foxit parity — no
-  // colored patch is painted under edited text). Original glyphs are erased
-  // from the base canvas via clearRect in onClickEditHit; that erased hole
-  // shows the wrapper's plain paper colour underneath.
-  // Bumped whenever a text-edit annotation is removed, so the page re-renders
-  // and restores the original glyph pixels that clearRect erased at edit time.
-  const [renderTick, setRenderTick] = useState(0);
-  const prevTextEditIdsRef = useRef<Set<string>>(new Set());
+  // Acrobat / Foxit parity for Edit text: the visible page canvas is rendered
+  // without the original PDF text operation, and the live overlay draws only
+  // the replacement glyphs. No whiteout/background rectangle is painted.
+  const textEditMaskSignature = annos
+    .filter(isTextEditAnnoWithSource)
+    .map((a) => {
+      const src = a.source;
+      const b = src.bounds;
+      return [a.id, src.originalString, src.textOpIndex ?? "", src.textRunIndex ?? "", b?.x ?? "", b?.y ?? "", b?.w ?? "", b?.h ?? ""].join(":");
+    })
+    .join("|");
 
   // Delete / Backspace removes the selected annotation on this page (unless
   // the user is editing text inside the annotation, or focus is in a form
@@ -532,7 +620,44 @@ export function EditorCanvas({
         canvas.style.height = `${Math.ceil(cssVp.height)}px`;
         const ctx = canvas.getContext("2d", { willReadFrequently: true }); if (!ctx) return;
         console.debug("[pdf-render] start", { canvasId: cid, page: op.srcPage, scale });
-        const task = page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]);
+        const textEditMasks = annos
+          .filter(isTextEditAnnoWithSource)
+          .map((a) => {
+            const src = a.source;
+            return {
+              id: a.id,
+              originalString: src.originalString,
+              textOpIndex: src.textOpIndex,
+              textRunIndex: src.textRunIndex,
+            };
+          });
+        let operatorList: { fnArray: number[]; argsArray: unknown[][] } | undefined;
+        let textOps: TextOperator[] = [];
+        let skippedTextOps = new Set<number>();
+        if (textEditMasks.length) {
+          try {
+            const loadedOperatorList = await page.getOperatorList() as { fnArray: number[]; argsArray: unknown[][] };
+            operatorList = loadedOperatorList;
+            const OPS = (pdfjs as { OPS?: Record<string, number> }).OPS;
+            textOps = collectTextOperators(loadedOperatorList, OPS);
+            skippedTextOps = resolveTextEditSkipOps(textOps, textEditMasks);
+            console.debug("[text-edit-mask] render", {
+              page: pageIndex,
+              requested: textEditMasks.length,
+              skipped: [...skippedTextOps],
+            });
+          } catch (err) {
+            console.warn("[text-edit-mask] unable to resolve PDF text operations", err);
+          }
+        }
+        const task = page.render({
+          canvasContext: ctx,
+          viewport: vp,
+          canvas,
+          operationsFilter: skippedTextOps.size
+            ? (index: number) => !skippedTextOps.has(index)
+            : undefined,
+        } as Parameters<typeof page.render>[0]);
         renderTaskRef.current = task as unknown as { cancel: () => void; promise: Promise<unknown> };
         try {
           await task.promise;
@@ -555,6 +680,17 @@ export function EditorCanvas({
         const styles = (content as unknown as { styles: Record<string, { fontFamily?: string; fontWeight?: number | string }> }).styles ?? {};
         type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
         const rawItems = content.items as Raw[];
+        if (!operatorList) {
+          try {
+            const loadedOperatorList = await page.getOperatorList() as { fnArray: number[]; argsArray: unknown[][] };
+            operatorList = loadedOperatorList;
+            const OPS = (pdfjs as { OPS?: Record<string, number> }).OPS;
+            textOps = collectTextOperators(loadedOperatorList, OPS);
+          } catch {
+            textOps = [];
+          }
+        }
+        let textOpCursor = 0;
         // Resolve real font descriptors up-front — commonObjs is populated
         // during render(), so by this point the callbacks fire immediately.
         const fontInfo = await resolvePdfFontInfo(
@@ -562,7 +698,7 @@ export function EditorCanvas({
           rawItems.map((it) => it.fontName).filter((n): n is string => !!n),
         );
         if (cancelled) return;
-        const items: TextItem[] = rawItems.flatMap((it) => {
+        const items: TextItem[] = rawItems.flatMap((it, textRunIndex) => {
           if (!it.str || !it.str.trim()) return [];
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
@@ -618,6 +754,11 @@ export function EditorCanvas({
           const x = m[4], y = m[5] - fh;
           const color = DEFAULT_TEXT_COLOR;
           const bg = DEFAULT_PAGE_BG;
+          const textOpIndex = findNextTextOpIndex(textOps, it.str, textOpCursor);
+          if (textOpIndex != null) {
+            const opPos = textOps.findIndex((op) => op.index === textOpIndex);
+            if (opPos >= 0) textOpCursor = opPos + 1;
+          }
           const letterSpacing = estimateLetterSpacing(
             ctx,
             it.str,
@@ -666,6 +807,8 @@ export function EditorCanvas({
             descriptorWeight: descriptor?.weight,
             fontKey, fontApprox, fontWeight,
             lineHeight: 1.15, letterSpacing, color, bg,
+            textRunIndex,
+            textOpIndex: textOpIndex ?? undefined,
           }];
         });
 
@@ -717,18 +860,7 @@ export function EditorCanvas({
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
     };
-  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
-
-  // When a text-edit annotation is removed, re-render the page canvas so the
-  // pixels erased by onClickEditHit's clearRect come back.
-  useEffect(() => {
-    const now = new Set(annos.filter((a) => a.kind === "text-edit").map((a) => a.id));
-    const prev = prevTextEditIdsRef.current;
-    let removed = false;
-    for (const id of prev) if (!now.has(id)) { removed = true; break; }
-    prevTextEditIdsRef.current = now;
-    if (removed) setRenderTick((t) => t + 1);
-  }, [annos]);
+  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, textEditMaskSignature]);
 
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
@@ -1269,14 +1401,13 @@ export function EditorCanvas({
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
     const canvas = canvasRef.current;
-    // Use pdf.js's declared text colour (it.color) directly — pixel sampling
-    // can't beat the source of truth and inverts on light-on-dark text.
-    // We still sample bg via samplePageBg because the export pipeline paints
-    // an opaque cover in the exported PDF using this value.
+    // Preserve the visible glyph colour from the rendered PDF. The sampled
+    // background is used only to distinguish ink pixels; it is never painted
+    // or stored as an edit background.
     const sampled = (() => {
-      if (!canvas) return { color: it.color, bg: it.bg };
+      if (!canvas) return { color: it.color };
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return { color: it.color, bg: it.bg };
+      if (!ctx) return { color: it.color };
       const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
       const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
       const dprX = canvas.width / Math.max(1, cssW);
@@ -1285,9 +1416,9 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
-      const bg = samplePageBg(ctx, sx, sy, sw, sh);
+      const bg = sampleInkBackdrop(ctx, sx, sy, sw, sh);
       const color = sampleInkColor(ctx, sx, sy, sw, sh, bg, it.color);
-      return { color, bg };
+      return { color };
     })();
 
     // Cover bbox: expand generously around the captured glyph bounds so
@@ -1308,27 +1439,6 @@ export function EditorCanvas({
       w: it.w + coverPadX * 2,
       h: clampedCoverH,
     };
-
-    // Erase the original glyph pixels from the base canvas so nothing bleeds
-    // through the transparent cover element (Acrobat-style — nothing is
-    // painted under edited text). On anno deletion, renderTick bumps and the
-    // page re-renders to restore the pixels.
-    if (canvas) {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (ctx) {
-        const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
-        const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
-        const dprX = canvas.width / Math.max(1, cssW);
-        const dprY = canvas.height / Math.max(1, cssH);
-        ctx.clearRect(
-          cover.x * scale * dprX,
-          cover.y * scale * dprY,
-          cover.w * scale * dprX,
-          cover.h * scale * dprY,
-        );
-      }
-    }
-
 
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const id = uid();
@@ -1402,9 +1512,8 @@ export function EditorCanvas({
       id, kind: "text-edit", page: pageIndex,
       // Anchor the editable box to the ORIGINAL glyph bounds so the
       // textarea, caret, and selection ring sit exactly where the user
-      // sees the source text. The padded `cover` rectangle below is a
-      // separate masking layer that hides anti-aliased glyph edges and
-      // descenders without affecting the visible edit chrome.
+      // sees the source text. The padded `cover` rect is retained only for
+      // layout/selection sizing; it is not painted as a background.
       x: it.x, y: it.y + baselineNudge,
       // Box height must be >= fontSize * lineHeight or the textarea clips
       // the bottom ~15% of every glyph. Keep fontSize separate from box h.
@@ -1414,7 +1523,7 @@ export function EditorCanvas({
       color: sampled.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
-      bg: sampled.bg,
+      bg: DEFAULT_PAGE_BG,
       family,
       fontKey,
       fontFamilyOverride,
@@ -1429,7 +1538,15 @@ export function EditorCanvas({
       textOffsetY: 0,
       textPadBottom: 0,
       cover,
-      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
+      source: {
+        originalString: it.str,
+        transform: it.transform,
+        fontName: it.fontName,
+        cssFamily: it.cssFamily,
+        bounds: originalGlyph,
+        textRunIndex: it.textRunIndex,
+        textOpIndex: it.textOpIndex,
+      } as TextEditSource,
     } });
     console.log("[text-edit-bounds-init]", {
       id,
@@ -1437,8 +1554,9 @@ export function EditorCanvas({
       coverPdf: cover,
       annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
-      sampledBg: sampled.bg,
-      intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
+      textOpIndex: it.textOpIndex,
+      textRunIndex: it.textRunIndex,
+      intendedCoverBackground: "transparent",
     });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
@@ -1531,16 +1649,6 @@ export function EditorCanvas({
         scale,
         text: activeText.text,
       });
-      // Bounds audit — query the cover DOM and compare screen rects of
-      // original glyphs vs cover vs textarea. Also surface intended vs
-      // computed background so we can prove whether the transparent branch
-      // ran and whether another rule overrides it.
-      const coverEl = document.querySelector<HTMLElement>(
-        `[data-vault-element='text-edit-cover'][data-anno-id='${activeText.id}']`,
-      );
-      const coverRect = coverEl?.getBoundingClientRect();
-      const coverComputed = coverEl ? window.getComputedStyle(coverEl) : null;
-      const intendedBackground = `rgba(${Math.round(activeText.bg.r*255)},${Math.round(activeText.bg.g*255)},${Math.round(activeText.bg.b*255)},1)`;
       // Textarea visibility audit — computed paint properties that can hide
       // glyphs (color match, opacity, -webkit-text-fill-color, visibility).
       console.log("[text-edit-style]", {
@@ -1560,13 +1668,9 @@ export function EditorCanvas({
       });
       console.log("[text-edit-layers]", {
         id: activeText.id,
-        coverZIndex: coverComputed?.zIndex ?? "(no cover)",
+        coverZIndex: "(no cover element)",
         textareaZIndex: computed.zIndex,
-        // The cover is fixed below the editable annotation wrapper so it can
-        // hide the PDF canvas glyphs without covering the live textarea text.
-        coverDomIndex: coverEl
-          ? Array.from(coverEl.parentElement?.children ?? []).indexOf(coverEl)
-          : -1,
+        coverDomIndex: -1,
         textareaWrapperDomIndex: (() => {
           const wrapAnno = el.parentElement; // baseStyle wrapper for the anno
           const parent = wrapAnno?.parentElement;
@@ -1586,16 +1690,14 @@ export function EditorCanvas({
         coverPadXApproxPt:
           ((activeText.cover?.w ?? 0) - activeText.w) / 2,
         note:
-          "The textarea wrapper uses the padded cover rect so it cannot appear shorter; the text content is inset back onto the original glyph bounds.",
+          "The textarea wrapper uses the stored padded rect for sizing only; no background cover is rendered.",
       });
       console.log("[text-edit-bounds]", {
         id: activeText.id,
-        intendedBackground,
-        computedBackground: coverComputed?.backgroundColor ?? "(no cover element)",
-        coverInlineStyle: coverEl?.style.background ?? "(no cover element)",
-        coverScreen: coverRect && wrapRect
-          ? { x: coverRect.left - wrapRect.left, y: coverRect.top - wrapRect.top, w: coverRect.width, h: coverRect.height }
-          : null,
+        intendedBackground: "transparent / no cover element",
+        computedBackground: "(no cover element)",
+        coverInlineStyle: "(no cover element)",
+        coverScreen: null,
         textareaScreen: wrapRect
           ? { x: rect.left - wrapRect.left, y: rect.top - wrapRect.top, w: rect.width, h: rect.height }
           : null,
@@ -1701,10 +1803,9 @@ export function EditorCanvas({
         }}
         style={{ position: "absolute", inset: 0, width: screenW, height: screenH, cursor: cursorByTool[state.tool] ?? "default" }}
       >
-        {/* Fixed cover rectangles for text-edit annotations — drawn FIRST so
-            they sit beneath the editable text box but always hide the
-            original glyphs at their captured bounds (independent of the
-            auto-grown text box size). */}
+        {/* Text-edit replacements render as glyphs only. The original PDF text
+            operation is skipped during canvas render; no cover rectangle is
+            painted underneath. */}
         {(() => {
           // Count rendered text-edit overlays per annotation id for the
           // duplicate-text audit.
@@ -1724,46 +1825,6 @@ export function EditorCanvas({
           }
           return null;
         })()}
-        {annos.map((a) => {
-          if (a.kind !== "text-edit" || !a.cover) return null;
-          // A text-edit annotation is a PERMANENT replacement of the
-          // underlying PDF glyphs. The cover must always be painted —
-          // even when the typed text still matches the original — or the
-          // PDF canvas glyphs will show through and double up with the
-          // overlay textarea on top, producing duplicate text.
-          const isEditing = editingId === a.id;
-          const tl = toScreen(a.cover.x, a.cover.y);
-          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          // Acrobat / Foxit parity: no background is painted under edited
-          // text. Original glyphs were erased from the base canvas at edit
-          // time (clearRect in onClickEditHit); the textarea paints the
-          // replacement glyphs on top.
-          const cover = { background: "transparent" as const };
-          if (isEditing) {
-            console.log("[text-edit-cover]", {
-              id: a.id,
-              editing: true,
-              background: cover.background,
-              coverPdf: a.cover,
-              coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
-            });
-          }
-          return (
-            <div
-              key={`cover-${a.id}`}
-              data-vault-element="text-edit-cover"
-              data-anno-id={a.id}
-              style={{
-                position: "absolute",
-                left: tl.x, top: tl.y,
-                width: br.x - tl.x, height: br.y - tl.y,
-                background: cover.background,
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
-            />
-          );
-        })}
         {annos.map(renderAnno)}
         {editTextOverlays.map((it, i) => {
           const tl = toScreen(it.x, it.y);
