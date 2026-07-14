@@ -8707,7 +8707,7 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
  * Bates numbers that another tool already burned into the incoming PDF.
  */
 function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
-  const { file, replaceFile } = ctx;
+  const { file } = ctx;
   const [s, update] = useBatesSettings(batesDocKey(file));
   const [prefix, setPrefix] = useState<string>(s.prefix ?? "");
   const [suffix, setSuffix] = useState<string>(s.suffix ?? "");
