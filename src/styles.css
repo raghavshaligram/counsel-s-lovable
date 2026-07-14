@@ -116,6 +116,8 @@
   --destructive: #F87171;
   --destructive-foreground: #0E0F13;
   --evidence: #F87171;
+  --privacy: #F59E0B;                    /* amber — reserved for on-device privacy trust */
+  --privacy-soft: rgba(245, 158, 11, 0.14);
 
   --border: rgba(255, 255, 255, 0.06);   /* hairline */
   --input: #1B1E24;
