@@ -8327,11 +8327,249 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         <Info className="h-3 w-3" />
         Settings saved with this document · also offered at export
       </div>
+
+      <BatesClearAndRemoveSection ctx={ctx} />
     </div>
   );
 }
 
-function MultiFileBatesButton() {
+/**
+ * Second half of the Bates panel — reset the saved stamp config and remove
+ * Bates numbers that another tool already burned into the incoming PDF.
+ */
+function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [s, update] = useBatesSettings(batesDocKey(file));
+  const [prefix, setPrefix] = useState<string>(s.prefix ?? "");
+  const [suffix, setSuffix] = useState<string>(s.suffix ?? "");
+  const [digits, setDigits] = useState<number>(s.digits ?? 6);
+  const [corner, setCorner] = useState<"tl" | "tc" | "tr" | "bl" | "bc" | "br">(
+    s.position,
+  );
+  const [scan, setScan] = useState<null | Array<import("@/lib/pdf/remove-bates").BatesMatch>>(null);
+  const [busy, setBusy] = useState<"idle" | "scanning" | "removing">("idle");
+
+  useEffect(() => {
+    setPrefix(s.prefix ?? "");
+    setSuffix(s.suffix ?? "");
+    setDigits(s.digits ?? 6);
+    setCorner(s.position);
+    setScan(null);
+  }, [file, s.prefix, s.suffix, s.digits, s.position]);
+
+  const clearSettings = useCallback(async () => {
+    const ok = await confirmDialog({
+      title: "Clear Bates settings?",
+      description:
+        "The stamp is only burned in at export or when you press Apply. Clearing settings makes sure the next export does not add a stamp.",
+      confirmText: "Clear settings",
+    });
+    if (!ok) return;
+    update({
+      on: false,
+      prefix: "ABC",
+      suffix: "",
+      startAt: 1,
+      digits: 6,
+      position: "br",
+      fontSize: 10,
+      color: "black",
+      margin: 24,
+      appliedAt: undefined,
+      appliedFingerprint: undefined,
+    });
+    toast.success("Bates settings cleared for this document");
+  }, [update]);
+
+  const runScan = useCallback(async () => {
+    if (!file || !prefix.trim()) return;
+    setBusy("scanning");
+    try {
+      const { findBatesStamps } = await importChunk(
+        () => import("@/lib/pdf/remove-bates"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const found = await findBatesStamps(source, { prefix, suffix, digits, corner });
+      setScan(found);
+      if (found.length === 0) {
+        toast.message("No matching Bates numbers found in that corner.");
+      } else {
+        toast.success(`Found ${found.length} stamp${found.length === 1 ? "" : "s"}`);
+      }
+    } catch (err) {
+      console.error("[bates-remove] scan failed", err);
+      toast.error("Scan failed", { description: (err as Error).message });
+    } finally {
+      setBusy("idle");
+    }
+  }, [file, prefix, suffix, digits, corner]);
+
+  const runRemove = useCallback(async () => {
+    if (!file || !scan || scan.length === 0) return;
+    setBusy("removing");
+    try {
+      const { removeBatesStamps } = await importChunk(
+        () => import("@/lib/pdf/remove-bates"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const out = await removeBatesStamps(source, scan);
+      const base = file.name.replace(/\.pdf$/i, "");
+      await downloadPdf(out, `${base}-bates-removed.pdf`);
+      toast.success(`Removed ${scan.length} stamp${scan.length === 1 ? "" : "s"}`);
+    } catch (err) {
+      console.error("[bates-remove] failed", err);
+      toast.error("Removal failed", { description: (err as Error).message });
+    } finally {
+      setBusy("idle");
+    }
+  }, [file, scan]);
+
+  const applyToActive = useCallback(async () => {
+    if (!file || !scan || scan.length === 0) return;
+    setBusy("removing");
+    try {
+      const { removeBatesStamps } = await importChunk(
+        () => import("@/lib/pdf/remove-bates"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const out = await removeBatesStamps(source, scan);
+      replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
+      toast.success("Bates numbers removed from active tab");
+      setScan(null);
+    } catch (err) {
+      console.error("[bates-remove] apply failed", err);
+      toast.error("Apply failed", { description: (err as Error).message });
+    } finally {
+      setBusy("idle");
+    }
+  }, [file, scan, replaceFile]);
+
+  const corners: Array<{ id: typeof corner; label: string; hint: string }> = [
+    { id: "tl", label: "Top", hint: "Left" },
+    { id: "tc", label: "Top", hint: "Center" },
+    { id: "tr", label: "Top", hint: "Right" },
+    { id: "bl", label: "Bottom", hint: "Left" },
+    { id: "bc", label: "Bottom", hint: "Center" },
+    { id: "br", label: "Bottom", hint: "Right" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-3">
+      <div className="text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
+        Change or remove
+      </div>
+
+      <button
+        type="button"
+        onClick={clearSettings}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40"
+      >
+        <Trash2 className="h-3.5 w-3.5" strokeWidth={2.5} />
+        Clear stamp settings
+      </button>
+
+      <Section title="Remove existing stamps" icon={<ShieldOff className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Prefix</span>
+            <input
+              type="text"
+              value={prefix}
+              onChange={(e) => setPrefix(e.target.value)}
+              placeholder="ABC"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Suffix</span>
+            <input
+              type="text"
+              value={suffix}
+              onChange={(e) => setSuffix(e.target.value)}
+              placeholder="(optional)"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+          </label>
+          <NumberField
+            label="Digits"
+            value={digits}
+            min={1}
+            max={10}
+            onChange={(n) => setDigits(n)}
+          />
+        </div>
+      </Section>
+
+      <Section title="Corner">
+        <div className="grid grid-cols-3 gap-1.5">
+          {corners.map((c) => (
+            <ModeRow
+              key={c.id}
+              active={corner === c.id}
+              onClick={() => setCorner(c.id)}
+              label={c.label}
+              hint={c.hint}
+            />
+          ))}
+        </div>
+      </Section>
+
+      <button
+        type="button"
+        onClick={runScan}
+        disabled={busy !== "idle" || !prefix.trim()}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+          (busy !== "idle" || !prefix.trim()) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Search className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy === "scanning" ? "Scanning…" : "Detect stamps"}
+      </button>
+
+      {scan && scan.length > 0 && (
+        <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2 text-[11.5px]">
+          <div className="text-foreground">
+            Found <span className="font-mono">{scan.length}</span> stamp{scan.length === 1 ? "" : "s"}
+            {scan.length > 0 && (
+              <>
+                {" "}· sample <span className="font-mono">{scan[0].text.trim()}</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={runRemove}
+          disabled={busy !== "idle" || !scan || scan.length === 0}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            (busy !== "idle" || !scan || scan.length === 0) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy === "removing" ? "Removing…" : "Remove & download"}
+        </button>
+        <button
+          type="button"
+          onClick={applyToActive}
+          disabled={busy !== "idle" || !scan || scan.length === 0}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+            (busy !== "idle" || !scan || scan.length === 0) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          Apply to active tab
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
   const isPro = useIsPro();
   const requirePro = useRequirePro();
   const [open, setOpen] = useState(false);
