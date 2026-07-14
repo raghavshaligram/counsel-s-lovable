@@ -1819,48 +1819,10 @@ export function EditorCanvas({
           }
           return null;
         })()}
-        {annos.map((a) => {
-          if (a.kind !== "text-edit" || !a.cover) return null;
-          // A text-edit annotation is a PERMANENT replacement of the
-          // underlying PDF glyphs. The cover must always be painted —
-          // even when the typed text still matches the original — or the
-          // PDF canvas glyphs will show through and double up with the
-          // overlay textarea on top, producing duplicate text.
-          const isEditing = editingId === a.id;
-          const tl = toScreen(a.cover.x, a.cover.y);
-          const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg);
-          const cover = { background: bgCss };
-          if (backgroundConfidence < 0.9) {
-            cover.background = "transparent";
-          }
-          if (isEditing) {
-            console.log("[text-edit-cover]", {
-              id: a.id,
-              editing: true,
-              background: cover.background,
-              backgroundConfidence,
-              sampledBg: a.bg,
-              coverPdf: a.cover,
-              coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
-            });
-          }
-          return (
-            <div
-              key={`cover-${a.id}`}
-              data-vault-element="text-edit-cover"
-              data-anno-id={a.id}
-              style={{
-                position: "absolute",
-                left: tl.x, top: tl.y,
-                width: br.x - tl.x, height: br.y - tl.y,
-                background: cover.background,
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
-            />
-          );
-        })}
+        {/* text-edit-cover render loop removed: the base canvas is now
+            non-destructively repaired by the row-inpaint step in
+            onClickEditHit, so no HTML masking patch is needed and the
+            teal/dark sampled bg never appears behind edited text. */}
         {annos.map(renderAnno)}
         {editTextOverlays.map((it, i) => {
           const tl = toScreen(it.x, it.y);
