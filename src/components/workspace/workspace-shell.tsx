@@ -68,6 +68,7 @@ import {
   BookMarked,
   Trash2,
   ChevronDown,
+  Eraser,
 } from "lucide-react";
 
 import { Link, useNavigate } from "@tanstack/react-router";
