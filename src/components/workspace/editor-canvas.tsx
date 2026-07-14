@@ -32,9 +32,15 @@ interface TextItem {
   italic: boolean;
   transform: number[];
   fontName?: string;
+  /** Raw opaque pdf.js font id (e.g. "g_d0_f1"). Kept SEPARATE from
+   *  `fontName` so it never leaks into a CSS family or matcher input, but
+   *  can be prepended to the textarea's font-family stack to reuse the
+   *  exact embedded font bytes pdf.js injected into the DOM. */
+  rawPdfjsFontId?: string;
   /** Resolved CSS family from pdf.js `styles` map — richer than the raw
    *  PostScript fontName and used as a secondary signal for matchPdfFont. */
   cssFamily?: string;
+
   fontKey?: FontKey;
   fontApprox?: boolean;
   fontWeight?: number | string;
@@ -664,10 +670,15 @@ export function EditorCanvas({
             transform: it.transform,
             // Store SANITISED names so the click-to-edit path never sees "g_d0_f1"
             fontName: sanitizedFontName || undefined,
+            // Capture the raw opaque pdf.js id separately — used ONLY as a
+            // CSS font-family prefix so the browser can render with the
+            // exact embedded font bytes pdf.js injected.
+            rawPdfjsFontId: it.fontName,
             cssFamily: resolvedFontFamily,
             fontKey, fontApprox, fontWeight,
             lineHeight: 1.15, letterSpacing, color, bg,
           }];
+
         });
 
         // Merge sidecar OCR tokens for this SOURCE page (top-left PDF
@@ -1144,6 +1155,12 @@ export function EditorCanvas({
         // changing the cover area.
           const bg = "transparent";
         const fam = resolveTextFontFamily(a);
+        // Prepend the opaque pdf.js font id so the browser reuses the exact
+        // embedded font bytes pdf.js injected for the underlying glyphs.
+        // The sanitized `fam` stack remains as fallback for the export path.
+        const rawPdfjsFontId = (a as { rawPdfjsFontId?: string }).rawPdfjsFontId;
+        const famWithRaw = rawPdfjsFontId ? `"${rawPdfjsFontId}", ${fam}` : fam;
+
         const cover = a.kind === "text-edit" ? a.cover : undefined;
         const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
         const padRightPt = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeftPt;
@@ -1172,7 +1189,7 @@ export function EditorCanvas({
           color: textColor,
           WebkitTextFillColor: textColor,
           fontSize: `${a.fontSize * scale}px`,
-          fontFamily: fam,
+          fontFamily: famWithRaw,
           fontWeight,
           fontStyle: isItalic ? "italic" : "normal",
           fontSynthesis: a.kind === "text-edit" ? "weight style" : undefined,
@@ -1506,8 +1523,10 @@ export function EditorCanvas({
       textOffsetY: 0,
       textPadBottom: 0,
       cover,
+      rawPdfjsFontId: it.rawPdfjsFontId,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
     } });
+
     console.log("[text-edit-bounds-init]", {
       id,
       originalGlyphPdf: originalGlyph,
@@ -1694,7 +1713,10 @@ export function EditorCanvas({
     const el = measureRef.current;
     if (!el) return;
     const a = activeText;
-    const fam = resolveTextFontFamily(a);
+    const famBase = resolveTextFontFamily(a);
+    const rawPdfjsFontId = (a as { rawPdfjsFontId?: string }).rawPdfjsFontId;
+    const fam = rawPdfjsFontId ? `"${rawPdfjsFontId}", ${famBase}` : famBase;
+
     const cover = a.kind === "text-edit" ? a.cover : undefined;
     const padLeft = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
     const padRight = cover ? Math.max(0, cover.x + cover.w - (a.x + a.w)) : padLeft;

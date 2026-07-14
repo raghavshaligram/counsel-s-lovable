@@ -111,7 +111,12 @@ export interface TextAnno extends BaseAnno {
   // Manual CSS font-family override picked from the toolbar dropdown.
   // When set, takes precedence over `family`/`fontKey` for on-screen rendering.
   fontFamilyOverride?: string;
+  // Opaque pdf.js font identifier (e.g. "g_d0_f1"). When present, prepended
+  // to the CSS font-family stack so the browser renders with the EXACT font
+  // bytes pdf.js already injected into the DOM for the underlying glyphs.
+  rawPdfjsFontId?: string;
 }
+
 
 export interface HighlightAnno extends BaseAnno {
   kind: "highlight";
@@ -220,7 +225,12 @@ export interface TextEditAnno extends BaseAnno {
   // Manual CSS font-family override picked from the toolbar dropdown.
   // When set, takes precedence over `fontKey`/`family` for on-screen rendering.
   fontFamilyOverride?: string;
+  // Opaque pdf.js font identifier (e.g. "g_d0_f1"). When present, prepended
+  // to the CSS font-family stack so the browser renders with the EXACT font
+  // bytes pdf.js already injected into the DOM for the underlying glyphs.
+  rawPdfjsFontId?: string;
 }
+
 
 // Destructive redaction: draws a solid fill over the bbox AND attempts to
 // erase overlapping text from the content stream on export.
