@@ -1,151 +1,86 @@
-
 ## Goal
 
-Introduce a single, reusable `FontResolver` that maps any PDF/CSS font identifier to a normalized descriptor with confidence scoring. No existing consumer is modified in this pass — the resolver ships standalone with unit tests, ready to be adopted incrementally later.
+Fix three things without destabilizing the current editor canvas:
+1. Text-box editing bug
+2. Insert-image doing nothing
+3. Adobe-style edit overlay (transparent + thin outline + subtle glow, no white rectangle)
 
-Explicitly out of scope: `editor-canvas.tsx`, the PDF viewer, tab/open lifecycle, `samplePageBg`, and any live rendering path.
+Plus wire the new `FontResolver` into the edit-text detection path and the inspector font dropdown.
 
-## Deliverables
+## Guardrails (what stays frozen)
 
-New files only:
+- No changes to: PDF viewer/page render loop, zoom, tab lifecycle, `samplePageBg`, IntersectionObserver plumbing, `openPdf` / `pdfDoc` sharing.
+- All edits to `editor-canvas.tsx` are pinpoint replacements at named line ranges — no restructuring, no reordering hooks, no touching the render effect.
+- No file renames. No new deps.
 
-```text
-src/lib/fonts/
-  resolver.ts          # public API: resolveFont(...)
-  registry.ts          # canonical font catalog (families + metadata)
-  aliases.ts           # PostScript / PDF / CSS alias table
-  normalize.ts         # PostScript name normalization
-  types.ts             # FontDescriptor, FontQuery, ResolveResult
-  index.ts             # barrel export
-tests/fonts/
-  normalize.test.ts
-  resolver.test.ts
-```
+## 1 — Diagnose first (read-only, before any edit)
 
-Nothing under `src/lib/editor/`, `src/lib/utils/fontMatcher.ts`, or `src/lib/pdf/fonts-pdfa.ts` is touched. Those keep working exactly as they do today.
+Before writing patches I'll open the current preview, reproduce both bugs, and capture what actually fails:
+- Add text box → does the overlay mount, is the click coord off, does the textarea receive focus, does commit run?
+- Insert image → `tool-panels.tsx:324` dispatches `SET_PENDING_IMAGE`, `editor-canvas.tsx:593` reads it on canvas click. Likely regressions: tool never switches to `"image"`, or the pending image is cleared before the click, or the click handler is gated behind a condition that no longer passes.
 
-## Public API
+The plan below assumes the two most likely root causes; I'll adjust the specific patch after repro but keep the scope identical.
 
-```ts
-// types.ts
-export type FontKind = "sans" | "serif" | "mono" | "display";
-export type FontVendor = "microsoft" | "adobe" | "google" | "apple" | "legal" | "engineering" | "generic";
+## 2 — Text-box edit overlay (Adobe-style)
 
-export interface FontQuery {
-  descriptor?: string;      // 1. embedded PDF font descriptor (/FontName)
-  postscriptName?: string;  // 2. PostScript name
-  pdfFamily?: string;       // 3. PDF font family (/FontFamily)
-  cssFamily?: string;       // 4. CSS family string
-  weightHint?: number | string;
-  italicHint?: boolean;
-}
+Target: the edit overlay only (the DOM node that wraps the textarea while an existing text run is being edited). Not the underlying render.
 
-export interface CanonicalFont {
-  id: string;               // "arial", "times-new-roman", ...
-  family: string;           // display name
-  kind: FontKind;
-  vendor: FontVendor;
-  cssStack: string;         // ready-to-use CSS font-family
-  metricTwin?: string;      // e.g. "carlito" for Calibri
-}
+Changes, in the overlay's className/style only:
+- Remove `bg-white` / any solid fill.
+- `background: transparent`.
+- `outline: 1px solid rgba(76,127,184,0.9)` (steel-blue `--vault`) with `outline-offset: 1px`.
+- `box-shadow: 0 0 0 3px rgba(76,127,184,0.18)` for the soft glow.
+- Textarea: transparent bg, caret color = resolved text color, no border.
+- Leave the underlying rendered glyph visible (do NOT paint a cover rect while editing).
 
-export interface ResolveResult {
-  font: CanonicalFont;      // resolved family (falls back to generic)
-  weight: number;           // 100..900
-  italic: boolean;
-  bold: boolean;            // weight >= 600
-  confidence: number;       // 0..1
-  exact: boolean;           // true iff matched via registry/alias, not generic
-  source: "descriptor" | "postscript" | "pdfFamily" | "cssFamily" | "alias" | "generic";
-  matchedKey?: string;      // which alias/id produced the hit
-}
+Amber variant (`--color-privacy`) is available if you prefer amber over steel-blue — noting it, not switching without your call.
 
-export function resolveFont(q: FontQuery): ResolveResult;
-```
+## 3 — Text-box bug fix
 
-## Resolution order (implemented in `resolver.ts`)
+Scope: only the text tool's pointer-down → create-annotation branch and the overlay's commit path. I will:
+- Verify the click-to-PDF-point conversion still lines up (compare to the working image branch at line 593 which uses the same conversion).
+- Verify `tool === "text"` actually reaches the branch (no earlier `return` swallowing it).
+- Ensure the newly created text annotation is auto-selected AND flagged as `editing` so the overlay mounts in one gesture (current behavior might require an extra click).
+- Ensure `Escape` and click-outside commit rather than discarding.
 
-For each provided field, in this order, try:
+No changes outside the text branch and the overlay component.
 
-1. `descriptor` → normalize → exact registry id → alias table
-2. `postscriptName` → normalize → registry id → alias
-3. `pdfFamily` → lowercase trim → registry family → alias
-4. `cssFamily` → split on comma, walk tokens through registry + alias
-5. Known-alias fuzzy pass (substring match on normalized token against alias keys)
-6. Generic fallback by `kind` inferred from tokens (`serif`/`mono`/else `sans`)
+## 4 — Insert-image fix
 
-Confidence:
-- descriptor/postscript exact = 1.0
-- pdfFamily exact = 0.95
-- cssFamily exact = 0.9
-- alias hit = 0.8
-- fuzzy substring = 0.6
-- generic fallback = 0.2
+`tool-panels.tsx:324` builds a valid `pendingImage`. The canvas handler at `editor-canvas.tsx:593` only fires when `state.tool === "image" && state.pendingImage`. Fix path:
+- Confirm `tool-panels.tsx` also dispatches `SET_TOOL "image"` alongside `SET_PENDING_IMAGE` (if missing, add that one dispatch — it lives in tool-panels, not the canvas).
+- Confirm the file-picker's click handler isn't consuming the event or resetting the tool before the user clicks the canvas.
+- If the canvas branch runs but nothing appears: verify the new image annotation gets pushed and the page invalidates. No render-loop changes — just ensure `ADD_ANNO` fires with a valid page index.
 
-`exact` is true for anything except the generic fallback.
+All fixes stay in `tool-panels.tsx` and the single `if (state.tool === "image" ...)` block already in the canvas.
 
-## Normalization (`normalize.ts`)
+## 5 — Wire FontResolver into edit-text
 
-Pure function `normalizePsName(raw): { base, weight, italic }`:
+New tiny bridge file (no changes to existing font modules):
 
-- strip subset prefix `^[A-Z]{6}\+`
-- strip trailing `MT`, `PS`, `PSMT`, `LTStd`, `Std`, `Pro`, `LT`
-- split on `-`, `,`, spaces; last segment is style token
-- style tokens → weight/italic:
-  - `Thin`=100, `ExtraLight/UltraLight`=200, `Light`=300, `Regular/Roman/Book`=400,
-    `Medium`=500, `SemiBold/DemiBold`=600, `Bold`=700, `ExtraBold/UltraBold/Heavy`=800, `Black`=900
-  - `Italic`/`Oblique` → italic=true (may combine, e.g. `BoldItalic`)
-- collapse the remaining tokens into a canonical id (lowercase, hyphen-joined)
+- `src/lib/fonts/bridge.ts` — exports `resolveToFontKey(query): { key: FontKey; exact: boolean; weight: number; italic: boolean }`. Internally calls `resolveFont()` then maps `CanonicalFont.id` → existing `FontKey` via a lookup table (serif/sans/mono/monospaced families → nearest embedded key). This preserves the current embed pipeline untouched.
 
-Cases explicitly covered by unit tests:
+Call-site swaps (2 lines each, mechanical):
+- `editor-canvas.tsx:481-482` — replace `detectFontKey(...) + matchPdfFont(...)` with `resolveToFontKey({ postscriptName: sanitizedFontName, pdfFamily: family, cssFamily: sanitizedCssFamily })`. Keep the `det` / `matchedFont` variable names so downstream code is unchanged.
+- `editor-canvas.tsx:536` — same, for the Helvetica default branch.
+- `editor-canvas.tsx:1162-1164` — replace the `matchPdfFont` loop with a single `resolveToFontKey` call.
 
-```
-ArialMT                          → arial / 400 / false
-Arial-BoldMT                     → arial / 700 / false
-ABCDE+ArialMT                    → arial / 400 / false
-HelveticaNeueLTStd-Roman         → helvetica-neue / 400 / false
-TimesNewRomanPSMT                → times-new-roman / 400 / false
-TimesNewRomanPS-BoldItalicMT     → times-new-roman / 700 / true
-Calibri-Light                    → calibri / 300 / false
-SegoeUI-SemiboldItalic           → segoe-ui / 600 / true
-AptosDisplay-Bold                → aptos / 700 / false
-```
+Inspector font dropdown: it reads `FONT_META` / `FONT_KEYS`. No change to the dropdown itself — the resolver just feeds it a better initial `FontKey` and weight/italic hints, so the selected value matches the source PDF's font on first render.
 
-## Registry (`registry.ts`)
+Old `matchPdfFont` / `detectFontKey` stay in place (still used by `detect-pii.ts` and `/editor` route). No migration beyond the three canvas call sites.
 
-Every listed family gets a `CanonicalFont` entry with id, display name, kind, vendor, and a CSS stack. Metric twins wired where applicable (Calibri→Carlito, Arial→Arimo, Times New Roman→Tinos, Cambria→Caladea, Courier New→Cousine). Covers:
+## 6 — Verify
 
-- Microsoft: Arial, Arial Narrow, Calibri, Aptos, Cambria, Candara, Consolas, Courier New, Georgia, Segoe UI, Tahoma, Trebuchet MS, Verdana
-- Adobe: Helvetica, Helvetica Neue, Times, Times New Roman, Myriad Pro, Minion Pro, Garamond, Warnock
-- Google: Roboto, Open Sans, Noto Sans, Noto Serif, Inter
-- Apple: SF Pro, Geneva, Lucida Grande
-- Legal: Book Antiqua, Century Schoolbook, Bookman
-- Engineering: OCR-A, OCR-B, DIN, Univers
-- Generic sentinels: `generic-sans`, `generic-serif`, `generic-mono`
+- Playwright: open workspace, load the sample PDF already in the session, run text-add + image-insert + edit-existing-text, screenshot the overlay for the transparent+outline look, confirm no console errors.
+- Unit: extend `tests/fonts/resolver.test.ts` with one bridge test that maps a `TimesNewRomanPS-BoldItalicMT` query to the serif `FontKey`.
 
-## Aliases (`aliases.ts`)
+## Files touched
 
-Flat `Record<normalizedKey, canonicalId>` covering common vendor spellings, e.g.:
+- `src/components/workspace/editor-canvas.tsx` — 4 tiny patches (overlay style, text-branch selection, 3 font call-site swaps). No structural change.
+- `src/components/workspace/tool-panels.tsx` — at most 1 dispatch added (`SET_TOOL "image"`) if diagnosis confirms it's missing.
+- `src/lib/fonts/bridge.ts` — new, ~40 lines.
+- `tests/fonts/bridge.test.ts` — new, one test.
 
-```
-arialmt, arial, liberationsans, nimbussans, arimo         → arial
-helvetica, helveticaneue, helveticaneueltstd, nimbussansl → helvetica / helvetica-neue
-timesnewroman, timesnewromanps, tinos, liberationserif    → times-new-roman
-calibri, carlito                                          → calibri
-segoeui                                                   → segoe-ui
-sfpro, sfprodisplay, sfprotext, -apple-system             → sf-pro
-bookantiqua, palatino                                     → book-antiqua
-centuryschoolbook, newcenturyschlbk                       → century-schoolbook
-bookmanoldstyle, itcbookman                               → bookman
-ocra, ocrb, din, univers, myriadpro, minionpro, garamond, warnock, ...
-```
+## Out of scope
 
-## Tests
-
-- `normalize.test.ts` — every case from the "Normalization" list above, plus edge cases (empty string, only style token, unknown vendor).
-- `resolver.test.ts` — verifies resolution order (descriptor beats cssFamily), confidence tiers, `exact` flag, alias hits, generic fallback for unknown families, and italic/bold flag propagation.
-
-## Non-goals for this change
-
-- No changes to `matchPdfFont`, `mapPdfFontToKey`, `detectFontKey`, editor canvas, PDF viewer, tab lifecycle, or `samplePageBg`.
-- No callers migrated in this pass. Follow-up plans will adopt the resolver in `editor/fonts.ts`, `utils/fontMatcher.ts`, and `pdf/fonts-pdfa.ts` one at a time.
+PDF viewer, page render, zoom, tab lifecycle, `samplePageBg`, `openPdf`, existing font modules (`fonts.ts`, `fontMatcher.ts`), `/editor` route, `/redact` route.
