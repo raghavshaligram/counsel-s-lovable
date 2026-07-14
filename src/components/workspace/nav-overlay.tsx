@@ -12,11 +12,12 @@
  * by the workspace shell — no second pdfjs.getDocument and no pdf-lib parse.
  * Per-page work (thumbnails) is lazy via IntersectionObserver.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
   Check,
   CornerDownRight,
+  EyeOff,
   FileText,
   MessageSquare,
   Pencil,
@@ -31,6 +32,57 @@ import {
   saveBookmarksDebounced,
   type UserBookmark,
 } from "@/lib/workspace/persistence";
+
+/* ------------------------ Overlay geometry ------------------------ */
+
+type Rect = { right: number; top: number; width: number; height: number };
+const RECT_KEY = "vault:nav-overlay-rect";
+// Default sits clear of the canvas scrollbar (right ≥ 20px) with a wider
+// pane so titles don't wrap. Height defaults to 560 so the bookmarks + outline
+// both breathe without immediately hitting the "maxHeight" clamp.
+const DEFAULT_RECT: Rect = { right: 24, top: 56, width: 380, height: 560 };
+const MIN_W = 280;
+const MIN_H = 220;
+
+function readRect(): Rect {
+  if (typeof window === "undefined") return DEFAULT_RECT;
+  try {
+    const raw = window.localStorage.getItem(RECT_KEY);
+    if (!raw) return DEFAULT_RECT;
+    const p = JSON.parse(raw) as Partial<Rect>;
+    return {
+      right: Math.max(0, Number(p.right ?? DEFAULT_RECT.right)),
+      top: Math.max(0, Number(p.top ?? DEFAULT_RECT.top)),
+      width: Math.max(MIN_W, Number(p.width ?? DEFAULT_RECT.width)),
+      height: Math.max(MIN_H, Number(p.height ?? DEFAULT_RECT.height)),
+    };
+  } catch {
+    return DEFAULT_RECT;
+  }
+}
+function writeRect(r: Rect) {
+  try { window.localStorage.setItem(RECT_KEY, JSON.stringify(r)); } catch { /* ignore */ }
+}
+
+/* ---------------- Outline overrides (rename / hide) --------------- */
+
+type OutlineOverride = { title?: string; hidden?: boolean };
+type OutlineOverrides = Record<string, OutlineOverride>;
+function overridesKey(name: string | null, size: number | null) {
+  if (!name || size == null) return null;
+  return `vault:outline-overrides:${name}:${size}`;
+}
+function loadOverrides(name: string | null, size: number | null): OutlineOverrides {
+  const k = overridesKey(name, size);
+  if (!k || typeof window === "undefined") return {};
+  try { return JSON.parse(window.localStorage.getItem(k) ?? "{}") ?? {}; } catch { return {}; }
+}
+function saveOverrides(name: string | null, size: number | null, v: OutlineOverrides) {
+  const k = overridesKey(name, size);
+  if (!k) return;
+  try { window.localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ }
+}
+
 
 type Tab = "bookmarks" | "pages" | "comments";
 
