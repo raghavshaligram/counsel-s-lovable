@@ -1666,7 +1666,7 @@ export function EditorCanvas({
           const isEditing = editingId === a.id;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg);
+          const bgCss = rgbCss(a.bg); void bgCss;
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
