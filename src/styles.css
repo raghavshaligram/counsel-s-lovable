@@ -223,6 +223,8 @@
   --destructive: #DC2626;
   --destructive-foreground: #FFFFFF;
   --evidence: #DC2626;
+  --privacy: #B45309;                    /* amber-700 for light-mode contrast */
+  --privacy-soft: rgba(180, 83, 9, 0.10);
   --border: rgba(0, 0, 0, 0.06);
   --input: #FFFFFF;
   --ring: #4F46E5;
