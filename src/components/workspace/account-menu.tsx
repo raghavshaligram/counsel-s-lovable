@@ -168,6 +168,23 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
           Reset assistant learning
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            const next = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
+            setTheme(next);
+          }}
+        >
+          {theme === "dark" ? (
+            <Moon className="h-3.5 w-3.5" strokeWidth={2} />
+          ) : theme === "light" ? (
+            <Sun className="h-3.5 w-3.5" strokeWidth={2} />
+          ) : (
+            <Monitor className="h-3.5 w-3.5" strokeWidth={2} />
+          )}
+          Theme: {theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem disabled={signingOut} onSelect={(e) => { e.preventDefault(); void onSignOut(); }}>
           <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
           {signingOut ? "Signing out…" : "Sign out"}
