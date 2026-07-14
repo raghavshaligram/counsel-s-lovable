@@ -145,16 +145,14 @@ type ToolId =
   | "navigate";
 
 type ToolGroupLabel =
-  | "Pages"
-  | "Convert"
-  | "Edit"
-  | "Redact"
-  | "Secure"
-  | "Layout"
+  | "Review"
+  | "Organize pages"
+  | "Edit & sign"
+  | "Convert & compress"
+  | "Protect"
   | "Legal"
-  | "AI"
-  | "Assemble"
-  | "Navigate";
+  | "Layout"
+  | "AI";
 
 type RailTool = {
   id: string;
@@ -166,66 +164,68 @@ type RailTool = {
   hidden?: boolean;
 };
 
+// Outcome-first grouping for general PDF workflows. Legal remains a single
+// intact group at the bottom (never split, never hidden) so paralegals still
+// find every legal tool in one place. Tool ids are unchanged — deep links
+// (?tool=…) keep working. Only labels + grouping moved.
 const TOOLS: RailTool[] = [
-  // Legal — hero tools at the top of the rail.
-  { id: "redact", label: "Redact for production", icon: Shield, group: "legal", groupLabel: "Legal" },
-  { id: "bates", label: "Bates stamp", icon: Hash, group: "legal", groupLabel: "Legal" },
-  { id: "privilege-scan", label: "Privilege review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  // Review — read, find, diff.
+  { id: "comments", label: "Comments", icon: MessageSquare, group: "edit", groupLabel: "Review" },
+  { id: "chat", label: "Search inside PDF", icon: Sparkles, group: "navigate", groupLabel: "Review" },
+  { id: "outline", label: "Outline & links", icon: ListTree, group: "navigate", groupLabel: "Review" },
+  { id: "compare", label: "Compare versions", icon: Scale, group: "assemble", groupLabel: "Review" },
+
+  // Organize pages — fix the pages.
+  { id: "organize", label: "Organize", icon: LayoutGrid, group: "assemble", groupLabel: "Organize pages" },
+  { id: "merge", label: "Merge", icon: Files, group: "assemble", groupLabel: "Organize pages" },
+  { id: "split", label: "Split", icon: Scissors, group: "assemble", groupLabel: "Organize pages" },
+  { id: "extract", label: "Extract", icon: TableIcon, group: "assemble", groupLabel: "Organize pages" },
+  { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Organize pages" },
+  { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Organize pages" },
+
+  // Edit & sign — add content or sign.
+  { id: "sign", label: "Sign & Fill", icon: PenLine, group: "edit", groupLabel: "Edit & sign" },
+  { id: "watermark", label: "Watermark", icon: Stamp, group: "edit", groupLabel: "Edit & sign" },
+  { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Edit & sign" },
+
+  // Convert & compress — another form or smaller.
+  { id: "ocr", label: "Make Searchable", icon: ScanText, group: "legal", groupLabel: "Convert & compress" },
+  { id: "convert", label: "Convert", icon: FileType, group: "convert", groupLabel: "Convert & compress" },
+  { id: "image-convert", label: "Image Convert", icon: ImageIcon, group: "convert", groupLabel: "Convert & compress" },
+  { id: "compress", label: "Compress", icon: PackageOpen, group: "convert", groupLabel: "Convert & compress" },
+
+  // Protect — general document safety (not legal-specific).
+  { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Protect" },
+  { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Protect" },
+  { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Protect" },
+
+  // Legal — kept whole, ordered pre-production → filing.
+  { id: "redact", label: "Redact", icon: Shield, group: "legal", groupLabel: "Legal" },
   { id: "sanitize", label: "Sanitize", icon: ShieldCheck, group: "legal", groupLabel: "Legal" },
-  { id: "ocr", label: "Make Searchable", icon: ScanText, group: "legal", groupLabel: "Legal" },
+  { id: "privilege-scan", label: "Privilege review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  { id: "pre-discovery", label: "Pre-Discovery Review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
+  { id: "document-hash", label: "Document Hash", icon: FileCheck2, group: "legal", groupLabel: "Legal" },
+  { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
+  { id: "bates", label: "Bates stamp", icon: Hash, group: "legal", groupLabel: "Legal" },
   { id: "exhibit-binder", label: "Exhibit Binder", icon: BookOpen, group: "legal", groupLabel: "Legal" },
+  { id: "toa", label: "Table of Authorities", icon: BookMarked, group: "legal", groupLabel: "Legal" },
+  { id: "citation-hyperlinker", label: "Citation Hyperlinker", icon: Link2, group: "legal", groupLabel: "Legal" },
   { id: "court-readiness", label: "Court Readiness", icon: Gavel, group: "legal", groupLabel: "Legal" },
   { id: "workflow-builder", label: "Workflow Builder", icon: WorkflowIcon, group: "legal", groupLabel: "Legal" },
-  { id: "citation-hyperlinker", label: "Citation Hyperlinker", icon: Link2, group: "legal", groupLabel: "Legal" },
-  { id: "toa", label: "Table of Authorities", icon: BookMarked, group: "legal", groupLabel: "Legal" },
-  { id: "pre-discovery", label: "Pre-Discovery Review", icon: ScanSearch, group: "legal", groupLabel: "Legal" },
-  { id: "verifiable-redaction", label: "Verifiable redaction", icon: Shield, group: "legal", groupLabel: "Legal", hidden: true },
 
-  // Assemble
-  { id: "organize", label: "Organize", icon: LayoutGrid, group: "assemble", groupLabel: "Assemble" },
-  { id: "merge", label: "Merge", icon: Files, group: "assemble", groupLabel: "Assemble" },
-  { id: "split", label: "Split", icon: Scissors, group: "assemble", groupLabel: "Assemble" },
-  { id: "extract", label: "Extract", icon: TableIcon, group: "assemble", groupLabel: "Assemble" },
-  { id: "compare", label: "Compare versions", icon: Scale, group: "assemble", groupLabel: "Assemble" },
-
-  // Edit
-  { id: "sign", label: "Sign & Fill", icon: PenLine, group: "edit", groupLabel: "Edit" },
-  { id: "comments", label: "Comments", icon: MessageSquare, group: "edit", groupLabel: "Edit" },
-  { id: "watermark", label: "Watermark", icon: Stamp, group: "edit", groupLabel: "Edit" },
-
-  // Secure
-  { id: "protect", label: "Protect", icon: KeyRound, group: "secure", groupLabel: "Secure" },
-  { id: "unlock", label: "Unlock", icon: KeyRound, group: "secure", groupLabel: "Secure" },
-  { id: "repair", label: "Repair PDF", icon: Wrench, group: "secure", groupLabel: "Secure" },
-  { id: "document-hash", label: "Document Hash", icon: FileCheck2, group: "legal", groupLabel: "Legal" },
-
-  // Navigate
-  { id: "outline", label: "Outline & links", icon: ListTree, group: "navigate", groupLabel: "Navigate" },
-  { id: "chat", label: "Search inside PDF", icon: Sparkles, group: "navigate", groupLabel: "Navigate" },
-
-  // Pages (All-tools modal only)
-  { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Pages" },
-  { id: "mail-merge", label: "Mail Merge", icon: FileStack, group: "pages", groupLabel: "Pages" },
-  { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Pages" },
-
-  // Convert (All-tools modal only)
-  { id: "convert", label: "Convert", icon: FileType, group: "convert", groupLabel: "Convert" },
-  { id: "image-convert", label: "Image Convert", icon: ImageIcon, group: "convert", groupLabel: "Convert" },
-  { id: "compress", label: "Compress", icon: PackageOpen, group: "convert", groupLabel: "Convert" },
-
-  // Layout
+  // Layout (All-tools modal only)
   { id: "doc-settings", label: "Document settings", icon: SettingsIcon, group: "layout", groupLabel: "Layout", hidden: true },
 ];
 
 
 const GROUP_ORDER: ToolGroupLabel[] = [
-  "Legal", "Assemble", "Edit", "Secure", "Navigate", "Pages", "Convert", "Layout", "AI",
+  "Review", "Organize pages", "Edit & sign", "Convert & compress", "Protect", "Legal", "Layout", "AI",
 ];
 
-/** Rail order — only these groups render in the left rail. Everything else is
- *  accessed via the All-tools modal. */
+/** Rail order — outcome-first for general PDF workflows. Legal stays whole
+ *  at the bottom, expanded by default, collapsible per-group. */
 const RAIL_GROUP_ORDER: ToolGroupLabel[] = [
-  "Legal", "Assemble", "Edit", "Secure", "Navigate",
+  "Review", "Organize pages", "Edit & sign", "Convert & compress", "Protect", "Legal",
 ];
 
 const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
