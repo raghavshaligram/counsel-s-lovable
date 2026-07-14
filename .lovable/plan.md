@@ -1,46 +1,67 @@
-# Fix text-edit color + background
+## Goal
 
-**Recommendation:** Fully transparent cover, keep the PDF's own text color, and erase the original glyph pixels from the base canvas so nothing double-renders. This is the only option that survives on both light and dark pages without guessing.
+Add three inspector features to the workspace:
 
-## Why the current build is wrong
+1. **Compress** — mount the existing compress engine in the right inspector.
+2. **Bates — change / delete** — extend the existing Bates panel so users can update or clear the stamp on the active tab.
+3. **Remove watermark** — new tool that strips watermark-style overlays from a PDF.
 
-1. `sampleTextColor` throws away every pixel with `lum > 230`, so white/near-white ink (your dark-teal heading) collapses to the default `#000`. Result: dark text where it should be light.
-2. `samplePageBg` paints a solid rectangle under the edit. Even a "correct" sample can never match a gradient, an image, or a subtle noise texture — you always see a visible band. That's the "changes the bg color" complaint.
-3. Sampling the ink from the halo (bg logic) and sampling the bg from the ink (color logic) are both fighting the same ambiguity from the wrong side.
+All three run 100% on-device, follow the four-zone workspace layout (left rail → canvas → floating toolbar → right inspector), and reuse existing engines.
 
-## Fix
+---
 
-### 1. Text color from pdf.js, not pixels
-`TextItem.color` is already populated from pdf.js's text layer (the declared fill color of the run). Use it directly for the editable overlay. Drop `sampleTextColor` from `onClickEditHit` and delete the helper — pixel sampling can't beat the source of truth.
+### 1. Compress panel (quickest win)
 
-### 2. Transparent cover
-Stop painting `cover` with the sampled bg. `renderAnno` renders the text-edit cover element with `background: transparent` (still keeps the rectangle for hit-testing and layout; only the paint changes). Remove `bg` from the sampling call and from `intendedCoverBackground` logging.
+The compress engine already exists (`src/lib/batch/ops/compress.ts`, `compressSmart`) with presets Low / Medium / High / Extreme (structural rebuild + rasterise, keeps smaller). It is not currently mounted — `tool-panels.tsx` falls through to `ComingSoonPanel` for `"compress"`.
 
-### 3. Erase original glyphs from the base canvas
-So the underlying pdf.js glyphs don't bleed through the transparent cover, we destructively clear that region on the rendered page canvas at edit-open time:
-- Compute the same DPR-scaled `sx/sy/sw/sh` rect used for sampling, expanded by the cover pads.
-- `ctx.clearRect(...)` on the page canvas — this leaves a hole showing whatever the canvas was cleared to (transparent), which composites over the surface behind it.
-- Because the page canvas sits on a **plain page-color surface** (the workspace paints the page rect with the sampled page fill from the four corners — a much more reliable read than the ring around one glyph), the hole reveals the true page color underneath. No sampled band, no wrong color.
-- On cancel/commit, re-render just that page from pdf.js to restore pixels (the workspace already has a per-page re-render path used after annotation commits — reuse it).
+- Add `CompressPanel` to `tool-panels.tsx` next to `WatermarkPanel`.
+- Controls: preset radio (Low / Medium / High / Extreme), color-vs-grayscale toggle, before/after size + % savings after run, "Compress & download" primary action.
+- Runs `compressSmart` on the active tab's `srcBytes`. Result is offered as a download (does not mutate the open document, matching how Watermark works today).
+- Register `case "compress": return <CompressPanel ctx={ctx} />;` in the switch.
 
-For pages with imagery/gradients under the text (rare in legal docs but possible), the hole will show the page-color surface not the image. That's an acceptable trade because (a) it's still visually calmer than a mis-sampled band, and (b) after the user commits, the export pipeline uses pdf-lib's real redaction cover with the sampled bg for the final PDF — the edit-time preview doesn't have to be pixel-perfect.
+### 2. Bates — change & delete
 
-### 4. Keep the export path unchanged
-`exportEditedPdf` still writes the cover as an opaque rectangle in the output PDF using the stored `bg` — that's needed for the exported file to hide the burned-in glyphs. So we still sample and store `bg` on the anno; we just don't *paint* it during editing. Export behavior is untouched.
+Today `BatesPanel` writes settings into the per-doc Bates store; the actual stamp is only baked in at export time. So "change" already works (edit settings → re-export). What is missing:
 
-## Files touched
+- **Clear stamp settings** button in `BatesPanel` — resets the tab's `BatesSettings` to `BATES_DEFAULT` and marks the tab so the export pipeline skips the Bates step.
+- **Remove baked-in Bates from an imported PDF** — heuristic pass:
+  - Scan each page for short text runs matching the user's format (`prefix + N digits + suffix`) inside a chosen corner band (tl/tc/tr/bl/bc/br).
+  - Cover matches with an opaque white rect sized to the run's bbox (same technique the redaction pipeline uses).
+  - Preview count ("Found 42 stamps on 42 pages") before applying, then export as `<name>-bates-removed.pdf`.
+  - Undoable within the session (settings-driven; the source bytes are never mutated — the three-layer model is preserved).
 
-- `src/components/workspace/editor-canvas.tsx`
-  - `onClickEditHit`: use `it.color` directly; keep `samplePageBg` for the stored `bg` only.
-  - Add `clearRect` on the page canvas for the cover region; track cleared rects per anno id so cancel/commit can trigger a page re-render.
-  - Cover element render: `background: transparent`.
-  - Remove `sampleTextColor` (dead code).
-- No changes to `state.ts`, export pipeline, or sidecar shape.
+Panel UX: existing "Apply Bates" section on top, new "Existing stamps" section below with format input, corner picker, "Detect", "Remove & download".
 
-## Verification
+### 3. Remove watermark
 
-- Dark-teal "STEP 1: The AI Audit System" heading → click → text stays white, no light band appears, original glyphs gone.
-- Plain white page, black body text → click → text stays black, hole reveals white page, no visible seam.
-- Cancel edit → original glyphs restored via page re-render.
-- Export the edited doc → output PDF still has the opaque cover + new text (unchanged behavior).
-- All 34 tests remain green.
+Watermarks come in three shapes; the tool handles them in priority order and shows a checklist of what it found:
+
+1. **Watermark annotations** (`/Subtype /Watermark`, stamp annotations flagged as watermarks) — drop from each page's `/Annots` array via `pdf-lib`. Lossless.
+2. **Form XObjects reused on every page** — inspect each page's `/Resources /XObject`. Any XObject referenced on ≥ 60% of pages that overlays page content (not the base content stream) is offered as a removable candidate with a thumbnail. Removing rewrites the content stream to drop the `Do` operator for that XObject.
+3. **Repeated text/image overlay** (no structured watermark) — user drags a marquee on any page; we sample that region, find visually similar regions on every other page, and cover with white rects. Same primitive as the Bates-removal path.
+
+Panel UX: "Scan for watermarks" button → list of candidates with page-count + preview + individual toggles → "Remove selected & download". If nothing is found automatically, offer the manual marquee fallback.
+
+Add to the left rail under **Edit & sign** as `"remove-watermark"` (label "Remove watermark", icon `EraserIcon`).
+
+---
+
+### Technical details
+
+- New files:
+  - `src/components/workspace/panels/compress-panel.tsx` (or inline in `tool-panels.tsx` matching current style).
+  - `src/components/workspace/panels/remove-watermark-panel.tsx`.
+  - `src/lib/pdf/remove-watermark.ts` — annotation strip + XObject-usage analyser + content-stream rewriter (pdf-lib).
+  - `src/lib/pdf/remove-bates.ts` — regex scan on the pdf.js text layer + white-rect cover via pdf-lib.
+- Extend `src/lib/workspace/bates-store.ts` with a `cleared: boolean` flag so the export pipeline knows to skip stamping.
+- Left-rail additions in `workspace-shell.tsx`:
+  - `"remove-watermark"` under Edit & sign.
+  - (Bates entry already exists — no rail change needed.)
+- Register new cases in `renderPanel` inside `tool-panels.tsx`.
+- Reuse `downloadPdf`, `importChunk`, `useToast` patterns from `WatermarkPanel` / `BatesPanel` for consistency.
+- No backend, no network — all operations stay in the browser.
+
+### Out of scope / trade-offs
+
+- Removing arbitrary flattened watermarks (rasterised into a page image) can only be done by re-rasterising and inpainting — heavy and lossy. The manual marquee is the pragmatic fallback and will be labeled as such.
+- Removing Bates from a document stamped by a different tool with unknown format won't be perfect; the user must supply the format they see.
