@@ -479,8 +479,15 @@ export function EditorCanvas({
             family === "serif" ? '"Times New Roman", Times, serif' :
             family === "mono" ? '"Courier New", Courier, monospace' :
             "Helvetica, Arial, sans-serif";
-          const det = detectFontKey(sanitizedFontName || sanitizedCssFamily, family, sanitizedCssFamily);
-          const matchedFont = matchPdfFont(sanitizedFontName || sanitizedCssFamily || "");
+          const resolved = resolveToFontKey({
+            postscriptName: sanitizedFontName || undefined,
+            pdfFamily: family,
+            cssFamily: sanitizedCssFamily || undefined,
+            italicHint: italic,
+            weightHint: bold ? 700 : undefined,
+          });
+          const det = { key: resolved.key, approximate: resolved.approximate };
+          const matchedFont = { matched: resolved.matched, fontFamily: resolved.fontFamily, fontWeight: String(resolved.fontWeight) };
           const resolvedFontFamily = matchedFont.matched ? matchedFont.fontFamily : genericStack;
           const fontWeight = numericFontWeight(matchedFont.matched ? matchedFont.fontWeight : undefined, bold);
           const fontKey = det.key;
@@ -913,7 +920,7 @@ export function EditorCanvas({
         // Cover is rendered as a separate fixed-position layer (see below);
         // the text box itself stays transparent so it can grow without
         // changing the cover area.
-        const bg = "transparent";
+          const bg = "transparent";
         const fam = resolveTextFontFamily(a);
         const cover = a.kind === "text-edit" ? a.cover : undefined;
         const padLeftPt = cover ? Math.max(0, a.x - cover.x) : a.kind === "text-edit" ? (a.textOffsetX ?? Math.max(2, a.fontSize * 0.18)) : 0;
