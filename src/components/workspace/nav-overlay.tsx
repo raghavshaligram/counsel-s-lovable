@@ -228,10 +228,12 @@ export function NavOverlay(props: Props) {
         right: rect.right,
         top: rect.top,
         width: rect.width,
-        height: rect.height,
+        height: rect.height ?? undefined,
+        maxHeight: "calc(100% - 80px)",
         borderRadius: 12,
         boxShadow: "var(--shadow-float)",
       }}
+
     >
       <header
         onMouseDown={startDrag}
