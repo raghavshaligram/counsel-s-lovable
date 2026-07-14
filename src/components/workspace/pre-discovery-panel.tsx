@@ -150,17 +150,6 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
     [editorDispatch],
   );
 
-  const copyDiagnostics = useCallback(async () => {
-    const body = debugLines.length
-      ? debugLines.join("\n")
-      : "No Pre-Discovery diagnostics yet. Run a search first.";
-    try {
-      await navigator.clipboard.writeText(body);
-      toast.success("Diagnostics copied");
-    } catch {
-      toast.error("Could not copy diagnostics");
-    }
-  }, [debugLines]);
 
   /* ---------- render ---------- */
 
