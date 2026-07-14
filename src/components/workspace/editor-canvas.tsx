@@ -1517,8 +1517,10 @@ export function EditorCanvas({
       textOffsetY: 0,
       textPadBottom: 0,
       cover,
+      rawPdfjsFontId: it.rawPdfjsFontId,
       source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
     } });
+
     console.log("[text-edit-bounds-init]", {
       id,
       originalGlyphPdf: originalGlyph,
