@@ -1212,6 +1212,10 @@ export function EditorCanvas({
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
     const canvas = canvasRef.current;
+    // Use pdf.js's declared text colour (it.color) directly — pixel sampling
+    // can't beat the source of truth and inverts on light-on-dark text.
+    // We still sample bg via samplePageBg because the export pipeline paints
+    // an opaque cover in the exported PDF using this value.
     const sampled = (() => {
       if (!canvas) return { color: it.color, bg: it.bg };
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1225,12 +1229,10 @@ export function EditorCanvas({
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
       return {
-        color: sampleTextColor(ctx, sx, sy, sw, sh),
+        color: it.color,
         bg: samplePageBg(ctx, sx, sy, sw, sh),
       };
     })();
-    // Workspace native: place a text-edit overlay pre-filled with the original
-    // string. The user edits inline; double-click switches modes.
     // Cover bbox: expand generously around the captured glyph bounds so
     // anti-aliased thick strokes, italic skew, and ascenders/descenders
     // never leak through. Pad more vertically because pdf.js' glyph bbox
@@ -1249,6 +1251,28 @@ export function EditorCanvas({
       w: it.w + coverPadX * 2,
       h: clampedCoverH,
     };
+
+    // Erase the original glyph pixels from the base canvas so nothing bleeds
+    // through the (now transparent) cover element. The page wrapper below
+    // paints the sampled page-corner colour, so this hole reveals the true
+    // page colour without visible seams. On anno deletion, renderTick bumps
+    // and the page re-renders to restore the pixels.
+    if (canvas) {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
+        const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
+        const dprX = canvas.width / Math.max(1, cssW);
+        const dprY = canvas.height / Math.max(1, cssH);
+        ctx.clearRect(
+          cover.x * scale * dprX,
+          cover.y * scale * dprY,
+          cover.w * scale * dprX,
+          cover.h * scale * dprY,
+        );
+      }
+    }
+
 
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const id = uid();
