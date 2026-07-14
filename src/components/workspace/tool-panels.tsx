@@ -6068,20 +6068,71 @@ function TransactionsPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </div>
           )}
 
-          <TxPreviewTable result={result} onChange={(rows) => setResult({ ...result, rows })} />
+          <div>
+            <div className="mb-1 flex items-center justify-between text-[10.5px] text-text-2">
+              <span className="uppercase tracking-wider">Columns to export</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCols(new Set(result.schema.map((s) => s.key)))}
+                  className="text-text-muted hover:text-foreground"
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCols(new Set())}
+                  className="text-text-muted hover:text-foreground"
+                >
+                  None
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {result.schema.map((s) => {
+                const on = selectedCols?.has(s.key) ?? true;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCols((prev) => {
+                        const next = new Set(prev ?? result.schema.map((x) => x.key));
+                        if (next.has(s.key)) next.delete(s.key);
+                        else next.add(s.key);
+                        return next;
+                      });
+                    }}
+                    className={cn(
+                      "rounded-md border px-1.5 py-0.5 text-[10.5px] transition-colors",
+                      on
+                        ? "border-vault/60 bg-accent-soft text-foreground"
+                        : "border-border bg-surface-2 text-text-muted hover:text-foreground",
+                    )}
+                  >
+                    {on ? "✓ " : ""}{s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <TxPreviewTable result={filtered() ?? result} onChange={(rows) => setResult({ ...result, rows })} />
 
           <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
               onClick={copyCsv}
-              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-text-2 hover:text-foreground"
+              disabled={!selectedCols || selectedCols.size === 0}
+              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-text-2 hover:text-foreground disabled:opacity-40"
             >
               Copy CSV
             </button>
             <button
               type="button"
               onClick={downloadCsv}
-              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-text-2 hover:text-foreground"
+              disabled={!selectedCols || selectedCols.size === 0}
+              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[11.5px] text-text-2 hover:text-foreground disabled:opacity-40"
             >
               CSV
             </button>
