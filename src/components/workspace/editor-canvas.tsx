@@ -767,7 +767,18 @@ export function EditorCanvas({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (state.tool === "select" || state.tool === "edit-text") return;
+    // In edit-text mode a click on a blue dashed hit is stopPropagation'd by
+    // the hit itself, so anything reaching us is a background click — drop
+    // the user out of edit mode so the tool never feels sticky.
+    if (state.tool === "edit-text") {
+      const t = e.target as HTMLElement | null;
+      const onHit = !!t?.closest('[data-edit-text-hit="1"]');
+      if (!onHit) {
+        dispatch({ type: "SET_TOOL", t: "select" });
+      }
+      return;
+    }
+    if (state.tool === "select") return;
     e.preventDefault();
     overlayRef.current?.setPointerCapture(e.pointerId);
     const { x, y } = getXY(e);
