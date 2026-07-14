@@ -5875,9 +5875,15 @@ function TransactionsPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [result, setResult] = useState<TxState | null>(null);
+  const [selectedCols, setSelectedCols] = useState<Set<string> | null>(null);
 
   // Re-extract when file changes.
-  useEffect(() => { setResult(null); }, [file]);
+  useEffect(() => { setResult(null); setSelectedCols(null); }, [file]);
+
+  // When schema changes (fresh extract or reparse), default all columns to selected.
+  useEffect(() => {
+    if (result) setSelectedCols(new Set(result.schema.map((s) => s.key)));
+  }, [result?.schema]);
 
   const run = useCallback(async () => {
     if (!file) return;
@@ -5935,27 +5941,39 @@ function TransactionsPanel({ ctx }: { ctx: ToolPanelCtx }) {
     void reparseIfLoaded(type, v);
   };
 
+  /** Apply column selection to the result before handing to exporters. */
+  const filtered = useCallback((): TxState | null => {
+    if (!result) return null;
+    if (!selectedCols || selectedCols.size === result.schema.length) return result;
+    const schema = result.schema.filter((s) => selectedCols.has(s.key));
+    return { ...result, schema };
+  }, [result, selectedCols]);
+
   const downloadCsv = useCallback(async () => {
-    if (!result || !file) return;
+    const r = filtered();
+    if (!r || !file) return;
     const { rowsToTypedCsv } = await importChunk(() => import("@/lib/pdf/transactions"));
-    const csv = rowsToTypedCsv(result);
+    const csv = rowsToTypedCsv(r);
     const base = file.name.replace(/\.pdf$/i, "") || "transactions";
     await triggerDownload(new Blob([csv], { type: "text/csv" }), `${base}.csv`);
-  }, [result, file]);
+  }, [filtered, file]);
 
   const copyCsv = useCallback(async () => {
-    if (!result) return;
+    const r = filtered();
+    if (!r) return;
     const { rowsToTypedCsv } = await importChunk(() => import("@/lib/pdf/transactions"));
-    await navigator.clipboard.writeText(rowsToTypedCsv(result));
+    await navigator.clipboard.writeText(rowsToTypedCsv(r));
     toast.success("CSV copied to clipboard");
-  }, [result]);
+  }, [filtered]);
 
   const downloadXlsx = useCallback(async () => {
-    if (!result || !file) return;
+    const r = filtered();
+    if (!r || !file) return;
     const { downloadTypedXlsx } = await importChunk(() => import("@/lib/pdf/transactions"));
     const base = file.name.replace(/\.pdf$/i, "") || "transactions";
-    await downloadTypedXlsx(result, `${base}.xlsx`);
-  }, [result, file]);
+    await downloadTypedXlsx(r, `${base}.xlsx`);
+  }, [filtered, file]);
+
 
   if (!file) {
     return (
