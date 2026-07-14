@@ -1,86 +1,64 @@
-## Goal
+## Two independent bugs — both root-caused
 
-Fix three things without destabilizing the current editor canvas:
-1. Text-box editing bug
-2. Insert-image doing nothing
-3. Adobe-style edit overlay (transparent + thin outline + subtle glow, no white rectangle)
+### 1. Every font lands on `vaultarimo`
 
-Plus wire the new `FontResolver` into the edit-text detection path and the inspector font dropdown.
+`editor-canvas.tsx` feeds the resolver bad inputs at both call sites:
 
-## Guardrails (what stays frozen)
+**Extraction path (~line 482):**
+```ts
+resolveToFontKey({
+  postscriptName: sanitizedFontName || undefined,
+  pdfFamily: family,          // ← "sans" | "serif" | "mono", NOT a family
+  cssFamily:  sanitizedCssFamily || undefined,
+  ...
+})
+```
+- `pdfFamily` gets `"sans"` (a kind bucket, not a family) → resolver's alias table misses it.
+- pdf.js hands us opaque font ids like `g_d0_f1`; `isOpaquePdfjsFontId` strips them, so `sanitizedFontName` and `sanitizedCssFamily` are usually `undefined`.
+- The extracted `descRealName` from the FontDescriptor is folded into `postscriptName`, but the resolver's highest-confidence slot (`descriptor:`) is never used, and the descriptor's `/FontFamily` is never passed either.
+- With every real slot empty, the resolver falls to generic → `inferKindFromTokens(["sans"])` → `generic-sans` → bridge's `KIND_TO_KEY.sans` → **arimo**. Same at the edit-click path (~line 1172).
 
-- No changes to: PDF viewer/page render loop, zoom, tab lifecycle, `samplePageBg`, IntersectionObserver plumbing, `openPdf` / `pdfDoc` sharing.
-- All edits to `editor-canvas.tsx` are pinpoint replacements at named line ranges — no restructuring, no reordering hooks, no touching the render effect.
-- No file renames. No new deps.
+### 2. White rectangle on a white page
 
-## 1 — Diagnose first (read-only, before any edit)
+The cover rect padding (lines 1147–1154) is 62% taller than the glyph:
+```ts
+coverPadTop    = 0.22 * h   // 0.30 * h if bold
+coverPadBottom = 0.40 * h   // always
+coverPadX      = 0.18 * h   // 0.28 * h if italic
+```
+For a 32 px heading, cover is ~52 px tall — it extends well into the line below and paints that strip with the sampled page color (white on a white page). That is exactly the white band you see slicing through the next line "Quick-reference ratios, volumes…" in the screenshot. It has nothing to do with the overlay's own background (already transparent) or the sampler — the cover is simply oversized.
 
-Before writing patches I'll open the current preview, reproduce both bugs, and capture what actually fails:
-- Add text box → does the overlay mount, is the click coord off, does the textarea receive focus, does commit run?
-- Insert image → `tool-panels.tsx:324` dispatches `SET_PENDING_IMAGE`, `editor-canvas.tsx:593` reads it on canvas click. Likely regressions: tool never switches to `"image"`, or the pending image is cleared before the click, or the click handler is gated behind a condition that no longer passes.
+## Fix plan (surgical, no canvas / viewer / samplePageBg / lifecycle changes)
 
-The plan below assumes the two most likely root causes; I'll adjust the specific patch after repro but keep the scope identical.
+### A. Wire the resolver correctly
 
-## 2 — Text-box edit overlay (Adobe-style)
+`editor-canvas.tsx`, only the two `resolveToFontKey` call sites:
 
-Target: the edit overlay only (the DOM node that wraps the textarea while an existing text run is being edited). Not the underlying render.
+- **Extraction (~482):**
+  - `descriptor: descRealName || undefined` — highest-confidence slot.
+  - `postscriptName: it.fontName` (non-opaque, unchanged).
+  - Drop `pdfFamily: family` entirely — never pass the kind bucket.
+  - `cssFamily: sanitizedCssFamily` (unchanged).
+  - After the call, only fall back to `kind` when `resolved.matched === false`.
+  - Persist the resolver's canonical `family` name into `it.cssFamily` so edit-time has a real family even when the raw name was opaque.
+- **Edit click (~1172):** same wiring — `descriptor`, `postscriptName`, `cssFamily`; no kind bucket.
+- **OCR pseudo-item (~544):** leave the existing `detectFontKey("Helvetica"…)` untouched — OCR truly has no font.
 
-Changes, in the overlay's className/style only:
-- Remove `bg-white` / any solid fill.
-- `background: transparent`.
-- `outline: 1px solid rgba(76,127,184,0.9)` (steel-blue `--vault`) with `outline-offset: 1px`.
-- `box-shadow: 0 0 0 3px rgba(76,127,184,0.18)` for the soft glow.
-- Textarea: transparent bg, caret color = resolved text color, no border.
-- Leave the underlying rendered glyph visible (do NOT paint a cover rect while editing).
+### B. Shrink the cover to real glyph metrics
 
-Amber variant (`--color-privacy`) is available if you prefer amber over steel-blue — noting it, not switching without your call.
+- Tighten pads: `coverPadTop = max(1, 0.08 * h)`, `coverPadBottom = max(1, 0.12 * h)`, `coverPadX = max(1, 0.06 * h)` (0.10 for italic). This keeps a 1–2 px anti-alias halo but stops the rect from reaching into adjacent lines.
+- Clamp cover height so it never exceeds `it.h * 1.25` regardless of pad.
+- No change to `samplePageBg`, no change to `boxW/boxH` measurement paths beyond the pad values they already read.
 
-## 3 — Text-box bug fix
+### C. Verify
 
-Scope: only the text tool's pointer-down → create-annotation branch and the overlay's commit path. I will:
-- Verify the click-to-PDF-point conversion still lines up (compare to the working image branch at line 593 which uses the same conversion).
-- Verify `tool === "text"` actually reaches the branch (no earlier `return` swallowing it).
-- Ensure the newly created text annotation is auto-selected AND flagged as `editing` so the overlay mounts in one gesture (current behavior might require an extra click).
-- Ensure `Escape` and click-outside commit rather than discarding.
+- `bun test tests/fonts/*` — resolver + bridge tests stay green; add one bridge assertion: `resolveToFontKey({ descriptor: 'TimesNewRomanPSMT' })` → `tinos`.
+- Open a Calibri PDF → `[bold-diag] extract` logs `resolvedFontFamily` containing `VaultCarlito`, not `VaultArimo`.
+- Open the Soil & Raised Bed cheat-sheet → edit the heading → no white band bleeds into the paragraph below.
 
-No changes outside the text branch and the overlay component.
+### Out of scope (untouched)
+PDF viewer, tab lifecycle, `openPdf`, `samplePageBg`, `/editor`, `/redact`, tool-panels, all font-resolver modules, `matchPdfFont`.
 
-## 4 — Insert-image fix
-
-`tool-panels.tsx:324` builds a valid `pendingImage`. The canvas handler at `editor-canvas.tsx:593` only fires when `state.tool === "image" && state.pendingImage`. Fix path:
-- Confirm `tool-panels.tsx` also dispatches `SET_TOOL "image"` alongside `SET_PENDING_IMAGE` (if missing, add that one dispatch — it lives in tool-panels, not the canvas).
-- Confirm the file-picker's click handler isn't consuming the event or resetting the tool before the user clicks the canvas.
-- If the canvas branch runs but nothing appears: verify the new image annotation gets pushed and the page invalidates. No render-loop changes — just ensure `ADD_ANNO` fires with a valid page index.
-
-All fixes stay in `tool-panels.tsx` and the single `if (state.tool === "image" ...)` block already in the canvas.
-
-## 5 — Wire FontResolver into edit-text
-
-New tiny bridge file (no changes to existing font modules):
-
-- `src/lib/fonts/bridge.ts` — exports `resolveToFontKey(query): { key: FontKey; exact: boolean; weight: number; italic: boolean }`. Internally calls `resolveFont()` then maps `CanonicalFont.id` → existing `FontKey` via a lookup table (serif/sans/mono/monospaced families → nearest embedded key). This preserves the current embed pipeline untouched.
-
-Call-site swaps (2 lines each, mechanical):
-- `editor-canvas.tsx:481-482` — replace `detectFontKey(...) + matchPdfFont(...)` with `resolveToFontKey({ postscriptName: sanitizedFontName, pdfFamily: family, cssFamily: sanitizedCssFamily })`. Keep the `det` / `matchedFont` variable names so downstream code is unchanged.
-- `editor-canvas.tsx:536` — same, for the Helvetica default branch.
-- `editor-canvas.tsx:1162-1164` — replace the `matchPdfFont` loop with a single `resolveToFontKey` call.
-
-Inspector font dropdown: it reads `FONT_META` / `FONT_KEYS`. No change to the dropdown itself — the resolver just feeds it a better initial `FontKey` and weight/italic hints, so the selected value matches the source PDF's font on first render.
-
-Old `matchPdfFont` / `detectFontKey` stay in place (still used by `detect-pii.ts` and `/editor` route). No migration beyond the three canvas call sites.
-
-## 6 — Verify
-
-- Playwright: open workspace, load the sample PDF already in the session, run text-add + image-insert + edit-existing-text, screenshot the overlay for the transparent+outline look, confirm no console errors.
-- Unit: extend `tests/fonts/resolver.test.ts` with one bridge test that maps a `TimesNewRomanPS-BoldItalicMT` query to the serif `FontKey`.
-
-## Files touched
-
-- `src/components/workspace/editor-canvas.tsx` — 4 tiny patches (overlay style, text-branch selection, 3 font call-site swaps). No structural change.
-- `src/components/workspace/tool-panels.tsx` — at most 1 dispatch added (`SET_TOOL "image"`) if diagnosis confirms it's missing.
-- `src/lib/fonts/bridge.ts` — new, ~40 lines.
-- `tests/fonts/bridge.test.ts` — new, one test.
-
-## Out of scope
-
-PDF viewer, page render, zoom, tab lifecycle, `samplePageBg`, `openPdf`, existing font modules (`fonts.ts`, `fontMatcher.ts`), `/editor` route, `/redact` route.
+### Files touched
+- `src/components/workspace/editor-canvas.tsx` — 2 resolver call sites rewired + 3 pad constants + 1 clamp (~25 lines total).
+- `tests/fonts/bridge.test.ts` — 1 assertion added.
