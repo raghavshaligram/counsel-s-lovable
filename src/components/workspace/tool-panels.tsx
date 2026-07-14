@@ -10820,19 +10820,32 @@ function DeletePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
     setBlankPages(null);
     setSelectedBlanks(new Set());
     try {
-      const bytes = new Uint8Array(await ctx.file.arrayBuffer());
-      const pdf = await openPdfjs(bytes);
       const found: number[] = [];
-      for (let i = 0; i < pdf.numPages; i++) {
-        const page = await pdf.getPage(i + 1);
-        const tc = await page.getTextContent();
-        const textLen = tc.items.reduce((n: number, it) => n + (("str" in it ? String(it.str).trim().length : 0)), 0);
-        const opList = await page.getOperatorList();
-        // Heuristic: no text glyphs AND very few drawing operators => probably blank.
-        const opCount = opList.fnArray.length;
-        if (textLen === 0 && opCount < 20) found.push(i);
-        page.cleanup();
+      // Sidecar-inserted blank pages (srcPage === -1 or blank flag) are blank by definition.
+      const srcNeeded = new Set<number>();
+      doc.pages.forEach((p, i) => {
+        if (p.blank || p.srcPage < 0) found.push(i);
+        else srcNeeded.add(p.srcPage);
+      });
+      if (srcNeeded.size > 0) {
+        const bytes = new Uint8Array(await ctx.file.arrayBuffer());
+        const pdf = await openPdfjs(bytes);
+        const blankSrc = new Set<number>();
+        for (const sp of srcNeeded) {
+          if (sp < 0 || sp >= pdf.numPages) continue;
+          const page = await pdf.getPage(sp + 1);
+          const tc = await page.getTextContent();
+          const textLen = tc.items.reduce((n: number, it) => n + (("str" in it ? String(it.str).trim().length : 0)), 0);
+          const opList = await page.getOperatorList();
+          const opCount = opList.fnArray.length;
+          if (textLen === 0 && opCount < 20) blankSrc.add(sp);
+          page.cleanup();
+        }
+        doc.pages.forEach((p, i) => {
+          if (!(p.blank || p.srcPage < 0) && blankSrc.has(p.srcPage)) found.push(i);
+        });
       }
+      found.sort((a, b) => a - b);
       setBlankPages(found);
       setSelectedBlanks(new Set(found));
       toast.success(`Found ${found.length} blank page${found.length === 1 ? "" : "s"}`);
@@ -10842,6 +10855,7 @@ function DeletePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
       setScanning(false);
     }
   };
+
 
   const runDelete = () => {
     const idxs = [...new Set(targets)].filter((i) => i >= 0 && i < pageCount).sort((a, b) => a - b);
