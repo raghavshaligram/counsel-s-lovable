@@ -424,6 +424,23 @@ export function EditorCanvas({
   // the user is editing text inside the annotation, or focus is in a form
   // input elsewhere). Critical for redact drafts: marks must be removable
   // before the burn step.
+  // Two-stage Escape when the edit-text tool is armed:
+  //  - Typing in a textarea: the textarea's own onKeyDown blurs it (commits).
+  //  - No focused textarea: drop back to the select tool so the persistent
+  //    edit-text mode has an obvious keyboard escape hatch.
+  useEffect(() => {
+    if (state.tool !== "edit-text") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable)) return;
+      e.preventDefault();
+      dispatch({ type: "SET_TOOL", t: "select" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.tool, dispatch]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
@@ -767,7 +784,18 @@ export function EditorCanvas({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (state.tool === "select" || state.tool === "edit-text") return;
+    // In edit-text mode a click on a blue dashed hit is stopPropagation'd by
+    // the hit itself, so anything reaching us is a background click — drop
+    // the user out of edit mode so the tool never feels sticky.
+    if (state.tool === "edit-text") {
+      const t = e.target as HTMLElement | null;
+      const onHit = !!t?.closest('[data-edit-text-hit="1"]');
+      if (!onHit) {
+        dispatch({ type: "SET_TOOL", t: "select" });
+      }
+      return;
+    }
+    if (state.tool === "select") return;
     e.preventDefault();
     overlayRef.current?.setPointerCapture(e.pointerId);
     const { x, y } = getXY(e);
@@ -1491,7 +1519,9 @@ export function EditorCanvas({
       intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
     });
     dispatch({ type: "SELECT_ANNO", id });
-    dispatch({ type: "SET_TOOL", t: "select" });
+    // Intentionally do NOT reset the tool back to "select" — keeping
+    // edit-text active lets the user hop from one blue dashed run to
+    // another across the whole document without re-arming the tool.
     setEditingId(id);
   };
 
@@ -1823,6 +1853,8 @@ export function EditorCanvas({
           return (
             <div
               key={i}
+              data-edit-text-hit="1"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onClickEditHit(it); }}
               title={it.str}
               style={{
