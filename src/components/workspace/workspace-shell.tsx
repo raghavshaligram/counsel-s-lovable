@@ -123,6 +123,8 @@ import { OfflineToggle, OfflineBadge, loadOfflinePref } from "./offline-toggle";
 import { useHotkey } from "@/lib/use-hotkey";
 import { exportEditedPdf } from "@/lib/editor/export";
 import { printPdfBytes } from "@/lib/workspace/print";
+import { useToolbarPin } from "@/lib/workspace/toolbar-pin";
+
 import { injectFontFaces, FONT_META, type FontKey } from "@/lib/editor/fonts";
 import { TAB_CAP, makeBlankTab, type TabState } from "@/lib/workspace/tabs";
 import { importChunk } from "@/lib/chunk-import";
@@ -462,6 +464,8 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const [agentQuery, setAgentQuery] = useState<{ id: number; text: string } | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [toolbarPinned, setToolbarPinned] = useToolbarPin();
+
   const [navTab, setNavTab] = useState<"bookmarks" | "pages" | "comments">("bookmarks");
   // Bumped to request an auto-fit recalc (Fit-width button, tab switch).
   const [fitNonce, setFitNonce] = useState(0);
@@ -1937,9 +1941,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   onRedo={() => editorDispatch({ type: "REDO" })}
                   onToggleNav={() => setNavOpen((v) => !v)}
                   navOpen={navOpen}
+                  pinned={toolbarPinned}
+                  onTogglePin={() => setToolbarPinned(!toolbarPinned)}
                 />
 
-                <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
+                <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} pinned={toolbarPinned} />
+
                 <NavOverlay
                   open={navOpen}
                   defaultTab={navTab}
@@ -2778,6 +2785,8 @@ function FloatingToolbar({
   onRedo,
   onToggleNav,
   navOpen,
+  pinned,
+  onTogglePin,
 }: {
   activeToolId: string | null;
   active: EditorTool;
@@ -2789,14 +2798,21 @@ function FloatingToolbar({
   onRedo: () => void;
   onToggleNav: () => void;
   navOpen: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
 }) {
   const contextual = activeToolId ? CONTEXTUAL_GROUPS[activeToolId] : null;
   const groups = contextual ?? EDITOR_GROUPS;
   const label = contextual ? `${activeToolId} tools` : "Editor tools";
   return (
     <div
-      className="absolute left-1/2 top-2.5 z-30 flex -translate-x-1/2 items-center gap-1 border border-border bg-surface-3 px-1.5 py-1"
-      style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
+      className={cn(
+        "z-30 flex items-center gap-1 border border-border bg-surface-3 px-1.5 py-1",
+        pinned
+          ? "flex-wrap justify-center border-x-0 border-t-0"
+          : "absolute left-1/2 top-2.5 -translate-x-1/2",
+      )}
+      style={pinned ? undefined : { borderRadius: 11, boxShadow: "var(--shadow-float)" }}
       role="toolbar"
       aria-label={label}
     >
@@ -2806,6 +2822,7 @@ function FloatingToolbar({
         </ToolbarBtn>
       </span>
       <span className="mx-1 h-5 w-px bg-border" />
+
       {!contextual && (
         <>
           <div className="flex items-center gap-0.5" aria-label="Legal tools">
@@ -2863,9 +2880,18 @@ function FloatingToolbar({
       <ToolbarBtn label="Redo" onClick={onRedo}>
         <Redo2 className="h-[15px] w-[15px]" />
       </ToolbarBtn>
+      <span className="mx-1 h-5 w-px bg-border" />
+      <ToolbarBtn
+        label={pinned ? "Unpin toolbar (float)" : "Pin toolbar to top"}
+        active={pinned}
+        onClick={onTogglePin}
+      >
+        {pinned ? <PinOff className="h-[15px] w-[15px]" /> : <Pin className="h-[15px] w-[15px]" />}
+      </ToolbarBtn>
     </div>
   );
 }
+
 
 
 function ToolbarBtn({
@@ -2916,11 +2942,14 @@ function ContextualBar({
   tool,
   state,
   dispatch,
+  pinned,
 }: {
   tool: EditorTool;
   state: ReturnType<typeof reducer> extends infer S ? S : never;
   dispatch: React.Dispatch<EditorAction>;
+  pinned: boolean;
 }) {
+
   // Find the currently selected annotation, if any.
   const sel = state.doc?.annotations.find((a) => a.id === state.selectedAnnoId) ?? null;
   const isTextLike =
@@ -2968,12 +2997,18 @@ function ContextualBar({
   if (!inner) return null;
   return (
     <div
-      className="absolute left-1/2 top-[58px] z-20 flex -translate-x-1/2 items-center gap-2 border border-border bg-surface-3 px-2.5 py-1.5 text-[12px] text-text-2"
-      style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
+      className={cn(
+        "z-20 flex items-center gap-2 border border-border bg-surface-3 px-2.5 py-1.5 text-[12px] text-text-2",
+        pinned
+          ? "w-full flex-wrap justify-center border-x-0 border-t-0"
+          : "absolute left-1/2 top-[58px] -translate-x-1/2",
+      )}
+      style={pinned ? undefined : { borderRadius: 11, boxShadow: "var(--shadow-float)" }}
     >
       {inner}
     </div>
   );
+
 }
 
 // Functional properties bar for a selected text/text-edit annotation.
