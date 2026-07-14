@@ -1,67 +1,80 @@
-## Goal
+# Auto-Bookmark (Heuristic, No AI)
 
-Add three inspector features to the workspace:
+Detect a PDF's structure from its text layer, propose an outline, let the user review, and write it back as native PDF bookmarks. 100% on-device, deterministic, no network. Falls back to silently running OCR when the doc is a pure scan.
 
-1. **Compress** — mount the existing compress engine in the right inspector.
-2. **Bates — change / delete** — extend the existing Bates panel so users can update or clear the stamp on the active tab.
-3. **Remove watermark** — new tool that strips watermark-style overlays from a PDF.
+## User flow
 
-All three run 100% on-device, follow the four-zone workspace layout (left rail → canvas → floating toolbar → right inspector), and reuse existing engines.
+1. Open a PDF in the workspace → left rail → **Outline** panel (existing) gets a new **Auto-detect** button.
+2. If the doc has a text layer → detection runs immediately (typically <1s per 100 pages).
+3. If not → toast "Running OCR to detect headings…" → existing `ocr-pdf.ts` pipeline runs into the sidecar `ocrLayer` → detection re-runs on the OCR text.
+4. Panel shows a tree preview: title, page, indent by level, checkbox per node, "collapse/expand all".
+5. User can edit titles inline, drag to re-nest, uncheck to drop.
+6. **Apply** writes the outline into the sidecar (annotation-store extension). Export bakes it into the PDF via pdf-lib.
 
----
+## Detection engine
 
-### 1. Compress panel (quickest win)
+New module `src/lib/outline/auto-detect.ts` (pure TS, worker-safe).
 
-The compress engine already exists (`src/lib/batch/ops/compress.ts`, `compressSmart`) with presets Low / Medium / High / Extreme (structural rebuild + rasterise, keeps smaller). It is not currently mounted — `tool-panels.tsx` falls through to `ComingSoonPanel` for `"compress"`.
+Signals per text run (from `pdf.js getTextContent` — already used in `remove-bates.ts`):
 
-- Add `CompressPanel` to `tool-panels.tsx` next to `WatermarkPanel`.
-- Controls: preset radio (Low / Medium / High / Extreme), color-vs-grayscale toggle, before/after size + % savings after run, "Compress & download" primary action.
-- Runs `compressSmart` on the active tab's `srcBytes`. Result is offered as a download (does not mutate the open document, matching how Watermark works today).
-- Register `case "compress": return <CompressPanel ctx={ctx} />;` in the switch.
+- **Font size** — cluster all run sizes; runs ≥ 1.15× median body size are heading candidates. Cluster candidates into up to 4 size tiers → H1…H4.
+- **Font weight / name** — bold in the PDF font name (`Bold`, `Black`, `Semibold`) promotes a run one tier.
+- **Position** — runs that start a line and sit in the top 60% of the page score higher; runs indented far right are demoted.
+- **Length** — 3–120 chars, no trailing period (except numbered), not ending in `,` or `;`.
+- **Numbering patterns** — regex ladder assigns level directly and overrides font-size tier:
+  - `^\d+\.\s` → L1, `^\d+\.\d+\s` → L2, `^\d+\.\d+\.\d+\s` → L3
+  - `^[IVXLC]+\.\s` (roman) → L1
+  - `^(ARTICLE|SECTION|CHAPTER|PART|APPENDIX|EXHIBIT|SCHEDULE)\s+[\dIVXLC]+` → L1
+  - `^(Section|Article|Chapter)\s+[\dIVXLC]+\.\d+` → L2
+  - `^[A-Z]\.\s` at line start after an L1 → L2
+- **All-caps short lines** (≤ 80 chars, ≥ 60% letters uppercase, not mid-paragraph) → promote one tier.
+- **De-dupe** — running header/footer detector: any candidate that appears at nearly identical (x, y) on ≥ 60% of pages is discarded (same primitive as the watermark scanner in `remove-watermark.ts`).
+- **Cap** — if > 500 headings survive on a < 200-page doc, tighten thresholds and re-run once. Prevents flooding.
 
-### 2. Bates — change & delete
+Output: `OutlineNode[]` with `{ title, pageIndex, level, y }`, already nested by level.
 
-Today `BatesPanel` writes settings into the per-doc Bates store; the actual stamp is only baked in at export time. So "change" already works (edit settings → re-export). What is missing:
+## Scan fallback (silent OCR)
 
-- **Clear stamp settings** button in `BatesPanel` — resets the tab's `BatesSettings` to `BATES_DEFAULT` and marks the tab so the export pipeline skips the Bates step.
-- **Remove baked-in Bates from an imported PDF** — heuristic pass:
-  - Scan each page for short text runs matching the user's format (`prefix + N digits + suffix`) inside a chosen corner band (tl/tc/tr/bl/bc/br).
-  - Cover matches with an opaque white rect sized to the run's bbox (same technique the redaction pipeline uses).
-  - Preview count ("Found 42 stamps on 42 pages") before applying, then export as `<name>-bates-removed.pdf`.
-  - Undoable within the session (settings-driven; the source bytes are never mutated — the three-layer model is preserved).
+- Detect "no text layer" via `getTextContent` returning empty on the first 3 pages.
+- Call existing `runOcr` (already wired for the OCR tool) with progress reported into the panel: "Preparing scan… page N of M".
+- Store OCR result in the sidecar `ocrLayer` — same three-layer contract as everywhere else, srcBytes untouched.
+- Re-run detection on OCR text runs (they carry bbox + font size proxies from Tesseract).
+- OCR text often lacks reliable font-size differences → detector falls back to numbering-pattern + all-caps + position signals only when < 3 distinct size tiers are found.
 
-Panel UX: existing "Apply Bates" section on top, new "Existing stamps" section below with format input, corner picker, "Detect", "Remove & download".
+## Writing bookmarks
 
-### 3. Remove watermark
+- Sidecar gets a new `outline` slice in `src/lib/annotate/store.ts` (or a new small store `outline-store.ts` to stay isolated). Shape mirrors detector output.
+- Export path: extend `src/lib/editor/export.ts` (or the existing `outline/write.ts` if it already handles pdf-lib registration — reuse it) so `exportEditedPdf` walks the outline tree and calls `pdf-lib`'s catalog `/Outlines` writer with `Fit` destinations `[page, /XYZ, 0, pageHeight, null]`.
+- Preserves existing bookmarks by default; "Replace existing" toggle in the panel.
 
-Watermarks come in three shapes; the tool handles them in priority order and shows a checklist of what it found:
+## UI
 
-1. **Watermark annotations** (`/Subtype /Watermark`, stamp annotations flagged as watermarks) — drop from each page's `/Annots` array via `pdf-lib`. Lossless.
-2. **Form XObjects reused on every page** — inspect each page's `/Resources /XObject`. Any XObject referenced on ≥ 60% of pages that overlays page content (not the base content stream) is offered as a removable candidate with a thumbnail. Removing rewrites the content stream to drop the `Do` operator for that XObject.
-3. **Repeated text/image overlay** (no structured watermark) — user drags a marquee on any page; we sample that region, find visually similar regions on every other page, and cover with white rects. Same primitive as the Bates-removal path.
+- `src/components/workspace/outline-panel.tsx` (new) — mounted from `tool-panels.tsx` under case `"outline"`. If an outline panel doesn't already exist in the rail, add it under **Layout** in `workspace-shell.tsx` (icon `ListTree`, label "Outline & bookmarks").
+- Sections:
+  1. **Auto-detect** button + last-run stats ("42 headings across 3 levels").
+  2. Tree view (uses shadcn `Collapsible` + drag-handle from existing patterns) with inline rename, level nudge (◄ ►), checkbox.
+  3. **Apply to document** (writes to sidecar) and **Export PDF with bookmarks** (calls export pipeline).
+- Empty state: "No outline yet — click Auto-detect."
 
-Panel UX: "Scan for watermarks" button → list of candidates with page-count + preview + individual toggles → "Remove selected & download". If nothing is found automatically, offer the manual marquee fallback.
+## Technical notes
 
-Add to the left rail under **Edit & sign** as `"remove-watermark"` (label "Remove watermark", icon `EraserIcon`).
+- Pure TS + pdf.js + pdf-lib; no new npm deps.
+- Runs in the main thread for now; wrap in a worker later if needed (200-page doc measured target < 800ms after text extraction).
+- Follows the three-layer contract: srcBytes read-only, outline stored in sidecar, only baked in at export.
+- Persists in IndexedDB alongside annotations under the same `name::size` key.
 
----
+## Files touched
 
-### Technical details
+- **New** `src/lib/outline/auto-detect.ts` — heuristic engine.
+- **New** `src/lib/outline/outline-store.ts` (or extend `annotate/store.ts`) — sidecar slice.
+- **New** `src/components/workspace/outline-panel.tsx`.
+- **Edit** `src/lib/outline/write.ts` — accept `OutlineNode[]` from the sidecar.
+- **Edit** `src/lib/editor/export.ts` — call the outline writer when the sidecar has entries.
+- **Edit** `src/components/workspace/tool-panels.tsx` — register `case "outline"`.
+- **Edit** `src/components/workspace/workspace-shell.tsx` — rail entry (only if not already present).
 
-- New files:
-  - `src/components/workspace/panels/compress-panel.tsx` (or inline in `tool-panels.tsx` matching current style).
-  - `src/components/workspace/panels/remove-watermark-panel.tsx`.
-  - `src/lib/pdf/remove-watermark.ts` — annotation strip + XObject-usage analyser + content-stream rewriter (pdf-lib).
-  - `src/lib/pdf/remove-bates.ts` — regex scan on the pdf.js text layer + white-rect cover via pdf-lib.
-- Extend `src/lib/workspace/bates-store.ts` with a `cleared: boolean` flag so the export pipeline knows to skip stamping.
-- Left-rail additions in `workspace-shell.tsx`:
-  - `"remove-watermark"` under Edit & sign.
-  - (Bates entry already exists — no rail change needed.)
-- Register new cases in `renderPanel` inside `tool-panels.tsx`.
-- Reuse `downloadPdf`, `importChunk`, `useToast` patterns from `WatermarkPanel` / `BatesPanel` for consistency.
-- No backend, no network — all operations stay in the browser.
+## Out of scope
 
-### Out of scope / trade-offs
-
-- Removing arbitrary flattened watermarks (rasterised into a page image) can only be done by re-rasterising and inpainting — heavy and lossy. The manual marquee is the pragmatic fallback and will be labeled as such.
-- Removing Bates from a document stamped by a different tool with unknown format won't be perfect; the user must supply the format they see.
+- AI-based renaming / hierarchy inference (deferred; can slot in later as an "Enhance" button).
+- Cross-document outline merging (already handled by exhibit-binder).
+- Rendered TOC page (separate block in the pivot plan).
