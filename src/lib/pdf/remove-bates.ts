@@ -87,22 +87,26 @@ export async function findBatesStamps(
       const vp = page.getViewport({ scale: 1 });
       const content = await page.getTextContent();
       type Item = { str: string; transform: number[]; width: number; height: number };
-      // Group items by baseline (rounded y) so split runs like ["ABC","000123"]
-      // can be matched together.
-      const lines = new Map<number, Array<Item & { x: number; y: number }>>();
+      type Piece = Item & { x: number; y: number };
+      // Collect all pieces, then greedily bucket by baseline with a 3px
+      // tolerance so split runs like ["CPDF-","000001"] end up on one line.
+      const pieces: Piece[] = [];
       for (const raw of content.items as unknown[]) {
         const it = raw as Item;
         if (!it.str) continue;
         const t = it.transform;
         if (!Array.isArray(t) || t.length < 6) continue;
-        const x = t[4];
-        const y = t[5];
-        const key = Math.round(y);
-        const arr = lines.get(key) ?? [];
-        arr.push({ ...it, x, y });
-        lines.set(key, arr);
+        pieces.push({ ...it, x: t[4], y: t[5] });
       }
-      for (const items of lines.values()) {
+      pieces.sort((a, b) => b.y - a.y);
+      const lines: Piece[][] = [];
+      const Y_TOL = 3;
+      for (const p of pieces) {
+        const last = lines[lines.length - 1];
+        if (last && Math.abs(last[0].y - p.y) <= Y_TOL) last.push(p);
+        else lines.push([p]);
+      }
+      for (const items of lines) {
         items.sort((a, b) => a.x - b.x);
         const joined = items.map((it) => it.str).join("");
         pattern.lastIndex = 0;
