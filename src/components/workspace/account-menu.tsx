@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle, FileBadge2, FolderOpen, RotateCcw } from "lucide-react";
+import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle, FileBadge2, FolderOpen, RotateCcw, Sun, Moon, Monitor } from "lucide-react";
+import { useTheme } from "@/lib/theme";
 import { toast } from "sonner";
 import { resetLearnState } from "@/lib/assist/learn";
 import { useLoginModal } from "@/components/login-modal";
