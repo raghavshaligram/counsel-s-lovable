@@ -424,6 +424,23 @@ export function EditorCanvas({
   // the user is editing text inside the annotation, or focus is in a form
   // input elsewhere). Critical for redact drafts: marks must be removable
   // before the burn step.
+  // Two-stage Escape when the edit-text tool is armed:
+  //  - Typing in a textarea: the textarea's own onKeyDown blurs it (commits).
+  //  - No focused textarea: drop back to the select tool so the persistent
+  //    edit-text mode has an obvious keyboard escape hatch.
+  useEffect(() => {
+    if (state.tool !== "edit-text") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable)) return;
+      e.preventDefault();
+      dispatch({ type: "SET_TOOL", t: "select" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.tool, dispatch]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
