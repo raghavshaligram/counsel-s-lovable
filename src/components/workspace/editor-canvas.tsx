@@ -381,6 +381,14 @@ export function EditorCanvas({
 }: EditorCanvasProps) {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Pristine offscreen snapshot of the freshly-rendered page canvas. Used to
+  // non-destructively "hide" original glyphs under a text-edit overlay by
+  // sampling a horizontal band immediately above the glyph and painting it
+  // across the cover region — preserves horizontal separators, gradients,
+  // and local page shading that a destructive clearRect would blow away.
+  // Also used to instantly restore pixels when a text-edit anno is deleted,
+  // avoiding a full pdf.js re-render.
+  const pristineCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   // Tracks the in-flight pdf.js RenderTask for this canvas so we can cancel
@@ -504,6 +512,22 @@ export function EditorCanvas({
           if (renderTaskRef.current === (task as unknown)) renderTaskRef.current = null;
         }
         if (cancelled) return;
+
+        // Snapshot the pristine render so text-edit overlays can hide the
+        // original glyphs non-destructively (row-inpaint) and restore pixels
+        // on delete without a full pdf.js re-render.
+        try {
+          const snap = pristineCanvasRef.current ?? document.createElement("canvas");
+          snap.width = canvas.width;
+          snap.height = canvas.height;
+          const sctx = snap.getContext("2d");
+          if (sctx) {
+            sctx.clearRect(0, 0, snap.width, snap.height);
+            sctx.drawImage(canvas, 0, 0);
+            pristineCanvasRef.current = snap;
+          }
+        } catch { /* ignore */ }
+
 
         const baseVp = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
@@ -707,16 +731,30 @@ export function EditorCanvas({
     };
   }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
 
-  // When a text-edit annotation is removed, re-render the page canvas so the
-  // pixels erased by onClickEditHit's clearRect come back.
+  // When a text-edit annotation is removed, restore the pixels that
+  // onClickEditHit's row-inpaint painted over. Blit directly from the
+  // pristine snapshot when available (instant, no pdf.js re-render);
+  // otherwise fall back to bumping renderTick to force a full re-render.
   useEffect(() => {
     const now = new Set(annos.filter((a) => a.kind === "text-edit").map((a) => a.id));
     const prev = prevTextEditIdsRef.current;
     let removed = false;
     for (const id of prev) if (!now.has(id)) { removed = true; break; }
     prevTextEditIdsRef.current = now;
-    if (removed) setRenderTick((t) => t + 1);
+    if (!removed) return;
+    const canvas = canvasRef.current;
+    const snap = pristineCanvasRef.current;
+    if (canvas && snap && snap.width === canvas.width && snap.height === canvas.height) {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(snap, 0, 0);
+        return;
+      }
+    }
+    setRenderTick((t) => t + 1);
   }, [annos]);
+
 
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
@@ -1297,26 +1335,61 @@ export function EditorCanvas({
       h: clampedCoverH,
     };
 
-    // Erase the original glyph pixels from the base canvas so nothing bleeds
-    // through the (now transparent) cover element. The page wrapper below
-    // paints the sampled page-corner colour, so this hole reveals the true
-    // page colour without visible seams. On anno deletion, renderTick bumps
-    // and the page re-renders to restore the pixels.
-    if (canvas) {
+    // Non-destructive glyph hide: sample a thin horizontal band from the
+    // PRISTINE snapshot immediately above (or below) the cover, then paint
+    // that band across the cover region in the visible canvas. This
+    // preserves the underlying page background — solid fills, horizontal
+    // separator lines, gradients, and local shading — where a destructive
+    // clearRect would punch a visible hole. The pristine copy is also used
+    // to instantly restore pixels when the text-edit anno is deleted.
+    if (canvas && pristineCanvasRef.current) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const snap = pristineCanvasRef.current;
       if (ctx) {
         const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
         const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
         const dprX = canvas.width / Math.max(1, cssW);
         const dprY = canvas.height / Math.max(1, cssH);
-        ctx.clearRect(
-          cover.x * scale * dprX,
-          cover.y * scale * dprY,
-          cover.w * scale * dprX,
-          cover.h * scale * dprY,
-        );
+        const dx = cover.x * scale * dprX;
+        const dy = cover.y * scale * dprY;
+        const dw = cover.w * scale * dprX;
+        const dh = cover.h * scale * dprY;
+        // Prefer a band ABOVE the glyph (usually the interline gap — clean
+        // background). Fall back to BELOW if there's no room above.
+        const bandThickness = Math.max(2, Math.floor(it.h * scale * dprY * 0.25));
+        const aboveY = Math.max(0, dy - bandThickness);
+        const aboveAvail = dy - aboveY;
+        let srcY = aboveY;
+        let srcH = aboveAvail;
+        if (srcH < 2) {
+          // No usable band above — try below.
+          const belowY = Math.min(snap.height, dy + dh);
+          const belowAvail = Math.min(bandThickness, snap.height - belowY);
+          if (belowAvail >= 2) {
+            srcY = belowY;
+            srcH = belowAvail;
+          }
+        }
+        if (srcH >= 2 && dw > 0 && dh > 0) {
+          // Stretch the thin band vertically across the whole cover. Because
+          // the band spans the full cover width horizontally, any horizontal
+          // features (lines, gradients along X) are preserved exactly.
+          ctx.save();
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(snap, dx, srcY, dw, srcH, dx, dy, dw, dh);
+          ctx.restore();
+        } else {
+          // Truly no clean band available — fall back to the sampled bg fill
+          // so we still hide the original glyphs (better than showing them).
+          const bg = sampled.bg;
+          ctx.save();
+          ctx.fillStyle = `rgb(${Math.round(bg.r * 255)},${Math.round(bg.g * 255)},${Math.round(bg.b * 255)})`;
+          ctx.fillRect(dx, dy, dw, dh);
+          ctx.restore();
+        }
       }
     }
+
 
 
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
