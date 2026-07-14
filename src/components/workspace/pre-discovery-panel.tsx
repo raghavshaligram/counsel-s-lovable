@@ -58,10 +58,8 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
   const [querying, setQuerying] = useState(false);
   const [hits, setHits] = useState<SemanticHit[]>([]);
   const [lastQuery, setLastQuery] = useState("");
-  const [debugLines, setDebugLines] = useState<string[]>(() => getDiscoveryDebugLines());
 
   const docKeyRef = useRef<string>("");
-  useEffect(() => subscribeDiscoveryDebug(setDebugLines), []);
 
   useEffect(() => {
     if (docKeyRef.current !== docKey) {
