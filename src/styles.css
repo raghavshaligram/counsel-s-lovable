@@ -55,6 +55,8 @@
   --color-accent-soft: var(--accent-soft);
   --color-success: var(--success);
   --color-danger: var(--danger);
+  --color-privacy: var(--privacy);
+  --color-privacy-soft: var(--privacy-soft);
 
   /* Fluid type scale (marketing) */
   --text-display: clamp(2.75rem, 6vw, 5rem);
