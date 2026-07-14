@@ -1359,31 +1359,26 @@ export function EditorCanvas({
       return { color, bg };
     })();
 
-    // Cover bbox: expand generously around the captured glyph bounds so
-    // anti-aliased thick strokes, italic skew, and ascenders/descenders
-    // never leak through. Pad more vertically because pdf.js' glyph bbox
-    // hugs cap-height; descenders ("y", "g") sit a few px below.
+    // Cover bbox: anchor STRICTLY to the top of the pdf.js glyph bounds
+    // (`it.y = m[5] - fontHeight`, i.e. the top of the em-box). Never
+    // subtract from y — that pulls the mask above the glyphs and exposes
+    // the underlying text. Extend only width (horizontal padding) and the
+    // bottom edge (to cover descenders like "y", "g", "p").
     const coverPadX = Math.max(1, it.h * (it.italic ? 0.10 : 0.06));
-    const coverPadTop = Math.max(1, it.h * 0.08);
-    const coverPadBottom = Math.max(1, it.h * 0.12);
-    // Hard clamp so the cover never bleeds into an adjacent line.
-    const maxCoverH = it.h * 1.25;
-    const rawCoverH = it.h + coverPadTop + coverPadBottom;
-    const clampedCoverH = Math.min(rawCoverH, maxCoverH);
-    const clampedTop = Math.min(coverPadTop, (clampedCoverH - it.h) / 2);
+    const coverPadTop = 0;
+    const coverPadBottom = Math.max(2, it.h * 0.22);
     const cover = {
       x: it.x - coverPadX,
-      y: it.y - clampedTop,
+      y: it.y,
       w: it.w + coverPadX * 2,
-      h: clampedCoverH,
+      h: it.h + coverPadBottom,
     };
 
     // Mask the underlying static PDF glyphs so they don't double-layer
-    // beneath the editable textarea. Fill the EXACT (unpadded) glyph
-    // bounding box with the locally-sampled page background — small enough
-    // that on solid regions (green headers, coloured chips, plain paper) it
-    // blends invisibly. The pristine snapshot captured after render is kept
-    // so deleting the anno restores the original pixels in full.
+    // beneath the editable textarea. Fill the glyph bounding box anchored
+    // at its true top (`it.y`), extended downward to swallow descenders.
+    // The pristine snapshot captured after render is kept so deleting the
+    // anno restores the original pixels in full.
     if (canvas) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (ctx) {
@@ -1395,10 +1390,10 @@ export function EditorCanvas({
         ctx.save();
         ctx.fillStyle = `rgb(${Math.round(bg.r * 255)},${Math.round(bg.g * 255)},${Math.round(bg.b * 255)})`;
         ctx.fillRect(
-          it.x * scale * dprX,
+          (it.x - coverPadX) * scale * dprX,
           it.y * scale * dprY,
-          it.w * scale * dprX,
-          it.h * scale * dprY,
+          (it.w + coverPadX * 2) * scale * dprX,
+          (it.h + coverPadBottom) * scale * dprY,
         );
         ctx.restore();
       }
