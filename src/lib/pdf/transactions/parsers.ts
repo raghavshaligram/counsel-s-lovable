@@ -70,7 +70,8 @@ export function parseBankStatement(ctx: ParseCtx): ParseResult {
     mapping.amount = Math.max(0, nCols - 2);
   }
 
-  const startIdx = header ? header.index + 1 : 0;
+  const bankStartHeader = findBankTransactionHeaderIndex(flat);
+  const startIdx = bankStartHeader >= 0 ? bankStartHeader + 1 : header ? header.index + 1 : 0;
   const rows: TypedRow[] = [];
   const refYear = detectYear(ctx.pageText);
   const dateLocale = detectNumericDateLocale(ctx.pageText, ctx.locale);
@@ -81,6 +82,11 @@ export function parseBankStatement(ctx: ParseCtx): ParseResult {
 
   for (let i = startIdx; i < flat.length; i++) {
     const r = flat[i];
+    const rowText = cleanDescription(r.join(" "));
+    if (isBankTerminalNoise(rowText)) {
+      if (rows.length > 0) break;
+      continue;
+    }
     const headerMap = bankHeaderMap(r);
     if (headerMap) {
       currentMapping = { ...currentMapping, ...headerMap };
@@ -125,6 +131,11 @@ export function parseBankStatement(ctx: ParseCtx): ParseResult {
         bankRowDescription(r, currentMapping, amountCell.idx, balanceCell?.idx ?? null),
       ].filter(Boolean).join(" "),
     );
+    if (isBankNoise(desc) || isBankTerminalNoise(desc)) {
+      if (balance != null) previousBalance = balance;
+      pendingDescription = [];
+      continue;
+    }
 
     rows.push({
       date: dateInfo.iso,
@@ -178,6 +189,18 @@ function bankHeaderMap(row: string[]): Record<string, number | null> | null {
     amount: idx(["amount"]),
     balance: balance >= 0 ? balance : null,
   };
+}
+
+function findBankTransactionHeaderIndex(rows: string[][]): number {
+  for (let i = 0; i < rows.length; i++) {
+    const map = bankHeaderMap(rows[i]);
+    if (!map) continue;
+    const text = rows[i].join(" ").toLowerCase();
+    const hasTxnDescription = map.description != null || /particulars|narration|description/.test(text);
+    const hasMoneyFlow = map.debit != null || map.credit != null || /withdrawals?|deposits?/.test(text);
+    if (map.date != null && hasTxnDescription && hasMoneyFlow && map.balance != null) return i;
+  }
+  return -1;
 }
 
 function detectNumericDateLocale(text: string, fallback: "US" | "EU"): "US" | "EU" {
@@ -324,6 +347,10 @@ function looksBankTransactionStart(line: string): boolean {
 
 function isBankNoise(line: string): boolean {
   return /^(?:Page\s+\d+\s+of|MR\.|MRS\.|MS\.|Sincerely,?|Team\s+ICICI|This\s+is\s+a\s+system-generated|Legends\s+for|VAT\/MAT\/NFS|EBA\s+-|Summary\s+of\s+Accounts|ACCOUNT\s+DETAILS|ACCOUNT\s+TYPE|FIXED\s+DEPOSITS|DEPOSIT\s+NO\.|TOTAL\b|#\s*Deposit|Statement\s+of\s+Transactions|Did\s+you\s+know|branch\s+or\s+contact|Your\s+Base\s+Branch|Visit\s+www|Dial\s+your\s+Bank|DATE\s+MODE)/i.test(line);
+}
+
+function isBankTerminalNoise(line: string): boolean {
+  return /\bACCOUNT\s+NUMBER\s+MICR\s+CODE\s+IFSC\s+CODE\b|\bCategory\s+of\s+service:\s*Banking\b|\bIn\s+absence\s+of\s+valid\s+PAN\b|\bForm\s+15G\s*\/\s*15H\b|\bIncome\s+tax\s+department\b|\bwww\.icicibank\.com\b/i.test(line);
 }
 
 function detectYear(text: string): number | undefined {
