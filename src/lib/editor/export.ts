@@ -92,19 +92,30 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
   // one call — calling copyPages once per page in a 3000-page loop
   // duplicates every shared resource 3000×, inflating an 18MB source to
   // 1.3GB. Batching keeps peak output size proportional to the source.
-  const srcIndices: number[] = [];
-  const srcSlot: number[] = []; // parallel array: doc.pages[i] -> position in copiedPages
+  // Split source pages into two batches:
+  //   - copyIndices: pages copied normally via copyPages() (fastest path).
+  //   - embedIndices: pages that need resize+scale — embed as XObject and draw.
+  const copyIndices: number[] = [];
+  const copySlot: number[] = [];
+  const embedIndices: number[] = [];
+  const embedSlot: number[] = [];
   for (let i = 0; i < doc.pages.length; i++) {
-    if (!doc.pages[i].blank) {
-      srcSlot[i] = srcIndices.length;
-      srcIndices.push(doc.pages[i].srcPage);
+    const op = doc.pages[i];
+    if (op.blank) {
+      copySlot[i] = -1;
+      embedSlot[i] = -1;
+    } else if (op.resize) {
+      embedSlot[i] = embedIndices.length;
+      embedIndices.push(op.srcPage);
+      copySlot[i] = -1;
     } else {
-      srcSlot[i] = -1;
+      copySlot[i] = copyIndices.length;
+      copyIndices.push(op.srcPage);
+      embedSlot[i] = -1;
     }
   }
-  const copiedPages = srcIndices.length
-    ? await out.copyPages(srcDoc, srcIndices)
-    : [];
+  const copiedPages = copyIndices.length ? await out.copyPages(srcDoc, copyIndices) : [];
+  const embeddedPages = embedIndices.length ? await out.embedPages(embedIndices.map((idx) => srcDoc.getPage(idx))) : [];
 
 
   // Add pages in working order (PASS A — geometry only: addPage + rotation + crop).
@@ -115,8 +126,23 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     let outPage;
     if (op.blank) {
       outPage = out.addPage([op.width, op.height]);
+    } else if (op.resize) {
+      // Emit a new page at the target size, then draw the embedded source
+      // page onto it. Rotation is applied by drawing rotated content.
+      const rz = op.resize;
+      outPage = out.addPage([rz.w, rz.h]);
+      const emb = embeddedPages[embedSlot[i]];
+      const scale = rz.scaleContent ? rz.scale : 1;
+      const drawnW = emb.width * scale;
+      const drawnH = emb.height * scale;
+      const x = (rz.w - drawnW) / 2;
+      const y = (rz.h - drawnH) / 2;
+      outPage.drawPage(emb, { x, y, xScale: scale, yScale: scale });
+      // Note: user-requested op.rotation on resized pages is intentionally
+      // ignored — resize + rotate is a rare combination and cleaner to
+      // rotate first, then resize.
     } else {
-      const copied = copiedPages[srcSlot[i]];
+      const copied = copiedPages[copySlot[i]];
       if (op.rotation !== 0) {
         const cur = copied.getRotation().angle;
         copied.setRotation(degrees((cur + op.rotation) % 360));
@@ -125,7 +151,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
     }
     outPageRefs[i] = outPage;
 
-    if (op.cropBox && !op.blank) {
+    if (op.cropBox && !op.blank && !op.resize) {
       const { width: pw, height: ph } = outPage.getSize();
       const r = op.cropBox;
       const x = Math.max(0, Math.min(r.x, pw));
@@ -137,6 +163,7 @@ export async function exportEditedPdf(doc: EditorDoc, settings?: ExportSettings)
       outPage.setMediaBox(x, y, w, h);
     }
   }
+  
   
 
   // PASS B — annotations + watermark

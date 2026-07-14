@@ -183,6 +183,9 @@ const TOOLS: RailTool[] = [
   { id: "extract", label: "Extract", icon: TableIcon, group: "assemble", groupLabel: "Organize pages" },
   { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Organize pages" },
   { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Organize pages" },
+  { id: "page-insert", label: "Insert Page", icon: Plus, group: "pages", groupLabel: "Organize pages" },
+  { id: "page-delete", label: "Delete Pages", icon: Trash2, group: "pages", groupLabel: "Organize pages" },
+  { id: "page-resize", label: "Resize / Scale", icon: Maximize2, group: "pages", groupLabel: "Organize pages" },
 
   // Edit & sign — add content or sign.
   { id: "sign", label: "Sign & Fill", icon: PenLine, group: "edit", groupLabel: "Edit & sign" },
@@ -2756,6 +2759,14 @@ const LEGAL_TOOLBAR: Array<{ id: string; label: string; Icon: React.ComponentTyp
   { id: "citation-hyperlinker", label: "Link / Citation", Icon: Link2 },
 ];
 
+// Page-management quick actions — open the matching right-inspector panel.
+const PAGES_TOOLBAR: Array<{ id: string; label: string; Icon: React.ComponentType<{ className?: string }> }> = [
+  { id: "page-insert", label: "Insert page", Icon: Plus },
+  { id: "page-delete", label: "Delete pages", Icon: Trash2 },
+  { id: "page-crop", label: "Crop page", Icon: Crop },
+  { id: "page-resize", label: "Resize / scale", Icon: Maximize2 },
+];
+
 function FloatingToolbar({
   activeToolId,
   active,
@@ -2805,6 +2816,19 @@ function FloatingToolbar({
                 active={activeToolId === id}
                 onClick={() => onOpenTool(id)}
                 variant={variant}
+              >
+                <Icon className="h-[15px] w-[15px]" />
+              </ToolbarBtn>
+            ))}
+          </div>
+          <span className="mx-1 h-5 w-px bg-border" />
+          <div className="flex items-center gap-0.5" aria-label="Page tools">
+            {PAGES_TOOLBAR.map(({ id, label, Icon }) => (
+              <ToolbarBtn
+                key={id}
+                label={label}
+                active={activeToolId === id}
+                onClick={() => onOpenTool(id)}
               >
                 <Icon className="h-[15px] w-[15px]" />
               </ToolbarBtn>
