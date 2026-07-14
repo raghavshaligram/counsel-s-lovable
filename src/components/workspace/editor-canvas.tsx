@@ -660,7 +660,18 @@ export function EditorCanvas({
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
     };
-  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer]);
+  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
+
+  // When a text-edit annotation is removed, re-render the page canvas so the
+  // pixels erased by onClickEditHit's clearRect come back.
+  useEffect(() => {
+    const now = new Set(annos.filter((a) => a.kind === "text-edit").map((a) => a.id));
+    const prev = prevTextEditIdsRef.current;
+    let removed = false;
+    for (const id of prev) if (!now.has(id)) { removed = true; break; }
+    prevTextEditIdsRef.current = now;
+    if (removed) setRenderTick((t) => t + 1);
+  }, [annos]);
 
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
