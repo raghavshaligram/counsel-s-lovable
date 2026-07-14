@@ -468,6 +468,21 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => { setFitNonce((n) => n + 1); }, [activeId]);
 
   const [toolModalOpen, setToolModalOpen] = useState(false);
+  // Per-group collapse in the left rail. Legal-first audience gets Legal
+  // expanded by default; all outcome groups expanded too. Persisted.
+  const RAIL_COLLAPSE_KEY = "paperlane:rail-collapsed-groups";
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(window.localStorage.getItem(RAIL_COLLAPSE_KEY) || "{}"); }
+    catch { return {}; }
+  });
+  const toggleGroup = useCallback((label: string) => {
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [label]: !prev[label] };
+      try { window.localStorage.setItem(RAIL_COLLAPSE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
   // Deep-link target for a sub-section of the active panel. Consumed by
   // panels with multiple disclosures (e.g. Document Settings → Bates).
   const [focusSection, setFocusSection] = useState<string | null>(null);
