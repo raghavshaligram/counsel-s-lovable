@@ -567,6 +567,9 @@ export function EditorCanvas({
         if (cancelled) return;
         const items: TextItem[] = rawItems.flatMap((it) => {
           if (!it.str || !it.str.trim()) return [];
+          // XFA text items don't carry a `transform` matrix — skip so we
+          // don't crash Util.transform. The canvas render still works.
+          if (!it.transform || it.transform.length < 6) return [];
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
           const styleEntry = it.fontName ? styles[it.fontName] : undefined;
