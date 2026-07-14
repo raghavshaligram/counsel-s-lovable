@@ -189,6 +189,14 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <RotatePanel ctx={ctx} />;
     case "organize":
       return <OrganizePanel ctx={ctx} />;
+    case "page-insert":
+      return <InsertPagePanel ctx={ctx} />;
+    case "page-delete":
+      return <DeletePagesPanel ctx={ctx} />;
+    case "page-resize":
+      return <ResizePagesPanel ctx={ctx} />;
+    case "page-crop":
+      return <PageCropPanel ctx={ctx} />;
     case "extract":
       return <ExtractPanel ctx={ctx} />;
     case "watermark":
