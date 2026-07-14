@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle, FileBadge2, FolderOpen, RotateCcw } from "lucide-react";
+import { User, LogOut, Settings as SettingsIcon, CreditCard, LogIn, HelpCircle, FileBadge2, FolderOpen, RotateCcw, Sun, Moon, Monitor } from "lucide-react";
+import { useTheme } from "@/lib/theme";
 import { toast } from "sonner";
 import { resetLearnState } from "@/lib/assist/learn";
 import { useLoginModal } from "@/components/login-modal";
@@ -42,6 +43,7 @@ type AccountMenuProps = {
 export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
   const license = useLicenseActivation();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
   const openLogin = useLoginModal((s) => s.openLogin);
   const [user, setUser] = useState<SessionUser>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -164,6 +166,23 @@ export function AccountMenu({ onShowWelcome }: AccountMenuProps = {}) {
         >
           <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />
           Reset assistant learning
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            const next = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
+            setTheme(next);
+          }}
+        >
+          {theme === "dark" ? (
+            <Moon className="h-3.5 w-3.5" strokeWidth={2} />
+          ) : theme === "light" ? (
+            <Sun className="h-3.5 w-3.5" strokeWidth={2} />
+          ) : (
+            <Monitor className="h-3.5 w-3.5" strokeWidth={2} />
+          )}
+          Theme: {theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={signingOut} onSelect={(e) => { e.preventDefault(); void onSignOut(); }}>
