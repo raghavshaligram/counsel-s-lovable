@@ -243,7 +243,7 @@ export async function convertPdfToWordBlob(
   const pdfjs = await loadPdfjs();
   const { Document, Packer, Paragraph, TextRun, PageBreak, HeadingLevel, ImageRun, AlignmentType } =
     await importChunk(() => import("docx"));
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise;
   const numPages: number = doc.numPages;
   const MAX_IMG_W_PT = 468;
 

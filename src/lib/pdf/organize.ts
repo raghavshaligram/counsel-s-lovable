@@ -87,7 +87,7 @@ export async function renderPageThumb(
 /** Open a pdf.js document for the given bytes. Caller may cache by source. */
 export async function openPdfjsDoc(bytes: Uint8Array) {
   const pdfjs = await loadPdfjs();
-  return pdfjs.getDocument({ data: bytes.slice() }).promise as Promise<{
+  return pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise as Promise<{
     numPages: number;
     getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number }; render: (o: unknown) => { promise: Promise<void> } }>;
   }>;

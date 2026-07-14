@@ -17,7 +17,7 @@ export async function linkifyPage(
 ): Promise<LinkAnnot[]> {
   const pdfjs = await loadPdfjs();
   // pdf.js mutates the underlying buffer; pass a copy.
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   try {
     const page = await doc.getPage(pageIndex + 1);
     const content = await page.getTextContent();

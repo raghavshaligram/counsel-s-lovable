@@ -121,7 +121,7 @@ async function extractPageTexts(
 ): Promise<string[]> {
   const pdfjs = await loadPdfjs();
   const buf = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const doc = await pdfjs.getDocument({ data: buf, enableXfa: true, useSystemFonts: true }).promise;
   const out: string[] = [];
   for (let p = 1; p <= doc.numPages; p++) {
     onProgress?.(p, doc.numPages, stage);

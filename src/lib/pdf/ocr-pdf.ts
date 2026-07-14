@@ -179,7 +179,7 @@ export async function ocrPdfToSearchable(
   const tess = await importChunk(() => import("tesseract.js"));
 
   const srcBytes = new Uint8Array(await file.arrayBuffer());
-  const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
+  const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   const totalPages = srcDoc.numPages;
 
   const outPdf = await PDFDocument.create();
@@ -455,7 +455,7 @@ export async function ocrPdfToTokens(
   const tess = await importChunk(() => import("tesseract.js"));
 
   const srcBytes = new Uint8Array(await file.arrayBuffer());
-  const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
+  const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   const totalPages = srcDoc.numPages;
 
   const skipSet = new Set<number>((options.skipPageIndices ?? []).map((i) => i + 1));

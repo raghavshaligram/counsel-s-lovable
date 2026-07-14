@@ -507,7 +507,7 @@ export async function detectPiiInPdf(
   // file to render pages). Avoids a second arrayBuffer() + getDocument() on
   // large PDFs.
   const doc = (preloadedDoc as unknown as Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>) ??
-    (await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise);
+    (await pdfjs.getDocument({ data: await file.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise);
   const detections: Detection[] = [];
   const ocrPages: number[] = [];
   const onPartial = opts.onPartial;
@@ -1517,7 +1517,7 @@ export async function findKeywordInPdf(
   const pdfjs = await getPdfjs();
   const doc =
     (opts.preloadedDoc as unknown as Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>) ??
-    (await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise);
+    (await pdfjs.getDocument({ data: await file.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise);
 
   // When `regex` is on, treat the input as a raw pattern (the caller is
   // responsible for valid syntax). Otherwise escape and optionally wrap in

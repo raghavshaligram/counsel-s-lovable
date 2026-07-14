@@ -32,7 +32,7 @@ export async function openComparePdf(input: File | Uint8Array | ArrayBuffer): Pr
   if (input instanceof File) data = await input.arrayBuffer();
   else if (input instanceof Uint8Array) data = input;
   else data = input;
-  const doc = await pdfjs.getDocument({ data }).promise;
+  const doc = await pdfjs.getDocument({ data, enableXfa: true, useSystemFonts: true }).promise;
   return { doc, pageCount: doc.numPages };
 }
 

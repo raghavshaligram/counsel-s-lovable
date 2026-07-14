@@ -61,7 +61,7 @@ export async function convertPdfToImages(
   const onProgress = options.onProgress ?? (() => {});
 
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise;
   const scale = dpi / 72;
   const mime = format === "png" ? "image/png" : "image/jpeg";
   const ext = format === "png" ? "png" : "jpg";

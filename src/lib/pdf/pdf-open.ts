@@ -1,7 +1,7 @@
 /**
  * Shared pdf.js document-open helper.
  *
- * Wraps `pdfjs.getDocument({data})` with:
+ * Wraps `pdfjs.getDocument({data, enableXfa: true, useSystemFonts: true })` with:
  *   - an `onPassword` handler for encrypted PDFs (prompt-based by default,
  *     the same UX used by /unlock; callers can pass their own)
  *   - a `EncryptedPdfError` thrown when no password is supplied, so callers
@@ -11,7 +11,7 @@
  *     message
  *
  * Every path that opens a PDF via pdf.js should use this. Direct
- * `pdfjs.getDocument({...})` calls leak PasswordException as an uncaught
+ * `pdfjs.getDocument({..., enableXfa: true, useSystemFonts: true })` calls leak PasswordException as an uncaught
  * error on the main thread.
  */
 import { loadPdfjs } from "@/lib/pdf/worker";
@@ -65,8 +65,7 @@ export async function openPdfjs(
   const prompt = opts.onPassword ?? defaultPrompt;
   const task = pdfjs.getDocument({
     data: data instanceof Uint8Array ? data : new Uint8Array(data),
-    ...(opts.extra ?? {}),
-  });
+    ...(opts.extra ?? {}), enableXfa: true, useSystemFonts: true });
   const anyTask = task as unknown as {
     onPassword?: (updateCallback: (pw: string) => void, reason: number) => void;
     promise: Promise<unknown>;
