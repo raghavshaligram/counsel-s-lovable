@@ -4459,7 +4459,7 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
                 )}
               </button>
 
-              <div className="text-center text-[10px] text-text-muted">
+              <div className="text-center text-[10px] text-privacy">
                 On-device · nothing leaves your browser
               </div>
             </>
@@ -4838,7 +4838,7 @@ function SmartSplitSection({
         )}
       </button>
 
-      <div className="text-center text-[10px] text-text-muted">
+      <div className="text-center text-[10px] text-privacy">
         On-device · nothing leaves your browser
       </div>
     </>
@@ -5017,7 +5017,7 @@ function RotatePanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
           </button>
 
-          <div className="text-center text-[10px] text-text-muted">
+          <div className="text-center text-[10px] text-privacy">
             On-device · nothing leaves your browser
           </div>
         </>
