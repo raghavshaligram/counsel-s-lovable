@@ -160,7 +160,7 @@ async function verifyPageGeometry(
   logHeap("verify.worker before page-geometry pdfjs.getDocument", { inputBytesMB });
   let doc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
   try {
-    doc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
+    doc = await pdfjs.getDocument({ data: pdfjsBytes, enableXfa: true, useSystemFonts: true }).promise;
   } catch (err) {
     logAllocationFailure("verify.worker page-geometry pdfjs.getDocument", err, { inputBytesMB });
     throw new Error(allocationFailureMessage("verify.worker page-geometry pdfjs.getDocument", err));

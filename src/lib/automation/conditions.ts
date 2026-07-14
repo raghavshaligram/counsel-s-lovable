@@ -76,8 +76,7 @@ async function getTextScan(ctx: ConditionContext): Promise<TextScan | null> {
         const loadingTask = pdfjs.getDocument({
           data: ctx.bytes.slice(),
           disableAutoFetch: true,
-          disableStream: true,
-        });
+          disableStream: true, enableXfa: true, useSystemFonts: true });
         const doc = await loadingTask.promise;
         const maxPages = Math.min(doc.numPages, 10);
         let total = 0;

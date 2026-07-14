@@ -134,7 +134,7 @@ function CompressPage() {
       const srcBytes = new Uint8Array(await file.arrayBuffer());
       // pdf.js transfers the underlying buffer to its worker (detaching it),
       // so hand each consumer its own copy.
-      const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
+      const srcDoc = await pdfjs.getDocument({ data: srcBytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
 
       // Get original page dimensions (in pt) from pdf-lib so output PDF matches
       const sizingDoc = await PDFDocument.load(srcBytes.slice(), {

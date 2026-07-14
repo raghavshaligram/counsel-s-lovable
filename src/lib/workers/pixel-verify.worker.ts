@@ -74,7 +74,7 @@ self.addEventListener("message", async (ev: MessageEvent<InboundMsg>) => {
     logHeap("pixel-verify.worker before pdfjs.getDocument", { inputBytesMB });
     let doc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> };
     try {
-      doc = await pdfjs.getDocument({ data: pdfjsBytes }).promise;
+      doc = await pdfjs.getDocument({ data: pdfjsBytes, enableXfa: true, useSystemFonts: true }).promise;
     } catch (err) {
       logAllocationFailure("pixel-verify.worker pdfjs.getDocument", err, { inputBytesMB });
       throw new Error(allocationFailureMessage("pixel-verify.worker pdfjs.getDocument", err));

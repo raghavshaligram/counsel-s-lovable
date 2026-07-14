@@ -44,7 +44,7 @@ function ToWordPage() {
     setFile(f);
     try {
       const pdfjs = await loadPdfjs();
-      const doc = await pdfjs.getDocument({ data: await f.arrayBuffer() }).promise;
+      const doc = await pdfjs.getDocument({ data: await f.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise;
       setPageCount(doc.numPages);
     } catch {
       toast.error("Couldn't open that PDF.");

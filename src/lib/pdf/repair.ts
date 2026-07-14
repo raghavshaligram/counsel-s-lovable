@@ -116,8 +116,7 @@ async function repairWithPdfJs(
       // Be as forgiving as possible.
       stopAtErrors: false,
       disableAutoFetch: true,
-      disableStream: true,
-    }).promise;
+      disableStream: true, enableXfa: true, useSystemFonts: true }).promise;
   } catch {
     return null;
   }
@@ -402,8 +401,7 @@ export async function repairPdfBytes(
         data: repaired.slice(),
         stopAtErrors: false,
         disableAutoFetch: true,
-        disableStream: true,
-      }).promise;
+        disableStream: true, enableXfa: true, useSystemFonts: true }).promise;
       for (let i = 1; i <= verify.numPages; i++) {
         let hasContent = false;
         try {

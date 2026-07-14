@@ -7808,7 +7808,7 @@ async function ensureSearchablePdf(
     const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
     const pdfjs = await loadPdfjs();
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
     const probePages = Math.min(doc.numPages, 3);
     let totalChars = 0;
     for (let i = 1; i <= probePages; i++) {

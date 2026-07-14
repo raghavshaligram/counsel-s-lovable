@@ -109,7 +109,7 @@ function PrivilegeScanPage() {
     try {
       const pdfjs = await getPdfjs();
       const buf = await file.arrayBuffer();
-      const doc = await pdfjs.getDocument({ data: buf }).promise;
+      const doc = await pdfjs.getDocument({ data: buf, enableXfa: true, useSystemFonts: true }).promise;
       const out = await PDFDocument.create();
       const SCALE = 1.5;
 

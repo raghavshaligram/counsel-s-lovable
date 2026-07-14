@@ -51,7 +51,7 @@ function ComparePage() {
   const loadFile = async (f: File, which: "a" | "b") => {
     try {
       const pdfjs = await loadPdfjs();
-      const doc = await pdfjs.getDocument({ data: await f.arrayBuffer() }).promise;
+      const doc = await pdfjs.getDocument({ data: await f.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise;
       const rec: RenderedDoc = { file: f, pageCount: doc.numPages };
       if (which === "a") setDocA(rec);
       else setDocB(rec);
@@ -71,8 +71,8 @@ function ComparePage() {
     try {
       const pdfjs = await loadPdfjs();
       const [pa, pb] = await Promise.all([
-        pdfjs.getDocument({ data: await docA.file.arrayBuffer() }).promise,
-        pdfjs.getDocument({ data: await docB.file.arrayBuffer() }).promise,
+        pdfjs.getDocument({ data: await docA.file.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise,
+        pdfjs.getDocument({ data: await docB.file.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise,
       ]);
 
       const renderTo = async (

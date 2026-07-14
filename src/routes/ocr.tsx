@@ -166,7 +166,7 @@ function OcrPage() {
       try {
         const pdfjs = await loadPdfjs();
         const buf = await file.arrayBuffer();
-        const doc = await pdfjs.getDocument({ data: buf }).promise;
+        const doc = await pdfjs.getDocument({ data: buf, enableXfa: true, useSystemFonts: true }).promise;
         if (cancelled) return;
         const pages = doc.numPages;
         const sizeMb = file.size / (1024 * 1024);

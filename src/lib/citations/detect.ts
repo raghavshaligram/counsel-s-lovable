@@ -116,7 +116,7 @@ export async function detectCitations(
 ): Promise<CitationHit[]> {
   const pdfjs = await loadPdfjs();
   // pdf.js may mutate the buffer — pass a copy.
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   const hits: CitationHit[] = [];
   try {
     const totalPages = doc.numPages;

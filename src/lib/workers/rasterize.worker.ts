@@ -103,7 +103,7 @@ async function rasterize(
   // reads, so we cannot let pdf.js detach it. Give pdf.js its own slice.
   const srcPdfLib = await PDFDocument.load(bytes);
   const srcDoc: { numPages: number; getPage: (pageNumber: number) => Promise<any>; destroy?: () => Promise<void> } =
-    await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   const outDoc = await PDFDocument.create();
 
   // Preserve document metadata — a fresh PDFDocument.create() starts with

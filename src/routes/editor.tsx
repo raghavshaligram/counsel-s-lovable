@@ -698,7 +698,7 @@ function Thumbnail({ op, srcBytes }: { op: PageOp; srcBytes: Uint8Array }) {
         return;
       }
       const pdfjs = await loadPdfjs();
-      const doc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
+      const doc = await pdfjs.getDocument({ data: srcBytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
       if (cancelled) return;
       const page = await doc.getPage(op.srcPage + 1);
       const baseVp = page.getViewport({ scale: 1, rotation: op.rotation });
@@ -782,7 +782,7 @@ function PageCanvas({
         return;
       }
       const pdfjs = await loadPdfjs();
-      const doc = await pdfjs.getDocument({ data: srcBytes.slice() }).promise;
+      const doc = await pdfjs.getDocument({ data: srcBytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
       if (cancelled) return;
       const page = await doc.getPage(op.srcPage + 1);
       const vp = page.getViewport({ scale: displayScale, rotation: op.rotation });

@@ -31,7 +31,7 @@ export async function extractTables(
 ): Promise<ExtractedTable[]> {
   const pdfjs = await loadPdfjs();
   const buf = await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const doc = await pdfjs.getDocument({ data: buf, enableXfa: true, useSystemFonts: true }).promise;
   const out: ExtractedTable[] = [];
 
   for (let i = 1; i <= doc.numPages; i++) {

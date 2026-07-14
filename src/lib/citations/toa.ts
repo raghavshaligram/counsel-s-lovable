@@ -133,7 +133,7 @@ export async function buildToa(
   onProgress?: (p: ToaProgress) => void,
 ): Promise<ToaEntry[]> {
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   const byKey = new Map<string, ToaEntry>();
   let counter = 0;
   try {

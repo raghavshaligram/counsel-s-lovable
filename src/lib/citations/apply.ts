@@ -182,7 +182,7 @@ export async function verifyCitationsLegible(
     byPage.set(l.page, arr);
   }
 
-  const loadingTask = pdfjs.getDocument({ data: pdfBytes.slice(0) });
+  const loadingTask = pdfjs.getDocument({ data: pdfBytes.slice(0), enableXfa: true, useSystemFonts: true });
   const pdf = await loadingTask.promise;
   try {
     const scale = 150 / 72;

@@ -130,7 +130,7 @@ function SignPage() {
     try {
       const pdfjs = await loadPdfjs();
       const buf = await f.arrayBuffer();
-      const task = pdfjs.getDocument({ data: new Uint8Array(buf) });
+      const task = pdfjs.getDocument({ data: new Uint8Array(buf), enableXfa: true, useSystemFonts: true });
       const doc = await task.promise;
       const out: RenderedPage[] = [];
       for (let i = 0; i < doc.numPages; i++) {

@@ -134,7 +134,7 @@ function containsAnywhere(bytes: Uint8Array, needle: string): boolean {
 
 async function extractTextPerPage(bytes: Uint8Array): Promise<string[]> {
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   const out: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const p = await doc.getPage(i);
@@ -274,7 +274,7 @@ async function buildFragmentedFixture(): Promise<{ bytes: Uint8Array; rectApprox
 
 async function inspectFragmentItems(bytes: Uint8Array): Promise<Array<{ str: string; x0: number; x1: number; y: number; h: number }>> {
   const pdfjs = await loadPdfjs();
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
   const p = await doc.getPage(1);
   const viewport = p.getViewport({ scale: 1.5 });
   const tc = await p.getTextContent();

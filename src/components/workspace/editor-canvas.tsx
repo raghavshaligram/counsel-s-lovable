@@ -506,7 +506,7 @@ export function EditorCanvas({
       }
       try {
         const pdfjs = await loadPdfjs();
-        const doc = pdfDoc ?? (console.count("getDocument-called"), console.warn("[getDocument-called] no shared pdfDoc — re-parsing srcBytes", { page: op.srcPage, srcBytesLen: srcBytes.byteLength }), await pdfjs.getDocument({ data: srcBytes.slice() }).promise);
+        const doc = pdfDoc ?? (console.count("getDocument-called"), console.warn("[getDocument-called] no shared pdfDoc — re-parsing srcBytes", { page: op.srcPage, srcBytesLen: srcBytes.byteLength }), await pdfjs.getDocument({ data: srcBytes.slice(), enableXfa: true, useSystemFonts: true }).promise);
         if (cancelled) return;
         const page = await doc.getPage(op.srcPage + 1);
         if (cancelled) return;

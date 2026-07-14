@@ -41,7 +41,7 @@ export async function printPdfBytes(
   // 1. Rasterise the baked PDF page-by-page.
   const pdfjs = await loadPdfjs();
   const data = bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes);
-  const doc = await pdfjs.getDocument({ data }).promise;
+  const doc = await pdfjs.getDocument({ data, enableXfa: true, useSystemFonts: true }).promise;
 
   const pages: Array<{ dataUrl: string; widthPt: number; heightPt: number }> = [];
   try {

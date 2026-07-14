@@ -230,7 +230,7 @@ async function scanPrivilege(
   opts: { deep: boolean; onProgress?: (p: { page: number; total: number }) => void } = { deep: false },
 ): Promise<PrivilegeFinding[]> {
   const pdfjs = await getPdfjs();
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer(), enableXfa: true, useSystemFonts: true }).promise;
   const out: PrivilegeFinding[] = [];
 
   try {
