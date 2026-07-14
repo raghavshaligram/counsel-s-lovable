@@ -10685,3 +10685,393 @@ function SanitizePanel({ ctx }: { ctx: ToolPanelCtx }) {
     </div>
   );
 }
+
+/* ======================= Page Ops (Insert / Delete / Resize / Crop) ======================= */
+
+// Common paper sizes in PDF points (1in = 72pt).
+const PAPER_SIZES: Record<string, { w: number; h: number }> = {
+  Letter: { w: 612, h: 792 },
+  Legal: { w: 612, h: 1008 },
+  Tabloid: { w: 792, h: 1224 },
+  A3: { w: 841.89, h: 1190.55 },
+  A4: { w: 595.28, h: 841.89 },
+  A5: { w: 419.53, h: 595.28 },
+};
+
+function useCurrentPageSize(ctx: ToolPanelCtx): { w: number; h: number } | null {
+  const doc = ctx.editorState?.doc;
+  const cur = ctx.editorState?.current ?? 0;
+  if (!doc || !doc.pages[cur]) return null;
+  const p = doc.pages[cur];
+  const rotated = p.rotation === 90 || p.rotation === 270;
+  return rotated ? { w: p.height, h: p.width } : { w: p.width, h: p.height };
+}
+
+/* ----- Insert Page ----- */
+
+function InsertPagePanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const doc = ctx.editorState?.doc ?? null;
+  const current = ctx.editorState?.current ?? 0;
+  const pageCount = doc?.pages.length ?? 0;
+  const curSize = useCurrentPageSize(ctx);
+  const [where, setWhere] = useState<"before" | "after" | "end">("after");
+  const [sizeKey, setSizeKey] = useState<string>("same");
+  const [orient, setOrient] = useState<"portrait" | "landscape">("portrait");
+  const [count, setCount] = useState(1);
+
+  if (!doc) return <InspectorEmpty>Open a PDF to insert a blank page.</InspectorEmpty>;
+
+  const resolvedSize = (() => {
+    if (sizeKey === "same") return curSize ?? PAPER_SIZES.Letter;
+    const s = PAPER_SIZES[sizeKey] ?? PAPER_SIZES.Letter;
+    return orient === "landscape" ? { w: s.h, h: s.w } : s;
+  })();
+
+  const insert = () => {
+    const after = where === "before" ? current - 1 : where === "end" ? pageCount - 1 : current;
+    ctx.editorDispatch({
+      type: "INSERT_BLANKS",
+      after,
+      count: Math.max(1, count),
+      width: resolvedSize.w,
+      height: resolvedSize.h,
+    });
+    toast.success(`Inserted ${count} blank page${count === 1 ? "" : "s"}`);
+  };
+
+  const btnCls = (active: boolean) => cn(
+    "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+    active ? "border-vault/60 bg-accent-soft text-foreground" : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+  );
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <Section title="Position" icon={<Plus className="h-3 w-3" />}>
+        <div className="grid grid-cols-3 gap-1.5">
+          <button className={btnCls(where === "before")} onClick={() => setWhere("before")}>Before current</button>
+          <button className={btnCls(where === "after")} onClick={() => setWhere("after")}>After current</button>
+          <button className={btnCls(where === "end")} onClick={() => setWhere("end")}>At end</button>
+        </div>
+        <p className="mt-1.5 text-[10.5px] text-text-muted">Current page: {current + 1} / {pageCount}</p>
+      </Section>
+
+      <Section title="Size">
+        <select
+          value={sizeKey}
+          onChange={(e) => setSizeKey(e.target.value)}
+          className="w-full h-9 rounded-md border border-border bg-surface-2 px-2 text-[12px]"
+        >
+          <option value="same">Same as current ({curSize ? `${Math.round(curSize.w)}×${Math.round(curSize.h)}pt` : "—"})</option>
+          {Object.keys(PAPER_SIZES).map((k) => (
+            <option key={k} value={k}>{k} ({Math.round(PAPER_SIZES[k].w)}×{Math.round(PAPER_SIZES[k].h)}pt)</option>
+          ))}
+        </select>
+        {sizeKey !== "same" && (
+          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+            <button className={btnCls(orient === "portrait")} onClick={() => setOrient("portrait")}>Portrait</button>
+            <button className={btnCls(orient === "landscape")} onClick={() => setOrient("landscape")}>Landscape</button>
+          </div>
+        )}
+      </Section>
+
+      <Section title="Count">
+        <input
+          type="number"
+          min={1}
+          max={100}
+          value={count}
+          onChange={(e) => setCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+          className="w-full h-9 rounded-md border border-border bg-surface-2 px-2 text-[12px] tabular-nums"
+        />
+      </Section>
+
+      <Button onClick={insert} className="bg-vault text-vault-foreground hover:opacity-90">
+        Insert {count} blank page{count === 1 ? "" : "s"}
+      </Button>
+    </div>
+  );
+}
+
+/* ----- Delete Pages ----- */
+
+function DeletePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const doc = ctx.editorState?.doc ?? null;
+  const current = ctx.editorState?.current ?? 0;
+  const pageCount = doc?.pages.length ?? 0;
+  const [mode, setMode] = useState<"current" | "range" | "blank">("current");
+  const [range, setRange] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [blankPages, setBlankPages] = useState<number[] | null>(null);
+  const [selectedBlanks, setSelectedBlanks] = useState<Set<number>>(new Set());
+
+  if (!doc) return <InspectorEmpty>Open a PDF to delete pages.</InspectorEmpty>;
+
+  const parsed = mode === "range" ? parseRanges(range, pageCount) : { pages: [] as number[], error: null as string | null };
+  const targets: number[] = (() => {
+    if (mode === "current") return [current];
+    if (mode === "range") return parsed.pages.map((p) => p - 1);
+    return [...selectedBlanks];
+  })();
+
+  const scanBlanks = async () => {
+    if (!ctx.file) { toast.error("Open a PDF first."); return; }
+    setScanning(true);
+    setBlankPages(null);
+    setSelectedBlanks(new Set());
+    try {
+      const bytes = new Uint8Array(await ctx.file.arrayBuffer());
+      const pdf = await openPdfjs({ data: bytes });
+      const found: number[] = [];
+      for (let i = 0; i < pdf.numPages; i++) {
+        const page = await pdf.getPage(i + 1);
+        const tc = await page.getTextContent();
+        const textLen = tc.items.reduce((n, it) => n + (("str" in it ? String(it.str).trim().length : 0)), 0);
+        const opList = await page.getOperatorList();
+        // Heuristic: no text glyphs AND very few drawing operators => probably blank.
+        const opCount = opList.fnArray.length;
+        if (textLen === 0 && opCount < 20) found.push(i);
+        page.cleanup();
+      }
+      await pdf.destroy();
+      setBlankPages(found);
+      setSelectedBlanks(new Set(found));
+      toast.success(`Found ${found.length} blank page${found.length === 1 ? "" : "s"}`);
+    } catch (err) {
+      toast.error("Blank-page scan failed", { description: (err as Error).message });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const runDelete = () => {
+    const idxs = [...new Set(targets)].filter((i) => i >= 0 && i < pageCount).sort((a, b) => a - b);
+    if (!idxs.length) return;
+    if (idxs.length >= pageCount) { toast.error("Cannot delete every page."); return; }
+    ctx.editorDispatch({ type: "DELETE_PAGES", indexes: idxs });
+    toast.success(`Deleted ${idxs.length} page${idxs.length === 1 ? "" : "s"}`);
+    setBlankPages(null);
+    setSelectedBlanks(new Set());
+    setRange("");
+  };
+
+  const btnCls = (active: boolean) => cn(
+    "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+    active ? "border-vault/60 bg-accent-soft text-foreground" : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+  );
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <Section title="What to delete" icon={<Trash2 className="h-3 w-3" />}>
+        <div className="grid grid-cols-3 gap-1.5">
+          <button className={btnCls(mode === "current")} onClick={() => setMode("current")}>Current</button>
+          <button className={btnCls(mode === "range")} onClick={() => setMode("range")}>Range</button>
+          <button className={btnCls(mode === "blank")} onClick={() => setMode("blank")}>Blank scan</button>
+        </div>
+      </Section>
+
+      {mode === "current" && (
+        <p className="text-[11.5px] text-text-muted">Will delete page {current + 1} of {pageCount}.</p>
+      )}
+
+      {mode === "range" && (
+        <Section title="Pages">
+          <input
+            value={range}
+            onChange={(e) => setRange(e.target.value)}
+            placeholder="e.g. 2-4, 7, 10-12"
+            className="w-full h-9 rounded-md border border-border bg-surface-2 px-2 text-[12px] tabular-nums"
+          />
+          {parsed.error && <p className="mt-1 text-[10.5px] text-destructive">{parsed.error}</p>}
+          {!parsed.error && parsed.pages.length > 0 && (
+            <p className="mt-1 text-[10.5px] text-text-muted">Will delete {parsed.pages.length} page{parsed.pages.length === 1 ? "" : "s"}.</p>
+          )}
+        </Section>
+      )}
+
+      {mode === "blank" && (
+        <Section title="Auto-detect blank" icon={<FileWarning className="h-3 w-3" />}>
+          <Button
+            variant="outline"
+            onClick={scanBlanks}
+            disabled={scanning}
+            className="w-full h-9"
+          >
+            {scanning ? "Scanning…" : blankPages == null ? "Scan for blank pages" : "Rescan"}
+          </Button>
+          {blankPages && blankPages.length === 0 && (
+            <p className="mt-2 text-[11px] text-text-muted">No blank pages detected.</p>
+          )}
+          {blankPages && blankPages.length > 0 && (
+            <div className="mt-2 max-h-48 overflow-auto rounded-md border border-border bg-surface-2 p-1.5">
+              {blankPages.map((i) => (
+                <label key={i} className="flex items-center gap-2 px-1.5 py-1 text-[11.5px] cursor-pointer hover:bg-accent-soft/50 rounded">
+                  <input
+                    type="checkbox"
+                    checked={selectedBlanks.has(i)}
+                    onChange={(e) => {
+                      const next = new Set(selectedBlanks);
+                      if (e.target.checked) next.add(i); else next.delete(i);
+                      setSelectedBlanks(next);
+                    }}
+                    className="accent-vault"
+                  />
+                  <span>Page {i + 1}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
+      <Button
+        onClick={runDelete}
+        disabled={targets.length === 0 || targets.length >= pageCount}
+        className="bg-vault text-vault-foreground hover:opacity-90"
+      >
+        Delete {targets.length || 0} page{targets.length === 1 ? "" : "s"}
+      </Button>
+      <p className="text-[10.5px] text-text-muted">Deletion is undoable via ⌘Z until you export.</p>
+    </div>
+  );
+}
+
+/* ----- Resize / Scale Pages ----- */
+
+function ResizePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const doc = ctx.editorState?.doc ?? null;
+  const current = ctx.editorState?.current ?? 0;
+  const pageCount = doc?.pages.length ?? 0;
+  const [scope, setScope] = useState<"all" | "current" | "range">("all");
+  const [range, setRange] = useState("");
+  const [sizeKey, setSizeKey] = useState<string>("Letter");
+  const [orient, setOrient] = useState<"portrait" | "landscape">("portrait");
+  const [scaleContent, setScaleContent] = useState(true);
+
+  if (!doc) return <InspectorEmpty>Open a PDF to resize its pages.</InspectorEmpty>;
+
+  const target = (() => {
+    const s = PAPER_SIZES[sizeKey] ?? PAPER_SIZES.Letter;
+    return orient === "landscape" ? { w: s.h, h: s.w } : s;
+  })();
+
+  const parsed = scope === "range" ? parseRanges(range, pageCount) : { pages: [] as number[], error: null as string | null };
+  const indexes: number[] = (() => {
+    if (scope === "all") return doc.pages.map((_, i) => i);
+    if (scope === "current") return [current];
+    return parsed.pages.map((p) => p - 1);
+  })();
+
+  const apply = () => {
+    if (indexes.length === 0) return;
+    ctx.editorDispatch({
+      type: "RESIZE_PAGES",
+      indexes,
+      width: target.w,
+      height: target.h,
+      scaleContent,
+    });
+    toast.success(`Resized ${indexes.length} page${indexes.length === 1 ? "" : "s"} to ${sizeKey} ${orient}`);
+  };
+
+  const btnCls = (active: boolean) => cn(
+    "rounded-md border px-2 py-1.5 text-[11.5px] transition-colors",
+    active ? "border-vault/60 bg-accent-soft text-foreground" : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+  );
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <Section title="Target size" icon={<Maximize2 className="h-3 w-3" />}>
+        <select
+          value={sizeKey}
+          onChange={(e) => setSizeKey(e.target.value)}
+          className="w-full h-9 rounded-md border border-border bg-surface-2 px-2 text-[12px]"
+        >
+          {Object.keys(PAPER_SIZES).map((k) => (
+            <option key={k} value={k}>{k} ({Math.round(PAPER_SIZES[k].w)}×{Math.round(PAPER_SIZES[k].h)}pt)</option>
+          ))}
+        </select>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <button className={btnCls(orient === "portrait")} onClick={() => setOrient("portrait")}>Portrait</button>
+          <button className={btnCls(orient === "landscape")} onClick={() => setOrient("landscape")}>Landscape</button>
+        </div>
+      </Section>
+
+      <Section title="Content">
+        <label className="flex items-center gap-2 text-[11.5px] cursor-pointer">
+          <input type="checkbox" checked={scaleContent} onChange={(e) => setScaleContent(e.target.checked)} className="accent-vault" />
+          <span>Scale content proportionally <span className="text-text-muted">(fit inside new page)</span></span>
+        </label>
+        {!scaleContent && (
+          <p className="mt-1 text-[10.5px] text-text-muted">Content stays at original coordinates — may be cropped or letterboxed.</p>
+        )}
+      </Section>
+
+      <Section title="Apply to">
+        <div className="grid grid-cols-3 gap-1.5">
+          <button className={btnCls(scope === "all")} onClick={() => setScope("all")}>All pages</button>
+          <button className={btnCls(scope === "current")} onClick={() => setScope("current")}>Current</button>
+          <button className={btnCls(scope === "range")} onClick={() => setScope("range")}>Range</button>
+        </div>
+        {scope === "range" && (
+          <input
+            value={range}
+            onChange={(e) => setRange(e.target.value)}
+            placeholder="e.g. 1-5, 8"
+            className="mt-1.5 w-full h-9 rounded-md border border-border bg-surface-2 px-2 text-[12px] tabular-nums"
+          />
+        )}
+        {scope === "range" && parsed.error && <p className="mt-1 text-[10.5px] text-destructive">{parsed.error}</p>}
+      </Section>
+
+      <Button
+        onClick={apply}
+        disabled={indexes.length === 0}
+        className="bg-vault text-vault-foreground hover:opacity-90"
+      >
+        Resize {indexes.length || 0} page{indexes.length === 1 ? "" : "s"}
+      </Button>
+      <p className="text-[10.5px] text-text-muted">Changes are applied when you export the document.</p>
+    </div>
+  );
+}
+
+/* ----- Page Crop (inspector-side arm; drawing happens on the canvas) ----- */
+
+function PageCropPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const doc = ctx.editorState?.doc ?? null;
+  const current = ctx.editorState?.current ?? 0;
+  const page = doc?.pages[current];
+  useEffect(() => {
+    ctx.editorDispatch({ type: "SET_TOOL", t: "page-crop" });
+    return () => ctx.editorDispatch({ type: "SET_TOOL", t: "select" });
+  }, [ctx]);
+
+  if (!doc) return <InspectorEmpty>Open a PDF to crop pages.</InspectorEmpty>;
+
+  const clearCrop = () => {
+    ctx.editorDispatch({ type: "SET_PAGE_CROP", n: current, rect: null });
+    toast.success(`Cleared crop on page ${current + 1}`);
+  };
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <Section title="Page Crop" icon={<CropIcon className="h-3 w-3" />}>
+        <p className="text-[11.5px] text-text-muted">
+          Drag on the canvas to draw a crop rectangle for page {current + 1}. The rest of the page is trimmed at export.
+        </p>
+      </Section>
+      {page?.cropBox && (
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[11px]">
+          <div className="text-foreground">Crop set</div>
+          <div className="mt-0.5 text-text-muted tabular-nums">
+            {Math.round(page.cropBox.w)} × {Math.round(page.cropBox.h)} pt
+          </div>
+        </div>
+      )}
+      <Button variant="outline" onClick={clearCrop} disabled={!page?.cropBox}>
+        Clear crop on this page
+      </Button>
+    </div>
+  );
+}
+
