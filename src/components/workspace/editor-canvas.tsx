@@ -1321,26 +1321,61 @@ export function EditorCanvas({
       h: clampedCoverH,
     };
 
-    // Erase the original glyph pixels from the base canvas so nothing bleeds
-    // through the (now transparent) cover element. The page wrapper below
-    // paints the sampled page-corner colour, so this hole reveals the true
-    // page colour without visible seams. On anno deletion, renderTick bumps
-    // and the page re-renders to restore the pixels.
-    if (canvas) {
+    // Non-destructive glyph hide: sample a thin horizontal band from the
+    // PRISTINE snapshot immediately above (or below) the cover, then paint
+    // that band across the cover region in the visible canvas. This
+    // preserves the underlying page background — solid fills, horizontal
+    // separator lines, gradients, and local shading — where a destructive
+    // clearRect would punch a visible hole. The pristine copy is also used
+    // to instantly restore pixels when the text-edit anno is deleted.
+    if (canvas && pristineCanvasRef.current) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const snap = pristineCanvasRef.current;
       if (ctx) {
         const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
         const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
         const dprX = canvas.width / Math.max(1, cssW);
         const dprY = canvas.height / Math.max(1, cssH);
-        ctx.clearRect(
-          cover.x * scale * dprX,
-          cover.y * scale * dprY,
-          cover.w * scale * dprX,
-          cover.h * scale * dprY,
-        );
+        const dx = cover.x * scale * dprX;
+        const dy = cover.y * scale * dprY;
+        const dw = cover.w * scale * dprX;
+        const dh = cover.h * scale * dprY;
+        // Prefer a band ABOVE the glyph (usually the interline gap — clean
+        // background). Fall back to BELOW if there's no room above.
+        const bandThickness = Math.max(2, Math.floor(it.h * scale * dprY * 0.25));
+        const aboveY = Math.max(0, dy - bandThickness);
+        const aboveAvail = dy - aboveY;
+        let srcY = aboveY;
+        let srcH = aboveAvail;
+        if (srcH < 2) {
+          // No usable band above — try below.
+          const belowY = Math.min(snap.height, dy + dh);
+          const belowAvail = Math.min(bandThickness, snap.height - belowY);
+          if (belowAvail >= 2) {
+            srcY = belowY;
+            srcH = belowAvail;
+          }
+        }
+        if (srcH >= 2 && dw > 0 && dh > 0) {
+          // Stretch the thin band vertically across the whole cover. Because
+          // the band spans the full cover width horizontally, any horizontal
+          // features (lines, gradients along X) are preserved exactly.
+          ctx.save();
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(snap, dx, srcY, dw, srcH, dx, dy, dw, dh);
+          ctx.restore();
+        } else {
+          // Truly no clean band available — fall back to the sampled bg fill
+          // so we still hide the original glyphs (better than showing them).
+          const bg = sampled.bg;
+          ctx.save();
+          ctx.fillStyle = `rgb(${Math.round(bg.r * 255)},${Math.round(bg.g * 255)},${Math.round(bg.b * 255)})`;
+          ctx.fillRect(dx, dy, dw, dh);
+          ctx.restore();
+        }
       }
     }
+
 
 
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
