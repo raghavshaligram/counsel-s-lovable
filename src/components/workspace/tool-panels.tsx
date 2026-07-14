@@ -94,7 +94,8 @@ import {
   type PatternKind,
 } from "@/lib/pdf/smart-split";
 import { X as XIcon } from "lucide-react";
-import { Scissors, RotateCw, RotateCcw, LayoutGrid } from "lucide-react";
+import { Scissors, RotateCw, RotateCcw, LayoutGrid, Maximize2, Crop as CropIcon, FileWarning } from "lucide-react";
+import { openPdfjs } from "@/lib/pdf/pdf-open";
 import {
   getRotatePageCount,
   resolveRotateScope,
