@@ -1145,11 +1145,8 @@ export function EditorCanvas({
         const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
         const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
         const lh = a.lineHeight ?? 1.15;
-        // Baseline compensation for the <textarea> ONLY (does not move the
-        // canvas mask): browser textareas anchor glyphs at the em-box top,
-        // so typed text renders ~10% above the original PDF baseline. Push
-        // it down by 10% of the font size so it sits on the PDF baseline.
-        const BASELINE_FACTOR = 0.10;
+        // Tuned to 0.12 to bridge browser top-down em-box rendering and PDF baseline anchoring
+        const BASELINE_FACTOR = 0.12;
         const baselineComp = a.kind === "text-edit" ? BASELINE_FACTOR * a.fontSize * scale : 0;
         const padTop = padTopPt * scale + baselineComp;
         const padLeft = padLeftPt * scale;
@@ -1159,36 +1156,33 @@ export function EditorCanvas({
         const fontWeight = a.fontWeight ?? (a.bold ? 700 : 400);
         const isItalic = !!a.italic;
         const isUnderline = !!a.underline;
-        // While editing a freshly-added text box, give it visible chrome so the
-        // user can see where they're typing. text-edit (replacing existing PDF
-        // text) keeps the transparent skin so it blends with surrounding glyphs.
         const showEditChrome = isEditing && a.kind === "text";
         const textColor = rgbCss(a.color, a.opacity);
         const textStyle: React.CSSProperties = {
-          width: "100%", height: "100%",
-          background: bg,
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          background: "transparent",
           color: textColor,
           WebkitTextFillColor: textColor,
-          fontSize: a.fontSize * scale,
+          fontSize: `${a.fontSize * scale}px`,
           fontFamily: fam,
           fontWeight,
           fontStyle: isItalic ? "italic" : "normal",
-          // If the resolved family only has a regular face loaded, let the
-          // browser synthesize the bold weight rather than silently rendering
-          // a bold run in regular. Only meaningful for text-edit overlays.
           fontSynthesis: a.kind === "text-edit" ? "weight style" : undefined,
           textDecoration: isUnderline ? "underline" : "none",
           textAlign: align,
-          lineHeight: a.lineHeight ?? 1.15,
-          letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : undefined,
+          lineHeight: a.lineHeight ?? 1,
+          letterSpacing: a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal",
           whiteSpace: a.kind === "text-edit" && !a.text.includes("\n") ? "pre" : "pre-wrap",
           wordBreak: a.kind === "text-edit" && !a.text.includes("\n") ? "normal" : "break-word",
           overflow: "hidden",
           padding: 0,
-          paddingTop: padTop,
-          paddingLeft: padLeft,
-          paddingRight: padRight,
-          paddingBottom: padBottom,
+          paddingTop: `${padTop}px`,
+          paddingLeft: `${padLeft}px`,
+          paddingRight: `${padRight}px`,
+          paddingBottom: `${padBottom}px`,
           boxSizing: "border-box",
           margin: 0,
           border: "none",
@@ -1208,36 +1202,18 @@ export function EditorCanvas({
             placeholder={a.kind === "text" ? "Type here…" : ""}
             onChange={(e) => onTextChange(e.target.value)}
             onBlur={(e) => {
-              // If focus is moving to the floating mini-toolbar (or anything
-              // inside the same page wrapper), keep editing alive — the user
-              // is just nudging a control. Only collapse / auto-delete when
-              // focus truly leaves the text box context.
               const next = e.relatedTarget as HTMLElement | null;
-              if (next && next.closest('[data-text-toolbar="1"]')) return;
-              // Read the textarea's value directly to avoid a stale closure on
-              // `a.text` when blur fires before React flushes the last keystroke.
+              // Do not blur if focus moved to the toolbar or another text-edit target
+              if (next && (next.closest('[data-text-toolbar="1"]') || next.closest('[data-edit-text-hit="1"]'))) return;
               const finalText = e.currentTarget.value;
-              const taRect = e.currentTarget.getBoundingClientRect();
-              console.log("[text-edit-commit]", {
-                annotationId: a.id,
-                editId: editingId,
-                phase: "blur",
-                originalString: a.kind === "text-edit" ? a.source?.originalString ?? "" : "",
-                committedText: finalText,
-                changed: finalText !== (a.kind === "text-edit" ? a.source?.originalString ?? "" : ""),
-                extractedWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
-                coverWidthPt: a.kind === "text-edit" ? a.cover?.w ?? null : null,
-                textareaWidthPt: taRect.width / scale,
-                textTargetWidthPt: a.kind === "text-edit" ? a.w : null,
-                willDelete: !finalText.trim() && a.kind === "text",
-              });
               if (finalText !== a.text) {
                 dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { text: finalText } as Partial<Anno> });
               }
               if (!finalText.trim() && a.kind === "text") {
                 dispatch({ type: "DELETE_ANNO", id: a.id });
               }
-              setEditingId(null);
+              // Prevent race condition: only nullify if this exact annotation is still the active edit ID
+              setEditingId((cur) => (cur === a.id ? null : cur));
             }}
             onKeyDown={(e) => {
               if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
