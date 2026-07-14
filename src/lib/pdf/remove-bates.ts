@@ -106,7 +106,7 @@ export async function findBatesStamps(
         if (last && Math.abs(last[0].y - p.y) <= Y_TOL) last.push(p);
         else lines.push([p]);
       }
-      for (const items of lines.values()) {
+      for (const items of lines) {
         items.sort((a, b) => a.x - b.x);
         const joined = items.map((it) => it.str).join("");
         pattern.lastIndex = 0;
