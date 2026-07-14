@@ -349,7 +349,7 @@ function isBankNoise(line: string): boolean {
 }
 
 function isBankTerminalNoise(line: string): boolean {
-  return /\bACCOUNT\s+NUMBER\s+MICR\s+CODE\s+IFSC\s+CODE\b|\bCategory\s+of\s+service:\s*Banking\b|\bIn\s+absence\s+of\s+valid\s+PAN\b|\bForm\s+15G\s*\/\s*15H\b|\bIncome\s+tax\s+department\b|\bwww\.icicibank\.com\b/i.test(line);
+  return /\bSummary\s+of\s+TDS\s*\/\s*Interest\b|\bAccount\s+Related\s+Other\s+Information\b|\bACCOUNT\s+NUMBER\s+MICR\s+CODE\s+IFSC\s+CODE\b|\bCategory\s+of\s+service:\s*Banking\b|\bIn\s+absence\s+of\s+valid\s+PAN\b|\bForm\s+15G\s*\/\s*15H\b|\bIncome\s+tax\s+department\b|\bwww\.icicibank\.com\b/i.test(line);
 }
 
 function detectYear(text: string): number | undefined {
