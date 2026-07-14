@@ -97,7 +97,8 @@ export async function findBatesStamps(
         if (!Array.isArray(t) || t.length < 6) continue;
         const x = t[4];
         const y = t[5];
-        const key = Math.round(y);
+        // 3px tolerance — split runs can have tiny baseline drift.
+        const key = Math.round(y / 3) * 3;
         const arr = lines.get(key) ?? [];
         arr.push({ ...it, x, y });
         lines.set(key, arr);
