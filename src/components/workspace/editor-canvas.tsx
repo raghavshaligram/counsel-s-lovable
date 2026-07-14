@@ -539,9 +539,9 @@ export function EditorCanvas({
   // without the original PDF text operation, and the live overlay draws only
   // the replacement glyphs. No whiteout/background rectangle is painted.
   const textEditMaskSignature = annos
-    .filter((a) => a.kind === "text-edit" && a.source?.originalString)
+    .filter(isTextEditAnnoWithSource)
     .map((a) => {
-      const src = a.source as TextSource & { textOpIndex?: number; textRunIndex?: number };
+      const src = a.source;
       const b = src.bounds;
       return [a.id, src.originalString, src.textOpIndex ?? "", src.textRunIndex ?? "", b?.x ?? "", b?.y ?? "", b?.w ?? "", b?.h ?? ""].join(":");
     })
@@ -624,9 +624,9 @@ export function EditorCanvas({
         const ctx = canvas.getContext("2d", { willReadFrequently: true }); if (!ctx) return;
         console.debug("[pdf-render] start", { canvasId: cid, page: op.srcPage, scale });
         const textEditMasks = annos
-          .filter((a) => a.kind === "text-edit" && a.source?.originalString)
+          .filter(isTextEditAnnoWithSource)
           .map((a) => {
-            const src = a.source as TextSource & { textOpIndex?: number; textRunIndex?: number };
+            const src = a.source;
             return {
               id: a.id,
               originalString: src.originalString,
@@ -639,9 +639,10 @@ export function EditorCanvas({
         let skippedTextOps = new Set<number>();
         if (textEditMasks.length) {
           try {
-            operatorList = await page.getOperatorList();
+            const loadedOperatorList = await page.getOperatorList() as { fnArray: number[]; argsArray: unknown[][] };
+            operatorList = loadedOperatorList;
             const OPS = (pdfjs as { OPS?: Record<string, number> }).OPS;
-            textOps = collectTextOperators(operatorList, OPS);
+            textOps = collectTextOperators(loadedOperatorList, OPS);
             skippedTextOps = resolveTextEditSkipOps(textOps, textEditMasks);
             console.debug("[text-edit-mask] render", {
               page: pageIndex,
@@ -684,9 +685,10 @@ export function EditorCanvas({
         const rawItems = content.items as Raw[];
         if (!operatorList) {
           try {
-            operatorList = await page.getOperatorList();
+            const loadedOperatorList = await page.getOperatorList() as { fnArray: number[]; argsArray: unknown[][] };
+            operatorList = loadedOperatorList;
             const OPS = (pdfjs as { OPS?: Record<string, number> }).OPS;
-            textOps = collectTextOperators(operatorList, OPS);
+            textOps = collectTextOperators(loadedOperatorList, OPS);
           } catch {
             textOps = [];
           }
