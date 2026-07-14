@@ -1145,15 +1145,21 @@ export function EditorCanvas({
     // anti-aliased thick strokes, italic skew, and ascenders/descenders
     // never leak through. Pad more vertically because pdf.js' glyph bbox
     // hugs cap-height; descenders ("y", "g") sit a few px below.
-    const coverPadX = Math.max(2, it.h * (it.italic ? 0.28 : 0.18));
-    const coverPadTop = Math.max(2, it.h * (it.bold ? 0.30 : 0.22));
-    const coverPadBottom = Math.max(2, it.h * 0.40);
+    const coverPadX = Math.max(1, it.h * (it.italic ? 0.10 : 0.06));
+    const coverPadTop = Math.max(1, it.h * 0.08);
+    const coverPadBottom = Math.max(1, it.h * 0.12);
+    // Hard clamp so the cover never bleeds into an adjacent line.
+    const maxCoverH = it.h * 1.25;
+    const rawCoverH = it.h + coverPadTop + coverPadBottom;
+    const clampedCoverH = Math.min(rawCoverH, maxCoverH);
+    const clampedTop = Math.min(coverPadTop, (clampedCoverH - it.h) / 2);
     const cover = {
       x: it.x - coverPadX,
-      y: it.y - coverPadTop,
+      y: it.y - clampedTop,
       w: it.w + coverPadX * 2,
-      h: it.h + coverPadTop + coverPadBottom,
+      h: clampedCoverH,
     };
+
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const id = uid();
     // Preserve the detected run font from the underlying text layer so
