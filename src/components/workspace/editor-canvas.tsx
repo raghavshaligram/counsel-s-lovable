@@ -612,6 +612,38 @@ export function EditorCanvas({
         setTextItems(items);
         setTextLoaded(true);
 
+        // Sample the page background from the four corners of the rendered
+        // canvas (16x16 blocks). Large, glyph-free samples produce a much
+        // more reliable page-colour than the ring sampler that has to guess
+        // around ink. Painted on the wrapper so text-edit covers can be
+        // transparent without revealing the workspace surface.
+        try {
+          const bctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (bctx) {
+            const S = 16;
+            const cw = canvas.width, ch = canvas.height;
+            const corners: Array<[number, number]> = [
+              [0, 0],
+              [Math.max(0, cw - S), 0],
+              [0, Math.max(0, ch - S)],
+              [Math.max(0, cw - S), Math.max(0, ch - S)],
+            ];
+            let r = 0, g = 0, b = 0, n = 0;
+            for (const [x, y] of corners) {
+              const d = bctx.getImageData(x, y, Math.min(S, cw), Math.min(S, ch)).data;
+              for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] < 128) continue;
+                r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+              }
+            }
+            if (n > 0) {
+              setPageBgColor({ r: r / n / 255, g: g / n / 255, b: b / n / 255 });
+            } else {
+              setPageBgColor({ r: 1, g: 1, b: 1 });
+            }
+          }
+        } catch { /* tainted */ }
+
       } catch (err) {
         console.error("[workspace EditorCanvas] page render failed", err);
         setTextLoaded(true);
