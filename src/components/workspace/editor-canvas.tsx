@@ -35,6 +35,14 @@ interface TextItem {
   /** Resolved CSS family from pdf.js `styles` map — richer than the raw
    *  PostScript fontName and used as a secondary signal for matchPdfFont. */
   cssFamily?: string;
+  /** Cleaned real family name from the PDF FontDescriptor (subset prefix
+   *  and style/weight suffixes stripped) — e.g. "Inter", "Helvetica Neue",
+   *  "Times New Roman". Used as the primary font-family on the edit overlay
+   *  so the user sees the real family, not a metric twin, when installed. */
+  realFamily?: string;
+  /** Numeric weight (100..900) from the FontDescriptor / real name tokens,
+   *  when the PDF gives us a signal richer than bold-or-not. */
+  descriptorWeight?: number;
   fontKey?: FontKey;
   fontApprox?: boolean;
   fontWeight?: number | string;
@@ -85,6 +93,41 @@ function isOpaquePdfjsFontId(name: string | undefined): boolean {
   return !!name && OPAQUE_PDFJS_FONT_ID.test(name);
 }
 
+// Weight keyword → numeric mapping for FontDescriptor real-name parsing.
+const WEIGHT_TOKENS: Array<[RegExp, number]> = [
+  [/thin|hairline/i, 100],
+  [/extralight|ultralight/i, 200],
+  [/light/i, 300],
+  [/regular|roman|book|normal/i, 400],
+  [/medium/i, 500],
+  [/semibold|demibold|demi/i, 600],
+  [/extrabold|ultrabold/i, 800],
+  [/black|heavy/i, 900],
+  [/bold/i, 700],
+];
+function weightFromRealName(name: string | undefined): number | undefined {
+  if (!name) return undefined;
+  for (const [rx, w] of WEIGHT_TOKENS) if (rx.test(name)) return w;
+  return undefined;
+}
+
+// Strip subset prefix ("ABCDEF+") and style/weight suffixes from a raw font
+// name so the result is a real CSS-usable family — e.g.
+// "AAAAAA+HelveticaNeue-Bold" → "Helvetica Neue",
+// "TimesNewRomanPS-BoldItalicMT" → "Times New Roman".
+function cleanFamilyName(raw: string | undefined): string {
+  if (!raw) return "";
+  let s = raw.replace(/^[A-Z]{6}\+/, "").trim();
+  // Drop the -Style/-Weight suffix chain.
+  s = s.replace(/[-_](?:bold|italic|oblique|regular|roman|book|light|medium|semibold|demibold|extrabold|ultrabold|thin|hairline|black|heavy)(?=$|[-_ ])/gi, "");
+  // Drop Apple/Adobe PS suffixes.
+  s = s.replace(/PSMT$|PS-.*$|MT$|-Roman$/g, "");
+  // CamelCase → spaced ("HelveticaNeue" → "Helvetica Neue").
+  s = s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  if (isOpaquePdfjsFontId(s)) return "";
+  return s;
+}
+
 // Ask pdf.js for the real Font descriptor for every font id referenced by a
 // page's text content. Uses the callback form of commonObjs.get, which fires
 // as soon as the descriptor is available — descriptors are populated during
@@ -92,18 +135,22 @@ function isOpaquePdfjsFontId(name: string | undefined): boolean {
 async function resolvePdfFontInfo(
   page: { commonObjs: { get: (id: string, cb: (font: unknown) => void) => void } },
   ids: Iterable<string>,
-): Promise<Map<string, { bold: boolean; italic: boolean; realName: string }>> {
-  const out = new Map<string, { bold: boolean; italic: boolean; realName: string }>();
+): Promise<Map<string, { bold: boolean; italic: boolean; realName: string; weight?: number }>> {
+  const out = new Map<string, { bold: boolean; italic: boolean; realName: string; weight?: number }>();
   await Promise.all([...new Set(ids)].map((id) => new Promise<void>((resolve) => {
     let done = false;
     const finish = (f: unknown) => {
       if (done) return; done = true;
       const fo = f as { bold?: boolean; black?: boolean; italic?: boolean; name?: string; loadedName?: string } | null;
       if (fo) {
+        const realName = String(fo.name ?? fo.loadedName ?? id);
+        const nameWeight = weightFromRealName(realName);
+        const weight = nameWeight ?? (fo.black ? 900 : fo.bold ? 700 : undefined);
         out.set(id, {
           bold: !!(fo.bold || fo.black),
           italic: !!fo.italic,
-          realName: String(fo.name ?? fo.loadedName ?? id),
+          realName,
+          weight,
         });
       }
       resolve();
@@ -400,13 +447,10 @@ export function EditorCanvas({
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Sampled page background colour (from canvas corners, large samples — much
-  // more reliable than sampling around a single glyph). Painted on the page
-  // wrapper so text-edit covers can be transparent and reveal it.
-  const [pageBgColor, setPageBgColor] = useState<RGB | null>(null);
-  // 0..1 confidence that the page background is uniform. When low, text-edit
-  // covers stay transparent instead of painting a potentially wrong solid band.
-  const [backgroundConfidence, setBackgroundConfidence] = useState(1);
+  // Text-edit covers are always transparent (Acrobat / Foxit parity — no
+  // colored patch is painted under edited text). Original glyphs are erased
+  // from the base canvas via clearRect in onClickEditHit; that erased hole
+  // shows the wrapper's plain paper colour underneath.
   // Bumped whenever a text-edit annotation is removed, so the page re-renders
   // and restores the original glyph pixels that clearRect erased at edit time.
   const [renderTick, setRenderTick] = useState(0);
@@ -603,12 +647,23 @@ export function EditorCanvas({
               storedFontWeight: fontWeight,
             });
           }
+          // Real family name (subset prefix + style suffixes stripped) —
+          // preferred over pdf.js's opaque id or the raw PS name. Try the
+          // descriptor's real name first, then the pdf.js styles fontFamily,
+          // then the raw font name.
+          const realFamily =
+            cleanFamilyName(descRealName) ||
+            cleanFamilyName(styleEntry?.fontFamily) ||
+            cleanFamilyName(it.fontName) ||
+            "";
           return [{
             x, y, w: it.width, h: fh, str: it.str, family, bold, italic,
             transform: it.transform,
             // Store SANITISED names so the click-to-edit path never sees "g_d0_f1"
             fontName: sanitizedFontName || undefined,
             cssFamily: resolvedFontFamily,
+            realFamily: realFamily || undefined,
+            descriptorWeight: descriptor?.weight,
             fontKey, fontApprox, fontWeight,
             lineHeight: 1.15, letterSpacing, color, bg,
           }];
@@ -643,51 +698,8 @@ export function EditorCanvas({
         setTextItems(items);
         setTextLoaded(true);
 
-        // Sample the page background from the four corners of the rendered
-        // canvas (16x16 blocks). Large, glyph-free samples produce a much
-        // more reliable page-colour than the ring sampler that has to guess
-        // around ink. Painted on the wrapper so text-edit covers can be
-        // transparent without revealing the workspace surface.
-        try {
-          const bctx = canvas.getContext("2d", { willReadFrequently: true });
-          if (bctx) {
-            const S = 16;
-            const cw = canvas.width, ch = canvas.height;
-            const corners: Array<[number, number]> = [
-              [0, 0],
-              [Math.max(0, cw - S), 0],
-              [0, Math.max(0, ch - S)],
-              [Math.max(0, cw - S), Math.max(0, ch - S)],
-            ];
-            const cornerColors: Array<{ r: number; g: number; b: number }> = [];
-            for (const [x, y] of corners) {
-              const d = bctx.getImageData(x, y, Math.min(S, cw), Math.min(S, ch)).data;
-              let r = 0, g = 0, b = 0, n = 0;
-              for (let i = 0; i < d.length; i += 4) {
-                if (d[i + 3] < 128) continue;
-                r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
-              }
-              if (n > 0) cornerColors.push({ r: r / n, g: g / n, b: b / n });
-            }
-            if (cornerColors.length > 0) {
-              let r = 0, g = 0, b = 0;
-              for (const c of cornerColors) { r += c.r; g += c.g; b += c.b; }
-              const n = cornerColors.length;
-              setPageBgColor({ r: r / n / 255, g: g / n / 255, b: b / n / 255 });
-              // Confidence falls as the corners diverge from the average.
-              // At maxDist ≈ 80 the confidence reaches 0; below ≈ 8 it is ~0.9.
-              let maxDist = 0;
-              for (const c of cornerColors) {
-                const dr = c.r - r / n, dg = c.g - g / n, db = c.b - b / n;
-                maxDist = Math.max(maxDist, Math.sqrt(dr * dr + dg * dg + db * db));
-              }
-              setBackgroundConfidence(Math.max(0, Math.min(1, 1 - maxDist / 80)));
-            } else {
-              setPageBgColor({ r: 1, g: 1, b: 1 });
-              setBackgroundConfidence(0);
-            }
-          }
-        } catch { /* tainted */ }
+        // (Corner background sampling removed — text-edit covers are now
+        // always transparent, so there is nothing to sample for.)
 
       } catch (err) {
         console.error("[workspace EditorCanvas] page render failed", err);
@@ -1298,10 +1310,9 @@ export function EditorCanvas({
     };
 
     // Erase the original glyph pixels from the base canvas so nothing bleeds
-    // through the (now transparent) cover element. The page wrapper below
-    // paints the sampled page-corner colour, so this hole reveals the true
-    // page colour without visible seams. On anno deletion, renderTick bumps
-    // and the page re-renders to restore the pixels.
+    // through the transparent cover element (Acrobat-style — nothing is
+    // painted under edited text). On anno deletion, renderTick bumps and the
+    // page re-renders to restore the pixels.
     if (canvas) {
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (ctx) {
@@ -1347,8 +1358,20 @@ export function EditorCanvas({
       fontWeight: String(resolvedEdit.fontWeight),
     };
     const cssFamFallback = cssFam;
-    const fontFamilyOverride = matched.matched ? matched.fontFamily : (cssFamFallback ?? matched.fontFamily);
-    const fontWeight = numericFontWeight(matched.matched ? matched.fontWeight : (it.fontWeight ?? undefined), it.bold);
+    // Acrobat-style font selection: use the PDF's REAL family name as the
+    // primary CSS font-family so the DOM shows a meaningful family (e.g.
+    // "Inter", "Helvetica Neue", "Times New Roman"). The resolver's metric
+    // twin stack is appended as fallback — when the real family isn't
+    // installed / webfont-loaded, the twin (Carlito/Arimo/Tinos/...) wins,
+    // matching Acrobat's substitute-font behaviour.
+    const realFamName = it.realFamily && !isOpaquePdfjsFontId(it.realFamily) ? it.realFamily : "";
+    const twinStack = matched.matched ? matched.fontFamily : (cssFamFallback ?? matched.fontFamily);
+    const fontFamilyOverride = realFamName ? `"${realFamName}", ${twinStack}` : twinStack;
+    // Weight priority: FontDescriptor numeric weight (300/500/600/700/…)
+    // beats a bold-boolean coercion. Only fall through when the PDF gave us
+    // no numeric signal.
+    const fontWeight = it.descriptorWeight
+      ?? numericFontWeight(matched.matched ? matched.fontWeight : (it.fontWeight ?? undefined), it.bold);
     console.log("[text-edit-font] extraction", {
       rawPdfFontName: it.fontName,
       pdfCssFamily: it.cssFamily,
@@ -1663,7 +1686,7 @@ export function EditorCanvas({
   void onRequestOcr;
 
   return (
-    <div className="relative inline-block" style={{ background: pageBgColor ? rgbCss(pageBgColor) : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
+    <div className="relative inline-block" style={{ background: "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
 
 
@@ -1711,18 +1734,16 @@ export function EditorCanvas({
           const isEditing = editingId === a.id;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg);
-          const cover = { background: bgCss };
-          if (backgroundConfidence < 0.9) {
-            cover.background = "transparent";
-          }
+          // Acrobat / Foxit parity: no background is painted under edited
+          // text. Original glyphs were erased from the base canvas at edit
+          // time (clearRect in onClickEditHit); the textarea paints the
+          // replacement glyphs on top.
+          const cover = { background: "transparent" as const };
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
               background: cover.background,
-              backgroundConfidence,
-              sampledBg: a.bg,
               coverPdf: a.cover,
               coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
             });
