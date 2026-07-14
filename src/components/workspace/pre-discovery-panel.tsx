@@ -13,11 +13,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useIsPro, useRequirePro, LockBadge } from "@/lib/pro-gate";
 import type { ToolPanelCtx } from "./tool-panels";
-import {
-  capabilityCheck,
-  getDiscoveryDebugLines,
-  subscribeDiscoveryDebug,
-} from "@/lib/discovery/client";
+import { capabilityCheck } from "@/lib/discovery/client";
 import { searchDocument, type SemanticHit } from "@/lib/discovery/search";
 
 function highlight(text: string, query: string) {
