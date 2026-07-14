@@ -12,11 +12,12 @@
  * by the workspace shell — no second pdfjs.getDocument and no pdf-lib parse.
  * Per-page work (thumbnails) is lazy via IntersectionObserver.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
   Check,
   CornerDownRight,
+  EyeOff,
   FileText,
   MessageSquare,
   Pencil,
@@ -31,6 +32,57 @@ import {
   saveBookmarksDebounced,
   type UserBookmark,
 } from "@/lib/workspace/persistence";
+
+/* ------------------------ Overlay geometry ------------------------ */
+
+type Rect = { right: number; top: number; width: number; height: number };
+const RECT_KEY = "vault:nav-overlay-rect";
+// Default sits clear of the canvas scrollbar (right ≥ 20px) with a wider
+// pane so titles don't wrap. Height defaults to 560 so the bookmarks + outline
+// both breathe without immediately hitting the "maxHeight" clamp.
+const DEFAULT_RECT: Rect = { right: 24, top: 56, width: 380, height: 560 };
+const MIN_W = 280;
+const MIN_H = 220;
+
+function readRect(): Rect {
+  if (typeof window === "undefined") return DEFAULT_RECT;
+  try {
+    const raw = window.localStorage.getItem(RECT_KEY);
+    if (!raw) return DEFAULT_RECT;
+    const p = JSON.parse(raw) as Partial<Rect>;
+    return {
+      right: Math.max(0, Number(p.right ?? DEFAULT_RECT.right)),
+      top: Math.max(0, Number(p.top ?? DEFAULT_RECT.top)),
+      width: Math.max(MIN_W, Number(p.width ?? DEFAULT_RECT.width)),
+      height: Math.max(MIN_H, Number(p.height ?? DEFAULT_RECT.height)),
+    };
+  } catch {
+    return DEFAULT_RECT;
+  }
+}
+function writeRect(r: Rect) {
+  try { window.localStorage.setItem(RECT_KEY, JSON.stringify(r)); } catch { /* ignore */ }
+}
+
+/* ---------------- Outline overrides (rename / hide) --------------- */
+
+type OutlineOverride = { title?: string; hidden?: boolean };
+type OutlineOverrides = Record<string, OutlineOverride>;
+function overridesKey(name: string | null, size: number | null) {
+  if (!name || size == null) return null;
+  return `vault:outline-overrides:${name}:${size}`;
+}
+function loadOverrides(name: string | null, size: number | null): OutlineOverrides {
+  const k = overridesKey(name, size);
+  if (!k || typeof window === "undefined") return {};
+  try { return JSON.parse(window.localStorage.getItem(k) ?? "{}") ?? {}; } catch { return {}; }
+}
+function saveOverrides(name: string | null, size: number | null, v: OutlineOverrides) {
+  const k = overridesKey(name, size);
+  if (!k) return;
+  try { window.localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ }
+}
+
 
 type Tab = "bookmarks" | "pages" | "comments";
 
@@ -73,21 +125,23 @@ export function NavOverlay(props: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const doc = props.pdfDoc as PdfJsDoc | null;
 
+  // Draggable + resizable geometry. Persisted per browser.
+  const [rect, setRect] = useState<Rect>(() => (typeof window === "undefined" ? DEFAULT_RECT : readRect()));
+  const dragRef = useRef<{ x: number; y: number; right: number; top: number } | null>(null);
+  const resizeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
   useEffect(() => {
     if (open) setTab(defaultTab);
   }, [open, defaultTab]);
 
+  useEffect(() => { writeRect(rect); }, [rect]);
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     const onClick = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;
-      // The toolbar trigger toggles the overlay itself; ignore its clicks so
-      // the trigger can close-then-open. Otherwise outside-click would close
-      // first and the trigger would immediately reopen (or vice versa).
       if (t.closest("[data-nav-toggle]")) return;
       if (ref.current && !ref.current.contains(t)) onClose();
     };
@@ -99,9 +153,65 @@ export function NavOverlay(props: Props) {
     };
   }, [open, onClose]);
 
+  // Drag + resize move handlers (mounted once).
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const parent = ref.current?.parentElement;
+      const bounds = parent?.getBoundingClientRect();
+      if (dragRef.current) {
+        const d = dragRef.current;
+        const dx = e.clientX - d.x;
+        const dy = e.clientY - d.y;
+        setRect((r) => {
+          const maxRight = bounds ? Math.max(0, bounds.width - r.width) : 5000;
+          const maxTop = bounds ? Math.max(0, bounds.height - 60) : 5000;
+          return {
+            ...r,
+            right: Math.min(maxRight, Math.max(0, d.right - dx)),
+            top: Math.min(maxTop, Math.max(0, d.top + dy)),
+          };
+        });
+      } else if (resizeRef.current) {
+        const s = resizeRef.current;
+        const dx = e.clientX - s.x;
+        const dy = e.clientY - s.y;
+        setRect((r) => {
+          const maxW = bounds ? Math.max(MIN_W, bounds.width - r.right) : 2000;
+          const maxH = bounds ? Math.max(MIN_H, bounds.height - r.top - 10) : 2000;
+          return {
+            ...r,
+            width: Math.min(maxW, Math.max(MIN_W, s.w + dx)),
+            height: Math.min(maxH, Math.max(MIN_H, s.h + dy)),
+          };
+        });
+      }
+    };
+    const onUp = () => { dragRef.current = null; resizeRef.current = null; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const startDrag = useCallback((e: React.MouseEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("button, input")) return;
+    dragRef.current = { x: e.clientX, y: e.clientY, right: rect.right, top: rect.top };
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }, [rect.right, rect.top]);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    resizeRef.current = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+    e.stopPropagation();
+  }, [rect.width, rect.height]);
+
   if (!open) return null;
 
-  // jump-and-stay; double-click closes
   const jumpStay = (n: number) => props.onJumpPage(n);
   const jumpAnnoStay = (a: Anno) => props.onJumpAnno(a);
 
@@ -110,10 +220,20 @@ export function NavOverlay(props: Props) {
       ref={ref}
       role="dialog"
       aria-label="Document navigation"
-      className="absolute right-3 top-14 z-40 flex w-[340px] flex-col border border-border bg-surface-1"
-      style={{ borderRadius: 12, boxShadow: "var(--shadow-float)", maxHeight: "calc(100% - 80px)" }}
+      className="absolute z-40 flex flex-col border border-border bg-surface-1"
+      style={{
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        borderRadius: 12,
+        boxShadow: "var(--shadow-float)",
+      }}
     >
-      <header className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1.5">
+      <header
+        onMouseDown={startDrag}
+        className="flex shrink-0 cursor-move items-center gap-1 border-b border-border px-1.5 py-1.5 select-none"
+      >
         <TabBtn active={tab === "bookmarks"} onClick={() => setTab("bookmarks")} icon={<Bookmark className="h-3.5 w-3.5" />} label="Bookmarks" />
         <TabBtn active={tab === "pages"} onClick={() => setTab("pages")} icon={<FileText className="h-3.5 w-3.5" />} label="Pages" />
         <TabBtn active={tab === "comments"} onClick={() => setTab("comments")} icon={<MessageSquare className="h-3.5 w-3.5" />} label="Comments" />
@@ -157,9 +277,23 @@ export function NavOverlay(props: Props) {
           />
         )}
       </div>
+      {/* Resize handle (bottom-right corner) */}
+      <div
+        onMouseDown={startResize}
+        aria-label="Resize"
+        title="Drag to resize"
+        className="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize"
+        style={{
+          background:
+            "linear-gradient(135deg, transparent 0 45%, hsl(var(--border)) 45% 55%, transparent 55% 70%, hsl(var(--border)) 70% 80%, transparent 80%)",
+          borderBottomRightRadius: 12,
+        }}
+      />
     </div>
   );
 }
+
+
 
 function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
@@ -213,6 +347,23 @@ function BookmarksTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
+  const [outlineOverrides, setOutlineOverrides] = useState<OutlineOverrides>({});
+
+  // Load per-document outline overrides.
+  useEffect(() => {
+    setOutlineOverrides(loadOverrides(fileName, fileSize));
+  }, [fileName, fileSize]);
+
+  const patchOverride = useCallback((id: string, patch: OutlineOverride | null) => {
+    setOutlineOverrides((cur) => {
+      const next = { ...cur };
+      if (patch === null) delete next[id];
+      else next[id] = { ...next[id], ...patch };
+      saveOverrides(fileName, fileSize, next);
+      return next;
+    });
+  }, [fileName, fileSize]);
+
 
   // Load user bookmarks for this document.
   useEffect(() => {
@@ -422,7 +573,7 @@ function BookmarksTab({
         )}
       </section>
 
-      {/* PDF outline — read-only navigation aid */}
+      {/* PDF outline — inline rename / hide overrides persist per document */}
       {outline && outline.length > 0 && (
         <section>
           <h3 className="mb-1.5 px-1 text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
@@ -430,7 +581,14 @@ function BookmarksTab({
           </h3>
           <ul className="space-y-0.5 text-[12.5px]">
             {outline.map((n) => (
-              <OutlineRow key={n.id} node={n} onJump={onJump} onJumpClose={onJumpAndClose} />
+              <OutlineRow
+                key={n.id}
+                node={n}
+                overrides={outlineOverrides}
+                onPatch={patchOverride}
+                onJump={onJump}
+                onJumpClose={onJumpAndClose}
+              />
             ))}
           </ul>
         </section>
@@ -443,18 +601,29 @@ function BookmarksTab({
 
 function OutlineRow({
   node,
+  overrides,
+  onPatch,
   onJump,
   onJumpClose,
 }: {
   node: OutlineFlat;
+  overrides: OutlineOverrides;
+  onPatch: (id: string, patch: OutlineOverride | null) => void;
   onJump: (n: number) => void;
   onJumpClose: (n: number) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const ov = overrides[node.id] ?? {};
+  const displayTitle = ov.title ?? node.title;
+  const [draft, setDraft] = useState(displayTitle);
+  useEffect(() => { setDraft(displayTitle); }, [displayTitle]);
+  if (ov.hidden) return null;
   const hasChildren = node.children.length > 0;
+
   return (
     <li>
-      <div className="flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: node.depth * 12 }}>
+      <div className="group flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: node.depth * 12 }}>
         {hasChildren ? (
           <button
             type="button"
@@ -467,33 +636,80 @@ function OutlineRow({
         ) : (
           <span className="inline-block h-5 w-5" />
         )}
-        <button
-          type="button"
-          onClick={() => node.pageIndex !== null && onJump(node.pageIndex)}
-          onDoubleClick={() => node.pageIndex !== null && onJumpClose(node.pageIndex)}
-          disabled={node.pageIndex === null}
-          className={cn(
-            "min-w-0 flex-1 truncate py-1 text-left text-foreground",
-            node.pageIndex === null && "text-text-muted",
-            node.bold && "font-semibold",
-            node.italic && "italic",
-          )}
-          title={node.title}
-        >
-          {node.title}
-        </button>
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              const t = draft.trim();
+              onPatch(node.id, t && t !== node.title ? { title: t } : { title: undefined });
+              setEditing(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const t = draft.trim();
+                onPatch(node.id, t && t !== node.title ? { title: t } : { title: undefined });
+                setEditing(false);
+              }
+              if (e.key === "Escape") { setDraft(displayTitle); setEditing(false); }
+            }}
+            className="min-w-0 flex-1 bg-transparent px-1 py-1 text-[12.5px] text-foreground outline-none"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => node.pageIndex !== null && onJump(node.pageIndex)}
+            onDoubleClick={() => node.pageIndex !== null && onJumpClose(node.pageIndex)}
+            disabled={node.pageIndex === null}
+            className={cn(
+              "min-w-0 flex-1 truncate py-1 text-left text-foreground",
+              node.pageIndex === null && "text-text-muted",
+              node.bold && "font-semibold",
+              node.italic && "italic",
+            )}
+            title={displayTitle}
+          >
+            {displayTitle}
+          </button>
+        )}
         {node.pageIndex !== null && (
           <span className="shrink-0 px-1 text-[11px] tabular-nums text-text-muted">{node.pageIndex + 1}</span>
         )}
+        <button
+          type="button"
+          aria-label="Rename"
+          onClick={() => { setDraft(displayTitle); setEditing(true); }}
+          className="opacity-0 group-hover:opacity-100 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          aria-label="Hide from list"
+          title="Hide from this list (does not modify the PDF)"
+          onClick={() => onPatch(node.id, { hidden: true })}
+          className="opacity-0 group-hover:opacity-100 mr-1 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+        >
+          <EyeOff className="h-3 w-3" />
+        </button>
       </div>
       {hasChildren && open && (
         <ul className="space-y-0.5">
           {node.children.map((c) => (
-            <OutlineRow key={c.id} node={c} onJump={onJump} onJumpClose={onJumpClose} />
+            <OutlineRow
+              key={c.id}
+              node={c}
+              overrides={overrides}
+              onPatch={onPatch}
+              onJump={onJump}
+              onJumpClose={onJumpClose}
+            />
           ))}
         </ul>
       )}
     </li>
+
   );
 }
 
