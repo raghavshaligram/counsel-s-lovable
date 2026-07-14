@@ -53,6 +53,7 @@ function InspectorEmpty({ children }: { children: React.ReactNode }) {
 }
 import { cn } from "@/lib/utils";
 import { SignatureCreator } from "./signature-creators";
+import { markSignatureDataUrl } from "./action-bar/signature-registry";
 import type { Action as EditorAction, State as EditorState } from "@/lib/editor/state";
 import type { Anno, Reply } from "@/lib/editor/types";
 import { saveSidecarNow } from "@/lib/workspace/persistence";
@@ -320,6 +321,9 @@ function SignFillPanel({ ctx }: { ctx: ToolPanelCtx }) {
     (s: StoredSignature) => {
       const img = new Image();
       img.onload = () => {
+        // Register this dataUrl as a signature so the Intelligent Action Bar
+        // shows the Signature primary set when the placed image is selected.
+        markSignatureDataUrl(s.pngDataUrl);
         editorDispatch({
           type: "SET_PENDING_IMAGE",
           img: { dataUrl: s.pngDataUrl, mime: "image/png", w: img.naturalWidth, h: img.naturalHeight },
