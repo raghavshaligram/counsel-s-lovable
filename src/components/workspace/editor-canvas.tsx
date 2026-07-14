@@ -480,12 +480,13 @@ export function EditorCanvas({
             family === "mono" ? '"Courier New", Courier, monospace' :
             "Helvetica, Arial, sans-serif";
           const resolved = resolveToFontKey({
-            postscriptName: sanitizedFontName || undefined,
-            pdfFamily: family,
+            descriptor: descRealName || undefined,
+            postscriptName: (it.fontName && !isOpaquePdfjsFontId(it.fontName)) ? it.fontName : undefined,
             cssFamily: sanitizedCssFamily || undefined,
             italicHint: italic,
             weightHint: bold ? 700 : undefined,
           });
+
           const det = { key: resolved.key, approximate: resolved.approximate };
           const matchedFont = { matched: resolved.matched, fontFamily: resolved.fontFamily, fontWeight: String(resolved.fontWeight) };
           const resolvedFontFamily = matchedFont.matched ? matchedFont.fontFamily : genericStack;
