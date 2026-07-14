@@ -9672,6 +9672,60 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
     } finally { setBusy(false); }
   }, [bytes, file, outline, links]);
 
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoStats, setAutoStats] = useState<{ headings: number; levels: number } | null>(null);
+  const [replaceOnDetect, setReplaceOnDetect] = useState(true);
+
+  const runAutoDetect = useCallback(async () => {
+    if (!file) return;
+    setAutoBusy(true);
+    setAutoStats(null);
+    const toastId = `auto-detect-${file.name}`;
+    try {
+      toast.loading("Scanning document for headings…", { id: toastId });
+      const { detectHeadings } = await importChunk(() => import("@/lib/outline/auto-detect"));
+      let scanBytes = bytes ?? new Uint8Array(await file.arrayBuffer());
+      let result = await detectHeadings(scanBytes);
+
+      // Scan fallback — no text layer means we need OCR first.
+      if (!result.stats.hasTextLayer) {
+        toast.loading("No text layer found. Running OCR…", { id: toastId });
+        const { ocrPdfToSearchable } = await importChunk(() => import("@/lib/pdf/ocr-pdf"));
+        scanBytes = await ocrPdfToSearchable(file, (p) => {
+          toast.loading(`OCR ${p.page}/${p.totalPages} — ${p.stage}`, { id: toastId });
+        });
+        setBytes(scanBytes);
+        toast.loading("Detecting headings from OCR text…", { id: toastId });
+        result = await detectHeadings(scanBytes);
+      }
+
+      const flat = (function count(nodes: import("@/lib/outline/types").OutlineNode[]): number {
+        let n = 0;
+        for (const x of nodes) n += 1 + count(x.children);
+        return n;
+      })(result.outline);
+
+      if (flat === 0) {
+        toast.message("No headings detected", {
+          id: toastId,
+          description: "Try adjusting the document or add bookmarks manually.",
+        });
+      } else {
+        setOutline((prev) => (replaceOnDetect ? result.outline : [...prev, ...result.outline]));
+        setAutoStats({ headings: flat, levels: result.stats.levels });
+        toast.success(`Detected ${flat} heading${flat === 1 ? "" : "s"} across ${result.stats.levels} level${result.stats.levels === 1 ? "" : "s"}`, {
+          id: toastId,
+          description: "Review, edit, and click Export PDF to bake bookmarks in.",
+        });
+      }
+    } catch (err) {
+      console.error("[outline] auto-detect failed", err);
+      toast.error("Auto-detect failed", { id: toastId, description: (err as Error).message });
+    } finally {
+      setAutoBusy(false);
+    }
+  }, [file, bytes, replaceOnDetect]);
+
   const selectedNode = selectedNodeId ? findNode(selectedNodeId) : null;
   const pageCount = parsed?.pageCount ?? 1;
   const linksOnCurrent = links.filter((l) => l.page === currentPage);
@@ -9685,6 +9739,41 @@ function OutlinePanel({ ctx }: { ctx: ToolPanelCtx }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <Section title="Auto-detect bookmarks" icon={<Wand2 className="h-3 w-3" />}>
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] leading-snug text-text-muted">
+            Scans the document for numbered sections, headings, and titled blocks. Runs OCR silently if the PDF has no text layer.
+          </p>
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-text-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="h-3 w-3 accent-[var(--vault)]"
+              checked={replaceOnDetect}
+              onChange={(e) => setReplaceOnDetect(e.target.checked)}
+            />
+            Replace existing bookmarks
+          </label>
+          <button
+            type="button"
+            onClick={runAutoDetect}
+            disabled={autoBusy}
+            className={cn(
+              "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-vault/40 bg-vault/10 px-2.5 py-1.5 text-[12px] font-medium text-vault hover:bg-vault/15",
+              autoBusy && "opacity-60 cursor-wait",
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
+            {autoBusy ? "Scanning…" : "Auto-detect now"}
+          </button>
+          {autoStats && (
+            <p className="text-[10.5px] text-text-muted">
+              Last run: {autoStats.headings} heading{autoStats.headings === 1 ? "" : "s"} across {autoStats.levels} level{autoStats.levels === 1 ? "" : "s"}.
+            </p>
+          )}
+        </div>
+      </Section>
+
+
       <Section
         title="Bookmarks"
         icon={<ChevronDown className="h-3 w-3" />}
