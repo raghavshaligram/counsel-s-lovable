@@ -608,7 +608,22 @@ export function EditorCanvas({
 
           const det = { key: resolved.key, approximate: resolved.approximate };
           const matchedFont = { matched: resolved.matched, fontFamily: resolved.fontFamily, fontWeight: String(resolved.fontWeight) };
-          const resolvedFontFamily = matchedFont.matched ? matchedFont.fontFamily : genericStack;
+          // Never demote an embedded PDF font to a generic system stack when
+          // pdf.js already gave us the real family name. Preserve the exact
+          // face pdf.js resolved from the embedded font dictionary; only fall
+          // back to the generic family when we have no usable name at all.
+          const preservedCssFamily = sanitizedCssFamily
+            ? (/[",]/.test(sanitizedCssFamily) ? sanitizedCssFamily : `"${sanitizedCssFamily}"`)
+            : "";
+          const preservedPsFamily = sanitizedFontName
+            ? `"${sanitizedFontName}"`
+            : "";
+          const fallbackStack = [preservedCssFamily, preservedPsFamily, genericStack]
+            .filter(Boolean)
+            .join(", ");
+          const resolvedFontFamily = matchedFont.matched
+            ? matchedFont.fontFamily
+            : (fallbackStack || genericStack);
           const fontWeight = numericFontWeight(matchedFont.matched ? matchedFont.fontWeight : undefined, bold);
           const fontKey = det.key;
           const fontApprox = det.approximate;
