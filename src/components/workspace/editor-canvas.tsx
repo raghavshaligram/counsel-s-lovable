@@ -19,7 +19,7 @@ import { resolveToFontKey } from "@/lib/fonts/bridge";
 import { rgbCss, uid, type State, type Action } from "@/lib/editor/state";
 import type { Anno, PageOp, RGB, TextAnno, TextSource } from "@/lib/editor/types";
 import { useGoogleFontLoader } from "@/hooks/useGoogleFontLoader";
-import { matchPdfFont } from "@/lib/utils/fontMatcher";
+
 
 interface TextItem {
   x: number;
@@ -1186,7 +1186,7 @@ export function EditorCanvas({
     console.log("[text-edit-font] extraction", {
       rawPdfFontName: it.fontName,
       pdfCssFamily: it.cssFamily,
-      matchedFontName: matched?.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
+      matchedFontName: matched.matched ? cssFontFamilyName(matched.fontFamily) : "(unmatched — preserving raw name)",
       fontFamilyOverride: fontFamilyOverride ?? "",
       fontKey,
       fontApproximate: !!it.fontApprox,
