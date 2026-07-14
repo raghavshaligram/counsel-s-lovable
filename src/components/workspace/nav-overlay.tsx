@@ -623,7 +623,7 @@ function OutlineRow({
 
   return (
     <li>
-      <div className="flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: node.depth * 12 }}>
+      <div className="group flex items-center gap-1 rounded-md hover:bg-surface-2" style={{ paddingLeft: node.depth * 12 }}>
         {hasChildren ? (
           <button
             type="button"
@@ -636,33 +636,80 @@ function OutlineRow({
         ) : (
           <span className="inline-block h-5 w-5" />
         )}
-        <button
-          type="button"
-          onClick={() => node.pageIndex !== null && onJump(node.pageIndex)}
-          onDoubleClick={() => node.pageIndex !== null && onJumpClose(node.pageIndex)}
-          disabled={node.pageIndex === null}
-          className={cn(
-            "min-w-0 flex-1 truncate py-1 text-left text-foreground",
-            node.pageIndex === null && "text-text-muted",
-            node.bold && "font-semibold",
-            node.italic && "italic",
-          )}
-          title={node.title}
-        >
-          {node.title}
-        </button>
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              const t = draft.trim();
+              onPatch(node.id, t && t !== node.title ? { title: t } : { title: undefined });
+              setEditing(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const t = draft.trim();
+                onPatch(node.id, t && t !== node.title ? { title: t } : { title: undefined });
+                setEditing(false);
+              }
+              if (e.key === "Escape") { setDraft(displayTitle); setEditing(false); }
+            }}
+            className="min-w-0 flex-1 bg-transparent px-1 py-1 text-[12.5px] text-foreground outline-none"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => node.pageIndex !== null && onJump(node.pageIndex)}
+            onDoubleClick={() => node.pageIndex !== null && onJumpClose(node.pageIndex)}
+            disabled={node.pageIndex === null}
+            className={cn(
+              "min-w-0 flex-1 truncate py-1 text-left text-foreground",
+              node.pageIndex === null && "text-text-muted",
+              node.bold && "font-semibold",
+              node.italic && "italic",
+            )}
+            title={displayTitle}
+          >
+            {displayTitle}
+          </button>
+        )}
         {node.pageIndex !== null && (
           <span className="shrink-0 px-1 text-[11px] tabular-nums text-text-muted">{node.pageIndex + 1}</span>
         )}
+        <button
+          type="button"
+          aria-label="Rename"
+          onClick={() => { setDraft(displayTitle); setEditing(true); }}
+          className="opacity-0 group-hover:opacity-100 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          aria-label="Hide from list"
+          title="Hide from this list (does not modify the PDF)"
+          onClick={() => onPatch(node.id, { hidden: true })}
+          className="opacity-0 group-hover:opacity-100 mr-1 grid h-6 w-6 place-items-center rounded text-text-muted hover:bg-surface-1 hover:text-foreground"
+        >
+          <EyeOff className="h-3 w-3" />
+        </button>
       </div>
       {hasChildren && open && (
         <ul className="space-y-0.5">
           {node.children.map((c) => (
-            <OutlineRow key={c.id} node={c} onJump={onJump} onJumpClose={onJumpClose} />
+            <OutlineRow
+              key={c.id}
+              node={c}
+              overrides={overrides}
+              onPatch={onPatch}
+              onJump={onJump}
+              onJumpClose={onJumpClose}
+            />
           ))}
         </ul>
       )}
     </li>
+
   );
 }
 
