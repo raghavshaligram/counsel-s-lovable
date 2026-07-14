@@ -590,7 +590,7 @@ function SignFillPanel({ ctx }: { ctx: ToolPanelCtx }) {
       {/* ───────────────── CSV batch fill ───────────────── */}
       <CsvFillSection file={file} fields={fields ?? []} flatten={flatten} />
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -894,7 +894,7 @@ function MailMergePanel({ ctx }: { ctx: ToolPanelCtx }) {
         </>
       )}
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -3835,7 +3835,7 @@ function RedactPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </Section>
       )}
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -4196,7 +4196,7 @@ function MergePanel({ ctx }: { ctx: ToolPanelCtx }) {
         )}
       </div>
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -4459,7 +4459,7 @@ function SplitPanel({ ctx }: { ctx: ToolPanelCtx }) {
                 )}
               </button>
 
-              <div className="text-center text-[10px] text-text-muted">
+              <div className="text-center text-[10px] text-privacy">
                 On-device · nothing leaves your browser
               </div>
             </>
@@ -4838,7 +4838,7 @@ function SmartSplitSection({
         )}
       </button>
 
-      <div className="text-center text-[10px] text-text-muted">
+      <div className="text-center text-[10px] text-privacy">
         On-device · nothing leaves your browser
       </div>
     </>
@@ -5017,7 +5017,7 @@ function RotatePanel({ ctx }: { ctx: ToolPanelCtx }) {
             )}
           </button>
 
-          <div className="text-center text-[10px] text-text-muted">
+          <div className="text-center text-[10px] text-privacy">
             On-device · nothing leaves your browser
           </div>
         </>
@@ -5174,7 +5174,7 @@ function OcrPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </button>
       )}
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -5524,7 +5524,7 @@ function OrganizePanel({ ctx }: { ctx: ToolPanelCtx }) {
         {building ? "Building…" : `Build PDF (${cells.length})`}
       </button>
 
-      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -5714,7 +5714,7 @@ function ExtractPagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
         )}
       </button>
 
-      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -5847,7 +5847,7 @@ function ExtractDataPanel({ ctx }: { ctx: ToolPanelCtx }) {
         )}
       </button>
 
-      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -6036,7 +6036,7 @@ function WatermarkPanel({ ctx }: { ctx: ToolPanelCtx }) {
       />
 
 
-      <div className="flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -6778,7 +6778,7 @@ function ToWordPanel({ ctx }: { ctx: ToolPanelCtx }) {
         {busy ? "Converting…" : "Convert & download .docx"}
       </button>
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -6943,7 +6943,7 @@ function WordToPdfPanel() {
         {busy ? "Converting…" : "Convert & download .pdf"}
       </button>
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -7423,7 +7423,7 @@ function ConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
         {busy ? "Converting…" : target ? `Convert & download` : "Pick a target"}
       </button>
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -7818,7 +7818,7 @@ function ImageConvertPanel({ ctx }: { ctx: ToolPanelCtx }) {
           : "Pick a PDF or images"}
       </button>
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
@@ -7968,7 +7968,7 @@ function PageNumbersPanel({ ctx }: { ctx: ToolPanelCtx }) {
         </button>
       </div>
 
-      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-accent-soft px-2.5 py-2 text-[10.5px] text-vault">
+      <div className="mt-auto flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
         <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
         On-device · nothing leaves your browser
       </div>
