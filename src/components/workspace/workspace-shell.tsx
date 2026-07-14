@@ -129,7 +129,6 @@ import { PAID_TOOL_IDS, LockBadge, useIsPro, useRequirePro } from "@/lib/pro-gat
 import { intentLabel, type Intent } from "@/lib/command/intent";
 import { AgentPanel } from "@/components/workspace/agent-panel";
 import type { AgentFlow } from "@/lib/agent/flows";
-import { IntelligentActionBar } from "./action-bar/IntelligentActionBar";
 
 
 type ToolId =
@@ -1882,7 +1881,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                   navOpen={navOpen}
                 />
 
-                <IntelligentActionBar state={editorState} dispatch={editorDispatch} openTool={openTool} />
+                <ContextualBar tool={editorTool} state={editorState} dispatch={editorDispatch} />
                 <NavOverlay
                   open={navOpen}
                   defaultTab={navTab}
