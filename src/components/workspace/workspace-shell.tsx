@@ -2759,6 +2759,14 @@ const LEGAL_TOOLBAR: Array<{ id: string; label: string; Icon: React.ComponentTyp
   { id: "citation-hyperlinker", label: "Link / Citation", Icon: Link2 },
 ];
 
+// Page-management quick actions — open the matching right-inspector panel.
+const PAGES_TOOLBAR: Array<{ id: string; label: string; Icon: React.ComponentType<{ className?: string }> }> = [
+  { id: "page-insert", label: "Insert page", Icon: Plus },
+  { id: "page-delete", label: "Delete pages", Icon: Trash2 },
+  { id: "page-crop", label: "Crop page", Icon: Crop },
+  { id: "page-resize", label: "Resize / scale", Icon: Maximize2 },
+];
+
 function FloatingToolbar({
   activeToolId,
   active,
