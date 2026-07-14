@@ -372,6 +372,14 @@ export function EditorCanvas({
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Sampled page background colour (from canvas corners, large samples — much
+  // more reliable than sampling around a single glyph). Painted on the page
+  // wrapper so text-edit covers can be transparent and reveal it.
+  const [pageBgColor, setPageBgColor] = useState<RGB | null>(null);
+  // Bumped whenever a text-edit annotation is removed, so the page re-renders
+  // and restores the original glyph pixels that clearRect erased at edit time.
+  const [renderTick, setRenderTick] = useState(0);
+  const prevTextEditIdsRef = useRef<Set<string>>(new Set());
 
   // Delete / Backspace removes the selected annotation on this page (unless
   // the user is editing text inside the annotation, or focus is in a form
