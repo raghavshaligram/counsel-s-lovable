@@ -156,37 +156,9 @@ function estimateLetterSpacing(
   }
 }
 
-function sampleTextColor(
-  ctx: CanvasRenderingContext2D,
-  sx: number,
-  sy: number,
-  sw: number,
-  sh: number,
-): RGB {
-  try {
-    const x = Math.max(0, Math.floor(sx));
-    const y = Math.max(0, Math.floor(sy));
-    const w = Math.max(1, Math.floor(sw));
-    const h = Math.max(1, Math.floor(sh));
-    const data = ctx.getImageData(x, y, w, h).data;
-    const pixels: { r: number; g: number; b: number; lum: number }[] = [];
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-      if (a < 128) continue;
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (lum > 230) continue;
-      pixels.push({ r, g, b, lum });
-    }
-    if (pixels.length < 4) return { r: 0, g: 0, b: 0 };
-    pixels.sort((p, q) => p.lum - q.lum);
-    const take = Math.max(2, Math.floor(pixels.length * 0.25));
-    let r = 0, g = 0, b = 0;
-    for (let i = 0; i < take; i++) { r += pixels[i].r; g += pixels[i].g; b += pixels[i].b; }
-    return { r: r / take / 255, g: g / take / 255, b: b / take / 255 };
-  } catch {
-    return { r: 0, g: 0, b: 0 };
-  }
-}
+// sampleTextColor removed — pdf.js's declared text colour (TextItem.color)
+// is the source of truth; pixel-sampling inverted on light-on-dark text.
+
 
 // Sample the page background by reading a RING just outside the glyph bbox
 // and returning the MODAL (most frequent) color quantized to 8-step bins per
