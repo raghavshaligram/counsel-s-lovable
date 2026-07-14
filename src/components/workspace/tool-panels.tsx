@@ -10882,8 +10882,8 @@ function DeletePagesPanel({ ctx }: { ctx: ToolPanelCtx }) {
             className="w-full h-9 rounded-md border border-border bg-surface-2 px-2 text-[12px] tabular-nums"
           />
           {parsed.error && <p className="mt-1 text-[10.5px] text-destructive">{parsed.error}</p>}
-          {!parsed.error && parsed.pages.length > 0 && (
-            <p className="mt-1 text-[10.5px] text-text-muted">Will delete {parsed.pages.length} page{parsed.pages.length === 1 ? "" : "s"}.</p>
+          {!parsed.error && rangePages.length > 0 && (
+            <p className="mt-1 text-[10.5px] text-text-muted">Will delete {rangePages.length} page{rangePages.length === 1 ? "" : "s"}.</p>
           )}
         </Section>
       )}
