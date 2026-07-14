@@ -580,24 +580,15 @@ function BookmarksTab({
 
       {/* PDF outline — inline rename / hide overrides persist per document */}
       {outline && outline.length > 0 && (
-        <section>
-          <h3 className="mb-1.5 px-1 text-[10.5px] font-medium uppercase tracking-wide text-text-muted">
-            PDF outline
-          </h3>
-          <ul className="space-y-0.5 text-[12.5px]">
-            {outline.map((n) => (
-              <OutlineRow
-                key={n.id}
-                node={n}
-                overrides={outlineOverrides}
-                onPatch={patchOverride}
-                onJump={onJump}
-                onJumpClose={onJumpAndClose}
-              />
-            ))}
-          </ul>
-        </section>
+        <OutlineSection
+          outline={outline}
+          overrides={outlineOverrides}
+          onPatch={patchOverride}
+          onJump={onJump}
+          onJumpClose={onJumpAndClose}
+        />
       )}
+
       {outlineErr && <Empty label={`Could not read PDF outline — ${outlineErr}`} />}
       {outline === null && <Empty label="Reading PDF outline…" />}
     </div>
