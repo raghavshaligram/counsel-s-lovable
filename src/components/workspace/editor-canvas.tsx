@@ -48,6 +48,8 @@ interface TextItem {
   fontWeight?: number | string;
   lineHeight?: number;
   letterSpacing?: number;
+  textRunIndex?: number;
+  textOpIndex?: number;
   color: RGB;
   bg: RGB;
 }
@@ -447,14 +449,17 @@ export function EditorCanvas({
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Text-edit covers are always transparent (Acrobat / Foxit parity — no
-  // colored patch is painted under edited text). Original glyphs are erased
-  // from the base canvas via clearRect in onClickEditHit; that erased hole
-  // shows the wrapper's plain paper colour underneath.
-  // Bumped whenever a text-edit annotation is removed, so the page re-renders
-  // and restores the original glyph pixels that clearRect erased at edit time.
-  const [renderTick, setRenderTick] = useState(0);
-  const prevTextEditIdsRef = useRef<Set<string>>(new Set());
+  // Acrobat / Foxit parity for Edit text: the visible page canvas is rendered
+  // without the original PDF text operation, and the live overlay draws only
+  // the replacement glyphs. No whiteout/background rectangle is painted.
+  const textEditMaskSignature = annos
+    .filter((a) => a.kind === "text-edit" && a.source?.originalString)
+    .map((a) => {
+      const src = a.source as TextSource & { textOpIndex?: number; textRunIndex?: number };
+      const b = src.bounds;
+      return [a.id, src.originalString, src.textOpIndex ?? "", src.textRunIndex ?? "", b?.x ?? "", b?.y ?? "", b?.w ?? "", b?.h ?? ""].join(":");
+    })
+    .join("|");
 
   // Delete / Backspace removes the selected annotation on this page (unless
   // the user is editing text inside the annotation, or focus is in a form
@@ -532,7 +537,43 @@ export function EditorCanvas({
         canvas.style.height = `${Math.ceil(cssVp.height)}px`;
         const ctx = canvas.getContext("2d", { willReadFrequently: true }); if (!ctx) return;
         console.debug("[pdf-render] start", { canvasId: cid, page: op.srcPage, scale });
-        const task = page.render({ canvasContext: ctx, viewport: vp, canvas } as Parameters<typeof page.render>[0]);
+        const textEditMasks = annos
+          .filter((a) => a.kind === "text-edit" && a.source?.originalString)
+          .map((a) => {
+            const src = a.source as TextSource & { textOpIndex?: number; textRunIndex?: number };
+            return {
+              id: a.id,
+              originalString: src.originalString,
+              textOpIndex: src.textOpIndex,
+              textRunIndex: src.textRunIndex,
+            };
+          });
+        let operatorList: { fnArray: number[]; argsArray: unknown[][] } | undefined;
+        let textOps: TextOperator[] = [];
+        let skippedTextOps = new Set<number>();
+        if (textEditMasks.length) {
+          try {
+            operatorList = await page.getOperatorList();
+            const OPS = (pdfjs as { OPS?: Record<string, number> }).OPS;
+            textOps = collectTextOperators(operatorList, OPS);
+            skippedTextOps = resolveTextEditSkipOps(textOps, textEditMasks);
+            console.debug("[text-edit-mask] render", {
+              page: pageIndex,
+              requested: textEditMasks.length,
+              skipped: [...skippedTextOps],
+            });
+          } catch (err) {
+            console.warn("[text-edit-mask] unable to resolve PDF text operations", err);
+          }
+        }
+        const task = page.render({
+          canvasContext: ctx,
+          viewport: vp,
+          canvas,
+          operationsFilter: skippedTextOps.size
+            ? (index: number) => !skippedTextOps.has(index)
+            : undefined,
+        } as Parameters<typeof page.render>[0]);
         renderTaskRef.current = task as unknown as { cancel: () => void; promise: Promise<unknown> };
         try {
           await task.promise;
@@ -555,6 +596,16 @@ export function EditorCanvas({
         const styles = (content as unknown as { styles: Record<string, { fontFamily?: string; fontWeight?: number | string }> }).styles ?? {};
         type Raw = { str: string; transform: number[]; width: number; height: number; fontName?: string };
         const rawItems = content.items as Raw[];
+        if (!operatorList) {
+          try {
+            operatorList = await page.getOperatorList();
+            const OPS = (pdfjs as { OPS?: Record<string, number> }).OPS;
+            textOps = collectTextOperators(operatorList, OPS);
+          } catch {
+            textOps = [];
+          }
+        }
+        let textOpCursor = 0;
         // Resolve real font descriptors up-front — commonObjs is populated
         // during render(), so by this point the callbacks fire immediately.
         const fontInfo = await resolvePdfFontInfo(
@@ -562,7 +613,7 @@ export function EditorCanvas({
           rawItems.map((it) => it.fontName).filter((n): n is string => !!n),
         );
         if (cancelled) return;
-        const items: TextItem[] = rawItems.flatMap((it) => {
+        const items: TextItem[] = rawItems.flatMap((it, textRunIndex) => {
           if (!it.str || !it.str.trim()) return [];
           const m = pdfjs.Util.transform(baseVp.transform, it.transform);
           const fh = Math.hypot(m[2], m[3]);
@@ -618,6 +669,11 @@ export function EditorCanvas({
           const x = m[4], y = m[5] - fh;
           const color = DEFAULT_TEXT_COLOR;
           const bg = DEFAULT_PAGE_BG;
+          const textOpIndex = findNextTextOpIndex(textOps, it.str, textOpCursor);
+          if (textOpIndex != null) {
+            const opPos = textOps.findIndex((op) => op.index === textOpIndex);
+            if (opPos >= 0) textOpCursor = opPos + 1;
+          }
           const letterSpacing = estimateLetterSpacing(
             ctx,
             it.str,
@@ -666,6 +722,8 @@ export function EditorCanvas({
             descriptorWeight: descriptor?.weight,
             fontKey, fontApprox, fontWeight,
             lineHeight: 1.15, letterSpacing, color, bg,
+            textRunIndex,
+            textOpIndex: textOpIndex ?? undefined,
           }];
         });
 
@@ -717,18 +775,7 @@ export function EditorCanvas({
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
     };
-  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
-
-  // When a text-edit annotation is removed, re-render the page canvas so the
-  // pixels erased by onClickEditHit's clearRect come back.
-  useEffect(() => {
-    const now = new Set(annos.filter((a) => a.kind === "text-edit").map((a) => a.id));
-    const prev = prevTextEditIdsRef.current;
-    let removed = false;
-    for (const id of prev) if (!now.has(id)) { removed = true; break; }
-    prevTextEditIdsRef.current = now;
-    if (removed) setRenderTick((t) => t + 1);
-  }, [annos]);
+  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, textEditMaskSignature]);
 
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
