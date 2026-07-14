@@ -192,6 +192,11 @@ function detectNumericDateLocale(text: string, fallback: "US" | "EU"): "US" | "E
   }
   if (dayFirst > monthFirst) return "EU";
   if (monthFirst > dayFirst) return "US";
+  // Indian statements commonly use DD-MM-YYYY while amounts still use
+  // comma-thousands + dot-decimals, so the money locale alone looks "US".
+  if (/\b(INR|IFSC|MICR|ICICI|HDFC|AXIS|NEFT|RTGS|UPI|Savings\s+Account\s+Number)\b/i.test(text)) {
+    return "EU";
+  }
   return fallback;
 }
 
