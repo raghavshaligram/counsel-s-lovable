@@ -265,19 +265,16 @@ function sampleInkColor(
 
 
 
-// Sample the page background by reading a RING just outside the glyph bbox
-// and returning the MODAL (most frequent) color quantized to 8-step bins per
-// channel. This handles any page color (white, cream, gray, dark) without
-// being fooled by adjacent glyphs that sneak into the strips, and avoids any
-// hardcoded white fallback.
-function samplePageBg(
+// Local backdrop sample used only to separate glyph ink from surrounding
+// pixels when preserving text color. It is never painted/stored as a text
+// background.
+function sampleInkBackdrop(
   ctx: CanvasRenderingContext2D,
   sx: number,
   sy: number,
   sw: number,
   sh: number,
 ): RGB {
-  console.count("samplePageBg");
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   const bx = Math.max(0, Math.floor(sx));
   const by = Math.max(0, Math.floor(sy));
@@ -1419,7 +1416,7 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
-      const bg = samplePageBg(ctx, sx, sy, sw, sh);
+      const bg = sampleInkBackdrop(ctx, sx, sy, sw, sh);
       const color = sampleInkColor(ctx, sx, sy, sw, sh, bg, it.color);
       return { color };
     })();
