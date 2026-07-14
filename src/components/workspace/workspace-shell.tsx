@@ -2990,12 +2990,18 @@ function ContextualBar({
   if (!inner) return null;
   return (
     <div
-      className="absolute left-1/2 top-[58px] z-20 flex -translate-x-1/2 items-center gap-2 border border-border bg-surface-3 px-2.5 py-1.5 text-[12px] text-text-2"
-      style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
+      className={cn(
+        "z-20 flex items-center gap-2 border border-border bg-surface-3 px-2.5 py-1.5 text-[12px] text-text-2",
+        pinned
+          ? "w-full flex-wrap justify-center border-x-0 border-t-0"
+          : "absolute left-1/2 top-[58px] -translate-x-1/2",
+      )}
+      style={pinned ? undefined : { borderRadius: 11, boxShadow: "var(--shadow-float)" }}
     >
       {inner}
     </div>
   );
+
 }
 
 // Functional properties bar for a selected text/text-edit annotation.
