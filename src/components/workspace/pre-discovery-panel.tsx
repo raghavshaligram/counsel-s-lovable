@@ -268,27 +268,6 @@ export function PreDiscoveryPanel({ ctx }: { ctx: ToolPanelCtx }) {
             </div>
           )}
 
-          {debugLines.length > 0 && (
-            <div className="rounded-md border border-border bg-surface-2 px-2 py-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10.5px] uppercase tracking-wide text-text-subtle">
-                  Search diagnostics
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-[11px]"
-                  onClick={copyDiagnostics}
-                >
-                  Copy
-                </Button>
-              </div>
-              <pre className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-[10.5px] leading-snug text-text-muted">
-                {debugLines.slice(-8).join("\n")}
-              </pre>
-            </div>
-          )}
 
           {hits.length > 0 && (
             <div className="flex flex-col gap-1">
