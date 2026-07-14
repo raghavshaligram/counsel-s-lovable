@@ -1711,12 +1711,17 @@ export function EditorCanvas({
           const isEditing = editingId === a.id;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg); void bgCss;
+          const bgCss = rgbCss(a.bg);
+          const cover = { background: bgCss };
+          if (backgroundConfidence < 0.9) {
+            cover.background = "transparent";
+          }
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
-              background: bgCss,
+              background: cover.background,
+              backgroundConfidence,
               sampledBg: a.bg,
               coverPdf: a.cover,
               coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
@@ -1731,7 +1736,7 @@ export function EditorCanvas({
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: "transparent",
+                background: cover.background,
                 pointerEvents: "none",
                 zIndex: 1,
               }}
