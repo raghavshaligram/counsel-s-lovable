@@ -1359,8 +1359,20 @@ export function EditorCanvas({
       fontWeight: String(resolvedEdit.fontWeight),
     };
     const cssFamFallback = cssFam;
-    const fontFamilyOverride = matched.matched ? matched.fontFamily : (cssFamFallback ?? matched.fontFamily);
-    const fontWeight = numericFontWeight(matched.matched ? matched.fontWeight : (it.fontWeight ?? undefined), it.bold);
+    // Acrobat-style font selection: use the PDF's REAL family name as the
+    // primary CSS font-family so the DOM shows a meaningful family (e.g.
+    // "Inter", "Helvetica Neue", "Times New Roman"). The resolver's metric
+    // twin stack is appended as fallback — when the real family isn't
+    // installed / webfont-loaded, the twin (Carlito/Arimo/Tinos/...) wins,
+    // matching Acrobat's substitute-font behaviour.
+    const realFamName = it.realFamily && !isOpaquePdfjsFontId(it.realFamily) ? it.realFamily : "";
+    const twinStack = matched.matched ? matched.fontFamily : (cssFamFallback ?? matched.fontFamily);
+    const fontFamilyOverride = realFamName ? `"${realFamName}", ${twinStack}` : twinStack;
+    // Weight priority: FontDescriptor numeric weight (300/500/600/700/…)
+    // beats a bold-boolean coercion. Only fall through when the PDF gave us
+    // no numeric signal.
+    const fontWeight = it.descriptorWeight
+      ?? numericFontWeight(matched.matched ? matched.fontWeight : (it.fontWeight ?? undefined), it.bold);
     console.log("[text-edit-font] extraction", {
       rawPdfFontName: it.fontName,
       pdfCssFamily: it.cssFamily,
