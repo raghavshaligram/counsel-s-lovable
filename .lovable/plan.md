@@ -1,75 +1,33 @@
+## Add "Pin toolbar to top" option
 
-## Goal
+Give users a way to dock the floating canvas toolbar to the top of the canvas so it stops overlapping page content.
 
-Add four page-management tools to the workspace editor and surface them on the canvas floating toolbar:
+### UX
+- Add a small pin/unpin icon button at the right end of the `FloatingToolbar` (next to undo/redo), with tooltip "Pin to top" / "Unpin (float)".
+- Two states:
+  - **Floating (default)** — current behavior: centered pill, `absolute top-2.5`, translucent shadow floats over page 1.
+  - **Pinned** — bar becomes a full-width docked strip at the top of the canvas: `sticky top-0`, no translate/rounded pill, flush with canvas edges, subtle bottom border. Canvas content (`ContextualBar`, pages, OCR banner) shifts down so nothing renders underneath it.
+- The current `ContextualBar` (second row for tool-specific chips) stacks directly under the toolbar in both modes.
+- The OCR offer banner (line 1967) and any other top-anchored overlays reposition below the pinned bar automatically because they're siblings inside the same `<main>`.
 
-1. **Insert Page** – add a blank page (or duplicate current page) before/after a chosen index, at a chosen paper size.
-2. **Delete Pages** – delete any range or selection, with an "Auto-detect blank pages" scan.
-3. **Page Crop** – already exists as `page-crop`; only needs a toolbar button so it's reachable in one click.
-4. **Resize / Scale Pages** – set a target paper size (Letter, A4, etc.) or a % scale, applied to all / selected pages.
+### Persistence
+- Store the preference in `localStorage` under `vault:toolbar-pinned` (boolean) via a tiny `useToolbarPin()` hook in `src/lib/workspace/toolbar-pin.ts`. Read once on mount (guarded for SSR), write on toggle. Persists across sessions and tabs.
 
-All four operate on the in-memory `EditorDoc.pages` (`PageOp[]`) so they respect the three-layer model (srcBytes read-only, edits live in the sidecar, export is the only rebuild point). No new bytes on apply — resize/insert only mutate `PageOp` fields; the change is baked at export time.
+### Files touched
+- `src/lib/workspace/toolbar-pin.ts` — new hook (`useToolbarPin(): [pinned, setPinned]`).
+- `src/components/workspace/workspace-shell.tsx`
+  - Consume `useToolbarPin()` in `WorkspaceShell`.
+  - Pass `pinned` + `onTogglePin` to `FloatingToolbar`.
+  - When pinned, wrap the canvas top region so `FloatingToolbar` renders in normal flow (not `absolute`), and `ContextualBar` / OCR banner render below it. When floating, keep the current absolute layout and top offsets.
+  - `FloatingToolbar` gets a new `Pin` icon button (from `lucide-react`) at the trailing edge and swaps its outer className between "floating pill" and "docked strip" based on the `pinned` prop.
 
-## Where things go
+### Out of scope
+- No changes to left rail, right inspector, or any tool logic.
+- No drag-to-reposition; just a two-state pin toggle, matching the user's request.
 
-### New tool ids in `tool-panels.tsx` registry (group: `pages`, groupLabel: "Organize pages")
-- `page-insert` – "Insert Page" (Plus icon)
-- `page-delete` – "Delete Pages" (Trash2 icon)
-- `page-resize` – "Resize / Scale" (Maximize2 icon)
-
-(`page-crop` and `rotate` already exist in that group.)
-
-### New right-inspector panels in `src/components/workspace/tool-panels.tsx`
-- `InsertPagePanel` – position selector (before/after current, at index N, at end), size selector (Same as current / Letter / Legal / A4 / A3 / Custom w×h in pt), count, orientation. "Insert" button dispatches to editor.
-- `DeletePagesPanel` – three modes:
-  - Current page
-  - Range (e.g. `2-4, 7, 10-12`)
-  - Auto-detect blanks — button runs a scan; results shown as checklist with per-page thumbnails and "delete selected" action.
-- `ResizePagesPanel` – scope (All / Current / Range), mode (Fit to paper size / Scale %), preserve-aspect toggle, "Apply".
-
-Panels use the same `ctx: ToolPanelCtx` pattern the file already exposes.
-
-### Editor state / dispatch (`src/lib/editor/state.ts`)
-Add three reducer actions:
-- `pages/insert` – `{ atIndex: number; page: PageOp }`
-- `pages/delete` – `{ indexes: number[] }`
-- `pages/resize` – `{ indexes: number[]; width: number; height: number; scaleContent: boolean }`
-
-`scaleContent: true` also multiplies `cropBox` (if present); export renders the source page onto the new-size page via pdf-lib's `drawPage` with scale, otherwise the page is resized around the existing content (letterbox).
-
-### Export path (`src/lib/editor/export.ts`)
-Extend the per-page rebuild to:
-- Emit a real blank page (no `drawPage` call) when `PageOp.blank === true` — already flagged in types.
-- When target `width`/`height` differ from source page size, create the new-size page and either scale-draw the source (when a `scale` factor is stored) or draw at natural size (letterbox).
-
-A tiny new field `PageOp.scale?: number` (default 1) is added; when present, export multiplies content matrix by it. Cropping already flows through `cropBox`.
-
-### Blank-page detector (`src/lib/pdf/detect-blank.ts`, new)
-Rasterize each page at 72 DPI via the shared `pdfDoc` (respects the sacred perf rule — no re-parse), sample luminance histogram, flag pages where >99.5% of pixels are within 3 units of white AND text-content length from `getTextContent` is 0. Returns `number[]` of source-page indexes. Runs in a Web Worker (reuse `rasterize.worker.ts` pattern) so the UI stays responsive on 400-page docs.
-
-### Floating toolbar (`workspace-shell.tsx > FloatingToolbar`)
-Add a new "Pages" cluster (between the existing Legal cluster and the editor-tools cluster) with four buttons: Insert Page, Delete Page, Crop Page, Resize Page. Each button calls the existing `onOpenTool(id)` so clicking opens the matching right-inspector panel — mirrors how the Legal cluster already works. No behavior change to text-editing contextual mode.
-
-### Left rail
-Registry additions automatically appear under the existing "Organize pages" group. No rail-code change needed.
-
-## Non-goals
-- No changes to `/organize` standalone route.
-- No new persistence — everything lives in the existing `EditorDoc` sidecar which already persists per `name::size`.
-- No AI. Blank detection is pure pixel/text heuristic.
-
-## Files touched
-- `src/lib/editor/types.ts` — add optional `PageOp.scale`.
-- `src/lib/editor/state.ts` — three new actions.
-- `src/lib/editor/export.ts` — honor `blank`, `scale`, resized `width`/`height`.
-- `src/lib/pdf/detect-blank.ts` — NEW.
-- `src/lib/workers/detect-blank.worker.ts` + client — NEW (small, mirrors rasterize worker).
-- `src/components/workspace/tool-panels.tsx` — registry entries + three panels + switch cases.
-- `src/components/workspace/workspace-shell.tsx` — Pages cluster in `FloatingToolbar`.
-
-## Verification
-- Insert blank Letter page at end → export → re-open → new blank page present at right index.
-- Delete pages `2,5` → export → page count reduced by 2, order preserved.
-- Auto-detect blanks on a 20-page doc with 3 known blank pages → all 3 flagged, none of the text pages flagged.
-- Resize all pages to A4 with scale=true → export → every page is A4 and content visibly fills page.
-- Toolbar buttons open matching right-inspector panels; left rail entries do the same.
+### Verification
+1. Open a PDF → toolbar renders floating (default), tooltip on pin says "Pin to top".
+2. Click pin → toolbar snaps to top as a full-width strip, page 1 no longer overlaps.
+3. Reload page → toolbar remains pinned (localStorage).
+4. Click unpin → returns to floating pill, `top-2.5` centered.
+5. Switch tools while pinned → contextual bar still sits directly under the pinned strip; OCR banner still visible below both.
