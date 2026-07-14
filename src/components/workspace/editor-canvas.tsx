@@ -1315,6 +1315,17 @@ export function EditorCanvas({
 
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
+    // 1. DE-DUPLICATION GUARD: Prevent stacking multiple annotations on the same text run
+    const existingAnno = annos.find(
+      (a) => a.kind === "text-edit" && Math.abs(a.x - it.x) < 1 && Math.abs(a.y - it.y) < 1
+    );
+    if (existingAnno) {
+      // If an edit box already exists here, just re-select and focus it!
+      dispatch({ type: "SELECT_ANNO", id: existingAnno.id });
+      setEditingId(existingAnno.id);
+      return;
+    }
+
     const canvas = canvasRef.current;
     // Use pdf.js's declared text colour (it.color) directly — pixel sampling
     // can't beat the source of truth and inverts on light-on-dark text.
