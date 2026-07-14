@@ -1491,7 +1491,9 @@ export function EditorCanvas({
       intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
     });
     dispatch({ type: "SELECT_ANNO", id });
-    dispatch({ type: "SET_TOOL", t: "select" });
+    // Intentionally do NOT reset the tool back to "select" — keeping
+    // edit-text active lets the user hop from one blue dashed run to
+    // another across the whole document without re-arming the tool.
     setEditingId(id);
   };
 
