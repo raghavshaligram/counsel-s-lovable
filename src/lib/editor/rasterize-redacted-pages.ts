@@ -61,7 +61,7 @@ export async function rasterizeRedactedPages(
 
   const pdfjs = await loadPdfjs();
   // pdf.js detaches the buffer it's handed — slice so we keep `bytes` usable.
-  const srcDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const srcDoc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
 
   // Load the output doc ONCE up front so we can stream embeds page-by-page
   // instead of accumulating every JPEG in a replacements[] array.

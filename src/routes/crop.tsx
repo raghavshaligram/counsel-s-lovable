@@ -70,7 +70,7 @@ function CropPage() {
     setBusy(true);
     try {
       const pdfjs = await loadPdfjs();
-      const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+      const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
       const sizes: { w: number; h: number }[] = [];
       const ths: string[] = [];
       for (let i = 1; i <= doc.numPages; i++) {
@@ -524,7 +524,7 @@ function CropArtboard({
       const fitScale = Math.min(maxW / pageSize.w, maxH / pageSize.h);
       const s = Math.max(0.2, Math.min(3, fitScale));
       const pdfjs = await loadPdfjs();
-      const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+      const doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
       try {
         const page = await doc.getPage(pageIndex + 1);
         const vp = page.getViewport({ scale: s });

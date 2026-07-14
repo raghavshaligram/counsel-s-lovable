@@ -96,7 +96,7 @@ function OrganizePage() {
               (async () => {
                 const bytes = await getBytes(c.sha256);
                 if (!bytes) return null;
-                return pdfjs.getDocument({ data: bytes.slice() }).promise;
+                return pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
               })(),
             );
           }

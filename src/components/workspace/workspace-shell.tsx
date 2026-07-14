@@ -1261,7 +1261,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
           const bytes = new Uint8Array(await f.arrayBuffer());
           const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
           const pdfjs = await loadPdfjs();
-          const doc = await pdfjs.getDocument({ data: bytes }).promise;
+          const doc = await pdfjs.getDocument({ data: bytes, enableXfa: true, useSystemFonts: true }).promise;
           if (cancelledFast) {
             try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
             return;
@@ -3486,7 +3486,7 @@ function PagesPlaceholder({
         const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const doc = await pdfjs.getDocument({ data: bytes }).promise;
+        const doc = await pdfjs.getDocument({ data: bytes, enableXfa: true, useSystemFonts: true }).promise;
         if (cancelled) return;
         const n = continuous ? doc.numPages : Math.min(1, doc.numPages);
         const sizes: Array<{ width: number; height: number }> = [];

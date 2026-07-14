@@ -674,7 +674,7 @@ function PageViewer({
     async function run() {
       try {
         const pdfjs = await loadPdfjs();
-        doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+        doc = await pdfjs.getDocument({ data: bytes.slice(), enableXfa: true, useSystemFonts: true }).promise;
         const pg = await doc.getPage(page + 1);
         const containerWidth = wrapRef.current?.clientWidth ?? 600;
         const baseViewport = pg.getViewport({ scale: 1 });

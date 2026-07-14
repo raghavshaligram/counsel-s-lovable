@@ -297,7 +297,7 @@ export function RedactPage() {
         const { getPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await getPdfjs();
         const buf = await file.arrayBuffer();
-        const doc = await pdfjs.getDocument({ data: buf }).promise;
+        const doc = await pdfjs.getDocument({ data: buf, enableXfa: true, useSystemFonts: true }).promise;
         if (cancelled) return;
         docRef.current = doc as unknown as typeof docRef.current;
         setTotalPages(doc.numPages);
