@@ -39,6 +39,9 @@ describe("resolveToFontKey", () => {
     const r = resolveToFontKey({ pdfFamily: "Garamond" });
     expect(r.key).toBe("tinos");
     expect(r.approximate).toBe(true);
+  });
+
+
 
   it("descriptor slot: TimesNewRomanPSMT → tinos", () => {
     const r = resolveToFontKey({ descriptor: "TimesNewRomanPSMT" });
