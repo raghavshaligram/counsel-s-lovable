@@ -404,6 +404,9 @@ export function EditorCanvas({
   // more reliable than sampling around a single glyph). Painted on the page
   // wrapper so text-edit covers can be transparent and reveal it.
   const [pageBgColor, setPageBgColor] = useState<RGB | null>(null);
+  // 0..1 confidence that the page background is uniform. When low, text-edit
+  // covers stay transparent instead of painting a potentially wrong solid band.
+  const [backgroundConfidence, setBackgroundConfidence] = useState(1);
   // Bumped whenever a text-edit annotation is removed, so the page re-renders
   // and restores the original glyph pixels that clearRect erased at edit time.
   const [renderTick, setRenderTick] = useState(0);
@@ -656,18 +659,32 @@ export function EditorCanvas({
               [0, Math.max(0, ch - S)],
               [Math.max(0, cw - S), Math.max(0, ch - S)],
             ];
-            let r = 0, g = 0, b = 0, n = 0;
+            const cornerColors: Array<{ r: number; g: number; b: number }> = [];
             for (const [x, y] of corners) {
               const d = bctx.getImageData(x, y, Math.min(S, cw), Math.min(S, ch)).data;
+              let r = 0, g = 0, b = 0, n = 0;
               for (let i = 0; i < d.length; i += 4) {
                 if (d[i + 3] < 128) continue;
                 r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
               }
+              if (n > 0) cornerColors.push({ r: r / n, g: g / n, b: b / n });
             }
-            if (n > 0) {
+            if (cornerColors.length > 0) {
+              let r = 0, g = 0, b = 0;
+              for (const c of cornerColors) { r += c.r; g += c.g; b += c.b; }
+              const n = cornerColors.length;
               setPageBgColor({ r: r / n / 255, g: g / n / 255, b: b / n / 255 });
+              // Confidence falls as the corners diverge from the average.
+              // At maxDist ≈ 80 the confidence reaches 0; below ≈ 8 it is ~0.9.
+              let maxDist = 0;
+              for (const c of cornerColors) {
+                const dr = c.r - r / n, dg = c.g - g / n, db = c.b - b / n;
+                maxDist = Math.max(maxDist, Math.sqrt(dr * dr + dg * dg + db * db));
+              }
+              setBackgroundConfidence(Math.max(0, Math.min(1, 1 - maxDist / 80)));
             } else {
               setPageBgColor({ r: 1, g: 1, b: 1 });
+              setBackgroundConfidence(0);
             }
           }
         } catch { /* tainted */ }
@@ -1694,12 +1711,17 @@ export function EditorCanvas({
           const isEditing = editingId === a.id;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg); void bgCss;
+          const bgCss = rgbCss(a.bg);
+          const cover = { background: bgCss };
+          if (backgroundConfidence < 0.9) {
+            cover.background = "transparent";
+          }
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
               editing: true,
-              background: bgCss,
+              background: cover.background,
+              backgroundConfidence,
               sampledBg: a.bg,
               coverPdf: a.cover,
               coverScreen: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
@@ -1714,7 +1736,7 @@ export function EditorCanvas({
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: "transparent",
+                background: cover.background,
                 pointerEvents: "none",
                 zIndex: 1,
               }}
