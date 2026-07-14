@@ -193,6 +193,10 @@ export function ToolPanel({ toolId, ctx }: PanelProps) {
       return <ExtractPanel ctx={ctx} />;
     case "watermark":
       return <WatermarkPanel ctx={ctx} />;
+    case "remove-watermark":
+      return <RemoveWatermarkPanel ctx={ctx} />;
+    case "compress":
+      return <CompressPanel ctx={ctx} />;
     case "protect":
       return <ProtectPanel ctx={ctx} />;
     case "unlock":
@@ -8323,6 +8327,623 @@ function BatesSection({ ctx }: { ctx: ToolPanelCtx }) {
         <Info className="h-3 w-3" />
         Settings saved with this document · also offered at export
       </div>
+
+      <BatesClearAndRemoveSection ctx={ctx} />
+    </div>
+  );
+}
+
+/**
+ * Second half of the Bates panel — reset the saved stamp config and remove
+ * Bates numbers that another tool already burned into the incoming PDF.
+ */
+function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [s, update] = useBatesSettings(batesDocKey(file));
+  const [prefix, setPrefix] = useState<string>(s.prefix ?? "");
+  const [suffix, setSuffix] = useState<string>(s.suffix ?? "");
+  const [digits, setDigits] = useState<number>(s.digits ?? 6);
+  const [corner, setCorner] = useState<"tl" | "tc" | "tr" | "bl" | "bc" | "br">(
+    s.position,
+  );
+  const [scan, setScan] = useState<null | Array<import("@/lib/pdf/remove-bates").BatesMatch>>(null);
+  const [busy, setBusy] = useState<"idle" | "scanning" | "removing">("idle");
+
+  useEffect(() => {
+    setPrefix(s.prefix ?? "");
+    setSuffix(s.suffix ?? "");
+    setDigits(s.digits ?? 6);
+    setCorner(s.position);
+    setScan(null);
+  }, [file, s.prefix, s.suffix, s.digits, s.position]);
+
+  const clearSettings = useCallback(async () => {
+    const ok = await confirmDialog({
+      title: "Clear Bates settings?",
+      description:
+        "The stamp is only burned in at export or when you press Apply. Clearing settings makes sure the next export does not add a stamp.",
+      confirmText: "Clear settings",
+    });
+    if (!ok) return;
+    update({
+      on: false,
+      prefix: "ABC",
+      suffix: "",
+      startAt: 1,
+      digits: 6,
+      position: "br",
+      fontSize: 10,
+      color: "black",
+      margin: 24,
+      appliedAt: undefined,
+      appliedFingerprint: undefined,
+    });
+    toast.success("Bates settings cleared for this document");
+  }, [update]);
+
+  const runScan = useCallback(async () => {
+    if (!file || !prefix.trim()) return;
+    setBusy("scanning");
+    try {
+      const { findBatesStamps } = await importChunk(
+        () => import("@/lib/pdf/remove-bates"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const found = await findBatesStamps(source, { prefix, suffix, digits, corner });
+      setScan(found);
+      if (found.length === 0) {
+        toast.message("No matching Bates numbers found in that corner.");
+      } else {
+        toast.success(`Found ${found.length} stamp${found.length === 1 ? "" : "s"}`);
+      }
+    } catch (err) {
+      console.error("[bates-remove] scan failed", err);
+      toast.error("Scan failed", { description: (err as Error).message });
+    } finally {
+      setBusy("idle");
+    }
+  }, [file, prefix, suffix, digits, corner]);
+
+  const runRemove = useCallback(async () => {
+    if (!file || !scan || scan.length === 0) return;
+    setBusy("removing");
+    try {
+      const { removeBatesStamps } = await importChunk(
+        () => import("@/lib/pdf/remove-bates"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const out = await removeBatesStamps(source, scan);
+      const base = file.name.replace(/\.pdf$/i, "");
+      await downloadPdf(out, `${base}-bates-removed.pdf`);
+      toast.success(`Removed ${scan.length} stamp${scan.length === 1 ? "" : "s"}`);
+    } catch (err) {
+      console.error("[bates-remove] failed", err);
+      toast.error("Removal failed", { description: (err as Error).message });
+    } finally {
+      setBusy("idle");
+    }
+  }, [file, scan]);
+
+  const applyToActive = useCallback(async () => {
+    if (!file || !scan || scan.length === 0) return;
+    setBusy("removing");
+    try {
+      const { removeBatesStamps } = await importChunk(
+        () => import("@/lib/pdf/remove-bates"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const out = await removeBatesStamps(source, scan);
+      replaceFile(new File([out as BlobPart], file.name, { type: "application/pdf" }));
+      toast.success("Bates numbers removed from active tab");
+      setScan(null);
+    } catch (err) {
+      console.error("[bates-remove] apply failed", err);
+      toast.error("Apply failed", { description: (err as Error).message });
+    } finally {
+      setBusy("idle");
+    }
+  }, [file, scan, replaceFile]);
+
+  const corners: Array<{ id: typeof corner; label: string; hint: string }> = [
+    { id: "tl", label: "Top", hint: "Left" },
+    { id: "tc", label: "Top", hint: "Center" },
+    { id: "tr", label: "Top", hint: "Right" },
+    { id: "bl", label: "Bottom", hint: "Left" },
+    { id: "bc", label: "Bottom", hint: "Center" },
+    { id: "br", label: "Bottom", hint: "Right" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-3">
+      <div className="text-[10.5px] uppercase tracking-[0.16em] text-text-muted">
+        Change or remove
+      </div>
+
+      <button
+        type="button"
+        onClick={clearSettings}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40"
+      >
+        <Trash2 className="h-3.5 w-3.5" strokeWidth={2.5} />
+        Clear stamp settings
+      </button>
+
+      <Section title="Remove existing stamps" icon={<ShieldOff className="h-3 w-3" />}>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Prefix</span>
+            <input
+              type="text"
+              value={prefix}
+              onChange={(e) => setPrefix(e.target.value)}
+              placeholder="ABC"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Suffix</span>
+            <input
+              type="text"
+              value={suffix}
+              onChange={(e) => setSuffix(e.target.value)}
+              placeholder="(optional)"
+              className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] font-mono text-foreground placeholder:text-text-muted focus:border-vault/40 focus:outline-none"
+            />
+          </label>
+          <NumberField
+            label="Digits"
+            value={digits}
+            min={1}
+            max={10}
+            onChange={(n) => setDigits(n)}
+          />
+        </div>
+      </Section>
+
+      <Section title="Corner">
+        <div className="grid grid-cols-3 gap-1.5">
+          {corners.map((c) => (
+            <ModeRow
+              key={c.id}
+              active={corner === c.id}
+              onClick={() => setCorner(c.id)}
+              label={c.label}
+              hint={c.hint}
+            />
+          ))}
+        </div>
+      </Section>
+
+      <button
+        type="button"
+        onClick={runScan}
+        disabled={busy !== "idle" || !prefix.trim()}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+          (busy !== "idle" || !prefix.trim()) && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Search className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy === "scanning" ? "Scanning…" : "Detect stamps"}
+      </button>
+
+      {scan && scan.length > 0 && (
+        <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2 text-[11.5px]">
+          <div className="text-foreground">
+            Found <span className="font-mono">{scan.length}</span> stamp{scan.length === 1 ? "" : "s"}
+            {scan.length > 0 && (
+              <>
+                {" "}· sample <span className="font-mono">{scan[0].text.trim()}</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={runRemove}
+          disabled={busy !== "idle" || !scan || scan.length === 0}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            (busy !== "idle" || !scan || scan.length === 0) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy === "removing" ? "Removing…" : "Remove & download"}
+        </button>
+        <button
+          type="button"
+          onClick={applyToActive}
+          disabled={busy !== "idle" || !scan || scan.length === 0}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+            (busy !== "idle" || !scan || scan.length === 0) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          Apply to active tab
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/* ============================== Compress ============================== */
+
+function CompressPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file } = ctx;
+  const [preset, setPreset] = useState<"low" | "medium" | "high" | "extreme">("medium");
+  const [grayscale, setGrayscale] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<null | {
+    originalSize: number;
+    outputSize: number;
+    keptOriginal: boolean;
+    method: string;
+  }>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; phase: string } | null>(null);
+
+  const run = useCallback(async () => {
+    if (!file) return;
+    setBusy(true);
+    setResult(null);
+    setProgress({ done: 0, total: 1, phase: "structural" });
+    const tid = "wsx-compress";
+    toast.loading("Compressing…", { id: tid });
+    try {
+      const { compressSmart } = await importChunk(
+        () => import("@/lib/batch/ops/compress"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const res = await compressSmart(source, {
+        preset,
+        grayscale,
+        onProgress: (done, total, phase) => {
+          setProgress({ done, total, phase });
+          toast.loading(
+            `Compressing… (${phase} ${done}/${total})`,
+            { id: tid },
+          );
+        },
+      });
+      setResult({
+        originalSize: res.originalSize,
+        outputSize: res.outputSize,
+        keptOriginal: res.keptOriginal,
+        method: res.method,
+      });
+      if (res.keptOriginal) {
+        toast.message("Original was already smallest — nothing to save", { id: tid });
+      } else {
+        const base = file.name.replace(/\.pdf$/i, "");
+        await downloadPdf(res.bytes, `${base}-compressed.pdf`);
+        const saved = 1 - res.outputSize / res.originalSize;
+        toast.success(`Compressed — ${(saved * 100).toFixed(0)}% smaller`, { id: tid });
+      }
+    } catch (err) {
+      console.error("[compress] failed", err);
+      toast.error("Compression failed", {
+        id: tid,
+        description: (err as Error).message,
+      });
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [file, preset, grayscale]);
+
+  if (!file) {
+    return <InspectorEmpty>Open a PDF to compress it.</InspectorEmpty>;
+  }
+
+  const presetBtn = (id: typeof preset, label: string, hint: string) => (
+    <button
+      type="button"
+      onClick={() => setPreset(id)}
+      disabled={busy}
+      className={cn(
+        "rounded-md border px-2 py-2 text-left transition-colors",
+        preset === id
+          ? "border-vault/60 bg-accent-soft text-foreground"
+          : "border-border bg-surface-2 text-text-2 hover:text-foreground",
+        busy && "cursor-not-allowed opacity-60",
+      )}
+    >
+      <div className="text-[12px] font-medium">{label}</div>
+      <div className="mt-0.5 text-[10.5px] text-text-muted">{hint}</div>
+    </button>
+  );
+
+  const fmt = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+          <div className="truncate text-[12px] text-foreground" title={file.name}>
+            {file.name}
+          </div>
+          <div className="mt-0.5 text-[10.5px] text-text-muted">{fmt(file.size)}</div>
+        </div>
+      </Section>
+
+      <Section title="Quality preset">
+        <div className="grid grid-cols-2 gap-1.5">
+          {presetBtn("low", "Low", "200 DPI · high quality")}
+          {presetBtn("medium", "Medium", "150 DPI · balanced")}
+          {presetBtn("high", "High", "100 DPI · smaller")}
+          {presetBtn("extreme", "Extreme", "72 DPI · smallest")}
+        </div>
+      </Section>
+
+      <Section title="Color">
+        <label className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[12px] text-foreground">
+          <input
+            type="checkbox"
+            checked={grayscale}
+            onChange={(e) => setGrayscale(e.target.checked)}
+            disabled={busy}
+            className="accent-vault"
+          />
+          Convert to grayscale
+        </label>
+      </Section>
+
+      {result && (
+        <div className="rounded-md border border-border bg-surface-2/60 px-3 py-2 text-[11.5px]">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Result</div>
+          {result.keptOriginal ? (
+            <div className="mt-1 text-foreground">Original was already smallest.</div>
+          ) : (
+            <div className="mt-1 space-y-0.5 text-foreground">
+              <div>
+                {fmt(result.originalSize)} → <span className="font-mono">{fmt(result.outputSize)}</span>
+              </div>
+              <div className="text-text-2">
+                {((1 - result.outputSize / result.originalSize) * 100).toFixed(0)}% smaller · {result.method}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy}
+        className={cn(
+          "mt-auto inline-flex items-center justify-center gap-1.5 rounded-md bg-vault px-3 py-2 text-[12px] font-medium text-vault-foreground",
+          busy ? "cursor-not-allowed opacity-60" : "hover:opacity-90",
+        )}
+      >
+        {busy ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            {progress ? `${progress.phase} ${progress.done}/${progress.total}` : "Compressing…"}
+          </>
+        ) : (
+          <>
+            <Download className="h-3.5 w-3.5" /> Compress &amp; download
+          </>
+        )}
+      </button>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
+    </div>
+  );
+}
+
+/* ============================== Remove Watermark ============================== */
+
+function RemoveWatermarkPanel({ ctx }: { ctx: ToolPanelCtx }) {
+  const { file, replaceFile } = ctx;
+  const [scan, setScan] = useState<null | import("@/lib/pdf/remove-watermark").WatermarkScan>(null);
+  const [selectedXo, setSelectedXo] = useState<Set<string>>(new Set());
+  const [stripAnnots, setStripAnnots] = useState(true);
+  const [busy, setBusy] = useState<"idle" | "scanning" | "removing">("idle");
+
+  useEffect(() => {
+    setScan(null);
+    setSelectedXo(new Set());
+  }, [file]);
+
+  const runScan = useCallback(async () => {
+    if (!file) return;
+    setBusy("scanning");
+    try {
+      const { scanForWatermarks } = await importChunk(
+        () => import("@/lib/pdf/remove-watermark"),
+      );
+      const source = new Uint8Array(await file.arrayBuffer());
+      const res = await scanForWatermarks(source);
+      setScan(res);
+      const preselect = new Set(res.repeatedXObjects.map((x) => x.ref));
+      setSelectedXo(preselect);
+      const total = res.annotationCount + res.repeatedXObjects.length;
+      if (total === 0) {
+        toast.message("No structural watermark found", {
+          description: "For painted-in watermarks, use Redact to cover the region.",
+        });
+      } else {
+        toast.success(
+          `Found ${res.annotationCount} annotation${res.annotationCount === 1 ? "" : "s"} · ${res.repeatedXObjects.length} repeated overlay${res.repeatedXObjects.length === 1 ? "" : "s"}`,
+        );
+      }
+    } catch (err) {
+      console.error("[remove-watermark] scan failed", err);
+      toast.error("Scan failed", { description: (err as Error).message });
+    } finally {
+      setBusy("idle");
+    }
+  }, [file]);
+
+  const doRemove = useCallback(
+    async (target: "download" | "replace") => {
+      if (!file || !scan) return;
+      setBusy("removing");
+      try {
+        const { removeWatermarks } = await importChunk(
+          () => import("@/lib/pdf/remove-watermark"),
+        );
+        const source = new Uint8Array(await file.arrayBuffer());
+        const res = await removeWatermarks(source, {
+          stripAnnotations: stripAnnots,
+          blankXObjectRefs: Array.from(selectedXo),
+        });
+        if (target === "download") {
+          const base = file.name.replace(/\.pdf$/i, "");
+          await downloadPdf(res.bytes, `${base}-no-watermark.pdf`);
+        } else {
+          replaceFile(new File([res.bytes as BlobPart], file.name, { type: "application/pdf" }));
+        }
+        toast.success(
+          `Removed ${res.annotationsRemoved} annotation${res.annotationsRemoved === 1 ? "" : "s"} · ${res.xobjectsBlanked} overlay${res.xobjectsBlanked === 1 ? "" : "s"}`,
+        );
+        setScan(null);
+        setSelectedXo(new Set());
+      } catch (err) {
+        console.error("[remove-watermark] failed", err);
+        toast.error("Removal failed", { description: (err as Error).message });
+      } finally {
+        setBusy("idle");
+      }
+    },
+    [file, scan, stripAnnots, selectedXo, replaceFile],
+  );
+
+  if (!file) {
+    return <InspectorEmpty>Open a PDF to remove a watermark.</InspectorEmpty>;
+  }
+
+  const hasFindings = !!scan && (scan.annotationCount > 0 || scan.repeatedXObjects.length > 0);
+  const canRemove =
+    hasFindings &&
+    ((stripAnnots && (scan?.annotationCount ?? 0) > 0) || selectedXo.size > 0);
+
+  return (
+    <div className="flex h-full flex-col gap-3.5">
+      <Section title="Source" icon={<FileText className="h-3 w-3" />}>
+        <div className="rounded-md border border-border bg-surface-2 px-2.5 py-2">
+          <div className="truncate text-[12px] text-foreground" title={file.name}>
+            {file.name}
+          </div>
+        </div>
+      </Section>
+
+      <button
+        type="button"
+        onClick={runScan}
+        disabled={busy !== "idle"}
+        className={cn(
+          "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+          busy !== "idle" && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <Search className="h-3.5 w-3.5" strokeWidth={2.5} />
+        {busy === "scanning" ? "Scanning…" : "Scan for watermarks"}
+      </button>
+
+      {scan && (
+        <div className="flex flex-col gap-2.5">
+          <Section title="Annotation watermarks" icon={<Info className="h-3 w-3" />}>
+            {scan.annotationCount === 0 ? (
+              <div className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-2 text-[11.5px] text-text-muted">
+                None detected.
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[12px] text-foreground">
+                <input
+                  type="checkbox"
+                  checked={stripAnnots}
+                  onChange={(e) => setStripAnnots(e.target.checked)}
+                  className="accent-vault"
+                />
+                Remove {scan.annotationCount} watermark annotation{scan.annotationCount === 1 ? "" : "s"}
+              </label>
+            )}
+          </Section>
+
+          <Section title="Repeated page overlays">
+            {scan.repeatedXObjects.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border bg-surface-2 px-2.5 py-2 text-[11.5px] text-text-muted">
+                None detected. For painted-in watermarks, use the Redact tool to cover the region.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {scan.repeatedXObjects.map((xo) => {
+                  const checked = selectedXo.has(xo.ref);
+                  return (
+                    <label
+                      key={xo.ref}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-[12px] text-foreground"
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setSelectedXo((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(xo.ref);
+                              else next.delete(xo.ref);
+                              return next;
+                            });
+                          }}
+                          className="accent-vault"
+                        />
+                        <span className="font-mono text-[11px]">{xo.ref}</span>
+                      </span>
+                      <span className="text-[10.5px] text-text-muted">
+                        on {xo.pageCount}/{xo.totalPages} pages
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </Section>
+        </div>
+      )}
+
+      <div className="mt-auto flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => doRemove("download")}
+          disabled={busy !== "idle" || !canRemove}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-vault px-2.5 py-1.5 text-[12px] font-medium text-vault-foreground hover:opacity-90",
+            (busy !== "idle" || !canRemove) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {busy === "removing" ? "Removing…" : "Remove & download"}
+        </button>
+        <button
+          type="button"
+          onClick={() => doRemove("replace")}
+          disabled={busy !== "idle" || !canRemove}
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
+            (busy !== "idle" || !canRemove) && "cursor-not-allowed opacity-60",
+          )}
+        >
+          Apply to active tab
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1.5 rounded-md bg-privacy-soft px-2.5 py-2 text-[10.5px] text-privacy">
+        <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+        On-device · nothing leaves your browser
+      </div>
     </div>
   );
 }
@@ -8334,6 +8955,7 @@ function MultiFileBatesButton() {
   const [Modal, setModal] = useState<
     null | React.ComponentType<{ onClose: () => void }>
   >(null);
+
 
   const launch = useCallback(async () => {
     if (!requirePro("Multi-file Bates")) return;
