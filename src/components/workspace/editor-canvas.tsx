@@ -404,6 +404,9 @@ export function EditorCanvas({
   // more reliable than sampling around a single glyph). Painted on the page
   // wrapper so text-edit covers can be transparent and reveal it.
   const [pageBgColor, setPageBgColor] = useState<RGB | null>(null);
+  // 0..1 confidence that the page background is uniform. When low, text-edit
+  // covers stay transparent instead of painting a potentially wrong solid band.
+  const [backgroundConfidence, setBackgroundConfidence] = useState(1);
   // Bumped whenever a text-edit annotation is removed, so the page re-renders
   // and restores the original glyph pixels that clearRect erased at edit time.
   const [renderTick, setRenderTick] = useState(0);
