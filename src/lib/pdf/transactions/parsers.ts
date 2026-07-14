@@ -261,12 +261,11 @@ function parseBankMoney(raw: string, locale: "US" | "EU"): number | null {
 
 function chooseBalanceCell(
   cells: ReturnType<typeof monetaryCells>,
-  mappedIdx: number | null,
+  _mappedIdx: number | null,
 ) {
-  if (mappedIdx != null) {
-    const exact = cells.find((c) => c.idx === mappedIdx || Math.abs(c.idx - mappedIdx) <= 1);
-    if (exact) return exact;
-  }
+  // Bank/credit-card statements conventionally put running balance as the
+  // rightmost monetary value. Header-derived indexes drift across pages in
+  // PDF.js text extraction, so rightmost is safer than a fixed index here.
   return cells[cells.length - 1] ?? null;
 }
 
