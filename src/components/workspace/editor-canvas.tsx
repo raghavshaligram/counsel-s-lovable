@@ -698,51 +698,8 @@ export function EditorCanvas({
         setTextItems(items);
         setTextLoaded(true);
 
-        // Sample the page background from the four corners of the rendered
-        // canvas (16x16 blocks). Large, glyph-free samples produce a much
-        // more reliable page-colour than the ring sampler that has to guess
-        // around ink. Painted on the wrapper so text-edit covers can be
-        // transparent without revealing the workspace surface.
-        try {
-          const bctx = canvas.getContext("2d", { willReadFrequently: true });
-          if (bctx) {
-            const S = 16;
-            const cw = canvas.width, ch = canvas.height;
-            const corners: Array<[number, number]> = [
-              [0, 0],
-              [Math.max(0, cw - S), 0],
-              [0, Math.max(0, ch - S)],
-              [Math.max(0, cw - S), Math.max(0, ch - S)],
-            ];
-            const cornerColors: Array<{ r: number; g: number; b: number }> = [];
-            for (const [x, y] of corners) {
-              const d = bctx.getImageData(x, y, Math.min(S, cw), Math.min(S, ch)).data;
-              let r = 0, g = 0, b = 0, n = 0;
-              for (let i = 0; i < d.length; i += 4) {
-                if (d[i + 3] < 128) continue;
-                r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
-              }
-              if (n > 0) cornerColors.push({ r: r / n, g: g / n, b: b / n });
-            }
-            if (cornerColors.length > 0) {
-              let r = 0, g = 0, b = 0;
-              for (const c of cornerColors) { r += c.r; g += c.g; b += c.b; }
-              const n = cornerColors.length;
-              setPageBgColor({ r: r / n / 255, g: g / n / 255, b: b / n / 255 });
-              // Confidence falls as the corners diverge from the average.
-              // At maxDist ≈ 80 the confidence reaches 0; below ≈ 8 it is ~0.9.
-              let maxDist = 0;
-              for (const c of cornerColors) {
-                const dr = c.r - r / n, dg = c.g - g / n, db = c.b - b / n;
-                maxDist = Math.max(maxDist, Math.sqrt(dr * dr + dg * dg + db * db));
-              }
-              setBackgroundConfidence(Math.max(0, Math.min(1, 1 - maxDist / 80)));
-            } else {
-              setPageBgColor({ r: 1, g: 1, b: 1 });
-              setBackgroundConfidence(0);
-            }
-          }
-        } catch { /* tainted */ }
+        // (Corner background sampling removed — text-edit covers are now
+        // always transparent, so there is nothing to sample for.)
 
       } catch (err) {
         console.error("[workspace EditorCanvas] page render failed", err);
