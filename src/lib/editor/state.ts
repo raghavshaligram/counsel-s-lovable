@@ -196,6 +196,33 @@ export function reducer(s: State, a: Action): State {
       const annotations = s.doc.annotations.map((x) => ({ ...x, page: x.page > a.after ? x.page + 1 : x.page }));
       return commit({ ...s, current: a.after + 1 }, { ...s.doc, pages, annotations });
     }
+    case "INSERT_BLANKS": {
+      if (!s.doc || a.count <= 0) return s;
+      const pages = [...s.doc.pages];
+      const inserts: PageOp[] = Array.from({ length: a.count }, () => ({
+        srcPage: -1, rotation: 0, blank: true, width: a.width, height: a.height,
+      }));
+      pages.splice(a.after + 1, 0, ...inserts);
+      const annotations = s.doc.annotations.map((x) => ({ ...x, page: x.page > a.after ? x.page + a.count : x.page }));
+      return commit({ ...s, current: a.after + 1 }, { ...s.doc, pages, annotations });
+    }
+    case "DELETE_PAGES": {
+      if (!s.doc || a.indexes.length === 0) return s;
+      const kill = new Set(a.indexes);
+      if (kill.size >= s.doc.pages.length) return s; // keep at least one page
+      const pages = s.doc.pages.filter((_, i) => !kill.has(i));
+      const remap = (p: number) => {
+        if (kill.has(p)) return -1;
+        let shift = 0;
+        for (const k of a.indexes) if (k < p) shift++;
+        return p - shift;
+      };
+      const annotations = s.doc.annotations
+        .filter((x) => !kill.has(x.page))
+        .map((x) => ({ ...x, page: remap(x.page) }));
+      const current = Math.min(s.current, pages.length - 1);
+      return commit({ ...s, current }, { ...s.doc, pages, annotations });
+    }
     case "ROTATE_PAGE": {
       if (!s.doc) return s;
       const pages = s.doc.pages.map((p, i) =>
@@ -208,6 +235,18 @@ export function reducer(s: State, a: Action): State {
       const pages = s.doc.pages.map((p, i) =>
         i === a.n ? { ...p, cropBox: a.rect ?? undefined } : p,
       );
+      return commit(s, { ...s.doc, pages });
+    }
+    case "RESIZE_PAGES": {
+      if (!s.doc || a.indexes.length === 0) return s;
+      const want = new Set(a.indexes);
+      const pages = s.doc.pages.map((p, i) => {
+        if (!want.has(i)) return p;
+        const srcW = p.width;
+        const srcH = p.height;
+        const scale = a.scaleContent ? Math.min(a.width / srcW, a.height / srcH) : 1;
+        return { ...p, resize: { w: a.width, h: a.height, scale, scaleContent: a.scaleContent } };
+      });
       return commit(s, { ...s.doc, pages });
     }
     case "UNDO": {
