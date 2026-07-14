@@ -1145,11 +1145,10 @@ export function EditorCanvas({
         const padTopPt = cover ? Math.max(0, a.y - cover.y) : a.kind === "text-edit" && a.textOffsetY ? a.textOffsetY : 0;
         const padBottomPt = cover ? Math.max(0, cover.y + cover.h - (a.y + a.h)) : a.kind === "text-edit" && a.textPadBottom ? a.textPadBottom : 0;
         const lh = a.lineHeight ?? 1.15;
-        // Push the editable glyph DOWN onto the original PDF baseline. Net of the
-        // ascent gap (textarea anchors by em-box top, ~0.18) minus half-leading (~0.075).
-        const BASELINE_FACTOR = 0.10;
-        const baselineComp = a.kind === "text-edit" ? BASELINE_FACTOR * a.fontSize * scale : 0;
-        const padTop = padTopPt * scale + baselineComp;
+        // No additive baseline compensation: cover.y == a.y (top of pdf.js
+        // glyph em-box) and lineHeight === 1 aligns the DOM line-box
+        // exactly with the masked glyph band.
+        const padTop = padTopPt * scale;
         const padLeft = padLeftPt * scale;
         const padRight = padRightPt * scale;
         const padBottom = padBottomPt * scale;
