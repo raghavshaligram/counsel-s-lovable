@@ -12,6 +12,9 @@
  * inspector; this file is just the page surface + pointer logic.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+// pdf.js viewer styles — needed for the XFA HTML layer to lay out
+// correctly (fonts, colours, form field boxes). Side-effect import.
+import "pdfjs-dist/web/pdf_viewer.css";
 import { loadPdfjs } from "@/lib/pdf/worker";
 import { computeQuads } from "@/lib/editor/quad-capture";
 import { FONT_KEYS, FONT_META, detectFontKey, type FontKey } from "@/lib/editor/fonts";
