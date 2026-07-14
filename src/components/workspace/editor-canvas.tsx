@@ -733,14 +733,30 @@ export function EditorCanvas({
 
   // When a text-edit annotation is removed, re-render the page canvas so the
   // pixels erased by onClickEditHit's clearRect come back.
+  // When a text-edit annotation is removed, restore the pixels that
+  // onClickEditHit's row-inpaint painted over. Blit directly from the
+  // pristine snapshot when available (instant, no pdf.js re-render);
+  // otherwise fall back to bumping renderTick to force a full re-render.
   useEffect(() => {
     const now = new Set(annos.filter((a) => a.kind === "text-edit").map((a) => a.id));
     const prev = prevTextEditIdsRef.current;
     let removed = false;
     for (const id of prev) if (!now.has(id)) { removed = true; break; }
     prevTextEditIdsRef.current = now;
-    if (removed) setRenderTick((t) => t + 1);
+    if (!removed) return;
+    const canvas = canvasRef.current;
+    const snap = pristineCanvasRef.current;
+    if (canvas && snap && snap.width === canvas.width && snap.height === canvas.height) {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(snap, 0, 0);
+        return;
+      }
+    }
+    setRenderTick((t) => t + 1);
   }, [annos]);
+
 
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
