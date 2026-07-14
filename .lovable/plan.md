@@ -1,151 +1,137 @@
+# Intelligent Action Bar — Plan
 
-## Goal
+## Recommendations on the open questions
 
-Introduce a single, reusable `FontResolver` that maps any PDF/CSS font identifier to a normalized descriptor with confidence scoring. No existing consumer is modified in this pass — the resolver ships standalone with unit tests, ready to be adopted incrementally later.
+1. **Top toolbar** — keep it, but slim it down. The top-center bar becomes chrome-only: Nav toggle, tool switcher (Select / Text / Highlight / Shapes / Image / Note), Legal tools (Redact / Sign / Link), Undo / Redo. The new Intelligent Action Bar owns everything that depends on a *selected object* — no duplicate controls. Rationale: paralegals still need a reliable place to pick a tool when nothing is selected; a purely selection-following bar leaves cold-start users stranded.
+2. **Missing actions** — render the full primary rows as specified, wire the ones that map to existing logic today, stub the rest with a small `Tip` ("Coming soon") and a toast. This locks in the intelligent shape and the muscle memory now; follow-ups fill the gaps without touching the bar again. Concretely: Duplicate, Bring Forward / Send Backward, Replace (image), Crop (image), Extract (image), Reset Crop, Duplicate Style, Done / Cancel (text edit), Flatten (signature), Mark Entire Line, Burn Redactions, Preview Burn → wireable. Match Original Font, Replace Font, Replace Everywhere, Find Similar Text, Apply To Similar, AI Enhance, Compress (single image), Apply To Pages, Verify (signature), Apply Same Crop → stubs with toast.
+3. **Signatures** — tag them at insertion. When `signature-creators` / Sign & Fill drops an image annotation, set `meta.signature = true` on the annotation. The action bar reads that flag to switch from the Image primary set to the Signature primary set. Zero schema churn, zero risk to the editor pipeline.
 
-Explicitly out of scope: `editor-canvas.tsx`, the PDF viewer, tab/open lifecycle, `samplePageBg`, and any live rendering path.
+## Scope guardrails (unchanged files)
 
-## Deliverables
+Do NOT touch: `editor-canvas.tsx` (canvas / open lifecycle / samplePageBg), PDF viewer, tab lifecycle, `src/lib/editor/state.ts` reducer semantics, `exportEditedPdf`. The existing text-edit mini-toolbar inside `editor-canvas.tsx` stays as-is for in-place typing UX; the Intelligent Action Bar mirrors its Done / Cancel / Match Original / Replace Font / Apply To Similar row *around* the edited box but does not replace the caret-adjacent chrome.
 
-New files only:
+## Architecture
+
+New folder: `src/components/workspace/action-bar/`
 
 ```text
-src/lib/fonts/
-  resolver.ts          # public API: resolveFont(...)
-  registry.ts          # canonical font catalog (families + metadata)
-  aliases.ts           # PostScript / PDF / CSS alias table
-  normalize.ts         # PostScript name normalization
-  types.ts             # FontDescriptor, FontQuery, ResolveResult
-  index.ts             # barrel export
-tests/fonts/
-  normalize.test.ts
-  resolver.test.ts
+action-bar/
+  IntelligentActionBar.tsx   ← positioning + framer-motion transitions + section layout
+  useActionBarTarget.ts      ← resolves selection → { kind, rect, state } target descriptor
+  usePositioner.ts           ← auto-flip above/below/left/right, viewport-aware, avoids covering selection
+  registry.ts                ← ACTION_SETS keyed by target kind + workflow stage
+  actions/
+    text.ts                  ← primary + properties for text / text-edit
+    image.ts                 ← image + signature variants
+    redaction.ts
+    shape.ts
+    mark.ts                  ← highlight/underline/strikethrough
+  primitives/
+    ActionButton.tsx         ← primary button (label + icon, compact)
+    PropertyControl.tsx      ← property row atoms (color swatch, slider, toggle)
+    Section.tsx              ← Primary / Properties separator with subtle divider
+  types.ts
 ```
 
-Nothing under `src/lib/editor/`, `src/lib/utils/fontMatcher.ts`, or `src/lib/pdf/fonts-pdfa.ts` is touched. Those keep working exactly as they do today.
+- Rendered once at the workspace canvas layer, positioned absolutely against the canvas container using the selected annotation's page-space rect projected through the existing viewport transform (reuse the same rect math the current selection outline uses in `editor-canvas.tsx` — read-only, no edits there).
+- `framer-motion` (already installed) drives layout transitions between action sets — `<motion.div layout>` on the container, `AnimatePresence` per row, so buttons slide/fade instead of the whole bar rebuilding.
 
-## Public API
+## Target resolution (`useActionBarTarget`)
 
-```ts
-// types.ts
-export type FontKind = "sans" | "serif" | "mono" | "display";
-export type FontVendor = "microsoft" | "adobe" | "google" | "apple" | "legal" | "engineering" | "generic";
+Reads the editor reducer state + active tool. Returns one of:
 
-export interface FontQuery {
-  descriptor?: string;      // 1. embedded PDF font descriptor (/FontName)
-  postscriptName?: string;  // 2. PostScript name
-  pdfFamily?: string;       // 3. PDF font family (/FontFamily)
-  cssFamily?: string;       // 4. CSS family string
-  weightHint?: number | string;
-  italicHint?: boolean;
-}
+- `{ kind: 'none' }` — no selection, no draw tool → bar hidden.
+- `{ kind: 'text', anno, editing: false }`
+- `{ kind: 'text', anno, editing: true }` — while the caret is inside a text-edit box
+- `{ kind: 'image', anno, isSignature: !!anno.meta?.signature }`
+- `{ kind: 'redaction', anno }`
+- `{ kind: 'shape', anno, subKind: 'rect'|'ellipse'|'line'|'arrow'|'freehand' }`
+- `{ kind: 'mark', anno, subKind: 'highlight'|'underline'|'strikethrough' }`
+- `{ kind: 'draw-tool', tool }` — a draw tool is active with nothing selected; bar shows the "next draw" property row only, no primary section.
 
-export interface CanonicalFont {
-  id: string;               // "arial", "times-new-roman", ...
-  family: string;           // display name
-  kind: FontKind;
-  vendor: FontVendor;
-  cssStack: string;         // ready-to-use CSS font-family
-  metricTwin?: string;      // e.g. "carlito" for Calibri
-}
+A `workflowStage` field on the target tracks what just happened (see Behavior). Stored in a small `useReducer` local to the bar, keyed by `anno.id + kind`.
 
-export interface ResolveResult {
-  font: CanonicalFont;      // resolved family (falls back to generic)
-  weight: number;           // 100..900
-  italic: boolean;
-  bold: boolean;            // weight >= 600
-  confidence: number;       // 0..1
-  exact: boolean;           // true iff matched via registry/alias, not generic
-  source: "descriptor" | "postscript" | "pdfFamily" | "cssFamily" | "alias" | "generic";
-  matchedKey?: string;      // which alias/id produced the hit
-}
+## Positioning (`usePositioner`)
 
-export function resolveFont(q: FontQuery): ResolveResult;
-```
+Inputs: selection rect (canvas-space), bar measured size, canvas viewport rect.
 
-## Resolution order (implemented in `resolver.ts`)
+Algorithm: prefer **below** the selection with 8px gap. If not enough space, try **above**, then **right**, then **left**. If none fit without overlap, dock at the nearest canvas edge and pin. Never overlap the selection when any side has ≥ bar height + 16px. Recomputes on: selection change, scroll, zoom, viewport resize (ResizeObserver on canvas + IntersectionObserver on selection outline sentinel already present).
 
-For each provided field, in this order, try:
+The bar animates its position with `layout` transitions (spring, low stiffness) so it glides between targets rather than teleporting.
 
-1. `descriptor` → normalize → exact registry id → alias table
-2. `postscriptName` → normalize → registry id → alias
-3. `pdfFamily` → lowercase trim → registry family → alias
-4. `cssFamily` → split on comma, walk tokens through registry + alias
-5. Known-alias fuzzy pass (substring match on normalized token against alias keys)
-6. Generic fallback by `kind` inferred from tokens (`serif`/`mono`/else `sans`)
+## Action sets (registry)
 
-Confidence:
-- descriptor/postscript exact = 1.0
-- pdfFamily exact = 0.95
-- cssFamily exact = 0.9
-- alias hit = 0.8
-- fuzzy substring = 0.6
-- generic fallback = 0.2
+Each entry: `{ primary: Action[], properties: PropertyControl[] }`. `Action` = `{ id, label, icon, onRun(ctx), enabled?, hidden?, stub? }`. `ctx` exposes `{ state, dispatch, anno, openInspector(id), toast, setStage }`.
 
-`exact` is true for anything except the generic fallback.
+### Text — selected, not editing
+Primary: Match Original Font*, Replace Font*, Replace Everywhere*, Find Similar Text*, Duplicate Style
+Properties: Font, Size, Bold, Italic, Underline, Color, Alignment (reuses the existing `TextEditPropsBar` control atoms — extracted into `primitives/`).
 
-## Normalization (`normalize.ts`)
+### Text — editing (caret inside box)
+Primary: Done, Cancel, Match Original*, Replace Font*, Apply To Similar*
+Properties: hidden (in-canvas mini-toolbar handles inline formatting).
 
-Pure function `normalizePsName(raw): { base, weight, italic }`:
+### Image — plain
+Primary: Replace, Crop, Compress*, Extract, AI Enhance*
+Properties: Opacity, Rotation, Arrange (Bring Forward / Send Backward)
 
-- strip subset prefix `^[A-Z]{6}\+`
-- strip trailing `MT`, `PS`, `PSMT`, `LTStd`, `Std`, `Pro`, `LT`
-- split on `-`, `,`, spaces; last segment is style token
-- style tokens → weight/italic:
-  - `Thin`=100, `ExtraLight/UltraLight`=200, `Light`=300, `Regular/Roman/Book`=400,
-    `Medium`=500, `SemiBold/DemiBold`=600, `Bold`=700, `ExtraBold/UltraBold/Heavy`=800, `Black`=900
-  - `Italic`/`Oblique` → italic=true (may combine, e.g. `BoldItalic`)
-- collapse the remaining tokens into a canonical id (lowercase, hyphen-joined)
+### Image — signature (`meta.signature === true`)
+Primary: Replace, Duplicate, Flatten, Verify*
+Properties: Opacity, Rotation
 
-Cases explicitly covered by unit tests:
+### Redaction (`kind === 'redact'`)
+Primary: Preview Burn, Find Similar*, Mark Entire Line, Apply To Pages*, Burn Redactions
+Properties: Color, Opacity
 
-```
-ArialMT                          → arial / 400 / false
-Arial-BoldMT                     → arial / 700 / false
-ABCDE+ArialMT                    → arial / 400 / false
-HelveticaNeueLTStd-Roman         → helvetica-neue / 400 / false
-TimesNewRomanPSMT                → times-new-roman / 400 / false
-TimesNewRomanPS-BoldItalicMT     → times-new-roman / 700 / true
-Calibri-Light                    → calibri / 300 / false
-SegoeUI-SemiboldItalic           → segoe-ui / 600 / true
-AptosDisplay-Bold                → aptos / 700 / false
-```
+### Shape (`rect / ellipse / line / arrow / freehand`)
+Primary: Duplicate, Bring Forward, Send Backward
+Properties: Fill (rect/ellipse only), Stroke color, Thickness, Opacity
 
-## Registry (`registry.ts`)
+### Mark (`highlight / underline / strikethrough`)
+Primary: Duplicate Style, Find Similar Text*
+Properties: Color, Opacity
 
-Every listed family gets a `CanonicalFont` entry with id, display name, kind, vendor, and a CSS stack. Metric twins wired where applicable (Calibri→Carlito, Arial→Arimo, Times New Roman→Tinos, Cambria→Caladea, Courier New→Cousine). Covers:
+*= stubbed with toast + tooltip "Coming soon" in this pass.
 
-- Microsoft: Arial, Arial Narrow, Calibri, Aptos, Cambria, Candara, Consolas, Courier New, Georgia, Segoe UI, Tahoma, Trebuchet MS, Verdana
-- Adobe: Helvetica, Helvetica Neue, Times, Times New Roman, Myriad Pro, Minion Pro, Garamond, Warnock
-- Google: Roboto, Open Sans, Noto Sans, Noto Serif, Inter
-- Apple: SF Pro, Geneva, Lucida Grande
-- Legal: Book Antiqua, Century Schoolbook, Bookman
-- Engineering: OCR-A, OCR-B, DIN, Univers
-- Generic sentinels: `generic-sans`, `generic-serif`, `generic-mono`
+## Adaptive behavior
 
-## Aliases (`aliases.ts`)
+Small state machine per selection tracks `lastAction`:
 
-Flat `Record<normalizedKey, canonicalId>` covering common vendor spellings, e.g.:
+- Text — after a font change → swap `Replace Font` with `Apply To Similar` + `Replace Everywhere`. Reverts on new selection.
+- Image — after a crop commit → swap `Crop` with `Reset Crop` + `Apply Same Crop`. Reverts on selection change or explicit Reset.
+- Redaction — after `Preview Burn` → swap it with `Commit Burn` + `Undo Preview`.
+- Shape — after Duplicate → briefly (2s) show `Duplicate Again` in place of `Duplicate` so repeat clicks are one-target.
 
-```
-arialmt, arial, liberationsans, nimbussans, arimo         → arial
-helvetica, helveticaneue, helveticaneueltstd, nimbussansl → helvetica / helvetica-neue
-timesnewroman, timesnewromanps, tinos, liberationserif    → times-new-roman
-calibri, carlito                                          → calibri
-segoeui                                                   → segoe-ui
-sfpro, sfprodisplay, sfprotext, -apple-system             → sf-pro
-bookantiqua, palatino                                     → book-antiqua
-centuryschoolbook, newcenturyschlbk                       → century-schoolbook
-bookmanoldstyle, itcbookman                               → bookman
-ocra, ocrb, din, univers, myriadpro, minionpro, garamond, warnock, ...
-```
+Transitions use `AnimatePresence mode="popLayout"` so the button morphs rather than the row jumping.
 
-## Tests
+## Signature tagging (minimal integration)
 
-- `normalize.test.ts` — every case from the "Normalization" list above, plus edge cases (empty string, only style token, unknown vendor).
-- `resolver.test.ts` — verifies resolution order (descriptor beats cssFamily), confidence tiers, `exact` flag, alias hits, generic fallback for unknown families, and italic/bold flag propagation.
+- `signature-creators.tsx` (and any Sign & Fill drop path) currently dispatches an `ADD_ANNO` for an image. Add `meta: { signature: true, source: 'signature-creator' }` to that anno. The reducer already spreads `patch` on `ADD_ANNO`, so `meta` rides through without state.ts changes. `types.ts` gains an optional `meta?: Record<string, unknown>` on the anno base — additive, non-breaking.
 
-## Non-goals for this change
+## Top-bar slim-down
 
-- No changes to `matchPdfFont`, `mapPdfFontToKey`, `detectFontKey`, editor canvas, PDF viewer, tab lifecycle, or `samplePageBg`.
-- No callers migrated in this pass. Follow-up plans will adopt the resolver in `editor/fonts.ts`, `utils/fontMatcher.ts`, and `pdf/fonts-pdfa.ts` one at a time.
+`FloatingToolbar` in `workspace-shell.tsx` keeps: Nav toggle, Legal (Redact / Sign / Link), tool switcher groups (Select, Text, Highlight/Underline/Strike, Note, Image/Shapes), Undo/Redo. Removes: Delete Selected (moves into Intelligent Action Bar as a properties-row trailing button on every kind).
+
+## Files touched
+
+**New:** the `action-bar/` tree above (~9 files).
+
+**Edited (surgical):**
+- `src/components/workspace/workspace-shell.tsx` — mount `<IntelligentActionBar />` inside the canvas frame next to `<FloatingToolbar>`; remove Delete button from top bar; pass reducer state + dispatch + `openInspector`.
+- `src/components/workspace/signature-creators.tsx` — set `meta.signature = true` on inserted image anno.
+- `src/lib/editor/types.ts` — add optional `meta?: Record<string, unknown>` to anno base type.
+
+**Not touched:** `editor-canvas.tsx`, `state.ts` reducer, PDF viewer, tab lifecycle, `samplePageBg`, export pipeline, font resolver.
+
+## Design tokens
+
+- Container: `bg-surface-3`, `border border-border`, `borderRadius: 12`, `boxShadow: var(--shadow-float)`, 6px vertical padding, 8px horizontal.
+- Sections separated by a 1px `bg-border` divider with 6px vertical gap. Primary row uses labeled buttons (icon + text, `text-[12px]`, `h-7`). Properties row uses compact icon-only controls (`h-6 w-6`).
+- Motion: spring `{ stiffness: 320, damping: 32 }` for position + layout, 120ms fade for button add/remove.
+- Steel-blue accent (`--vault`) only on active/toggled property controls, consistent with project rule.
+
+## Verification
+
+- Unit: `tests/action-bar/registry.test.ts` — snapshot each action set + adaptive stage transitions.
+- Unit: `tests/action-bar/positioner.test.ts` — flip logic for 8 selection positions × 4 viewport edges.
+- Manual: Playwright script that selects a text box, image, redaction, shape, mark; screenshots the bar in each state and after each adaptive trigger; verifies it never overlaps the selection when space exists.
