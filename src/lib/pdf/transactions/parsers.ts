@@ -50,8 +50,8 @@ export function parseBankStatement(ctx: ParseCtx): ParseResult {
   const flat = flatten(ctx.tables).map((r) => r.row);
   const warnings: string[] = [];
   const header = findHeaderRow(flat, [
-    ["date", "posted", "trans date"],
-    ["description", "details", "transaction", "memo"],
+    ["date", "posted", "trans date", "txn date"],
+    ["description", "details", "transaction", "memo", "particulars", "narration"],
     ["debit", "withdrawal", "amount out"],
     ["credit", "deposit", "amount in"],
     ["amount"],

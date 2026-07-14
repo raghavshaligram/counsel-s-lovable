@@ -93,8 +93,8 @@ export function parseDate(raw: string, locale: Locale = "US", refYear?: number):
     return iso(y, month, day);
   }
 
-  // "Jan 5, 2024" / "5 Jan 2024" / "Jan 5"
-  m = s.match(/\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:,?\s+(\d{2,4}))?\b/);
+  // "Jan 5, 2024" / "Jan-5-2024" / "Jan 5"
+  m = s.match(/\b([A-Za-z]{3,9})\.?[\s\-\/.]+(\d{1,2})(?:[,\s\-\/.]+(\d{2,4}))?\b/);
   if (m) {
     const mo = MONTHS[m[1].slice(0, 3).toLowerCase()];
     if (mo) {
@@ -103,7 +103,8 @@ export function parseDate(raw: string, locale: Locale = "US", refYear?: number):
       return iso(y, mo, day);
     }
   }
-  m = s.match(/\b(\d{1,2})\s+([A-Za-z]{3,9})\.?(?:\s+(\d{2,4}))?\b/);
+  // "5 Jan 2024" / "04-APR-2025" / "04/APR/2025"
+  m = s.match(/\b(\d{1,2})[\s\-\/.]+([A-Za-z]{3,9})\.?(?:[,\s\-\/.]+(\d{2,4}))?\b/);
   if (m) {
     const mo = MONTHS[m[2].slice(0, 3).toLowerCase()];
     if (mo) {

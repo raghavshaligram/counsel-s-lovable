@@ -13,11 +13,15 @@ export function detectType(pageText: string): DetectResult {
   }
 
   const bankHits: string[] = [];
-  if (/\b(Statement|Account)\s+(period|summary|number)\b/i.test(t)) bankHits.push("statement header");
-  if (/\bBeginning\s+balance\b/i.test(t)) bankHits.push("beginning balance");
-  if (/\bEnding\s+balance\b/i.test(t)) bankHits.push("ending balance");
-  if (/\bDeposits?\b.*\bWithdrawals?\b/is.test(t)) bankHits.push("deposits/withdrawals");
-  if (/\b(Date)\b.*\b(Description)\b.*\b(Balance)\b/is.test(t)) bankHits.push("date/desc/balance header");
+  if (/\b(Statement|Account)\s+(period|summary|number|of\s+Account)\b/i.test(t)) bankHits.push("statement header");
+  if (/\bStatement\s+of\s+Account\b/i.test(t)) bankHits.push("statement of account");
+  if (/\b(Beginning|Opening)\s+balance\b/i.test(t)) bankHits.push("opening balance");
+  if (/\b(Ending|Closing)\s+balance\b/i.test(t)) bankHits.push("closing balance");
+  if (/\bWithdrawals?\b/i.test(t) && /\bDeposits?\b/i.test(t)) bankHits.push("withdrawals/deposits");
+  if (/\b(Date)\b[\s\S]{0,200}\b(Description|Particulars|Narration)\b[\s\S]{0,200}\b(Balance)\b/i.test(t)) bankHits.push("date/particulars/balance header");
+  if (/\bIFSC\b|\bMICR\b|\bSWIFT\s*Code\b/i.test(t)) bankHits.push("bank identifiers");
+  if (/\bAccount\s*(Number|No\.?|#)\b/i.test(t)) bankHits.push("account number");
+  if (/\bTran(saction)?\s*ID\b|\bUPI\b|\bIMPS\b|\bNEFT\b|\bRTGS\b/i.test(t)) bankHits.push("payment rails");
 
   const ledesHits: string[] = [];
   if (/\bTimekeeper\b/i.test(t)) ledesHits.push("Timekeeper");
