@@ -207,9 +207,35 @@ function samplePageBg(
   const bw = Math.max(1, Math.floor(sw));
   const bh = Math.max(1, Math.floor(sh));
 
-  // Try progressively larger rings if the first pass yields too few opaque
-  // pixels (small glyph in a busy line). Reading further out also dodges
-  // adjacent baselines that would skew the mode toward ink.
+  const lumOf = (r: number, g: number, b: number) =>
+    0.299 * r + 0.587 * g + 0.114 * b;
+
+  // Sample the glyph's own average luminance from inside the bbox. This is
+  // our "ink" reference — the winning background cluster must be the one
+  // whose luminance is FURTHEST from this value, not merely the brightest.
+  // That single change makes the sampler work on dark pages with light
+  // glyphs (and vice-versa), where "brightest cluster" would select ink halo.
+  let inkLum = 128;
+  try {
+    const ibw = Math.max(1, Math.min(bw, cw - bx));
+    const ibh = Math.max(1, Math.min(bh, ch - by));
+    if (ibw >= 1 && ibh >= 1) {
+      const d = ctx.getImageData(bx, by, ibw, ibh).data;
+      let s = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        s += lumOf(d[i], d[i + 1], d[i + 2]);
+        n++;
+      }
+      if (n > 0) inkLum = s / n;
+    }
+  } catch { /* tainted */ }
+
+  // Inner gap — skip pixels immediately adjacent to the bbox to exclude
+  // anti-aliased ink halo from the sampled ring.
+  const gap = Math.max(2, Math.floor(sh * 0.15));
+
+  // Try progressively larger rings if a pass yields too few opaque pixels.
   const rings = [
     Math.max(4, Math.floor(sh * 0.6)),
     Math.max(8, Math.floor(sh * 1.4)),
@@ -227,12 +253,13 @@ function samplePageBg(
 
   for (const band of rings) {
     const strips: ImageData[] = [];
-    read(bx, by - band, bw, band, strips);
-    read(bx, by + bh, bw, band, strips);
-    read(bx - band, by, band, bh, strips);
-    read(bx + bw, by, band, bh, strips);
+    // Push each ring OUT past the gap so ink halo is excluded.
+    read(bx, by - band - gap, bw, band, strips);
+    read(bx, by + bh + gap, bw, band, strips);
+    read(bx - band - gap, by, band, bh, strips);
+    read(bx + bw + gap, by, band, bh, strips);
 
-    // Mode by 8-step quantization (32 buckets per channel = 32768 keys).
+    // Mode by 8-step quantization (32 buckets per channel).
     const counts = new Map<number, { n: number; r: number; g: number; b: number }>();
     let total = 0;
     for (const img of strips) {
@@ -248,41 +275,53 @@ function samplePageBg(
       }
     }
     if (total < 20) continue;
-    // Find the brightest CLUSTER that is also well-represented. Pages are
-    // overwhelmingly lighter than ink, but a tight ring around a glyph can
-    // be dominated by anti-aliased mid-grays — taking the plain mode then
-    // yields e.g. rgb(241,241,241) instead of the real page white. We
-    // pick the cluster with the highest luminance among those that hold
-    // at least 15% of sampled pixels (≥3% if nothing qualifies).
+
     const clusters = [...counts.values()].sort((a, b) => b.n - a.n);
-    const minShareStrong = total * 0.15;
-    const minShareWeak = total * 0.03;
-    const lum = (c: { r: number; g: number; b: number; n: number }) =>
-      (0.299 * (c.r / c.n) + 0.587 * (c.g / c.n) + 0.114 * (c.b / c.n));
-    let best: { n: number; r: number; g: number; b: number } | null = null;
-    for (const c of clusters) {
-      if (c.n < minShareStrong) break;
-      if (!best || lum(c) > lum(best)) best = c;
-    }
-    if (!best) {
-      for (const c of clusters) {
-        if (c.n < minShareWeak) break;
-        if (!best || lum(c) > lum(best)) best = c;
-      }
-    }
-    if (!best) best = clusters[0] ?? null;
+    const clusterLum = (c: { r: number; g: number; b: number; n: number }) =>
+      lumOf(c.r / c.n, c.g / c.n, c.b / c.n);
+    const distFromInk = (c: { r: number; g: number; b: number; n: number }) =>
+      Math.abs(clusterLum(c) - inkLum);
+
+    // Take the true modal cluster. If a runner-up is within 20% of its
+    // count, prefer whichever is further from the glyph's own luminance —
+    // that resolves the ink-halo tie on both light and dark pages.
+    let best = clusters[0];
     if (!best) continue;
+    for (let i = 1; i < clusters.length; i++) {
+      const c = clusters[i];
+      if (c.n < best.n * 0.8) break;
+      if (distFromInk(c) > distFromInk(best)) best = c;
+    }
     return { r: best.r / best.n / 255, g: best.g / best.n / 255, b: best.b / best.n / 255 };
   }
-  // Last resort: sample a single pixel far above the bbox. Avoids hardcoded white.
+
+  // Last resort: probe both above and below, pick whichever is further from ink.
   try {
     const fx = Math.max(0, Math.min(cw - 1, bx + (bw >> 1)));
-    const fy = Math.max(0, by - Math.max(20, sh * 3));
-    const d = ctx.getImageData(fx, fy, 1, 1).data;
-    return { r: d[0] / 255, g: d[1] / 255, b: d[2] / 255 };
-  } catch {
-    return { r: 1, g: 1, b: 1 };
-  }
+    const off = Math.max(20, Math.floor(sh * 3));
+    const probes: Array<{ r: number; g: number; b: number }> = [];
+    const readOne = (y: number) => {
+      const cy = Math.max(0, Math.min(ch - 1, y));
+      try {
+        const d = ctx.getImageData(fx, cy, 1, 1).data;
+        probes.push({ r: d[0], g: d[1], b: d[2] });
+      } catch { /* tainted */ }
+    };
+    readOne(by - off);
+    readOne(by + bh + off);
+    if (probes.length > 0) {
+      let pick = probes[0];
+      for (const p of probes) {
+        if (Math.abs(lumOf(p.r, p.g, p.b) - inkLum) > Math.abs(lumOf(pick.r, pick.g, pick.b) - inkLum)) {
+          pick = p;
+        }
+      }
+      return { r: pick.r / 255, g: pick.g / 255, b: pick.b / 255 };
+    }
+  } catch { /* tainted */ }
+  // Truly nothing to read — infer from ink: return black if ink is light,
+  // white otherwise. No hardcoded white bias.
+  return inkLum > 128 ? { r: 0, g: 0, b: 0 } : { r: 1, g: 1, b: 1 };
 }
 
 export interface EditorCanvasProps {

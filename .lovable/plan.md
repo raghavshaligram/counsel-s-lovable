@@ -1,64 +1,31 @@
-## Two independent bugs — both root-caused
+## Why non-white pages break
 
-### 1. Every font lands on `vaultarimo`
+`samplePageBg` (editor-canvas.tsx L196–286) picks the **brightest well-represented cluster** in the ring around the glyph. That heuristic assumes "page is lighter than ink" — it works on white pages with dark ink, but inverts on the two cases in your screenshots:
 
-`editor-canvas.tsx` feeds the resolver bad inputs at both call sites:
+- **Dark navy page, light glyphs (image 107):** the ring is dominated by the true dark page color, but anti-aliased edges of the light ink form a smaller high-luminance cluster. The `lum > best.lum` selector jumps onto that anti-alias cluster → cover painted near-white on navy → the bright band you see.
+- **Dark teal page, white heading (image 108):** same failure mode, more severe because the glyphs are solid white. The brightest cluster IS the ink halo, so cover paints solid white over the heading area.
 
-**Extraction path (~line 482):**
-```ts
-resolveToFontKey({
-  postscriptName: sanitizedFontName || undefined,
-  pdfFamily: family,          // ← "sans" | "serif" | "mono", NOT a family
-  cssFamily:  sanitizedCssFamily || undefined,
-  ...
-})
-```
-- `pdfFamily` gets `"sans"` (a kind bucket, not a family) → resolver's alias table misses it.
-- pdf.js hands us opaque font ids like `g_d0_f1`; `isOpaquePdfjsFontId` strips them, so `sanitizedFontName` and `sanitizedCssFamily` are usually `undefined`.
-- The extracted `descRealName` from the FontDescriptor is folded into `postscriptName`, but the resolver's highest-confidence slot (`descriptor:`) is never used, and the descriptor's `/FontFamily` is never passed either.
-- With every real slot empty, the resolver falls to generic → `inferKindFromTokens(["sans"])` → `generic-sans` → bridge's `KIND_TO_KEY.sans` → **arimo**. Same at the edit-click path (~line 1172).
+Root cause: "brightest cluster" is a page-color heuristic, not a background detector. On any page darker than its ink (dark themes, colored backgrounds, images), it deterministically selects ink halo instead of page.
 
-### 2. White rectangle on a white page
+## Fix plan — replace the selector with a true modal background
 
-The cover rect padding (lines 1147–1154) is 62% taller than the glyph:
-```ts
-coverPadTop    = 0.22 * h   // 0.30 * h if bold
-coverPadBottom = 0.40 * h   // always
-coverPadX      = 0.18 * h   // 0.28 * h if italic
-```
-For a 32 px heading, cover is ~52 px tall — it extends well into the line below and paints that strip with the sampled page color (white on a white page). That is exactly the white band you see slicing through the next line "Quick-reference ratios, volumes…" in the screenshot. It has nothing to do with the overlay's own background (already transparent) or the sampler — the cover is simply oversized.
+Only `samplePageBg` changes. No new call sites, no cover-rect changes, no resolver changes.
 
-## Fix plan (surgical, no canvas / viewer / samplePageBg / lifecycle changes)
+**1. Widen the ring's inner gap.** Skip the first `max(2, sh*0.15)` px next to the glyph bbox on all four sides before sampling. Anti-alias halo lives in that band; excluding it removes the ink-cluster contamination that makes brightness-picking necessary in the first place.
 
-### A. Wire the resolver correctly
+**2. Pick the true mode, not the brightest.** Replace the "brightest cluster ≥15% share" logic with: sort clusters by count, take the largest; if the top two are within 20% of each other in count, prefer the one whose luminance is **further from the glyph's own average luminance** (sampled once from inside the bbox). This makes the tie-breaker "least like ink" instead of "brightest", so it works on both light-on-dark and dark-on-light pages.
 
-`editor-canvas.tsx`, only the two `resolveToFontKey` call sites:
+**3. Keep the ring-escalation loop.** Still retry with wider bands when a ring yields <20 opaque pixels — that path is fine.
 
-- **Extraction (~482):**
-  - `descriptor: descRealName || undefined` — highest-confidence slot.
-  - `postscriptName: it.fontName` (non-opaque, unchanged).
-  - Drop `pdfFamily: family` entirely — never pass the kind bucket.
-  - `cssFamily: sanitizedCssFamily` (unchanged).
-  - After the call, only fall back to `kind` when `resolved.matched === false`.
-  - Persist the resolver's canonical `family` name into `it.cssFamily` so edit-time has a real family even when the raw name was opaque.
-- **Edit click (~1172):** same wiring — `descriptor`, `postscriptName`, `cssFamily`; no kind bucket.
-- **OCR pseudo-item (~544):** leave the existing `detectFontKey("Helvetica"…)` untouched — OCR truly has no font.
+**4. Last-resort pixel probe:** sample the point ~`sh*3` above AND `sh*3` below the bbox, return the one whose luminance is further from the glyph's average. Drops the `{r:1,g:1,b:1}` white fallback entirely.
 
-### B. Shrink the cover to real glyph metrics
+## Verify
 
-- Tighten pads: `coverPadTop = max(1, 0.08 * h)`, `coverPadBottom = max(1, 0.12 * h)`, `coverPadX = max(1, 0.06 * h)` (0.10 for italic). This keeps a 1–2 px anti-alias halo but stops the rect from reaching into adjacent lines.
-- Clamp cover height so it never exceeds `it.h * 1.25` regardless of pad.
-- No change to `samplePageBg`, no change to `boxW/boxH` measurement paths beyond the pad values they already read.
+- Open the dark-navy doc from image 107 → click the "Problem with…" heading → cover reads as dark navy, not bright cyan.
+- Open the dark-teal "AI Package Blueprint" doc from image 108 → click the heading → cover reads as dark teal, heading text stays white; no white band.
+- Re-open a plain white PDF (Soil & Raised Bed) → cover still reads white; regression check.
+- `bun test tests/fonts/*` stays green (unrelated but cheap sanity).
 
-### C. Verify
+## Out of scope
 
-- `bun test tests/fonts/*` — resolver + bridge tests stay green; add one bridge assertion: `resolveToFontKey({ descriptor: 'TimesNewRomanPSMT' })` → `tinos`.
-- Open a Calibri PDF → `[bold-diag] extract` logs `resolvedFontFamily` containing `VaultCarlito`, not `VaultArimo`.
-- Open the Soil & Raised Bed cheat-sheet → edit the heading → no white band bleeds into the paragraph below.
-
-### Out of scope (untouched)
-PDF viewer, tab lifecycle, `openPdf`, `samplePageBg`, `/editor`, `/redact`, tool-panels, all font-resolver modules, `matchPdfFont`.
-
-### Files touched
-- `src/components/workspace/editor-canvas.tsx` — 2 resolver call sites rewired + 3 pad constants + 1 clamp (~25 lines total).
-- `tests/fonts/bridge.test.ts` — 1 assertion added.
+Cover-rect geometry, font resolver, PDF viewer, tab lifecycle, `openPdf`, `/editor`, `/redact`. Only the body of `samplePageBg` and its inner-gap constant change (~30 lines in `editor-canvas.tsx`).
