@@ -183,6 +183,9 @@ const TOOLS: RailTool[] = [
   { id: "extract", label: "Extract", icon: TableIcon, group: "assemble", groupLabel: "Organize pages" },
   { id: "rotate", label: "Rotate", icon: RotateCw, group: "pages", groupLabel: "Organize pages" },
   { id: "page-crop", label: "Page Crop", icon: Crop, group: "pages", groupLabel: "Organize pages" },
+  { id: "page-insert", label: "Insert Page", icon: Plus, group: "pages", groupLabel: "Organize pages" },
+  { id: "page-delete", label: "Delete Pages", icon: Trash2, group: "pages", groupLabel: "Organize pages" },
+  { id: "page-resize", label: "Resize / Scale", icon: Maximize2, group: "pages", groupLabel: "Organize pages" },
 
   // Edit & sign — add content or sign.
   { id: "sign", label: "Sign & Fill", icon: PenLine, group: "edit", groupLabel: "Edit & sign" },
