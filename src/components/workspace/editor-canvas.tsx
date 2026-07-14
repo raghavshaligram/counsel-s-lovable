@@ -156,37 +156,9 @@ function estimateLetterSpacing(
   }
 }
 
-function sampleTextColor(
-  ctx: CanvasRenderingContext2D,
-  sx: number,
-  sy: number,
-  sw: number,
-  sh: number,
-): RGB {
-  try {
-    const x = Math.max(0, Math.floor(sx));
-    const y = Math.max(0, Math.floor(sy));
-    const w = Math.max(1, Math.floor(sw));
-    const h = Math.max(1, Math.floor(sh));
-    const data = ctx.getImageData(x, y, w, h).data;
-    const pixels: { r: number; g: number; b: number; lum: number }[] = [];
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-      if (a < 128) continue;
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (lum > 230) continue;
-      pixels.push({ r, g, b, lum });
-    }
-    if (pixels.length < 4) return { r: 0, g: 0, b: 0 };
-    pixels.sort((p, q) => p.lum - q.lum);
-    const take = Math.max(2, Math.floor(pixels.length * 0.25));
-    let r = 0, g = 0, b = 0;
-    for (let i = 0; i < take; i++) { r += pixels[i].r; g += pixels[i].g; b += pixels[i].b; }
-    return { r: r / take / 255, g: g / take / 255, b: b / take / 255 };
-  } catch {
-    return { r: 0, g: 0, b: 0 };
-  }
-}
+// sampleTextColor removed — pdf.js's declared text colour (TextItem.color)
+// is the source of truth; pixel-sampling inverted on light-on-dark text.
+
 
 // Sample the page background by reading a RING just outside the glyph bbox
 // and returning the MODAL (most frequent) color quantized to 8-step bins per
@@ -372,6 +344,14 @@ export function EditorCanvas({
     | { x0: number; y0: number; x: number; y: number; points?: { x: number; y: number }[] }
   >(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Sampled page background colour (from canvas corners, large samples — much
+  // more reliable than sampling around a single glyph). Painted on the page
+  // wrapper so text-edit covers can be transparent and reveal it.
+  const [pageBgColor, setPageBgColor] = useState<RGB | null>(null);
+  // Bumped whenever a text-edit annotation is removed, so the page re-renders
+  // and restores the original glyph pixels that clearRect erased at edit time.
+  const [renderTick, setRenderTick] = useState(0);
+  const prevTextEditIdsRef = useRef<Set<string>>(new Set());
 
   // Delete / Backspace removes the selected annotation on this page (unless
   // the user is editing text inside the annotation, or focus is in a form
@@ -604,6 +584,38 @@ export function EditorCanvas({
         setTextItems(items);
         setTextLoaded(true);
 
+        // Sample the page background from the four corners of the rendered
+        // canvas (16x16 blocks). Large, glyph-free samples produce a much
+        // more reliable page-colour than the ring sampler that has to guess
+        // around ink. Painted on the wrapper so text-edit covers can be
+        // transparent without revealing the workspace surface.
+        try {
+          const bctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (bctx) {
+            const S = 16;
+            const cw = canvas.width, ch = canvas.height;
+            const corners: Array<[number, number]> = [
+              [0, 0],
+              [Math.max(0, cw - S), 0],
+              [0, Math.max(0, ch - S)],
+              [Math.max(0, cw - S), Math.max(0, ch - S)],
+            ];
+            let r = 0, g = 0, b = 0, n = 0;
+            for (const [x, y] of corners) {
+              const d = bctx.getImageData(x, y, Math.min(S, cw), Math.min(S, ch)).data;
+              for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] < 128) continue;
+                r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+              }
+            }
+            if (n > 0) {
+              setPageBgColor({ r: r / n / 255, g: g / n / 255, b: b / n / 255 });
+            } else {
+              setPageBgColor({ r: 1, g: 1, b: 1 });
+            }
+          }
+        } catch { /* tainted */ }
+
       } catch (err) {
         console.error("[workspace EditorCanvas] page render failed", err);
         setTextLoaded(true);
@@ -620,7 +632,18 @@ export function EditorCanvas({
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
     };
-  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer]);
+  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
+
+  // When a text-edit annotation is removed, re-render the page canvas so the
+  // pixels erased by onClickEditHit's clearRect come back.
+  useEffect(() => {
+    const now = new Set(annos.filter((a) => a.kind === "text-edit").map((a) => a.id));
+    const prev = prevTextEditIdsRef.current;
+    let removed = false;
+    for (const id of prev) if (!now.has(id)) { removed = true; break; }
+    prevTextEditIdsRef.current = now;
+    if (removed) setRenderTick((t) => t + 1);
+  }, [annos]);
 
 
   // Coord helpers (no rotation in workspace — page renders unrotated for now).
@@ -1161,6 +1184,10 @@ export function EditorCanvas({
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
     const canvas = canvasRef.current;
+    // Use pdf.js's declared text colour (it.color) directly — pixel sampling
+    // can't beat the source of truth and inverts on light-on-dark text.
+    // We still sample bg via samplePageBg because the export pipeline paints
+    // an opaque cover in the exported PDF using this value.
     const sampled = (() => {
       if (!canvas) return { color: it.color, bg: it.bg };
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1174,12 +1201,10 @@ export function EditorCanvas({
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
       return {
-        color: sampleTextColor(ctx, sx, sy, sw, sh),
+        color: it.color,
         bg: samplePageBg(ctx, sx, sy, sw, sh),
       };
     })();
-    // Workspace native: place a text-edit overlay pre-filled with the original
-    // string. The user edits inline; double-click switches modes.
     // Cover bbox: expand generously around the captured glyph bounds so
     // anti-aliased thick strokes, italic skew, and ascenders/descenders
     // never leak through. Pad more vertically because pdf.js' glyph bbox
@@ -1198,6 +1223,28 @@ export function EditorCanvas({
       w: it.w + coverPadX * 2,
       h: clampedCoverH,
     };
+
+    // Erase the original glyph pixels from the base canvas so nothing bleeds
+    // through the (now transparent) cover element. The page wrapper below
+    // paints the sampled page-corner colour, so this hole reveals the true
+    // page colour without visible seams. On anno deletion, renderTick bumps
+    // and the page re-renders to restore the pixels.
+    if (canvas) {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
+        const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
+        const dprX = canvas.width / Math.max(1, cssW);
+        const dprY = canvas.height / Math.max(1, cssH);
+        ctx.clearRect(
+          cover.x * scale * dprX,
+          cover.y * scale * dprY,
+          cover.w * scale * dprX,
+          cover.h * scale * dprY,
+        );
+      }
+    }
+
 
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const id = uid();
@@ -1543,7 +1590,7 @@ export function EditorCanvas({
   void onRequestOcr;
 
   return (
-    <div className="relative inline-block" style={{ background: "transparent", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
+    <div className="relative inline-block" style={{ background: pageBgColor ? rgbCss(pageBgColor) : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", borderRadius: 6 }}>
       <canvas ref={canvasRef} className="block" />
 
 
@@ -1591,7 +1638,7 @@ export function EditorCanvas({
           const isEditing = editingId === a.id;
           const tl = toScreen(a.cover.x, a.cover.y);
           const br = toScreen(a.cover.x + a.cover.w, a.cover.y + a.cover.h);
-          const bgCss = rgbCss(a.bg);
+          const bgCss = rgbCss(a.bg); void bgCss;
           if (isEditing) {
             console.log("[text-edit-cover]", {
               id: a.id,
@@ -1611,7 +1658,7 @@ export function EditorCanvas({
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: bgCss,
+                background: "transparent",
                 pointerEvents: "none",
                 zIndex: 1,
               }}
