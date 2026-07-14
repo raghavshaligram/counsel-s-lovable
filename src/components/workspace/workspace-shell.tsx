@@ -2778,6 +2778,8 @@ function FloatingToolbar({
   onRedo,
   onToggleNav,
   navOpen,
+  pinned,
+  onTogglePin,
 }: {
   activeToolId: string | null;
   active: EditorTool;
@@ -2789,14 +2791,21 @@ function FloatingToolbar({
   onRedo: () => void;
   onToggleNav: () => void;
   navOpen: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
 }) {
   const contextual = activeToolId ? CONTEXTUAL_GROUPS[activeToolId] : null;
   const groups = contextual ?? EDITOR_GROUPS;
   const label = contextual ? `${activeToolId} tools` : "Editor tools";
   return (
     <div
-      className="absolute left-1/2 top-2.5 z-30 flex -translate-x-1/2 items-center gap-1 border border-border bg-surface-3 px-1.5 py-1"
-      style={{ borderRadius: 11, boxShadow: "var(--shadow-float)" }}
+      className={cn(
+        "z-30 flex items-center gap-1 border border-border bg-surface-3 px-1.5 py-1",
+        pinned
+          ? "flex-wrap justify-center border-x-0 border-t-0"
+          : "absolute left-1/2 top-2.5 -translate-x-1/2",
+      )}
+      style={pinned ? undefined : { borderRadius: 11, boxShadow: "var(--shadow-float)" }}
       role="toolbar"
       aria-label={label}
     >
@@ -2806,6 +2815,7 @@ function FloatingToolbar({
         </ToolbarBtn>
       </span>
       <span className="mx-1 h-5 w-px bg-border" />
+
       {!contextual && (
         <>
           <div className="flex items-center gap-0.5" aria-label="Legal tools">
