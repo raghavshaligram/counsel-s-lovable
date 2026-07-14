@@ -2935,11 +2935,14 @@ function ContextualBar({
   tool,
   state,
   dispatch,
+  pinned,
 }: {
   tool: EditorTool;
   state: ReturnType<typeof reducer> extends infer S ? S : never;
   dispatch: React.Dispatch<EditorAction>;
+  pinned: boolean;
 }) {
+
   // Find the currently selected annotation, if any.
   const sel = state.doc?.annotations.find((a) => a.id === state.selectedAnnoId) ?? null;
   const isTextLike =
