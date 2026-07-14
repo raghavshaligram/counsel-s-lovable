@@ -650,12 +650,23 @@ export function EditorCanvas({
               storedFontWeight: fontWeight,
             });
           }
+          // Real family name (subset prefix + style suffixes stripped) —
+          // preferred over pdf.js's opaque id or the raw PS name. Try the
+          // descriptor's real name first, then the pdf.js styles fontFamily,
+          // then the raw font name.
+          const realFamily =
+            cleanFamilyName(descRealName) ||
+            cleanFamilyName(styleEntry?.fontFamily) ||
+            cleanFamilyName(it.fontName) ||
+            "";
           return [{
             x, y, w: it.width, h: fh, str: it.str, family, bold, italic,
             transform: it.transform,
             // Store SANITISED names so the click-to-edit path never sees "g_d0_f1"
             fontName: sanitizedFontName || undefined,
             cssFamily: resolvedFontFamily,
+            realFamily: realFamily || undefined,
+            descriptorWeight: descriptor?.weight,
             fontKey, fontApprox, fontWeight,
             lineHeight: 1.15, letterSpacing, color, bg,
           }];
