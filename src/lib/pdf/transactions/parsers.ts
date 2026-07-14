@@ -73,31 +73,82 @@ export function parseBankStatement(ctx: ParseCtx): ParseResult {
   const startIdx = header ? header.index + 1 : 0;
   const rows: TypedRow[] = [];
   const refYear = detectYear(ctx.pageText);
+  const dateLocale = detectNumericDateLocale(ctx.pageText, ctx.locale);
+  let currentMapping = { ...mapping };
+  let previousBalance: number | null = null;
+  let pendingDescription: string[] = [];
+  let lastTransactionIndex: number | null = null;
+
   for (let i = startIdx; i < flat.length; i++) {
     const r = flat[i];
-    const dateRaw = pick(r, mapping.date);
-    const iso = parseDate(dateRaw, ctx.locale, refYear);
-    if (!iso) continue; // row without a real date isn't a transaction
-    const desc = pick(r, mapping.description).trim();
-    const debit = amt(pick(r, mapping.debit), ctx.locale);
-    const credit = amt(pick(r, mapping.credit), ctx.locale);
-    const amountCol = amt(pick(r, mapping.amount), ctx.locale);
-    const balance = amt(pick(r, mapping.balance), ctx.locale);
-    let amount: number | null = amountCol;
-    if (amount == null && (debit != null || credit != null)) {
-      amount = (credit ?? 0) - (Math.abs(debit ?? 0));
+    const headerMap = bankHeaderMap(r);
+    if (headerMap) {
+      currentMapping = { ...currentMapping, ...headerMap };
+      pendingDescription = [];
+      continue;
     }
+
+    const dateInfo = findDateInRow(r, currentMapping.date, dateLocale, refYear);
+    if (!dateInfo.iso) {
+      const line = bankContinuationText(r, currentMapping);
+      if (!line || isBankNoise(line)) continue;
+      if (pendingDescription.length > 0 || looksBankTransactionStart(line)) {
+        pendingDescription.push(line);
+      } else if (lastTransactionIndex != null) {
+        rows[lastTransactionIndex].description = cleanDescription(
+          `${rows[lastTransactionIndex].description ?? ""} ${line}`,
+        );
+      } else {
+        pendingDescription.push(line);
+      }
+      continue;
+    }
+
+    const moneyCells = monetaryCells(r, ctx.locale);
+    const balanceCell = chooseBalanceCell(moneyCells, currentMapping.balance);
+    const amountCell = chooseTransactionAmountCell(moneyCells, balanceCell?.idx ?? null, currentMapping);
+
+    if (!amountCell) {
+      if (balanceCell) previousBalance = balanceCell.value;
+      pendingDescription = [];
+      continue;
+    }
+
+    const balance = balanceCell?.value ?? null;
+    const signedAmount = signedBankAmount(amountCell, balance, previousBalance, currentMapping);
+    const debit = signedAmount < 0 ? Math.abs(signedAmount) : null;
+    const credit = signedAmount > 0 ? Math.abs(signedAmount) : null;
+    const desc = cleanDescription(
+      [
+        ...pendingDescription,
+        bankDateCellRemainder(dateInfo.raw),
+        bankRowDescription(r, currentMapping, amountCell.idx, balanceCell?.idx ?? null),
+      ].filter(Boolean).join(" "),
+    );
+
     rows.push({
-      date: iso,
+      date: dateInfo.iso,
       description: desc,
-      debit: debit != null ? Math.abs(debit) : null,
-      credit: credit != null ? Math.abs(credit) : null,
-      amount,
+      debit,
+      credit,
+      amount: signedAmount,
       balance,
       category: guessCategory(desc),
     });
+
+    if (balance != null) previousBalance = balance;
+    pendingDescription = [];
+    lastTransactionIndex = rows.length - 1;
   }
-  if (rows.length === 0) warnings.push("No dated rows detected — try changing the type or remapping the Date column.");
+
+  if (rows.length === 0) {
+    warnings.push("No dated rows detected — try changing the type or remapping the Date column.");
+  } else {
+    const missingAmounts = rows.filter((r) => typeof r.amount !== "number").length;
+    if (missingAmounts > Math.max(5, rows.length * 0.1)) {
+      warnings.push("Some dated rows were found without a transaction amount — check the preview before exporting.");
+    }
+  }
 
   const schema: SchemaColumn[] = [
     { key: "date", label: "Date", kind: "date" },
@@ -110,6 +161,164 @@ export function parseBankStatement(ctx: ParseCtx): ParseResult {
   ];
   const hdr = extractBankHeader(ctx.pageText);
   return { type: "bank_statement", schema, rows, header: hdr, mapping, warnings };
+}
+
+function bankHeaderMap(row: string[]): Record<string, number | null> | null {
+  const cells = row.map((c) => (c ?? "").toLowerCase());
+  const idx = (terms: string[]) => cells.findIndex((c) => terms.some((t) => c.includes(t)));
+  const date = idx(["date", "posted", "txn date", "trans date"]);
+  const description = idx(["description", "details", "transaction", "memo", "particulars", "narration"]);
+  const balance = idx(["balance"]);
+  if (date < 0 || (description < 0 && balance < 0)) return null;
+  return {
+    date,
+    description: description >= 0 ? description : null,
+    debit: idx(["debit", "withdrawal", "amount out"]),
+    credit: idx(["credit", "deposit", "amount in"]),
+    amount: idx(["amount"]),
+    balance: balance >= 0 ? balance : null,
+  };
+}
+
+function detectNumericDateLocale(text: string, fallback: "US" | "EU"): "US" | "EU" {
+  let dayFirst = 0;
+  let monthFirst = 0;
+  const re = /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/g;
+  for (const m of text.matchAll(re)) {
+    const a = +m[1];
+    const b = +m[2];
+    if (a > 12 && b <= 12) dayFirst += 1;
+    if (b > 12 && a <= 12) monthFirst += 1;
+  }
+  if (dayFirst > monthFirst) return "EU";
+  if (monthFirst > dayFirst) return "US";
+  return fallback;
+}
+
+function findDateInRow(
+  row: string[],
+  preferredIdx: number | null,
+  locale: "US" | "EU",
+  refYear?: number,
+): { iso: string | null; raw: string; idx: number | null } {
+  const candidates = [preferredIdx, 0, 1, 2]
+    .filter((v, i, arr): v is number => v != null && v >= 0 && arr.indexOf(v) === i);
+  for (const idx of candidates) {
+    const raw = pick(row, idx);
+    const iso = parseDate(raw, locale, refYear);
+    if (iso) return { iso, raw, idx };
+  }
+  for (let idx = 0; idx < Math.min(row.length, 4); idx++) {
+    const raw = pick(row, idx);
+    const iso = parseDate(raw, locale, refYear);
+    if (iso) return { iso, raw, idx };
+  }
+  return { iso: null, raw: "", idx: null };
+}
+
+function monetaryCells(row: string[], locale: "US" | "EU") {
+  return row
+    .map((raw, idx) => ({ idx, raw: raw ?? "", value: parseBankMoney(raw ?? "", locale) }))
+    .filter((c): c is { idx: number; raw: string; value: number } => c.value != null);
+}
+
+function parseBankMoney(raw: string, locale: "US" | "EU"): number | null {
+  const s = String(raw ?? "").trim();
+  if (!s || /\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/.test(s)) return null;
+  if (!/(?:[$€£¥]|\b(?:\d{1,3}(?:,\d{2,3})+|\d+)\.\d{2}\b|\b\d+[,\.]\d{2}\s*(?:CR|DR)\b)/i.test(s)) {
+    return null;
+  }
+  return parseAmount(s, locale).value;
+}
+
+function chooseBalanceCell(
+  cells: ReturnType<typeof monetaryCells>,
+  mappedIdx: number | null,
+) {
+  if (mappedIdx != null) {
+    const exact = cells.find((c) => c.idx === mappedIdx || Math.abs(c.idx - mappedIdx) <= 1);
+    if (exact) return exact;
+  }
+  return cells[cells.length - 1] ?? null;
+}
+
+function chooseTransactionAmountCell(
+  cells: ReturnType<typeof monetaryCells>,
+  balanceIdx: number | null,
+  mapping: Record<string, number | null>,
+) {
+  const withoutBalance = cells.filter((c) => c.idx !== balanceIdx);
+  for (const idx of [mapping.amount, mapping.debit, mapping.credit]) {
+    if (idx == null) continue;
+    const exact = withoutBalance.find((c) => c.idx === idx || Math.abs(c.idx - idx) <= 2);
+    if (exact) return exact;
+  }
+  return withoutBalance[withoutBalance.length - 1] ?? null;
+}
+
+function signedBankAmount(
+  cell: { idx: number; raw: string; value: number },
+  balance: number | null,
+  previousBalance: number | null,
+  mapping: Record<string, number | null>,
+): number {
+  const abs = Math.abs(cell.value);
+  if (/\bDR\b|\bdebit\b/i.test(cell.raw)) return -abs;
+  if (/\bCR\b|\bcredit\b/i.test(cell.raw)) return abs;
+  if (balance != null && previousBalance != null) {
+    const delta = balance - previousBalance;
+    if (Math.abs(Math.abs(delta) - abs) <= 0.02) return delta >= 0 ? abs : -abs;
+  }
+  if (mapping.credit != null && Math.abs(cell.idx - mapping.credit) <= 1) return abs;
+  if (mapping.debit != null && Math.abs(cell.idx - mapping.debit) <= 1) return -abs;
+  return cell.value < 0 ? cell.value : -abs;
+}
+
+function bankRowDescription(
+  row: string[],
+  mapping: Record<string, number | null>,
+  amountIdx: number,
+  balanceIdx: number | null,
+): string {
+  const limit = Math.min(amountIdx, balanceIdx ?? amountIdx);
+  const parts: string[] = [];
+  const mapped = pick(row, mapping.description).trim();
+  for (let i = 0; i < row.length; i++) {
+    if (i === amountIdx || i === balanceIdx) continue;
+    const raw = (row[i] ?? "").trim();
+    if (!raw) continue;
+    if (i === mapping.date) continue;
+    if (parseBankMoney(raw, "US") != null || parseBankMoney(raw, "EU") != null) continue;
+    if (i <= limit || raw === mapped) parts.push(raw);
+  }
+  if (parts.length === 0 && mapped) parts.push(mapped);
+  return cleanDescription(parts.join(" "));
+}
+
+function bankContinuationText(row: string[], mapping: Record<string, number | null>): string {
+  const parts = row
+    .map((c, i) => ({ c: (c ?? "").trim(), i }))
+    .filter(({ c, i }) => c && i !== mapping.date && parseBankMoney(c, "US") == null && parseBankMoney(c, "EU") == null)
+    .map(({ c }) => c);
+  return cleanDescription(parts.join(" "));
+}
+
+function bankDateCellRemainder(raw: string): string {
+  return String(raw ?? "")
+    .replace(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/, "")
+    .trim();
+}
+
+function cleanDescription(desc: string): string {
+  return desc.replace(/\s+/g, " ").replace(/\s+([,/])/g, "$1").trim();
+}
+
+function looksBankTransactionStart(line: string): boolean {
+  return /^(?:UPI|IMPS|NEFT|RTGS|INF|BIL|CMS|ACH|NACH|ECS|ATM|POS|VPS|VIN|MMT|NET\s+BANKING|MOBILE\s+BANKING|OTHER\s+ATMS|BY\s+CASH|CASH|CHQ|CHEQUE|REM(?:ITTANCE)?|SALARY|PAY|\d{6,}:)/i.test(line);
+}
+
+function isBankNoise(line: string): boolean {
+  return /^(?:Page\s+\d+\s+of|MR\.|MRS\.|MS\.|Sincerely,?|Team\s+ICICI|This\s+is\s+a\s+system-generated|Legends\s+for|VAT\/MAT\/NFS|EBA\s+-|Summary\s+of\s+Accounts|ACCOUNT\s+DETAILS|ACCOUNT\s+TYPE|FIXED\s+DEPOSITS|DEPOSIT\s+NO\.|TOTAL\b|#\s*Deposit|Statement\s+of\s+Transactions|Did\s+you\s+know|branch\s+or\s+contact|Your\s+Base\s+Branch|Visit\s+www|Dial\s+your\s+Bank|DATE\s+MODE)/i.test(line);
 }
 
 function detectYear(text: string): number | undefined {
