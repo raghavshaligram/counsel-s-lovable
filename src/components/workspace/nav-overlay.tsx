@@ -125,21 +125,23 @@ export function NavOverlay(props: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const doc = props.pdfDoc as PdfJsDoc | null;
 
+  // Draggable + resizable geometry. Persisted per browser.
+  const [rect, setRect] = useState<Rect>(() => (typeof window === "undefined" ? DEFAULT_RECT : readRect()));
+  const dragRef = useRef<{ x: number; y: number; right: number; top: number } | null>(null);
+  const resizeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
   useEffect(() => {
     if (open) setTab(defaultTab);
   }, [open, defaultTab]);
 
+  useEffect(() => { writeRect(rect); }, [rect]);
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     const onClick = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;
-      // The toolbar trigger toggles the overlay itself; ignore its clicks so
-      // the trigger can close-then-open. Otherwise outside-click would close
-      // first and the trigger would immediately reopen (or vice versa).
       if (t.closest("[data-nav-toggle]")) return;
       if (ref.current && !ref.current.contains(t)) onClose();
     };
@@ -151,9 +153,65 @@ export function NavOverlay(props: Props) {
     };
   }, [open, onClose]);
 
+  // Drag + resize move handlers (mounted once).
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const parent = ref.current?.parentElement;
+      const bounds = parent?.getBoundingClientRect();
+      if (dragRef.current) {
+        const d = dragRef.current;
+        const dx = e.clientX - d.x;
+        const dy = e.clientY - d.y;
+        setRect((r) => {
+          const maxRight = bounds ? Math.max(0, bounds.width - r.width) : 5000;
+          const maxTop = bounds ? Math.max(0, bounds.height - 60) : 5000;
+          return {
+            ...r,
+            right: Math.min(maxRight, Math.max(0, d.right - dx)),
+            top: Math.min(maxTop, Math.max(0, d.top + dy)),
+          };
+        });
+      } else if (resizeRef.current) {
+        const s = resizeRef.current;
+        const dx = e.clientX - s.x;
+        const dy = e.clientY - s.y;
+        setRect((r) => {
+          const maxW = bounds ? Math.max(MIN_W, bounds.width - r.right) : 2000;
+          const maxH = bounds ? Math.max(MIN_H, bounds.height - r.top - 10) : 2000;
+          return {
+            ...r,
+            width: Math.min(maxW, Math.max(MIN_W, s.w + dx)),
+            height: Math.min(maxH, Math.max(MIN_H, s.h + dy)),
+          };
+        });
+      }
+    };
+    const onUp = () => { dragRef.current = null; resizeRef.current = null; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const startDrag = useCallback((e: React.MouseEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("button, input")) return;
+    dragRef.current = { x: e.clientX, y: e.clientY, right: rect.right, top: rect.top };
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }, [rect.right, rect.top]);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    resizeRef.current = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+    e.stopPropagation();
+  }, [rect.width, rect.height]);
+
   if (!open) return null;
 
-  // jump-and-stay; double-click closes
   const jumpStay = (n: number) => props.onJumpPage(n);
   const jumpAnnoStay = (a: Anno) => props.onJumpAnno(a);
 
@@ -162,10 +220,20 @@ export function NavOverlay(props: Props) {
       ref={ref}
       role="dialog"
       aria-label="Document navigation"
-      className="absolute right-3 top-14 z-40 flex w-[340px] flex-col border border-border bg-surface-1"
-      style={{ borderRadius: 12, boxShadow: "var(--shadow-float)", maxHeight: "calc(100% - 80px)" }}
+      className="absolute z-40 flex flex-col border border-border bg-surface-1"
+      style={{
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        borderRadius: 12,
+        boxShadow: "var(--shadow-float)",
+      }}
     >
-      <header className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1.5">
+      <header
+        onMouseDown={startDrag}
+        className="flex shrink-0 cursor-move items-center gap-1 border-b border-border px-1.5 py-1.5 select-none"
+      >
         <TabBtn active={tab === "bookmarks"} onClick={() => setTab("bookmarks")} icon={<Bookmark className="h-3.5 w-3.5" />} label="Bookmarks" />
         <TabBtn active={tab === "pages"} onClick={() => setTab("pages")} icon={<FileText className="h-3.5 w-3.5" />} label="Pages" />
         <TabBtn active={tab === "comments"} onClick={() => setTab("comments")} icon={<MessageSquare className="h-3.5 w-3.5" />} label="Comments" />
@@ -209,9 +277,23 @@ export function NavOverlay(props: Props) {
           />
         )}
       </div>
+      {/* Resize handle (bottom-right corner) */}
+      <div
+        onMouseDown={startResize}
+        aria-label="Resize"
+        title="Drag to resize"
+        className="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize"
+        style={{
+          background:
+            "linear-gradient(135deg, transparent 0 45%, hsl(var(--border)) 45% 55%, transparent 55% 70%, hsl(var(--border)) 70% 80%, transparent 80%)",
+          borderBottomRightRadius: 12,
+        }}
+      />
     </div>
   );
 }
+
+
 
 function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
