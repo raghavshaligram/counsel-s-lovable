@@ -2822,6 +2822,19 @@ function FloatingToolbar({
             ))}
           </div>
           <span className="mx-1 h-5 w-px bg-border" />
+          <div className="flex items-center gap-0.5" aria-label="Page tools">
+            {PAGES_TOOLBAR.map(({ id, label, Icon }) => (
+              <ToolbarBtn
+                key={id}
+                label={label}
+                active={activeToolId === id}
+                onClick={() => onOpenTool(id)}
+              >
+                <Icon className="h-[15px] w-[15px]" />
+              </ToolbarBtn>
+            ))}
+          </div>
+          <span className="mx-1 h-5 w-px bg-border" />
         </>
       )}
       {groups.map((group, gi) => (
