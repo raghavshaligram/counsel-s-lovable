@@ -273,6 +273,12 @@ export interface PageOp {
   // the editor canvas convention). When set, export trims the page to this
   // rect via /CropBox + /MediaBox. Cleared by setting to undefined.
   cropBox?: { x: number; y: number; w: number; h: number };
+  // Optional target output size for the resize/scale tool. When set, export
+  // emits a new page of (w,h) and — if scaleContent is true — draws the
+  // source page onto it via embedPage() scaled by `scale` (uniform).
+  // When scaleContent is false, content stays at native coordinates and the
+  // page is simply cropped/letterboxed to the new size.
+  resize?: { w: number; h: number; scale: number; scaleContent: boolean };
 }
 
 // OCR sidecar token — one recognized word, positioned in PDF points
