@@ -156,8 +156,64 @@ function estimateLetterSpacing(
   }
 }
 
-// sampleTextColor removed — pdf.js's declared text colour (TextItem.color)
-// is the source of truth; pixel-sampling inverted on light-on-dark text.
+// Sample the actual ink colour of the glyphs inside the given bbox by
+// reading pixels and returning the MODAL colour of pixels that differ
+// meaningfully from the sampled page background. This preserves blue /
+// white / cyan / any coloured text instead of collapsing to black.
+function sampleInkColor(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+  bg: RGB,
+  fallback: RGB,
+): RGB {
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const bx = Math.max(0, Math.floor(sx));
+  const by = Math.max(0, Math.floor(sy));
+  const bw = Math.max(1, Math.min(Math.floor(sw), cw - bx));
+  const bh = Math.max(1, Math.min(Math.floor(sh), ch - by));
+  if (bw < 1 || bh < 1) return fallback;
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(bx, by, bw, bh).data;
+  } catch {
+    return fallback;
+  }
+  const bgR = Math.round(bg.r * 255);
+  const bgG = Math.round(bg.g * 255);
+  const bgB = Math.round(bg.b * 255);
+  // Distance threshold — pixels closer than this to the page bg are treated
+  // as background/anti-aliased halo, not ink.
+  const THRESH = 60;
+  const buckets = new Map<number, { r: number; g: number; b: number; n: number }>();
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3];
+    if (a < 200) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const dr = r - bgR, dg = g - bgG, db = b - bgB;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (dist < THRESH) continue;
+    // Quantize to 16-step bins per channel.
+    const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+    const cur = buckets.get(key);
+    if (cur) { cur.r += r; cur.g += g; cur.b += b; cur.n++; }
+    else buckets.set(key, { r, g, b, n: 1 });
+  }
+  if (buckets.size === 0) return fallback;
+  let best: { r: number; g: number; b: number; n: number } | null = null;
+  for (const v of buckets.values()) {
+    if (!best || v.n > best.n) best = v;
+  }
+  if (!best) return fallback;
+  return {
+    r: best.r / best.n / 255,
+    g: best.g / best.n / 255,
+    b: best.b / best.n / 255,
+  };
+}
+
 
 
 // Sample the page background by reading a RING just outside the glyph bbox
@@ -1200,11 +1256,11 @@ export function EditorCanvas({
       const sy = it.y * scale * dprY;
       const sw = it.w * scale * dprX;
       const sh = it.h * scale * dprY;
-      return {
-        color: it.color,
-        bg: samplePageBg(ctx, sx, sy, sw, sh),
-      };
+      const bg = samplePageBg(ctx, sx, sy, sw, sh);
+      const color = sampleInkColor(ctx, sx, sy, sw, sh, bg, it.color);
+      return { color, bg };
     })();
+
     // Cover bbox: expand generously around the captured glyph bounds so
     // anti-aliased thick strokes, italic skew, and ascenders/descenders
     // never leak through. Pad more vertically because pdf.js' glyph bbox
