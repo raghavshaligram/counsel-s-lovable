@@ -552,6 +552,52 @@ export function EditorCanvas({
           }
         } catch { /* ignore */ }
 
+        // XFA layer — for LiveCycle Designer / dynamic forms, page.render()
+        // to canvas is often blank because the form content lives in an
+        // XML packet, not the page's content stream. Render it as an HTML
+        // overlay so users see the actual form fields, labels, and
+        // instructions instead of a blank white page.
+        try {
+          const xfaHtml = await (page as unknown as { getXfa?: () => Promise<unknown> })
+            .getXfa?.();
+          const layerDiv = xfaLayerRef.current;
+          if (xfaHtml && layerDiv) {
+            layerDiv.innerHTML = "";
+            const XfaLayer = (pdfjs as unknown as {
+              XfaLayer?: {
+                render: (p: {
+                  viewport: unknown;
+                  div: HTMLElement;
+                  xfaHtml: unknown;
+                  page?: unknown;
+                  annotationStorage?: unknown;
+                  linkService?: unknown;
+                  intent?: string;
+                }) => unknown;
+              };
+            }).XfaLayer;
+            if (XfaLayer && typeof XfaLayer.render === "function") {
+              const xfaVp = (cssVp as unknown as { clone: (o: { dontFlip: boolean }) => unknown })
+                .clone({ dontFlip: true });
+              XfaLayer.render({
+                viewport: xfaVp,
+                div: layerDiv,
+                xfaHtml,
+                page,
+                intent: "display",
+              });
+              layerDiv.style.display = "block";
+            }
+          } else if (layerDiv) {
+            layerDiv.innerHTML = "";
+            layerDiv.style.display = "none";
+          }
+        } catch (xfaErr) {
+          console.warn("[workspace EditorCanvas] XFA layer render failed", xfaErr);
+        }
+
+
+
 
         const baseVp = page.getViewport({ scale: 1 });
         const content = await page.getTextContent();
