@@ -831,12 +831,17 @@ export function EditorCanvas({
 
     if (state.tool === "text") {
       const { x: px, y: py } = toPdf(x, y);
-      const w = Math.max(160, state.fontSize * 10);
+      const w = Math.max(120, state.fontSize * 8);
       const id = uid();
       dispatch({ type: "ADD_ANNO", a: {
         id, kind: "text", page: pageIndex,
-        x: px, y: py, w, h: Math.max(state.fontSize * 1.6, 22),
+        x: px, y: py, w, h: state.fontSize * 1.5,
         color: state.color, opacity: state.opacity, text: "", fontSize: state.fontSize,
+        family: "sans",
+        bold: false,
+        italic: false,
+        align: "left",
+        lineHeight: 1.15,
       } });
       setEditingId(id);
       dispatch({ type: "SET_TOOL", t: "select" });
@@ -1695,37 +1700,45 @@ export function EditorCanvas({
     el.style.fontWeight = `${a.fontWeight ?? (a.bold ? 700 : 400)}`;
     el.style.fontStyle = a.italic ? "italic" : "normal";
     el.style.lineHeight = `${a.lineHeight ?? 1.15}`;
+    
+    // For new text boxes, respect the current width so text can naturally word-wrap.
+    // For text-edit, measure as a single unbroken line unless it already contains line breaks.
+    const shouldWrap = a.kind === "text" || (a.kind === "text-edit" && a.text.includes("\n"));
+    if (shouldWrap) {
+      el.style.whiteSpace = "pre-wrap";
+      el.style.wordBreak = "break-word";
+      el.style.width = `${a.w * scale}px`; // Force wrapping at the current annotation width
+    } else {
+      el.style.whiteSpace = "pre";
+      el.style.wordBreak = "normal";
+      el.style.width = "auto";
+    }
+
     if (a.kind === "text-edit" && !a.text.includes("\n")) {
       const targetTextW = a.source?.bounds?.w ?? a.w;
       const slots = Math.max(0, (a.text || "").length - 1);
       if (targetTextW > 0 && slots > 0) {
         el.style.letterSpacing = "0px";
-        el.style.whiteSpace = "pre";
         el.textContent = a.text && a.text.length > 0 ? a.text : " ";
         const untrackedTextW = el.offsetWidth / scale;
         const desiredTracking = Math.max(0, Math.min(a.fontSize * 0.6, (targetTextW - untrackedTextW) / slots));
         if (Number.isFinite(desiredTracking) && Math.abs(desiredTracking - (a.letterSpacing ?? 0)) > 0.02) {
-          console.log("[text-edit-fit]", {
-            id: a.id,
-            targetTextWidthPt: targetTextW,
-            untrackedTextWidthPt: untrackedTextW,
-            previousLetterSpacingPt: a.letterSpacing ?? 0,
-            nextLetterSpacingPt: desiredTracking,
-            slots,
-          });
           dispatch({ type: "UPDATE_ANNO", id: a.id, patch: { letterSpacing: desiredTracking } as Partial<Anno> });
           return;
         }
       }
     }
+    
     el.style.letterSpacing = a.letterSpacing != null ? `${a.letterSpacing * scale}px` : "normal";
-    el.style.whiteSpace = "pre";
     el.textContent = a.text && a.text.length > 0 ? a.text : " ";
-    // Measure widest line + total height; convert px → PDF points.
-    const measuredW = el.offsetWidth / scale + padLeft + padRight + 1;
+
+    // Measure actual rendered dimensions; convert px → PDF points.
+    // If it's a wrapping text box, width is locked to user sizing; only height auto-grows.
+    const measuredW = shouldWrap ? a.w : (el.offsetWidth / scale + padLeft + padRight + 1);
     const measuredH = el.offsetHeight / scale + padTop + padBottom + 1;
+    
     const minW = a.kind === "text" ? Math.max(40, a.fontSize * 2) : 8;
-    const minH = a.fontSize * 1.15 + padTop + padBottom;
+    const minH = a.fontSize * (a.lineHeight ?? 1.15) + padTop + padBottom;
     // Keep the model locked to the original glyph rect for export/alignment.
     // The visual wrapper uses `cover` in renderAnno; padding insets the live
     // textarea glyphs back onto this original rect.
