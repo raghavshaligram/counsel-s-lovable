@@ -1404,14 +1404,13 @@ export function EditorCanvas({
   const editTextOverlays = state.tool === "edit-text" ? textItems : [];
   const onClickEditHit = (it: TextItem) => {
     const canvas = canvasRef.current;
-    // Use pdf.js's declared text colour (it.color) directly — pixel sampling
-    // can't beat the source of truth and inverts on light-on-dark text.
-    // We still sample bg via samplePageBg because the export pipeline paints
-    // an opaque cover in the exported PDF using this value.
+    // Preserve the visible glyph colour from the rendered PDF. The sampled
+    // background is used only to distinguish ink pixels; it is never painted
+    // or stored as an edit background.
     const sampled = (() => {
-      if (!canvas) return { color: it.color, bg: it.bg };
+      if (!canvas) return { color: it.color };
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return { color: it.color, bg: it.bg };
+      if (!ctx) return { color: it.color };
       const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
       const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
       const dprX = canvas.width / Math.max(1, cssW);
@@ -1422,7 +1421,7 @@ export function EditorCanvas({
       const sh = it.h * scale * dprY;
       const bg = samplePageBg(ctx, sx, sy, sw, sh);
       const color = sampleInkColor(ctx, sx, sy, sw, sh, bg, it.color);
-      return { color, bg };
+      return { color };
     })();
 
     // Cover bbox: expand generously around the captured glyph bounds so
@@ -1443,27 +1442,6 @@ export function EditorCanvas({
       w: it.w + coverPadX * 2,
       h: clampedCoverH,
     };
-
-    // Erase the original glyph pixels from the base canvas so nothing bleeds
-    // through the transparent cover element (Acrobat-style — nothing is
-    // painted under edited text). On anno deletion, renderTick bumps and the
-    // page re-renders to restore the pixels.
-    if (canvas) {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (ctx) {
-        const cssW = Number.parseFloat(canvas.style.width) || op.width * scale || canvas.width;
-        const cssH = Number.parseFloat(canvas.style.height) || op.height * scale || canvas.height;
-        const dprX = canvas.width / Math.max(1, cssW);
-        const dprY = canvas.height / Math.max(1, cssH);
-        ctx.clearRect(
-          cover.x * scale * dprX,
-          cover.y * scale * dprY,
-          cover.w * scale * dprX,
-          cover.h * scale * dprY,
-        );
-      }
-    }
-
 
     const originalGlyph = { x: it.x, y: it.y, w: it.w, h: it.h };
     const id = uid();
@@ -1537,9 +1515,8 @@ export function EditorCanvas({
       id, kind: "text-edit", page: pageIndex,
       // Anchor the editable box to the ORIGINAL glyph bounds so the
       // textarea, caret, and selection ring sit exactly where the user
-      // sees the source text. The padded `cover` rectangle below is a
-      // separate masking layer that hides anti-aliased glyph edges and
-      // descenders without affecting the visible edit chrome.
+      // sees the source text. The padded `cover` rect is retained only for
+      // layout/selection sizing; it is not painted as a background.
       x: it.x, y: it.y + baselineNudge,
       // Box height must be >= fontSize * lineHeight or the textarea clips
       // the bottom ~15% of every glyph. Keep fontSize separate from box h.
@@ -1549,7 +1526,7 @@ export function EditorCanvas({
       color: sampled.color, opacity: 1,
       text: it.str,
       fontSize: it.h,
-      bg: sampled.bg,
+      bg: DEFAULT_PAGE_BG,
       family,
       fontKey,
       fontFamilyOverride,
@@ -1564,7 +1541,15 @@ export function EditorCanvas({
       textOffsetY: 0,
       textPadBottom: 0,
       cover,
-      source: { originalString: it.str, transform: it.transform, fontName: it.fontName, cssFamily: it.cssFamily, bounds: originalGlyph },
+      source: {
+        originalString: it.str,
+        transform: it.transform,
+        fontName: it.fontName,
+        cssFamily: it.cssFamily,
+        bounds: originalGlyph,
+        textRunIndex: it.textRunIndex,
+        textOpIndex: it.textOpIndex,
+      } as TextEditSource,
     } });
     console.log("[text-edit-bounds-init]", {
       id,
@@ -1572,8 +1557,9 @@ export function EditorCanvas({
       coverPdf: cover,
       annoPdf: { x: it.x, y: it.y + baselineNudge, w: it.w, h: it.h },
       pads: { coverPadX, coverPadTop, coverPadBottom },
-      sampledBg: sampled.bg,
-      intendedCoverBackground: `rgba(${Math.round(sampled.bg.r*255)},${Math.round(sampled.bg.g*255)},${Math.round(sampled.bg.b*255)},1)`,
+      textOpIndex: it.textOpIndex,
+      textRunIndex: it.textRunIndex,
+      intendedCoverBackground: "transparent",
     });
     dispatch({ type: "SELECT_ANNO", id });
     dispatch({ type: "SET_TOOL", t: "select" });
