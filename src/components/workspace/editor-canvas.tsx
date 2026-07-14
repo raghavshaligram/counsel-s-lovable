@@ -1686,7 +1686,7 @@ export function EditorCanvas({
                 position: "absolute",
                 left: tl.x, top: tl.y,
                 width: br.x - tl.x, height: br.y - tl.y,
-                background: bgCss,
+                background: "transparent",
                 pointerEvents: "none",
                 zIndex: 1,
               }}
