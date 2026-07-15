@@ -343,12 +343,12 @@ function collectOcrWords(data: unknown): OcrWordBox[] {
 }
 
 async function rasterStrip(
-  page: { getViewport: (o: { scale: number }) => { width: number; height: number }; render: (o: { canvasContext: CanvasRenderingContext2D; viewport: unknown; canvas: HTMLCanvasElement }) => { promise: Promise<void> } },
+  page: { getViewport: (o: { scale: number; rotation?: number }) => { width: number; height: number }; render: (o: { canvasContext: CanvasRenderingContext2D; viewport: unknown; canvas: HTMLCanvasElement }) => { promise: Promise<void> } },
   scale: number,
   yStart: number,
   yEnd: number,
 ): Promise<{ canvas: HTMLCanvasElement; offsetY: number } | null> {
-  const vp = page.getViewport({ scale });
+  const vp = page.getViewport({ scale, rotation: 0 });
   const cw = Math.ceil(vp.width);
   const yTop = Math.max(0, Math.floor(yStart * vp.height));
   const yBot = Math.min(vp.height, Math.ceil(yEnd * vp.height));
