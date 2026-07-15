@@ -8769,8 +8769,29 @@ function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
           setSuffix(auto.format.suffix);
           setDigits(auto.format.digits);
           setCorner(auto.format.corner);
-        } else if (auto.pagesWithText === 0) {
-          toast.message("No text-layer Bates stamp found. This PDF may be scanned, flattened as an image, or OCR is needed first.");
+        } else if (auto.pagesWithText === 0 || found.length === 0) {
+          // No text layer (or no candidates in it) — fall back to OCR.
+          const ocrToast = toast.loading("Scanning with OCR — this may take a moment…");
+          try {
+            const { findBatesStampsOcr } = await importChunk(
+              () => import("@/lib/pdf/remove-bates"),
+            );
+            const ocr = await findBatesStampsOcr(source, (p) => {
+              toast.loading(p.message, { id: ocrToast });
+            });
+            toast.dismiss(ocrToast);
+            found = ocr.matches;
+            if (ocr.format) {
+              setPrefix(ocr.format.prefix);
+              setSuffix(ocr.format.suffix);
+              setDigits(ocr.format.digits);
+              setCorner(ocr.format.corner);
+            }
+          } catch (ocrErr) {
+            toast.dismiss(ocrToast);
+            console.error("[bates-remove] OCR scan failed", ocrErr);
+            toast.error("OCR scan failed", { description: (ocrErr as Error).message });
+          }
         }
       }
       setScan(found);
