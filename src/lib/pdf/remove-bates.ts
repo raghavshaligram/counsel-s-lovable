@@ -297,14 +297,6 @@ export async function findBatesStampsAuto(bytes: Uint8Array): Promise<BatesAutoD
     ...stats,
   };
 }
-      }
-      try { page.cleanup(); } catch { /* noop */ }
-    }
-  } finally {
-    try { await doc.cleanup(); } catch { /* noop */ }
-  }
-  return out;
-}
 
 export async function removeBatesStamps(
   bytes: Uint8Array,
