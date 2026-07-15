@@ -15,6 +15,7 @@
  */
 import { PDFDocument, rgb } from "pdf-lib";
 import { openPdfjs } from "@/lib/pdf/pdf-open";
+import { importChunk } from "@/lib/chunk-import";
 
 export type BatesCorner = "tl" | "tc" | "tr" | "bl" | "bc" | "br";
 
@@ -294,6 +295,219 @@ export async function findBatesStampsAuto(bytes: Uint8Array): Promise<BatesAutoD
       digits: first.digits,
       corner: first.corner,
     },
+    ...stats,
+  };
+}
+
+/* --------------------------------------------------------------------
+ * OCR fallback — for scanned / flattened PDFs where the pdf.js text
+ * layer is empty. Rasterises the top + bottom strip of every page,
+ * runs Tesseract, then feeds the recognised words through the same
+ * candidate/scoring pipeline as the text-layer scanner.
+ * -------------------------------------------------------------------- */
+
+export interface OcrScanProgress {
+  page: number;
+  totalPages: number;
+  stage: "loading-language" | "ocr";
+  message: string;
+}
+
+const OCR_SCALE = 2.0;
+// Fraction of page height scanned at top AND bottom. 0.28 covers the
+// widened corner bands used by inCorner() with headroom for tall stamps.
+const OCR_STRIP = 0.28;
+
+type OcrWordBox = { text: string; x0: number; y0: number; x1: number; y1: number };
+
+function collectOcrWords(data: unknown): OcrWordBox[] {
+  const out: OcrWordBox[] = [];
+  const visit = (node: Record<string, unknown> | null | undefined) => {
+    if (!node) return;
+    const words = node.words as Array<{ text?: string; bbox?: { x0: number; y0: number; x1: number; y1: number } }> | undefined;
+    if (Array.isArray(words)) {
+      for (const w of words) {
+        if (!w?.text || !w.bbox) continue;
+        const t = w.text.trim();
+        if (!t) continue;
+        out.push({ text: t, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 });
+      }
+    }
+    for (const key of ["blocks", "paragraphs", "lines"]) {
+      const arr = node[key] as Record<string, unknown>[] | undefined;
+      if (Array.isArray(arr)) arr.forEach(visit);
+    }
+  };
+  visit(data as Record<string, unknown>);
+  return out;
+}
+
+async function rasterStrip(
+  page: { getViewport: (o: { scale: number }) => { width: number; height: number }; render: (o: { canvasContext: CanvasRenderingContext2D; viewport: unknown; canvas: HTMLCanvasElement }) => { promise: Promise<void> } },
+  scale: number,
+  yStart: number,
+  yEnd: number,
+): Promise<{ canvas: HTMLCanvasElement; offsetY: number } | null> {
+  const vp = page.getViewport({ scale });
+  const cw = Math.ceil(vp.width);
+  const yTop = Math.max(0, Math.floor(yStart * vp.height));
+  const yBot = Math.min(vp.height, Math.ceil(yEnd * vp.height));
+  const ch = yBot - yTop;
+  if (ch <= 4) return null;
+  const full = document.createElement("canvas");
+  full.width = cw;
+  full.height = Math.ceil(vp.height);
+  const fctx = full.getContext("2d");
+  if (!fctx) return null;
+  fctx.fillStyle = "#ffffff";
+  fctx.fillRect(0, 0, full.width, full.height);
+  await page.render({ canvasContext: fctx, viewport: vp, canvas: full }).promise;
+  const strip = document.createElement("canvas");
+  strip.width = cw;
+  strip.height = ch;
+  const sctx = strip.getContext("2d");
+  if (!sctx) return null;
+  sctx.drawImage(full, 0, yTop, cw, ch, 0, 0, cw, ch);
+  return { canvas: strip, offsetY: yTop };
+}
+
+async function scanOcrLines(
+  bytes: Uint8Array,
+  onLine: (line: TextLine) => void,
+  onProgress?: (p: OcrScanProgress) => void,
+  signal?: AbortSignal,
+): Promise<{ pagesWithText: number; totalPages: number }> {
+  const tess = await importChunk(() => import("tesseract.js"));
+  const doc = await openPdfjs(bytes.slice(), {});
+  const totalPages = doc.numPages;
+  onProgress?.({ page: 0, totalPages, stage: "loading-language", message: "Loading OCR language pack…" });
+  const worker = await tess.createWorker("eng");
+  let pagesWithText = 0;
+  try {
+    for (let i = 0; i < totalPages; i++) {
+      if (signal?.aborted) break;
+      const page = await doc.getPage(i + 1);
+      const baseVp = page.getViewport({ scale: 1 });
+      const pageW = baseVp.width;
+      const pageH = baseVp.height;
+      const strips: Array<{ yStartFrac: number; yEndFrac: number }> = [
+        { yStartFrac: 0, yEndFrac: OCR_STRIP },
+        { yStartFrac: 1 - OCR_STRIP, yEndFrac: 1 },
+      ];
+      const allWords: Array<OcrWordBox & { offsetYpx: number }> = [];
+      for (const s of strips) {
+        const rendered = await rasterStrip(page as unknown as Parameters<typeof rasterStrip>[0], OCR_SCALE, s.yStartFrac, s.yEndFrac);
+        if (!rendered) continue;
+        const { data } = await worker.recognize(rendered.canvas, {}, { blocks: true });
+        const ws = collectOcrWords(data);
+        for (const w of ws) allWords.push({ ...w, offsetYpx: rendered.offsetY });
+      }
+      try { page.cleanup(); } catch { /* noop */ }
+      onProgress?.({ page: i + 1, totalPages, stage: "ocr", message: `OCR page ${i + 1}/${totalPages}` });
+      if (allWords.length === 0) continue;
+      pagesWithText += 1;
+      // Convert OCR pixel bboxes → PDF points (origin bottom-left).
+      const inv = 1 / OCR_SCALE;
+      const pieces: Piece[] = allWords.map((w) => {
+        const xPdf = w.x0 * inv;
+        const wPdf = (w.x1 - w.x0) * inv;
+        const hPdf = (w.y1 - w.y0) * inv;
+        // OCR y is top-based within the strip. Add strip offset, flip to PDF (bottom-based).
+        const topPx = w.offsetYpx + w.y0;
+        const botPx = w.offsetYpx + w.y1;
+        const yPdf = pageH - botPx * inv;
+        const fontSize = Math.max(4, hPdf);
+        return {
+          str: w.text,
+          transform: [fontSize, 0, 0, fontSize, xPdf, yPdf],
+          width: wPdf,
+          height: hPdf,
+          x: xPdf,
+          y: yPdf,
+        };
+      });
+      // Bucket by baseline
+      pieces.sort((a, b) => b.y - a.y);
+      const lines: Piece[][] = [];
+      const Y_TOL = 4;
+      for (const p of pieces) {
+        const last = lines[lines.length - 1];
+        if (last && Math.abs(last[0].y - p.y) <= Y_TOL) last.push(p);
+        else lines.push([p]);
+      }
+      for (const items of lines) {
+        items.sort((a, b) => a.x - b.x);
+        onLine({ pageIndex: i, pageW, pageH, items, text: items.map((it) => it.str).join(" ") });
+      }
+    }
+  } finally {
+    try { await worker.terminate(); } catch { /* noop */ }
+    try { await doc.cleanup(); } catch { /* noop */ }
+  }
+  return { pagesWithText, totalPages };
+}
+
+export async function findBatesStampsOcr(
+  bytes: Uint8Array,
+  onProgress?: (p: OcrScanProgress) => void,
+  signal?: AbortSignal,
+): Promise<BatesAutoDetection> {
+  const candidates: BatesCandidate[] = [];
+  const autoPattern = /[A-Z][A-Z0-9]{0,15}(?:[\s._\-–—]*\d){4,10}(?:[\s._\-–—]*[A-Z]{1,8})?|(?:\d[\s._\-–—]*){5,10}(?:[A-Z]{1,8})?/gi;
+  const stats = await scanOcrLines(bytes, (line) => {
+    autoPattern.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = autoPattern.exec(line.text)) !== null) {
+      const inferred = inferCandidateFormat(m[0]);
+      if (!inferred) continue;
+      // OCR line.text joins with spaces so char offsets differ from item lengths.
+      // Rebuild bbox from the items whose joined text overlaps the match.
+      let cursor = 0;
+      let bx = Infinity, by = Infinity, bxEnd = -Infinity, bh = 0;
+      for (const it of line.items) {
+        const s = cursor;
+        const e = cursor + it.str.length;
+        cursor = e + 1; // +1 for space separator
+        if (e <= m.index || s >= m.index + m[0].length) continue;
+        bx = Math.min(bx, it.x);
+        by = Math.min(by, it.y);
+        bxEnd = Math.max(bxEnd, it.x + (it.width || 0));
+        bh = Math.max(bh, it.height || 10);
+      }
+      if (!isFinite(bx)) continue;
+      const box = { x: bx, y: by - bh * 0.15, w: Math.max(bxEnd - bx, bh * 0.5), h: bh * 1.3 };
+      const detectedCorner = cornerFromBounds(box.x, box.y + box.h / 2, box.w, line.pageW, line.pageH);
+      if (!detectedCorner) continue;
+      candidates.push({
+        pageIndex: line.pageIndex,
+        ...box,
+        text: m[0],
+        ...inferred,
+        corner: detectedCorner,
+      });
+    }
+  }, onProgress, signal);
+
+  if (candidates.length === 0) return { matches: [], format: null, ...stats };
+
+  const groups = new Map<string, BatesCandidate[]>();
+  for (const c of candidates) {
+    const key = `${c.prefix}\u0000${c.suffix}\u0000${c.digits}\u0000${c.corner}`;
+    const group = groups.get(key);
+    if (group) group.push(c);
+    else groups.set(key, [c]);
+  }
+  let best: BatesCandidate[] = [];
+  let bestScore = -Infinity;
+  for (const group of groups.values()) {
+    const score = scoreCandidates(group, stats.totalPages);
+    if (score > bestScore) { bestScore = score; best = group; }
+  }
+  const first = best[0];
+  if (!first) return { matches: [], format: null, ...stats };
+  return {
+    matches: best.map(({ prefix: _p, suffix: _s, digits: _d, corner: _c, number: _n, ...match }) => match),
+    format: { prefix: first.prefix, suffix: first.suffix, digits: first.digits, corner: first.corner },
     ...stats,
   };
 }
