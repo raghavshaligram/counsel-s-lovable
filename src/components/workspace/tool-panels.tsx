@@ -8751,17 +8751,31 @@ function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
   }, [update]);
 
   const runScan = useCallback(async () => {
-    if (!file || !prefix.trim()) return;
+    if (!file) return;
     setBusy("scanning");
     try {
-      const { findBatesStamps } = await importChunk(
+      const { findBatesStamps, findBatesStampsAuto } = await importChunk(
         () => import("@/lib/pdf/remove-bates"),
       );
       const source = new Uint8Array(await file.arrayBuffer());
-      const found = await findBatesStamps(source, { prefix, suffix, digits, corner });
+      let found = prefix.trim()
+        ? await findBatesStamps(source, { prefix, suffix, digits, corner })
+        : [];
+      if (found.length === 0) {
+        const auto = await findBatesStampsAuto(source);
+        found = auto.matches;
+        if (auto.format) {
+          setPrefix(auto.format.prefix);
+          setSuffix(auto.format.suffix);
+          setDigits(auto.format.digits);
+          setCorner(auto.format.corner);
+        } else if (auto.pagesWithText === 0) {
+          toast.message("No text-layer Bates stamp found. This PDF may be scanned, flattened as an image, or OCR is needed first.");
+        }
+      }
       setScan(found);
       if (found.length === 0) {
-        toast.message("No matching Bates numbers found in that corner.");
+        toast.message("No Bates stamp pattern found near the page edges.");
       } else {
         toast.success(`Found ${found.length} stamp${found.length === 1 ? "" : "s"}`);
       }
@@ -8858,10 +8872,10 @@ function BatesClearAndRemoveSection({ ctx }: { ctx: ToolPanelCtx }) {
       <button
         type="button"
         onClick={runScan}
-        disabled={busy !== "idle" || !prefix.trim()}
+        disabled={busy !== "idle" || !file}
         className={cn(
           "inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12px] text-foreground hover:border-vault/40",
-          (busy !== "idle" || !prefix.trim()) && "cursor-not-allowed opacity-60",
+          (busy !== "idle" || !file) && "cursor-not-allowed opacity-60",
         )}
       >
         <Search className="h-3.5 w-3.5" strokeWidth={2.5} />
