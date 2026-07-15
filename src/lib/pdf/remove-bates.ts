@@ -15,6 +15,7 @@
  */
 import { PDFDocument, rgb } from "pdf-lib";
 import { openPdfjs } from "@/lib/pdf/pdf-open";
+import { importChunk } from "@/lib/chunk-import";
 
 export type BatesCorner = "tl" | "tc" | "tr" | "bl" | "bc" | "br";
 
