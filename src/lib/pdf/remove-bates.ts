@@ -387,7 +387,10 @@ async function scanOcrLines(
     for (let i = 0; i < totalPages; i++) {
       if (signal?.aborted) break;
       const page = await doc.getPage(i + 1);
-      const baseVp = page.getViewport({ scale: 1 });
+      // rotation:0 so coords match pdf-lib's unrotated MediaBox used for
+      // removal — otherwise stamps on rotated pages get whited out in the
+      // wrong corner.
+      const baseVp = page.getViewport({ scale: 1, rotation: 0 });
       const pageW = baseVp.width;
       const pageH = baseVp.height;
       const strips: Array<{ yStartFrac: number; yEndFrac: number }> = [
