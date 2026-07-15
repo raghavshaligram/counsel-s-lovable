@@ -343,12 +343,12 @@ function collectOcrWords(data: unknown): OcrWordBox[] {
 }
 
 async function rasterStrip(
-  page: { getViewport: (o: { scale: number }) => { width: number; height: number }; render: (o: { canvasContext: CanvasRenderingContext2D; viewport: unknown; canvas: HTMLCanvasElement }) => { promise: Promise<void> } },
+  page: { getViewport: (o: { scale: number; rotation?: number }) => { width: number; height: number }; render: (o: { canvasContext: CanvasRenderingContext2D; viewport: unknown; canvas: HTMLCanvasElement }) => { promise: Promise<void> } },
   scale: number,
   yStart: number,
   yEnd: number,
 ): Promise<{ canvas: HTMLCanvasElement; offsetY: number } | null> {
-  const vp = page.getViewport({ scale });
+  const vp = page.getViewport({ scale, rotation: 0 });
   const cw = Math.ceil(vp.width);
   const yTop = Math.max(0, Math.floor(yStart * vp.height));
   const yBot = Math.min(vp.height, Math.ceil(yEnd * vp.height));
@@ -387,7 +387,10 @@ async function scanOcrLines(
     for (let i = 0; i < totalPages; i++) {
       if (signal?.aborted) break;
       const page = await doc.getPage(i + 1);
-      const baseVp = page.getViewport({ scale: 1 });
+      // rotation:0 so coords match pdf-lib's unrotated MediaBox used for
+      // removal — otherwise stamps on rotated pages get whited out in the
+      // wrong corner.
+      const baseVp = page.getViewport({ scale: 1, rotation: 0 });
       const pageW = baseVp.width;
       const pageH = baseVp.height;
       const strips: Array<{ yStartFrac: number; yEndFrac: number }> = [
@@ -521,11 +524,15 @@ export async function removeBatesStamps(
   for (const m of matches) {
     const page = pages[m.pageIndex];
     if (!page) continue;
+    // Pad generously — OCR bboxes can be a few px tight, and stamp glyphs
+    // often overshoot the reported height (descenders, thick fonts).
+    const padX = Math.max(3, m.h * 0.4);
+    const padY = Math.max(3, m.h * 0.35);
     page.drawRectangle({
-      x: m.x - 1,
-      y: m.y - 1,
-      width: m.w + 2,
-      height: m.h + 2,
+      x: m.x - padX,
+      y: m.y - padY,
+      width: m.w + padX * 2,
+      height: m.h + padY * 2,
       color: rgb(1, 1, 1),
     });
   }
