@@ -524,11 +524,15 @@ export async function removeBatesStamps(
   for (const m of matches) {
     const page = pages[m.pageIndex];
     if (!page) continue;
+    // Pad generously — OCR bboxes can be a few px tight, and stamp glyphs
+    // often overshoot the reported height (descenders, thick fonts).
+    const padX = Math.max(3, m.h * 0.4);
+    const padY = Math.max(3, m.h * 0.35);
     page.drawRectangle({
-      x: m.x - 1,
-      y: m.y - 1,
-      width: m.w + 2,
-      height: m.h + 2,
+      x: m.x - padX,
+      y: m.y - padY,
+      width: m.w + padX * 2,
+      height: m.h + padY * 2,
       color: rgb(1, 1, 1),
     });
   }
