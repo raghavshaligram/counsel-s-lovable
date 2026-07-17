@@ -12,13 +12,13 @@ import { importChunk } from "@/lib/chunk-import";
 export const Route = createFileRoute("/unlock")({
   head: () => ({
     meta: [
-      { title: "Unlock PDF — Remove Password — CounselPDF" },
+      { title: "Unlock PDF — Remove Password — PDFMacro" },
       {
         name: "description",
         content:
           "Remove a password from a PDF you own. Decryption happens entirely in your browser — the password is never transmitted.",
       },
-      { property: "og:title", content: "Unlock PDF — CounselPDF" },
+      { property: "og:title", content: "Unlock PDF — PDFMacro" },
       {
         property: "og:description",
         content: "Strip the password from a PDF you have permission to open. 100% local.",

@@ -28,7 +28,7 @@ beforeAll(() => {
 async function buildBasicFixture(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle("Fixture for PDF/A regression test");
-  doc.setAuthor("CounselPDF tests");
+  doc.setAuthor("PDFMacro tests");
   const page = doc.addPage([612, 792]);
   const helv = await doc.embedFont(StandardFonts.Helvetica);
   page.drawText("The quick brown fox jumps over the lazy dog.", {

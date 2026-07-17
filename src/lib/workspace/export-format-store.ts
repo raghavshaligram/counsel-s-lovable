@@ -1,11 +1,11 @@
 /**
  * Preferred export format — persists "pdf" or "pdf-a" across sessions.
- * Surfaced wherever CounselPDF lets the user download a PDF; PDF/A is opt-in.
+ * Surfaced wherever PDFMacro lets the user download a PDF; PDF/A is opt-in.
  */
 import { useEffect, useState } from "react";
 
 export type ExportFormat = "pdf" | "pdf-a";
-const KEY = "counselpdf.export-format";
+const KEY = "pdfmacro.export-format";
 
 const subs = new Set<(v: ExportFormat) => void>();
 

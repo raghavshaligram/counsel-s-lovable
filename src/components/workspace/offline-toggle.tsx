@@ -13,7 +13,7 @@ import { getAiCacheStatus, type AiCacheStatus } from "@/lib/ai/model-download-ui
 import { loadModel } from "@/lib/discovery/client";
 import { prewarmNer } from "@/lib/pdf/ner";
 
-const OFFLINE_KEY = "counselpdf:work-offline";
+const OFFLINE_KEY = "pdfmacro:work-offline";
 
 export function loadOfflinePref(): boolean {
   if (typeof window === "undefined") return false;

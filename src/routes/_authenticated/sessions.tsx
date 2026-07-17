@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/sessions")({
   head: () => ({
     meta: [
-      { title: "Saved Cases — CounselPDF" },
+      { title: "Saved Cases — PDFMacro" },
       { name: "robots", content: "noindex" },
     ],
   }),

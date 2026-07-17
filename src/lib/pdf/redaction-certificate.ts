@@ -51,8 +51,8 @@ export async function buildRedactionCertificate({
 }): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle("Certificate of Redaction");
-  doc.setProducer("CounselPDF");
-  doc.setCreator("CounselPDF");
+  doc.setProducer("PDFMacro");
+  doc.setCreator("PDFMacro");
 
   const font = await embedStandardFont(doc, "Helvetica");
   const bold = await embedStandardFont(doc, "HelveticaBold");
@@ -113,7 +113,7 @@ export async function buildRedactionCertificate({
   // Header
   page.drawRectangle({ x: 0, y: pageH - 8, width: pageW, height: 8, color: vault });
   drawText("CERTIFICATE OF REDACTION", { size: 9, font: bold, color: vault, gapAfter: 14 });
-  drawText("CounselPDF · Verifiable Redaction", { size: 22, font: bold, gapAfter: 2 });
+  drawText("PDFMacro · Verifiable Redaction", { size: 22, font: bold, gapAfter: 2 });
   drawText("On-device audit trail for content-stream redaction", {
     size: 10,
     color: muted,
@@ -251,7 +251,7 @@ export async function buildRedactionCertificate({
     color: muted,
     gapAfter: 10,
   });
-  drawText("CounselPDF · Verifiable Redaction", { size: 8, color: muted, font: bold });
+  drawText("PDFMacro · Verifiable Redaction", { size: 8, color: muted, font: bold });
 
   return doc.save();
 }

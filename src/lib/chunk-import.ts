@@ -1,7 +1,7 @@
 const CHUNK_ERROR_RE =
   /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Loading chunk \d+ failed|ChunkLoadError/i;
 
-const RELOAD_KEY = "counselpdf:chunk-reload-at";
+const RELOAD_KEY = "pdfmacro:chunk-reload-at";
 
 export function isChunkLoadError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? "");

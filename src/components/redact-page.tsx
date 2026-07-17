@@ -701,8 +701,8 @@ export function RedactPage() {
         out.setAuthor("");
         out.setSubject("");
         out.setKeywords([]);
-        out.setProducer("CounselPDF");
-        out.setCreator("CounselPDF");
+        out.setProducer("PDFMacro");
+        out.setCreator("PDFMacro");
         const epoch = new Date(0);
         out.setCreationDate(epoch);
         out.setModificationDate(epoch);
