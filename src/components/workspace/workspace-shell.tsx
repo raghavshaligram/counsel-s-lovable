@@ -887,15 +887,24 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   }, [showTabCapToast]);
 
 
-  // Memory hygiene: keep only the ACTIVE tab's parsed pdf.js doc alive.
-  // Background tabs' parsed docs (and their worker-side memory) are
-  // destroyed on switch; the open-effect re-parses from active.file when
-  // the user switches back. Editor state / sidecar edits are preserved.
+  // Memory hygiene: keep the ACTIVE tab plus the most-recent (KEEP_PARSED-1)
+  // background pdf.js docs alive; destroy older ones so switching back to a
+  // recently-viewed tab stays instant while the compositor doesn't have to
+  // restore GPU-backed canvases for every historical tab on browser-tab
+  // return. Editor state / sidecar edits are preserved regardless.
+  const KEEP_PARSED = 2;
+  const recentActiveIdsRef = useRef<string[]>([]);
   useEffect(() => {
+    // Maintain LRU: activeId at the front, dedup, cap length.
+    const lru = recentActiveIdsRef.current.filter((id) => id !== activeId);
+    lru.unshift(activeId);
+    recentActiveIdsRef.current = lru.slice(0, KEEP_PARSED);
+    const keep = new Set(recentActiveIdsRef.current);
+
     const before = pdfDocsRef.current.size;
     sampleHeap("destroy-bg:before", { activeId, pdfDocsAlive: before });
     for (const [id, doc] of pdfDocsRef.current) {
-      if (id === activeId) continue;
+      if (keep.has(id)) continue;
       try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
       pdfDocsRef.current.delete(id);
       pdfDocByteLenRef.current.delete(id);
@@ -906,6 +915,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       destroyed: before - pdfDocsRef.current.size,
     });
   }, [activeId]);
+
 
 
   // ----------------- File open (into the ACTIVE tab) ------------------
