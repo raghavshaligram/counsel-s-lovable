@@ -348,6 +348,11 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     startLongTaskWatch(200);
     sampleHeap("boot");
   }, []);
+  // Boot sample + long-task watch (one-shot).
+  useEffect(() => {
+    startLongTaskWatch(200);
+    sampleHeap("boot");
+  }, []);
   // Stable ref for callbacks that need the current active id without
   // re-binding every render.
   const activeIdRef = useRef(activeId);
