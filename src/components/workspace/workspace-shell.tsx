@@ -4626,6 +4626,11 @@ import type { State as EditorState } from "@/lib/editor/state";
 import { loadPdfjs } from "@/lib/pdf/worker";
 
 const VIRT_BUFFER_PX = 800; // render pages within this many px of viewport
+// Hard cap on concurrently-rendered page canvases. Prevents unbounded
+// GPU/canvas accumulation on long scroll sessions through 1000+ page docs
+// and shortens the compositor "grey period" on browser-tab return.
+const MAX_RENDERED_PAGES = 6;
+
 
 function EditorPages({
   state, dispatch, zoom, gap, onRequestOcr, ocrRunning, onScannedChange,
