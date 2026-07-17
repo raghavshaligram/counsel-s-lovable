@@ -791,7 +791,7 @@ function OfflinePanel() {
         <span className="h-2 w-2 rounded-full bg-evidence" />
         <span className="h-2 w-2 rounded-full bg-vault/60" />
         <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-        <span className="ml-2 truncate">pdfmacro.app/workspace</span>
+        <span className="ml-2 truncate">pdfmacro.com/workspace</span>
         <span
           className={`ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border transition-colors duration-500 ${
             inView
