@@ -111,6 +111,7 @@ import { AccountMenu } from "./account-menu";
 import { JobsIndicator } from "./jobs-indicator";
 import { bindGlobalCompletionToasts, useJobsStore } from "@/lib/jobs/registry";
 import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
+import { sampleHeap, startLongTaskWatch, sumSrcBytes } from "@/lib/debug/heap-probe";
 
 bindGlobalCompletionToasts();
 import { CaseSessionSaveButton } from "./case-session-save";
@@ -342,6 +343,16 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     activeFile: active.file ? { name: active.file.name, size: active.file.size } : null,
     editorDocFile: active.editor.doc?.fileName ?? null,
   });
+  // Boot sample + long-task watch (one-shot).
+  useEffect(() => {
+    startLongTaskWatch(200);
+    sampleHeap("boot");
+  }, []);
+  // Boot sample + long-task watch (one-shot).
+  useEffect(() => {
+    startLongTaskWatch(200);
+    sampleHeap("boot");
+  }, []);
   // Stable ref for callbacks that need the current active id without
   // re-binding every render.
   const activeIdRef = useRef(activeId);
@@ -352,6 +363,25 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+  // Heap probe on tab switch. Samples immediately + 5s idle to see whether
+  // memory returns to baseline. Also logs total pinned srcBytes across tabs.
+  useEffect(() => {
+    const stats = sumSrcBytes(tabsRef.current);
+    sampleHeap("switch:activeId-change", {
+      activeId,
+      tabsCount: tabsRef.current.length,
+      tabsWithDoc: stats.withDoc,
+      srcBytesTotalMB: (stats.totalBytes / 1024 / 1024).toFixed(1),
+    });
+    const t = setTimeout(() => {
+      const s2 = sumSrcBytes(tabsRef.current);
+      sampleHeap("switch:idle+5s", {
+        activeId,
+        srcBytesTotalMB: (s2.totalBytes / 1024 / 1024).toFixed(1),
+      });
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [activeId]);
   // Forward-ref to the tab-cap toast helper (defined after closeTab). Lets
   // callbacks declared earlier (openNewStartTab, onFiles) trigger it
   // without a TDZ on the const.
@@ -862,12 +892,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // destroyed on switch; the open-effect re-parses from active.file when
   // the user switches back. Editor state / sidecar edits are preserved.
   useEffect(() => {
+    const before = pdfDocsRef.current.size;
+    sampleHeap("destroy-bg:before", { activeId, pdfDocsAlive: before });
     for (const [id, doc] of pdfDocsRef.current) {
       if (id === activeId) continue;
       try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
       pdfDocsRef.current.delete(id);
       pdfDocByteLenRef.current.delete(id);
     }
+    sampleHeap("destroy-bg:after", {
+      activeId,
+      pdfDocsAlive: pdfDocsRef.current.size,
+      destroyed: before - pdfDocsRef.current.size,
+    });
   }, [activeId]);
 
 
@@ -1303,8 +1340,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // EncryptedPdfError so password-protected PDFs get an "Unlock" flow
         // instead of the misleading "repair" toast.
         console.log("[open-effect:getDocument-start]", { tabId });
+        sampleHeap("getDocument:before", { tabId, byteLength: bytes.byteLength });
         const doc = await openPdfjs(bytes, { onPassword: () => null });
         console.log("[open-effect:getDocument-done]", { tabId, numPages: doc.numPages });
+        sampleHeap("getDocument:after", { tabId, numPages: doc.numPages });
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
