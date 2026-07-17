@@ -15,7 +15,7 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "pdfmacro-v6-offline";
+const VERSION = "pdfmacro-v1-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;
