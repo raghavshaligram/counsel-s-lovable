@@ -213,11 +213,32 @@ function RootComponent() {
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-    if (import.meta.env.DEV) return; // skip SW in dev to avoid stale chunks
-    if (window.location.hostname === "lovableproject.com" || window.location.hostname.endsWith(".lovableproject.com")) return;
-    if (window.location.hostname === "lovableproject-dev.com" || window.location.hostname.endsWith(".lovableproject-dev.com")) return;
-    if (window.location.hostname === "beta.lovable.dev" || window.location.hostname.endsWith(".beta.lovable.dev")) return;
-    if (window.location.hostname.startsWith("id-preview--") || window.location.hostname.startsWith("preview--")) return;
+    const unregisterPreviewWorker = () => {
+      void navigator.serviceWorker.getRegistrations().then((registrations) => {
+        const appWorkers = registrations.filter((registration) => {
+          const worker = registration.active ?? registration.waiting ?? registration.installing;
+          return worker?.scriptURL.endsWith("/sw.js") || registration.scope === window.location.origin + "/";
+        });
+        if (appWorkers.length === 0) return;
+        void Promise.allSettled(appWorkers.map((registration) => registration.unregister())).then(() => {
+          if (!navigator.serviceWorker.controller) return;
+          const reloadKey = "pdfmacro:preview-sw-cleaned";
+          if (window.sessionStorage.getItem(reloadKey) === "1") return;
+          window.sessionStorage.setItem(reloadKey, "1");
+          window.location.reload();
+        });
+      });
+    };
+    const hostname = window.location.hostname;
+    const isPreviewHost =
+      hostname === "lovableproject.com" || hostname.endsWith(".lovableproject.com") ||
+      hostname === "lovableproject-dev.com" || hostname.endsWith(".lovableproject-dev.com") ||
+      hostname === "beta.lovable.dev" || hostname.endsWith(".beta.lovable.dev") ||
+      hostname.startsWith("id-preview--") || hostname.startsWith("preview--");
+    if (import.meta.env.DEV || isPreviewHost) {
+      unregisterPreviewWorker();
+      return;
+    }
 
     const READY_KEY = "pdfmacro:offline-ready-notified";
     const wasControlled = Boolean(navigator.serviceWorker.controller);
