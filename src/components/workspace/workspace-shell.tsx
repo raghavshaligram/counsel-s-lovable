@@ -111,6 +111,7 @@ import { AccountMenu } from "./account-menu";
 import { JobsIndicator } from "./jobs-indicator";
 import { bindGlobalCompletionToasts, useJobsStore } from "@/lib/jobs/registry";
 import { usePiiScanResultsStore } from "@/lib/jobs/pii-scan-results";
+import { sampleHeap, startLongTaskWatch, sumSrcBytes } from "@/lib/debug/heap-probe";
 
 bindGlobalCompletionToasts();
 import { CaseSessionSaveButton } from "./case-session-save";
