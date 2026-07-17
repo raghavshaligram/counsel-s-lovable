@@ -392,12 +392,16 @@ export interface EditorCanvasProps {
   /** This page has had on-device OCR applied. Used to default new text /
    * text-edit boxes to a serif (Tinos), matching the visible scan. */
   isOcrPage?: boolean;
+  /** Buffer-band page not actually intersecting the viewport. Rendered at
+   * dpr=1 to cut GPU memory per hidden canvas up to 4× on retina. */
+  speculative?: boolean;
 }
 
 export function EditorCanvas({
   pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
-  onRequestOcr, ocrRunning, onScannedChange, isOcrPage,
+  onRequestOcr, ocrRunning, onScannedChange, isOcrPage, speculative,
 }: EditorCanvasProps) {
+
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Pristine offscreen snapshot of the freshly-rendered page canvas. Used to
@@ -524,7 +528,9 @@ export function EditorCanvas({
         if (cancelled) return;
         const page = await doc.getPage(op.srcPage + 1);
         if (cancelled) return;
-        const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2);
+        const dprCap = speculative ? 1 : 2;
+        const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, dprCap);
+
         const vp = page.getViewport({ scale: scale * dpr, rotation: op.rotation });
         const cssVp = page.getViewport({ scale, rotation: op.rotation });
         canvas.width = Math.ceil(vp.width);
@@ -837,7 +843,32 @@ export function EditorCanvas({
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
     };
-  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
+  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick, speculative]);
+
+  // Browser-tab visibility hygiene: when the tab is hidden, cancel any
+  // in-flight pdf.js render, drop the canvas backing store to 0×0, and
+  // stop holding GPU/canvas memory the compositor would otherwise have to
+  // restore when the user returns. On visible: bump renderTick so the
+  // main render effect re-runs and repaints the page. This is the primary
+  // fix for the "grey period on browser-tab return" symptom.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (renderTaskRef.current) {
+          try { renderTaskRef.current.cancel(); } catch { /* noop */ }
+          renderTaskRef.current = null;
+        }
+        const c = canvasRef.current;
+        if (c) { c.width = 0; c.height = 0; }
+      } else {
+        setRenderTick((t) => t + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
 
   // When a text-edit annotation is removed, restore the pixels that
   // onClickEditHit's row-inpaint painted over. Blit directly from the
