@@ -15,7 +15,7 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "pdfmacro-v6-offline";
+const VERSION = "pdfmacro-v7-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;
@@ -119,14 +119,21 @@ async function cacheFirst(req, cacheName) {
   if (cached) return cached;
   try {
     const res = await fetch(req);
-    // Only cache successful basic/cors responses.
-    if (res && (res.status === 200 || res.type === "opaque")) {
+    // Only cache successful basic/cors responses. Skip opaque redirects
+    // and error responses — caching them would poison future loads.
+    if (res && (res.status === 200 || res.type === "opaque") && !res.redirected) {
       cache.put(req, res.clone()).catch(() => {});
     }
     return res;
-  } catch (err) {
+  } catch {
+    // Never let a failed fetch reject the FetchEvent. Prefer any cached
+    // copy; otherwise return a graceful 504 so the console stays clean.
     if (cached) return cached;
-    throw err;
+    return new Response("", {
+      status: 504,
+      statusText: "Offline",
+      headers: { "Content-Type": "text/plain" },
+    });
   }
 }
 
@@ -134,20 +141,31 @@ async function networkFirstNav(req) {
   const cache = await caches.open(NAV_CACHE);
   try {
     const res = await fetch(req);
-    if (res && res.ok) cache.put(req, res.clone()).catch(() => {});
+    // Don't cache redirects or non-OK responses as navigation shells.
+    if (res && res.ok && !res.redirected && res.type === "basic") {
+      cache.put(req, res.clone()).catch(() => {});
+    }
     return res;
   } catch {
     const cached = await cache.match(req);
     if (cached) return cached;
     const shell = await caches.open(SHELL_CACHE);
-    // Prefer the branded offline page so users never see the browser's
-    // default "no internet" error. Fall back to the cached app shell.
     const offline = await shell.match(OFFLINE_URL);
     if (offline) return offline;
     const fallback = await shell.match("/");
     if (fallback) return fallback;
-    return new Response("Offline", { status: 503, statusText: "Offline" });
+    return new Response(
+      "<!doctype html><title>Offline</title><h1>Offline</h1>",
+      { status: 503, statusText: "Offline", headers: { "Content-Type": "text/html" } },
+    );
   }
+}
+
+function isDocumentRequest(req) {
+  if (req.mode === "navigate") return true;
+  if (req.destination === "document") return true;
+  const accept = req.headers.get("accept") || "";
+  return accept.includes("text/html");
 }
 
 self.addEventListener("fetch", (event) => {
@@ -157,12 +175,16 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
 
   if (isLiveDataRequest(url)) {
-    event.respondWith(fetch(req));
+    event.respondWith(
+      fetch(req).catch(() => new Response("", { status: 504, statusText: "Offline" })),
+    );
     return;
   }
 
-  // HTML navigations — NetworkFirst with offline shell fallback.
-  if (req.mode === "navigate") {
+  // HTML/document requests — always network-first with offline shell fallback.
+  // Covers real navigations, SPA route fetches, and any request whose Accept
+  // header asks for HTML (prefetch, warmups, apex→www redirects).
+  if (isDocumentRequest(req)) {
     event.respondWith(networkFirstNav(req));
     return;
   }
