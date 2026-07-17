@@ -1335,8 +1335,10 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         // EncryptedPdfError so password-protected PDFs get an "Unlock" flow
         // instead of the misleading "repair" toast.
         console.log("[open-effect:getDocument-start]", { tabId });
+        sampleHeap("getDocument:before", { tabId, byteLength: bytes.byteLength });
         const doc = await openPdfjs(bytes, { onPassword: () => null });
         console.log("[open-effect:getDocument-done]", { tabId, numPages: doc.numPages });
+        sampleHeap("getDocument:after", { tabId, numPages: doc.numPages });
         if (cancelled) {
           try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
           return;
