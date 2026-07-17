@@ -4795,11 +4795,19 @@ function EditorPages({
   // page becomes state.current — that's what drives the page indicator and
   // the "Bookmark page N" button. No extra per-page work: reuses the same
   // rects we already measure for virtualization.
+  // Track which pages are within the viewport's actual bounds (intersecting)
+  // vs merely in the buffer band. Buffer-only pages are marked speculative
+  // and render at a lower DPR (change 4).
+  const [speculative, setSpeculative] = useState<Set<number>>(() => new Set());
   const recompute = useCallback(() => {
     const root = containerRef.current?.parentElement; // the scrollable area
     if (!root || !pages) return;
     const rootRect = root.getBoundingClientRect();
-    const next = new Set<number>();
+    const viewportCenter = (rootRect.top + rootRect.bottom) / 2;
+    // Collect every candidate page (in buffer band) with its distance to
+    // viewport center and whether it actually intersects the viewport.
+    type Cand = { i: number; dist: number; intersects: boolean };
+    const candidates: Cand[] = [];
     let dominant = -1;
     let dominantArea = 0;
     for (let i = 0; i < pageRefs.current.length; i++) {
@@ -4808,12 +4816,29 @@ function EditorPages({
       const r = el.getBoundingClientRect();
       const above = rootRect.top - r.bottom;
       const below = r.top - rootRect.bottom;
-      if (above <= VIRT_BUFFER_PX && below <= VIRT_BUFFER_PX) next.add(i);
-      // Vertical intersection with the viewport.
+      if (above <= VIRT_BUFFER_PX && below <= VIRT_BUFFER_PX) {
+        const pageCenter = (r.top + r.bottom) / 2;
+        const intersects = r.bottom > rootRect.top && r.top < rootRect.bottom;
+        candidates.push({ i, dist: Math.abs(pageCenter - viewportCenter), intersects });
+      }
       const visTop = Math.max(rootRect.top, r.top);
       const visBot = Math.min(rootRect.bottom, r.bottom);
       const vis = visBot - visTop;
       if (vis > dominantArea) { dominantArea = vis; dominant = i; }
+    }
+    // LRU cap: keep the MAX_RENDERED_PAGES pages closest to viewport center.
+    // Intersecting pages always beat buffer-only ones (sort intersects first,
+    // then by distance).
+    candidates.sort((a, b) => {
+      if (a.intersects !== b.intersects) return a.intersects ? -1 : 1;
+      return a.dist - b.dist;
+    });
+    const kept = candidates.slice(0, MAX_RENDERED_PAGES);
+    const next = new Set<number>();
+    const nextSpec = new Set<number>();
+    for (const c of kept) {
+      next.add(c.i);
+      if (!c.intersects) nextSpec.add(c.i);
     }
     if (next.size === 0 && pages.length > 0) next.add(0);
     setVisible((prev) => {
@@ -4824,14 +4849,16 @@ function EditorPages({
       }
       return next;
     });
+    setSpeculative((prev) => {
+      if (prev.size === nextSpec.size) {
+        let same = true;
+        for (const v of nextSpec) if (!prev.has(v)) { same = false; break; }
+        if (same) return prev;
+      }
+      return nextSpec;
+    });
     if (dominant >= 0 && dominant !== state.current) {
-      // Suppress dominant-page updates while a programmatic scroll is in
-      // flight; otherwise an intermediate frame would dispatch SET_PAGE back
-      // to the page we're leaving and cancel the jump.
       if (Date.now() < programmaticUntilRef.current) return;
-      // If state.current sits well outside the viewport, a fresh navigation
-      // was just requested and the layout effect below hasn't scrolled yet —
-      // don't fight it.
       const targetEl = pageRefs.current[state.current];
       if (targetEl) {
         const tr = targetEl.getBoundingClientRect();
@@ -4841,6 +4868,7 @@ function EditorPages({
       dispatch({ type: "SET_PAGE", n: dominant });
     }
   }, [pages, dispatch, state.current]);
+
 
 
 
