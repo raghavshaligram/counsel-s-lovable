@@ -4985,6 +4985,8 @@ function EditorPages({
             ocrRunning={ocrRunning}
             onScannedChange={onScannedChange}
             isOcrPage={isOcrPage}
+            speculative={isSpeculative}
+
           />
         ) : (
           <div
