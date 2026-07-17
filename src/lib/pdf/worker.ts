@@ -5,6 +5,15 @@
 type PdfjsModule = typeof import("pdfjs-dist");
 let cached: PdfjsModule | null = null;
 
+// Same-origin runtime assets for PDF.js. Callers pass these into getDocument;
+// do not monkey-patch the ESM module exports because they are read-only.
+export const PDFJS_ASSET_DEFAULTS = {
+  cMapUrl: "/pdfjs/cmaps/",
+  cMapPacked: true,
+  standardFontDataUrl: "/pdfjs/standard_fonts/",
+  wasmUrl: "/pdfjs/wasm/",
+} as const;
+
 export async function loadPdfjs(): Promise<PdfjsModule> {
   if (cached) return cached;
   // Allow both window (main thread) and WorkerGlobalScope (web workers).
@@ -19,35 +28,6 @@ export async function loadPdfjs(): Promise<PdfjsModule> {
     import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
   ]);
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
-
-  // Inject default URLs for cmaps / standard fonts / wasm image decoders so
-  // every `getDocument` call finds them on the same origin. Without these,
-  // PDFs that use CJK cmaps, missing standard-14 fonts, or JPEG2000 / JBIG2
-  // images fail with an "Unable to load …" error that the workspace
-  // surfaces as "This file appears to be corrupted or unreadable." Serving
-  // them locally also keeps everything working in Offline — Isolated mode.
-  const ASSET_DEFAULTS = {
-    cMapUrl: "/pdfjs/cmaps/",
-    cMapPacked: true,
-    standardFontDataUrl: "/pdfjs/standard_fonts/",
-    wasmUrl: "/pdfjs/wasm/",
-  } as const;
-  const origGetDocument = pdfjs.getDocument.bind(pdfjs);
-  (pdfjs as unknown as { getDocument: typeof pdfjs.getDocument }).getDocument = ((
-    src: unknown,
-  ) => {
-    if (
-      src && typeof src === "object" &&
-      !(src instanceof Uint8Array) && !(src instanceof ArrayBuffer)
-    ) {
-      const merged = {
-        ...(ASSET_DEFAULTS as Record<string, unknown>),
-        ...(src as Record<string, unknown>),
-      };
-      return origGetDocument(merged as never);
-    }
-    return origGetDocument({ data: src as never, ...ASSET_DEFAULTS } as never);
-  }) as typeof pdfjs.getDocument;
 
   cached = pdfjs;
   return pdfjs;
