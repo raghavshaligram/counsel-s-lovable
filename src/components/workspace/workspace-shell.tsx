@@ -364,7 +364,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       const s2 = sumSrcBytes(tabsRef.current);
       sampleHeap("switch:idle+5s", {
         activeId,
-        pdfDocsAlive: pdfDocsRef.current.size,
         srcBytesTotalMB: (s2.totalBytes / 1024 / 1024).toFixed(1),
       });
     }, 5000);
