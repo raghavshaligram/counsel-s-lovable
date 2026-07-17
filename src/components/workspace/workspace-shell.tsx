@@ -1764,12 +1764,12 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
             aria-label="Back to PDFMacro home"
             className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-0.5 hover:bg-surface-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span
-              className="grid h-6 w-6 place-items-center bg-vault text-vault-foreground"
-              style={{ borderRadius: 7 }}
-            >
-              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-            </span>
+            <img
+              src="/favicon.png"
+              alt=""
+              aria-hidden="true"
+              className="h-6 w-6 object-contain"
+            />
             <span className="font-display text-[15px] leading-none">PDFMacro</span>
           </Link>
           <button
