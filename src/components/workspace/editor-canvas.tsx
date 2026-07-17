@@ -528,7 +528,9 @@ export function EditorCanvas({
         if (cancelled) return;
         const page = await doc.getPage(op.srcPage + 1);
         if (cancelled) return;
-        const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2);
+        const dprCap = speculative ? 1 : 2;
+        const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, dprCap);
+
         const vp = page.getViewport({ scale: scale * dpr, rotation: op.rotation });
         const cssVp = page.getViewport({ scale, rotation: op.rotation });
         canvas.width = Math.ceil(vp.width);
