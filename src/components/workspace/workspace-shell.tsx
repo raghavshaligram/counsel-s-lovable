@@ -887,12 +887,19 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   // destroyed on switch; the open-effect re-parses from active.file when
   // the user switches back. Editor state / sidecar edits are preserved.
   useEffect(() => {
+    const before = pdfDocsRef.current.size;
+    sampleHeap("destroy-bg:before", { activeId, pdfDocsAlive: before });
     for (const [id, doc] of pdfDocsRef.current) {
       if (id === activeId) continue;
       try { void (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
       pdfDocsRef.current.delete(id);
       pdfDocByteLenRef.current.delete(id);
     }
+    sampleHeap("destroy-bg:after", {
+      activeId,
+      pdfDocsAlive: pdfDocsRef.current.size,
+      destroyed: before - pdfDocsRef.current.size,
+    });
   }, [activeId]);
 
 
