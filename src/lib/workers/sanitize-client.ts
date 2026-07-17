@@ -25,7 +25,7 @@ let reqCounter = 0;
 function createWorker(): Worker {
   return new Worker(new URL("./sanitize.worker.ts", import.meta.url), {
     type: "module",
-    name: "counselpdf-sanitize",
+    name: "pdfmacro-sanitize",
   });
 }
 

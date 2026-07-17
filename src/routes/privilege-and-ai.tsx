@@ -3,9 +3,9 @@ import { AppShell } from "@/components/app-shell";
 import { ArrowRight, Scale, ShieldCheck, ExternalLink, AlertTriangle } from "lucide-react";
 
 const SEO_TITLE =
-  "Privilege & AI — Why On-Device Matters After UK v Secretary of State and US v Heppner | CounselPDF";
+  "Privilege & AI — Why On-Device Matters After UK v Secretary of State and US v Heppner | PDFMacro";
 const SEO_DESCRIPTION =
-  "In 2026, UK and US courts began holding that uploading privileged material to public AI tools can waive privilege. CounselPDF runs entirely on your device — nothing is uploaded.";
+  "In 2026, UK and US courts began holding that uploading privileged material to public AI tools can waive privilege. PDFMacro runs entirely on your device — nothing is uploaded.";
 
 export const Route = createFileRoute("/privilege-and-ai")({
   head: () => ({
@@ -82,10 +82,10 @@ function PrivilegeAndAiPage() {
         <section className="mt-16 rounded-xl border border-border bg-surface-canvas/60 p-7 md:p-9">
           <div className="font-mono text-[11px] text-muted-foreground mb-4 flex items-center gap-2">
             <ShieldCheck className="h-3.5 w-3.5 text-vault" />
-            How CounselPDF answers this
+            How PDFMacro answers this
           </div>
           <h2 className="font-display text-2xl md:text-3xl tracking-tight leading-tight">
-            CounselPDF&rsquo;s AI runs entirely on your device.
+            PDFMacro&rsquo;s AI runs entirely on your device.
           </h2>
           <p className="mt-5 text-muted-foreground leading-relaxed">
             Nothing is uploaded to any AI platform. Detection, summarisation,

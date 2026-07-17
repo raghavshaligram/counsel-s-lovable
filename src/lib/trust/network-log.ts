@@ -4,7 +4,7 @@
 //
 // Stored in IndexedDB so it survives reloads, capped to the last 1,000 entries.
 
-const DB_NAME = "counselpdf-trust";
+const DB_NAME = "pdfmacro-trust";
 const STORE = "network-log";
 const MAX_ENTRIES = 1000;
 

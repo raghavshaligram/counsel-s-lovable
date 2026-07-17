@@ -1,6 +1,6 @@
 {
-  "name": "CounselPDF",
-  "short_name": "CounselPDF",
+  "name": "PDFMacro",
+  "short_name": "PDFMacro",
   "description": "Privacy-architected PDF toolkit that runs entirely in your browser.",
   "start_url": "/",
   "display": "standalone",

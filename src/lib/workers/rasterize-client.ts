@@ -30,7 +30,7 @@ let reqCounter = 0;
 function createWorker(): Worker {
   return new Worker(new URL("./rasterize.worker.ts", import.meta.url), {
     type: "module",
-    name: "counselpdf-rasterize",
+    name: "pdfmacro-rasterize",
   });
 }
 

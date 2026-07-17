@@ -385,8 +385,8 @@ export async function repairPdfBytes(
     );
   }
 
-  outDoc.setProducer("CounselPDF");
-  outDoc.setCreator("CounselPDF");
+  outDoc.setProducer("PDFMacro");
+  outDoc.setCreator("PDFMacro");
   const repaired = await outDoc.save();
 
   // Audit the rebuilt PDF for pages that lost their drawable content.

@@ -12,7 +12,7 @@ export type StoredSignature = {
   createdAt: number;
 };
 
-const KEY = "counselpdf.signatures.v1";
+const KEY = "pdfmacro.signatures.v1";
 
 export async function listSignatures(): Promise<StoredSignature[]> {
   try {

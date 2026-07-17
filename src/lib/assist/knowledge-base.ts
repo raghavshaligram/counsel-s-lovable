@@ -86,7 +86,7 @@ const RAW_ENTRIES: AssistToolEntry[] = [
     ],
     capabilitySummary: "Builds reusable PDF processing pipelines from existing verified tools.",
     answer:
-      "Workflow Builder lets you chain existing VaultPDF tools into a reusable pipeline — for example OCR, sanitize, Bates, watermark, protect, or eligible redaction steps — then save and run that workflow again. Free users can preview the builder; saving and running workflows require Pro.",
+      "Workflow Builder lets you chain existing PDFMacro tools into a reusable pipeline — for example OCR, sanitize, Bates, watermark, protect, or eligible redaction steps — then save and run that workflow again. Free users can preview the builder; saving and running workflows require Pro.",
     upgradeCopy: "Workflow saving, running, and batch automation are Pro features. You can still ask how the builder works on any plan.",
   },
   {
@@ -834,7 +834,7 @@ export const ASSIST_TOPICS: AssistTopicEntry[] = [
       "what does pro cost per month",
     ],
     answer:
-      "VaultPDF has a free plan with the core PDF tools (redact, sanitize, Bates, OCR, sign, merge, split, protect, and more) and a Pro plan that unlocks AI features like sensitive-data detection, private AI assist, Privilege review, Workflow Builder, Exhibit Binder, Mail Merge, and multi-file / batch capabilities. See the Pricing page for current tiers.",
+      "PDFMacro has a free plan with the core PDF tools (redact, sanitize, Bates, OCR, sign, merge, split, protect, and more) and a Pro plan that unlocks AI features like sensitive-data detection, private AI assist, Privilege review, Workflow Builder, Exhibit Binder, Mail Merge, and multi-file / batch capabilities. See the Pricing page for current tiers.",
     actions: [
       { label: "See pricing", kind: "open-pricing", href: "/pricing" },
       { label: "Upgrade", kind: "open-upgrade" },
@@ -851,7 +851,7 @@ export const ASSIST_TOPICS: AssistTopicEntry[] = [
       "offline mode",
     ],
     answer:
-      "Yes — VaultPDF runs in your browser and works offline for every tool once the page has loaded. AI features (sensitive-data detection, private AI assist, smart split, Privilege review) download a small model the first time online, then run locally on later use.",
+      "Yes — PDFMacro runs in your browser and works offline for every tool once the page has loaded. AI features (sensitive-data detection, private AI assist, smart split, Privilege review) download a small model the first time online, then run locally on later use.",
   },
   {
     id: "privacy",
@@ -931,7 +931,7 @@ export const ASSIST_TOPICS: AssistTopicEntry[] = [
       "security architecture",
     ],
     answer:
-      "VaultPDF processes documents entirely in your browser, so there is no server-side copy to compromise. Passwords you set with Protect encrypt the exported PDF itself. The Security Architecture page explains the model in detail.",
+      "PDFMacro processes documents entirely in your browser, so there is no server-side copy to compromise. Passwords you set with Protect encrypt the exported PDF itself. The Security Architecture page explains the model in detail.",
     actions: [{ label: "Security architecture", kind: "open-security", href: "/security-architecture" }],
   },
   {

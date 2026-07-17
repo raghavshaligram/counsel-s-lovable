@@ -30,7 +30,7 @@ type Item =
   | { kind: "offer"; row: OfferRow }
   | { kind: "notification"; row: NotifRow };
 
-const DISMISS_KEY = "counselpdf:dismissed-banners:v1";
+const DISMISS_KEY = "pdfmacro:dismissed-banners:v1";
 
 function readDismissed(): Set<string> {
   if (typeof window === "undefined") return new Set();

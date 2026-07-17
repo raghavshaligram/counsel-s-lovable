@@ -81,7 +81,7 @@ function buildPreflight(pages: number, sizeMb: number, dev: DeviceProfile): Pref
 export const Route = createFileRoute("/ocr")({
   head: () => ({
     meta: [
-      { title: "Make PDF Searchable — On-Device OCR · CounselPDF" },
+      { title: "Make PDF Searchable — On-Device OCR · PDFMacro" },
       {
         name: "description",
         content:
@@ -101,7 +101,7 @@ export const Route = createFileRoute("/ocr")({
         type: "application/ld+json",
         children: JSON.stringify(
           softwareAppSchema({
-            name: "CounselPDF OCR",
+            name: "PDFMacro OCR",
             url: "/ocr",
             description:
               "On-device OCR that turns scanned PDFs into searchable, copy-pasteable PDFs. Nothing uploaded.",
