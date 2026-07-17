@@ -343,11 +343,32 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     activeFile: active.file ? { name: active.file.name, size: active.file.size } : null,
     editorDocFile: active.editor.doc?.fileName ?? null,
   });
+  // Boot sample + long-task watch (one-shot).
+  useEffect(() => {
+    startLongTaskWatch(200);
+    sampleHeap("boot");
+  }, []);
   // Stable ref for callbacks that need the current active id without
   // re-binding every render.
   const activeIdRef = useRef(activeId);
   useEffect(() => {
     activeIdRef.current = activeId;
+    const stats = sumSrcBytes(tabsRef.current);
+    sampleHeap("switch:activeId-change", {
+      activeId,
+      tabsCount: tabsRef.current.length,
+      tabsWithDoc: stats.withDoc,
+      srcBytesTotalMB: (stats.totalBytes / 1024 / 1024).toFixed(1),
+    });
+    const t = setTimeout(() => {
+      const s2 = sumSrcBytes(tabsRef.current);
+      sampleHeap("switch:idle+5s", {
+        activeId,
+        pdfDocsAlive: pdfDocsRef.current.size,
+        srcBytesTotalMB: (s2.totalBytes / 1024 / 1024).toFixed(1),
+      });
+    }, 5000);
+    return () => clearTimeout(t);
   }, [activeId]);
   const tabsRef = useRef(tabs);
   useEffect(() => {
