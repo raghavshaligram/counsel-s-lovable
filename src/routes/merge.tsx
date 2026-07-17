@@ -22,13 +22,13 @@ import { importChunk } from "@/lib/chunk-import";
 export const Route = createFileRoute("/merge")({
   head: () => ({
     meta: [
-      { title: "Batch Mail Merge — PDFMacro" },
+      { title: "Batch Mail Merge — CounselPDF" },
       {
         name: "description",
         content:
           "Generate hundreds of filled PDFs from a CSV — 100% in your browser. No uploads, no per-document fees.",
       },
-      { property: "og:title", content: "Batch Mail Merge — PDFMacro" },
+      { property: "og:title", content: "Batch Mail Merge — CounselPDF" },
       {
         property: "og:description",
         content:
@@ -42,7 +42,7 @@ export const Route = createFileRoute("/merge")({
         type: "application/ld+json",
         children: JSON.stringify(
           softwareAppSchema({
-            name: "PDFMacro Batch Mail Merge",
+            name: "CounselPDF Batch Mail Merge",
             url: "/merge",
             description:
               "Fill a PDF template with rows from a CSV. Outputs a zip of named PDFs, generated in your browser.",
@@ -189,8 +189,8 @@ function MergePage() {
         }
 
         if (flatten) form.flatten();
-        doc.setProducer("PDFMacro");
-        doc.setCreator("PDFMacro");
+        doc.setProducer("CounselPDF");
+        doc.setCreator("CounselPDF");
         const bytes = await doc.save();
 
         const filename = uniqueName(

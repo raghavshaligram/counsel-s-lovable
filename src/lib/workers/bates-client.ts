@@ -20,7 +20,7 @@ let reqCounter = 0;
 function createWorker(): Worker {
   return new Worker(new URL("./bates.worker.ts", import.meta.url), {
     type: "module",
-    name: "pdfmacro-bates",
+    name: "counselpdf-bates",
   });
 }
 

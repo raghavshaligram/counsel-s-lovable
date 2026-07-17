@@ -12,13 +12,13 @@ import { importChunk } from "@/lib/chunk-import";
 export const Route = createFileRoute("/compare")({
   head: () => ({
     meta: [
-      { title: "Compare PDFs — Visual Diff — PDFMacro" },
+      { title: "Compare PDFs — Visual Diff — CounselPDF" },
       {
         name: "description",
         content:
           "Compare two PDFs side-by-side and highlight every visual change. Perfect for contract review — runs entirely in your browser.",
       },
-      { property: "og:title", content: "Compare PDFs — PDFMacro" },
+      { property: "og:title", content: "Compare PDFs — CounselPDF" },
       {
         property: "og:description",
         content: "Side-by-side visual diff for two PDF versions. Local, private.",

@@ -87,7 +87,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "PDFMacro — PDFs that never leave your browser" },
+      { title: "CounselPDF — PDFs that never leave your browser" },
       {
         name: "description",
         content:
@@ -95,19 +95,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { name: "theme-color", content: "#0E1116" },
       { property: "og:type", content: "website" },
-      { property: "og:site_name", content: "PDFMacro" },
+      { property: "og:site_name", content: "CounselPDF" },
       { name: "twitter:card", content: "summary_large_image" },
-      { property: "og:title", content: "PDFMacro — PDFs that never leave your browser" },
-      { name: "twitter:title", content: "PDFMacro — PDFs that never leave your browser" },
-      { property: "og:description", content: "Privacy-architected PDF toolkit. Redact, sign, mail-merge, and extract tables 100% in your browser. No uploads, no limits." },
-      { name: "twitter:description", content: "Privacy-architected PDF toolkit. Redact, sign, mail-merge, and extract tables 100% in your browser. No uploads, no limits." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/4c9952ed-573a-44cb-a5f8-418ca0ac19a2/id-preview-6fbe4115--06b1f6fd-9cd2-46fe-873a-3b1020893722.lovable.app-1784293903347.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/4c9952ed-573a-44cb-a5f8-418ca0ac19a2/id-preview-6fbe4115--06b1f6fd-9cd2-46fe-873a-3b1020893722.lovable.app-1784293903347.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/x-icon", href: "/favicon.ico", sizes: "any" },
-      { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -123,12 +117,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         children: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "WebSite",
-          name: "PDFMacro",
+          name: "CounselPDF",
           description:
             "Privacy-architected PDF toolkit that runs entirely in your browser.",
           publisher: {
             "@type": "Organization",
-            name: "PDFMacro",
+            name: "CounselPDF",
           },
         }),
       },
@@ -213,34 +207,9 @@ function RootComponent() {
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-    const unregisterPreviewWorker = () => {
-      void navigator.serviceWorker.getRegistrations().then((registrations) => {
-        const appWorkers = registrations.filter((registration) => {
-          const worker = registration.active ?? registration.waiting ?? registration.installing;
-          return worker?.scriptURL.endsWith("/sw.js") || registration.scope === window.location.origin + "/";
-        });
-        if (appWorkers.length === 0) return;
-        void Promise.allSettled(appWorkers.map((registration) => registration.unregister())).then(() => {
-          if (!navigator.serviceWorker.controller) return;
-          const reloadKey = "pdfmacro:preview-sw-cleaned";
-          if (window.sessionStorage.getItem(reloadKey) === "1") return;
-          window.sessionStorage.setItem(reloadKey, "1");
-          window.location.reload();
-        });
-      });
-    };
-    const hostname = window.location.hostname;
-    const isPreviewHost =
-      hostname === "lovableproject.com" || hostname.endsWith(".lovableproject.com") ||
-      hostname === "lovableproject-dev.com" || hostname.endsWith(".lovableproject-dev.com") ||
-      hostname === "beta.lovable.dev" || hostname.endsWith(".beta.lovable.dev") ||
-      hostname.startsWith("id-preview--") || hostname.startsWith("preview--");
-    if (import.meta.env.DEV || isPreviewHost) {
-      unregisterPreviewWorker();
-      return;
-    }
+    if (import.meta.env.DEV) return; // skip SW in dev to avoid stale chunks
 
-    const READY_KEY = "pdfmacro:offline-ready-notified";
+    const READY_KEY = "counselpdf:offline-ready-notified";
     const wasControlled = Boolean(navigator.serviceWorker.controller);
 
     const notifyReady = () => {
@@ -250,7 +219,7 @@ function RootComponent() {
       } catch {
         /* ignore */
       }
-      toast.success("PDFMacro is ready to work offline", {
+      toast.success("CounselPDF is ready to work offline", {
         description: "You can disconnect anytime — everything stays on this device.",
         duration: 6000,
       });

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   Lock,
-  Zap,
   Download,
   Files,
   Shield,
@@ -240,8 +239,8 @@ const DEFAULT_PINS = ["redact", "sign", "merge", "chat"];
 // Hard cap on the left rail. Manual pins are sticky; the remainder is
 // auto-filled by most-used tools. Never exceed this, period.
 const PIN_CAP_TOTAL = 10;
-const USAGE_KEY = "pdfmacro:tool-usage";
-const PINS_KEY = "pdfmacro:tool-pins";
+const USAGE_KEY = "counselpdf:tool-usage";
+const PINS_KEY = "counselpdf:tool-pins";
 
 // Optional keyboard shortcuts shown in tooltips. Only list tools whose
 // shortcut is actually wired elsewhere — never advertise a binding that
@@ -1267,9 +1266,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       void (async () => {
         try {
           const bytes = new Uint8Array(await f.arrayBuffer());
-          const { loadPdfjs, PDFJS_ASSET_DEFAULTS } = await importChunk(() => import("@/lib/pdf/worker"));
+          const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
           const pdfjs = await loadPdfjs();
-          const doc = await pdfjs.getDocument({ data: bytes, ...PDFJS_ASSET_DEFAULTS, enableXfa: true, useSystemFonts: true }).promise;
+          const doc = await pdfjs.getDocument({ data: bytes, enableXfa: true, useSystemFonts: true }).promise;
           if (cancelledFast) {
             try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
             return;
@@ -1712,17 +1711,17 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
         <div className="flex items-center gap-2.5 min-w-0">
           <Link
             to="/"
-            title="Back to PDFMacro home"
-            aria-label="Back to PDFMacro home"
+            title="Back to CounselPDF home"
+            aria-label="Back to CounselPDF home"
             className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-0.5 hover:bg-surface-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span
               className="grid h-6 w-6 place-items-center bg-vault text-vault-foreground"
               style={{ borderRadius: 7 }}
             >
-              <Zap className="h-3.5 w-3.5" strokeWidth={2.5} fill="currentColor" />
+              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
             </span>
-            <span className="font-display text-[15px] leading-none">PDFMacro</span>
+            <span className="font-display text-[15px] leading-none">CounselPDF</span>
           </Link>
           <button
             type="button"
@@ -2227,7 +2226,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
                       // command-bar submit, keeping app-open and
                       // non-AI work model-free.
                     }}
-                    placeholder='Tell PDFMacro what to do — try "redact all SSNs" or "add page numbers"'
+                    placeholder='Tell CounselPDF what to do — try "redact all SSNs" or "add page numbers"'
                     className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
                   {lastIntentLabel && !pendingIntent && (
@@ -3543,10 +3542,10 @@ function PagesPlaceholder({
     setError(null);
     (async () => {
       try {
-        const { loadPdfjs, PDFJS_ASSET_DEFAULTS } = await importChunk(() => import("@/lib/pdf/worker"));
+        const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const doc = await pdfjs.getDocument({ data: bytes, ...PDFJS_ASSET_DEFAULTS, enableXfa: true, useSystemFonts: true }).promise;
+        const doc = await pdfjs.getDocument({ data: bytes, enableXfa: true, useSystemFonts: true }).promise;
         if (cancelled) return;
         const n = continuous ? doc.numPages : Math.min(1, doc.numPages);
         const sizes: Array<{ width: number; height: number }> = [];

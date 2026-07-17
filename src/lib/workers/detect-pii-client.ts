@@ -27,7 +27,7 @@ let reqCounter = 0;
 function createWorker(): Worker {
   return new Worker(new URL("./detect-pii.worker.ts", import.meta.url), {
     type: "module",
-    name: "pdfmacro-detect-pii",
+    name: "counselpdf-detect-pii",
   });
 }
 

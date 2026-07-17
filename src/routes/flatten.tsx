@@ -13,7 +13,7 @@ import { downloadBytes } from "@/lib/batch/runner";
 export const Route = createFileRoute("/flatten")({
   head: () => ({
     meta: [
-      { title: "Flatten PDF Forms & Annotations — PDFMacro" },
+      { title: "Flatten PDF Forms & Annotations — CounselPDF" },
       { name: "description", content: "Bake form fields and annotations into static PDF content — preventing further edits. 100% client-side." },
       { property: "og:title", content: "Flatten PDF — bake forms and annotations" },
       { property: "og:description", content: "Make forms and markup uneditable. In your browser." },
@@ -112,7 +112,7 @@ function FlattenPage() {
         op={flatten}
         opts={opts}
         suffix="flattened"
-        zipName="pdfmacro-flattened.zip"
+        zipName="counselpdf-flattened.zip"
       />
     </AppShell>
   );

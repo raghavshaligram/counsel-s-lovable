@@ -38,7 +38,7 @@ export function BatchDialog<O>({
   op,
   opts,
   suffix = "processed",
-  zipName = "pdfmacro-batch.zip",
+  zipName = "counselpdf-batch.zip",
 }: Props<O>) {
   const entries = useTray((s) => s.entries);
   const [progress, setProgress] = useState<BatchProgress | null>(null);

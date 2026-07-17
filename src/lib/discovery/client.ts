@@ -47,7 +47,7 @@ function getWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(new URL("./embed.worker.ts", import.meta.url), {
     type: "module",
-    name: "pdfmacro-discovery",
+    name: "counselpdf-discovery",
   });
   worker.addEventListener("message", (e: MessageEvent) => {
     const m = e.data;

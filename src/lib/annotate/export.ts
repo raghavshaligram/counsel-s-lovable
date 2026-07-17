@@ -212,7 +212,7 @@ function buildNativeAnnotation(pdf: PDFDocument, a: Annot, _pw: number, ph: numb
     CA: a.opacity,
     NM: PDFString.of(a.id),
     M: PDFString.of(new Date(a.createdAt).toISOString()),
-    T: PDFString.of(a.author ?? "PDFMacro"),
+    T: PDFString.of(a.author ?? "CounselPDF"),
   };
   if (a.contents) base.Contents = PDFHexString.fromText(a.contents);
 
@@ -332,7 +332,7 @@ export function exportCommentsJson(annots: Annot[], fileName: string): string {
     text: "text" in a ? a.text : null,
     color: a.color,
     createdAt: new Date(a.createdAt).toISOString(),
-    author: a.author ?? "PDFMacro",
+    author: a.author ?? "CounselPDF",
     replies: a.replies ?? [],
   }));
   return JSON.stringify({ file: fileName, exportedAt: new Date().toISOString(), comments: items }, null, 2);

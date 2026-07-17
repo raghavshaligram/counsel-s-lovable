@@ -2,7 +2,7 @@
  * Account server functions — profile, email change, password set/change,
  * account deletion. All scoped to the signed-in caller via requireSupabaseAuth.
  *
- * No business data lives here. PDFMacro only stores identity + subscription
+ * No business data lives here. CounselPDF only stores identity + subscription
  * — documents never touch the server.
  */
 import { createServerFn } from "@tanstack/react-start";

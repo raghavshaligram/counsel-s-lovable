@@ -104,7 +104,7 @@ export const useTray = create<TrayState>()(
       },
     }),
     {
-      name: "pdfmacro.tray.v1",
+      name: "counselpdf.tray.v1",
       storage: createJSONStorage(() => (typeof window === "undefined" ? undefined as never : localStorage)),
       partialize: (s) => ({ entries: s.entries, selectedId: s.selectedId }),
     },

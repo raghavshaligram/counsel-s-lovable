@@ -28,13 +28,13 @@ import { FileBar, ModeBtn, ToolHeader, downloadBlob } from "@/routes/split";
 export const Route = createFileRoute("/sign")({
   head: () => ({
     meta: [
-      { title: "Sign & Fill PDF — PDFMacro" },
+      { title: "Sign & Fill PDF — CounselPDF" },
       {
         name: "description",
         content:
           "Draw, type, or upload your signature. Drop it on any page, add text and dates, then flatten. 100% in your browser.",
       },
-      { property: "og:title", content: "Sign & Fill PDF — PDFMacro" },
+      { property: "og:title", content: "Sign & Fill PDF — CounselPDF" },
       {
         property: "og:description",
         content:

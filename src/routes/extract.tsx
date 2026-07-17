@@ -28,13 +28,13 @@ import { softwareAppSchema } from "@/lib/seo/tool-schema";
 export const Route = createFileRoute("/extract")({
   head: () => ({
     meta: [
-      { title: "Smart Table Extract — PDFMacro" },
+      { title: "Smart Table Extract — CounselPDF" },
       {
         name: "description",
         content:
           "Pull tables out of PDFs into clean Excel, CSV, or JSON. 100% in your browser, OCR fallback for scans.",
       },
-      { property: "og:title", content: "Smart Table Extract — PDFMacro" },
+      { property: "og:title", content: "Smart Table Extract — CounselPDF" },
       {
         property: "og:description",
         content:
@@ -48,7 +48,7 @@ export const Route = createFileRoute("/extract")({
         type: "application/ld+json",
         children: JSON.stringify(
           softwareAppSchema({
-            name: "PDFMacro Smart Table Extract",
+            name: "CounselPDF Smart Table Extract",
             url: "/extract",
             description:
               "Detect tables in PDFs and export to Excel, CSV, or JSON. OCR fallback for scanned pages.",

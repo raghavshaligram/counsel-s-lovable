@@ -58,7 +58,7 @@ export function WelcomeModal({ forceOpen, onClosed }: Props) {
     {
       key: "welcome",
       icon: <Lock className="h-4 w-4" strokeWidth={2.5} />,
-      title: "Welcome to PDFMacro",
+      title: "Welcome to CounselPDF",
       body: (
         <p>
           The private PDF workspace built for legal work. Here&apos;s what makes it different.
@@ -86,7 +86,7 @@ export function WelcomeModal({ forceOpen, onClosed }: Props) {
       title: "Works offline",
       body: (
         <p>
-          Once loaded, PDFMacro works with no internet at all. Redact, Bates-stamp, OCR and sanitize on a plane or in a courthouse — disconnect anytime and keep working.
+          Once loaded, CounselPDF works with no internet at all. Redact, Bates-stamp, OCR and sanitize on a plane or in a courthouse — disconnect anytime and keep working.
         </p>
       ),
     },

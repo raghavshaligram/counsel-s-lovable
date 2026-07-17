@@ -5,7 +5,7 @@
 import { z } from "zod";
 
 export const PipelineSchema = z.object({
-  $schema: z.literal("pdfmacro.pipeline/1"),
+  $schema: z.literal("counselpdf.pipeline/1"),
   name: z.string().min(1),
   description: z.string().optional(),
   steps: z
@@ -21,7 +21,7 @@ export const PipelineSchema = z.object({
 
 export type Pipeline = z.infer<typeof PipelineSchema>;
 
-const KEY = "pdfmacro.pipelines";
+const KEY = "counselpdf.pipelines";
 
 export function listPipelines(): Pipeline[] {
   if (typeof localStorage === "undefined") return [];

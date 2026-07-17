@@ -163,7 +163,7 @@ export function LoginModal() {
             </span>
             <div className="min-w-0">
               <DialogTitle className="font-display text-[17px] leading-tight tracking-normal">
-                Sign in to PDFMacro
+                Sign in to CounselPDF
               </DialogTitle>
               <DialogDescription className="mt-1 text-[12.5px] text-text-2">
                 Your documents stay on this device. Sign-in only verifies your

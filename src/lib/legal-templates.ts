@@ -189,7 +189,7 @@ function signatureLine(ctx: Ctx, label: string) {
 async function makeCtx(): Promise<Ctx> {
   const doc = await PDFDocument.create();
   doc.setTitle("Legal Template");
-  doc.setProducer("PDFMacro Templates");
+  doc.setProducer("CounselPDF Templates");
   const body = await doc.embedFont(StandardFonts.TimesRoman);
   const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
   const italic = await doc.embedFont(StandardFonts.TimesRomanItalic);

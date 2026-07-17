@@ -14,13 +14,13 @@ export { downloadBlob } from "@/lib/pdf/split";
 export const Route = createFileRoute("/split")({
   head: () => ({
     meta: [
-      { title: "Split PDF — PDFMacro" },
+      { title: "Split PDF — CounselPDF" },
       {
         name: "description",
         content:
           "Split a PDF by page ranges or extract individual pages. 100% client-side — your file never leaves the browser.",
       },
-      { property: "og:title", content: "Split PDF — PDFMacro" },
+      { property: "og:title", content: "Split PDF — CounselPDF" },
       {
         property: "og:description",
         content: "Page ranges or one-page-per-file, in your browser. No upload.",

@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/certificates")({
   head: () => ({
     meta: [
-      { title: "Compliance Portfolio — PDFMacro" },
+      { title: "Compliance Portfolio — CounselPDF" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -79,7 +79,7 @@ function CertificatesPage() {
             <span className="font-medium">On-device guarantee</span>
           </div>
           <p className="mt-1">
-            PDFMacro stores certificate metadata only (file name, page count, redaction counts, hashes). Your documents themselves stay on your machine.
+            CounselPDF stores certificate metadata only (file name, page count, redaction counts, hashes). Your documents themselves stay on your machine.
           </p>
         </div>
 

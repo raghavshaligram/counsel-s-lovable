@@ -50,7 +50,7 @@ export function computeBatesFingerprint(s: BatesSettings): string {
   return parts.join("|");
 }
 
-const LS_KEY = "pdfmacro:bates-settings";
+const LS_KEY = "counselpdf:bates-settings";
 
 function load(): Record<string, BatesSettings> {
   if (typeof window === "undefined") return {};

@@ -11,7 +11,7 @@ let reqCounter = 0;
 function createWorker(): Worker {
   return new Worker(new URL("./verify.worker.ts", import.meta.url), {
     type: "module",
-    name: "pdfmacro-verify",
+    name: "counselpdf-verify",
   });
 }
 

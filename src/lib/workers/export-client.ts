@@ -18,7 +18,7 @@ let reqCounter = 0;
 function createWorker(): Worker {
   return new Worker(new URL("./export.worker.ts", import.meta.url), {
     type: "module",
-    name: "pdfmacro-export",
+    name: "counselpdf-export",
   });
 }
 

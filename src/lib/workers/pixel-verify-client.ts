@@ -23,7 +23,7 @@ let reqCounter = 0;
 function createWorker(): Worker {
   return new Worker(new URL("./pixel-verify.worker.ts", import.meta.url), {
     type: "module",
-    name: "pdfmacro-pixel-verify",
+    name: "counselpdf-pixel-verify",
   });
 }
 

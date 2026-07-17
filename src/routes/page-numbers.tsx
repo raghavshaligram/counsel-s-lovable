@@ -13,7 +13,7 @@ import { downloadBytes } from "@/lib/batch/runner";
 export const Route = createFileRoute("/page-numbers")({
   head: () => ({
     meta: [
-      { title: "Add Page Numbers to PDF — PDFMacro" },
+      { title: "Add Page Numbers to PDF — CounselPDF" },
       { name: "description", content: "Stamp page numbers on any PDF — choose position, format, start number, and skip first pages. 100% on-device." },
       { property: "og:title", content: "PDF Page Numbers — in your browser" },
       { property: "og:description", content: "Position, format, start number — no upload." },
@@ -165,7 +165,7 @@ function PageNumbersPage() {
         op={addPageNumbers}
         opts={opts}
         suffix="numbered"
-        zipName="pdfmacro-page-numbers.zip"
+        zipName="counselpdf-page-numbers.zip"
       />
     </AppShell>
   );

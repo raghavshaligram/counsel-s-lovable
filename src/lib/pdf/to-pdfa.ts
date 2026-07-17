@@ -95,12 +95,12 @@ function buildPdfAXmp(opts: {
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const title = esc(opts.title || "Document");
   const author = esc(opts.author || "");
-  const producer = esc(opts.producer || "PDFMacro");
+  const producer = esc(opts.producer || "CounselPDF");
   const created = xmpDate(opts.createdAt);
   const modified = xmpDate(opts.modifiedAt);
 
   return `<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?>
-<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="PDFMacro PDF/A">
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="CounselPDF PDF/A">
   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
     <rdf:Description rdf:about=""
       xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/"
@@ -540,7 +540,7 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
   const createdAt = doc.getCreationDate() ?? new Date();
   const modifiedAt = new Date();
   await step("update document info", () => {
-    doc.setProducer("PDFMacro (PDF/A-2b)");
+    doc.setProducer("CounselPDF (PDF/A-2b)");
     doc.setCreationDate(createdAt);
     doc.setModificationDate(modifiedAt);
     // pdf-lib writes /Info dates in the PDF date format, but be explicit
@@ -565,7 +565,7 @@ export async function toPdfA(bytes: Uint8Array): Promise<Uint8Array> {
     const xmp = buildPdfAXmp({
       title: doc.getTitle(),
       author: doc.getAuthor(),
-      producer: "PDFMacro (PDF/A-2b)",
+      producer: "CounselPDF (PDF/A-2b)",
       createdAt,
       modifiedAt,
     });

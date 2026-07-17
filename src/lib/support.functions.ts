@@ -129,8 +129,8 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
         if (ownerEmail) {
           const subject =
             data.type === "help"
-              ? `[PDFMacro] Help (${data.category ?? "general"}) from ${data.name || data.email || "user"}`
-              : `[PDFMacro] Feature request — ${data.title || "(no title)"}`;
+              ? `[CounselPDF] Help (${data.category ?? "general"}) from ${data.name || data.email || "user"}`
+              : `[CounselPDF] Feature request — ${data.title || "(no title)"}`;
           const rows: Array<[string, string]> = [
             ["Type", data.type],
             ["Category", data.category ?? "(none)"],
@@ -162,7 +162,7 @@ export const submitSupportRequest = createServerFn({ method: "POST" })
               Authorization: `Bearer ${resendKey}`,
             },
             body: JSON.stringify({
-              from: "PDFMacro <onboarding@resend.dev>",
+              from: "CounselPDF <onboarding@resend.dev>",
               to: [ownerEmail],
               subject,
               html,

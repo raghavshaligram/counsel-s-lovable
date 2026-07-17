@@ -10,7 +10,7 @@
  *
  * Use this instead of calling `pdfjs.getDocument(...)` directly.
  */
-import { getPdfjs, PDFJS_ASSET_DEFAULTS } from "@/lib/pdf/worker";
+import { getPdfjs } from "@/lib/pdf/worker";
 
 type DocSource =
   | Uint8Array
@@ -21,7 +21,6 @@ type DocSource =
 export async function openPdfDoc(src: DocSource, extra: Record<string, unknown> = {}) {
   const pdfjs = await getPdfjs();
   const base: Record<string, unknown> = {
-    ...PDFJS_ASSET_DEFAULTS,
     enableXfa: true,
     useSystemFonts: true,
     ...extra,
@@ -39,7 +38,6 @@ export async function openPdfDoc(src: DocSource, extra: Record<string, unknown> 
 export async function openPdfDocTask(src: DocSource, extra: Record<string, unknown> = {}) {
   const pdfjs = await getPdfjs();
   const base: Record<string, unknown> = {
-    ...PDFJS_ASSET_DEFAULTS,
     enableXfa: true,
     useSystemFonts: true,
     ...extra,

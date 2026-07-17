@@ -68,8 +68,8 @@ export async function combinePdfs(
     done += 1;
     onProgress?.(done, items.length);
   }
-  out.setProducer("PDFMacro");
-  out.setCreator("PDFMacro");
+  out.setProducer("CounselPDF");
+  out.setCreator("CounselPDF");
   const bytes = await out.save();
   return new Blob([bytes as BlobPart], { type: "application/pdf" });
 }

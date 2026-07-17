@@ -39,7 +39,7 @@ declare global {
   // eslint-disable-next-line no-var
   var Module: QpdfFactory | undefined;
   // eslint-disable-next-line no-var
-  var __pdfmacroQpdfFactory: QpdfFactory | undefined;
+  var __counselpdfQpdfFactory: QpdfFactory | undefined;
 }
 
 const QPDF_BASE = "/wasm/qpdf";
@@ -61,7 +61,7 @@ function loadFactory(): Promise<QpdfFactory> {
         return;
       }
       // Cache it under a private name and restore window.Module.
-      globalThis.__pdfmacroQpdfFactory = factory;
+      globalThis.__counselpdfQpdfFactory = factory;
       globalThis.Module = prior;
       resolve(factory);
     };

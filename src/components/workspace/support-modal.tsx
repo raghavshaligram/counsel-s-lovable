@@ -63,7 +63,7 @@ export function SupportModal({ open, mode, defaultName, defaultEmail, signedIn, 
   const heading = isHelp ? "Need help?" : "Request a feature";
   const subheading = isHelp
     ? "Tell us what's stuck — we'll get back to you at the email above."
-    : "Describe what you'd like PDFMacro to do. Short and specific works best.";
+    : "Describe what you'd like CounselPDF to do. Short and specific works best.";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

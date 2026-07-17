@@ -20,7 +20,7 @@ import {
 export const Route = createFileRoute("/_authenticated/account")({
   head: () => ({
     meta: [
-      { title: "Account settings — PDFMacro" },
+      { title: "Account settings — CounselPDF" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -112,7 +112,7 @@ function ProfileCard({ profile, onSaved }: { profile: { fullName: string }; onSa
     m.mutate(parsed.data);
   };
   return (
-    <Card title="Profile" icon={<UserIcon className="h-3.5 w-3.5" />} description="How PDFMacro addresses you.">
+    <Card title="Profile" icon={<UserIcon className="h-3.5 w-3.5" />} description="How CounselPDF addresses you.">
       <form onSubmit={onSubmit} className="flex flex-col gap-2">
         <label className="text-[11px] uppercase tracking-[0.12em] text-text-muted">Full name</label>
         <input
@@ -236,7 +236,7 @@ function DangerZone() {
         </span>
         <div className="min-w-0">
           <h2 className="font-display text-[15px] tracking-tight">Danger zone</h2>
-          <p className="mt-0.5 text-[12px] text-text-2">Deleting your account cancels your subscription and removes your identity from PDFMacro. Documents you exported stay on your device.</p>
+          <p className="mt-0.5 text-[12px] text-text-2">Deleting your account cancels your subscription and removes your identity from CounselPDF. Documents you exported stay on your device.</p>
         </div>
       </div>
       {!open ? (

@@ -282,7 +282,7 @@ function HashTab({
       return;
     }
     const receipt = {
-      kind: "pdfmacro.document-hash.receipt",
+      kind: "counselpdf.document-hash.receipt",
       version: 1,
       algorithm: "SHA-256",
       file: { name: result.name, size: result.size },
@@ -561,7 +561,7 @@ function BatchTab({
       const stamp = new Date().toISOString();
       if (kind === "json") {
         const manifest = {
-          kind: "pdfmacro.production-set.manifest",
+          kind: "counselpdf.production-set.manifest",
           version: 1,
           algorithm: "SHA-256",
           generatedAt: stamp,

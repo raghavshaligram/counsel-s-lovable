@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { Lock, Menu, Layers, ListTree, Crop, Zap } from "lucide-react";
+import { Lock, Menu, Layers, ListTree, Crop } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   NavigationMenu,
@@ -372,9 +372,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex h-14 items-center justify-between px-4 md:px-6 gap-4">
           <Link to="/" className="flex items-center gap-2.5 shrink-0">
             <span className="grid h-7 w-7 place-items-center rounded-md bg-vault text-vault-foreground">
-              <Zap className="h-3.5 w-3.5" strokeWidth={2.5} fill="currentColor" />
+              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
             </span>
-            <span className="font-display text-[19px] leading-none">PDFMacro</span>
+            <span className="font-display text-[19px] leading-none">CounselPDF</span>
           </Link>
 
           {/* Desktop nav — primary tools + All tools disclosure. Every entry
@@ -485,7 +485,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="flex-1 min-h-0 pb-28">{children}</main>
 
       <footer className="border-t border-border px-5 md:px-8 py-6 pb-28 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>&copy; {new Date().getFullYear()} PDFMacro &middot; The PDF toolkit for documents you&apos;d never upload.</div>
+        <div>&copy; {new Date().getFullYear()} CounselPDF &middot; The PDF toolkit for documents you&apos;d never upload.</div>
         <div className="flex flex-wrap items-center gap-4">
           <Link to="/verify-privacy" className="text-vault hover:underline underline-offset-4 font-medium">Verify our privacy</Link>
           <Link to="/security-architecture" className="text-vault hover:underline underline-offset-4 font-medium">Security</Link>

@@ -16,7 +16,7 @@ import { compress as compressOp } from "@/lib/batch/ops/compress";
 export const Route = createFileRoute("/compress")({
   head: () => ({
     meta: [
-      { title: "Compress PDF — Shrink Files Locally · PDFMacro" },
+      { title: "Compress PDF — Shrink Files Locally · CounselPDF" },
       {
         name: "description",
         content:
@@ -186,8 +186,8 @@ function CompressPage() {
       out.setAuthor("");
       out.setSubject("");
       out.setKeywords([]);
-      out.setProducer("PDFMacro");
-      out.setCreator("PDFMacro");
+      out.setProducer("CounselPDF");
+      out.setCreator("CounselPDF");
 
       const bytes = await out.save();
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -461,7 +461,7 @@ function CompressPage() {
         op={compressOp}
         opts={{ preset, grayscale }}
         suffix="compressed"
-        zipName="pdfmacro-compressed.zip"
+        zipName="counselpdf-compressed.zip"
       />
     </AppShell>
   );
