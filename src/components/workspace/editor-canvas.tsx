@@ -392,12 +392,16 @@ export interface EditorCanvasProps {
   /** This page has had on-device OCR applied. Used to default new text /
    * text-edit boxes to a serif (Tinos), matching the visible scan. */
   isOcrPage?: boolean;
+  /** Buffer-band page not actually intersecting the viewport. Rendered at
+   * dpr=1 to cut GPU memory per hidden canvas up to 4× on retina. */
+  speculative?: boolean;
 }
 
 export function EditorCanvas({
   pageIndex, op, srcBytes, annos, state, dispatch, scale, pdfDoc,
-  onRequestOcr, ocrRunning, onScannedChange, isOcrPage,
+  onRequestOcr, ocrRunning, onScannedChange, isOcrPage, speculative,
 }: EditorCanvasProps) {
+
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Pristine offscreen snapshot of the freshly-rendered page canvas. Used to
