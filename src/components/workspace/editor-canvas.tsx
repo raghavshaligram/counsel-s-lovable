@@ -843,7 +843,32 @@ export function EditorCanvas({
       const c = canvasRef.current;
       if (c) { c.width = 0; c.height = 0; }
     };
-  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick]);
+  }, [op, srcBytes, scale, pdfDoc, state.doc?.ocrLayer, renderTick, speculative]);
+
+  // Browser-tab visibility hygiene: when the tab is hidden, cancel any
+  // in-flight pdf.js render, drop the canvas backing store to 0×0, and
+  // stop holding GPU/canvas memory the compositor would otherwise have to
+  // restore when the user returns. On visible: bump renderTick so the
+  // main render effect re-runs and repaints the page. This is the primary
+  // fix for the "grey period on browser-tab return" symptom.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (renderTaskRef.current) {
+          try { renderTaskRef.current.cancel(); } catch { /* noop */ }
+          renderTaskRef.current = null;
+        }
+        const c = canvasRef.current;
+        if (c) { c.width = 0; c.height = 0; }
+      } else {
+        setRenderTick((t) => t + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
 
   // When a text-edit annotation is removed, restore the pixels that
   // onClickEditHit's row-inpaint painted over. Blit directly from the
