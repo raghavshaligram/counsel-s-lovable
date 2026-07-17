@@ -5,7 +5,7 @@
  */
 import { openDB, type IDBPDatabase } from "idb";
 
-const DB = "counselpdf-prefs";
+const DB = "pdfmacro-prefs";
 const STORE = "prefs";
 const KEY = "welcome-seen";
 

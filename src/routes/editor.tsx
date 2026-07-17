@@ -31,13 +31,13 @@ import type { Anno, EditorDoc, ExportSettings, PageOp, ProtectSettings, RGB, Too
 export const Route = createFileRoute("/editor")({
   head: () => ({
     meta: [
-      { title: "PDF Editor — annotate, edit text, reorder pages | CounselPDF" },
+      { title: "PDF Editor — annotate, edit text, reorder pages | PDFMacro" },
       {
         name: "description",
         content:
           "A full-featured PDF editor in your browser. Annotate, highlight, draw, add images, edit existing text, and reorder pages — nothing uploads.",
       },
-      { property: "og:title", content: "PDF Editor — CounselPDF" },
+      { property: "og:title", content: "PDF Editor — PDFMacro" },
       { property: "og:description", content: "Annotate, edit, and rearrange PDFs entirely in your browser." },
     ],
     links: [{ rel: "canonical", href: "/editor" }],

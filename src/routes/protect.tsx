@@ -18,13 +18,13 @@ import {
 export const Route = createFileRoute("/protect")({
   head: () => ({
     meta: [
-      { title: "Password Protect PDF — CounselPDF" },
+      { title: "Password Protect PDF — PDFMacro" },
       {
         name: "description",
         content:
           "Encrypt PDFs with a password and lock printing, copying, or editing — 128-bit AES, processed entirely in your browser.",
       },
-      { property: "og:title", content: "Password Protect PDF — CounselPDF" },
+      { property: "og:title", content: "Password Protect PDF — PDFMacro" },
       {
         property: "og:description",
         content:

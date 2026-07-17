@@ -16,7 +16,7 @@ import { ToolHeader } from "@/routes/split";
 export const Route = createFileRoute("/organize")({
   head: () => ({
     meta: [
-      { title: "Organize PDF Pages — Cross-Document Grid · CounselPDF" },
+      { title: "Organize PDF Pages — Cross-Document Grid · PDFMacro" },
       { name: "description", content: "Drag pages between PDFs in a single grid. Reorder, rotate, delete, and combine into a new document. 100% on-device." },
       { property: "og:title", content: "Organize PDF Pages — in your browser" },
       { property: "og:description", content: "One canvas for all your PDFs — drag, rotate, group." },
@@ -207,7 +207,7 @@ function OrganizePage() {
         out.addPage(copied);
       }
       const bytes = await out.save();
-      downloadBytes(bytes, `counselpdf-organized-${Date.now()}.pdf`, "application/pdf");
+      downloadBytes(bytes, `pdfmacro-organized-${Date.now()}.pdf`, "application/pdf");
       toast.success(`Built PDF with ${cells.length} page${cells.length === 1 ? "" : "s"}`);
     } catch (err) {
       console.error(err);

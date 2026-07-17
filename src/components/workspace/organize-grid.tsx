@@ -263,7 +263,7 @@ export function OrganizeGrid({
                   onClick={(e) => toggleSelect(c.cellId, e.shiftKey)}
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData("application/x-counselpdf-cell", c.cellId);
+                    e.dataTransfer.setData("application/x-pdfmacro-cell", c.cellId);
                     setDragId(c.cellId);
                   }}
                   onDragOver={(e) => {
