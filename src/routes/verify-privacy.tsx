@@ -5,13 +5,13 @@ import { Lock, Shield, WifiOff, Eye, ArrowRight, Terminal } from "lucide-react";
 export const Route = createFileRoute("/verify-privacy")({
   head: () => ({
     meta: [
-      { title: "Verify Our Privacy — CounselPDF" },
+      { title: "Verify Our Privacy — PDFMacro" },
       {
         name: "description",
         content:
-          "Don't trust us. Verify it yourself. Open the Network tab, run any tool, and confirm zero uploads. CounselPDF is 100% client-side.",
+          "Don't trust us. Verify it yourself. Open the Network tab, run any tool, and confirm zero uploads. PDFMacro is 100% client-side.",
       },
-      { property: "og:title", content: "Verify Our Privacy — CounselPDF" },
+      { property: "og:title", content: "Verify Our Privacy — PDFMacro" },
       {
         property: "og:description",
         content:
@@ -46,7 +46,7 @@ function VerifyPrivacyPage() {
           </h1>
           <p className="mt-8 max-w-2xl text-base md:text-lg text-muted-foreground leading-relaxed">
             The strongest privacy claim is one you can test. We invite you to inspect
-            CounselPDF the same way you would inspect any evidence: with your own eyes,
+            PDFMacro the same way you would inspect any evidence: with your own eyes,
             under your own control.
           </p>
         </div>
@@ -62,7 +62,7 @@ function VerifyPrivacyPage() {
           <div className="grid md:grid-cols-3 gap-6">
             <StepCard
               num="01"
-              title="Open the CounselPDF workspace."
+              title="Open the PDFMacro workspace."
               body="Navigate to any tool — Redact for production, Bates stamp, or OCR. The workspace loads entirely in your browser. No installer, no login, no cloud account."
             />
             <StepCard
@@ -117,7 +117,7 @@ function VerifyPrivacyPage() {
                 <span className="italic">By design, not by promise.</span>
               </h2>
               <p className="mt-6 text-muted-foreground leading-relaxed">
-                CounselPDF is built with WebAssembly and modern browser APIs. The PDF parser,
+                PDFMacro is built with WebAssembly and modern browser APIs. The PDF parser,
                 the redaction engine, the OCR model, and the export compressor all run inside
                 your browser tab. There is no server-side component that handles your file.
                 We did not merely turn off uploads — we removed the upload path entirely.
@@ -168,7 +168,7 @@ function VerifyPrivacyPage() {
                 Disconnect the internet and keep working.
               </h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Load CounselPDF while connected. Then disable Wi-Fi or unplug your ethernet
+                Load PDFMacro while connected. Then disable Wi-Fi or unplug your ethernet
                 cable. Open a document, redact it, Bates-stamp it, and export the result.
                 Everything functions exactly as before because nothing in the workflow depends
                 on a server round-trip. This is not a fallback mode — it is the default architecture.

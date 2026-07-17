@@ -12,11 +12,11 @@ export const Route = createFileRoute("/auth")({
   }),
   head: () => ({
     meta: [
-      { title: "Sign in — CounselPDF" },
+      { title: "Sign in — PDFMacro" },
       {
         name: "description",
         content:
-          "Sign in to manage your CounselPDF subscription. Your documents never leave your device.",
+          "Sign in to manage your PDFMacro subscription. Your documents never leave your device.",
       },
       { name: "robots", content: "noindex" },
     ],
@@ -151,7 +151,7 @@ function AuthPage() {
         <div className="mx-auto max-w-6xl px-5 md:px-8 h-14 flex items-center justify-between">
           <Link to="/" className="inline-flex items-center gap-2 font-display tracking-tight">
             <Lock className="h-4 w-4 text-vault" strokeWidth={2.25} />
-            <span className="text-base">CounselPDF</span>
+            <span className="text-base">PDFMacro</span>
           </Link>
           <Link to="/" className="text-xs text-muted-foreground hover:text-foreground">
             ← Back to site

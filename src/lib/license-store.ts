@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { LicenseSnapshot } from "./license.functions";
 
-const DB_NAME = "counselpdf-license";
+const DB_NAME = "pdfmacro-license";
 const STORE = "license";
 const KEY = "current";
 

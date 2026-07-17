@@ -186,7 +186,7 @@ export async function buildSovereigntyCertificate(p: SovereigntyPayload): Promis
   ensure(80);
   drawText("ATTESTATION", { size: 9, font: bold, color: VAULT, gapAfter: 8 });
   drawWrapped(
-    "CounselPDF processes documents entirely within the user's browser. The action recorded above ran on this device. No document bytes, no extracted text, and no derived content was transmitted to CounselPDF or any third-party service during this operation.",
+    "PDFMacro processes documents entirely within the user's browser. The action recorded above ran on this device. No document bytes, no extracted text, and no derived content was transmitted to PDFMacro or any third-party service during this operation.",
     { size: 10, gapAfter: 8 },
   );
   drawWrapped(
@@ -224,8 +224,8 @@ interface DocCtx {
 async function newDoc(title: string): Promise<DocCtx> {
   const doc = await PDFDocument.create();
   doc.setTitle(title);
-  doc.setProducer("CounselPDF");
-  doc.setCreator("CounselPDF");
+  doc.setProducer("PDFMacro");
+  doc.setCreator("PDFMacro");
 
   const font = await embedStandardFont(doc, "Helvetica");
   const bold = await embedStandardFont(doc, "HelveticaBold");
@@ -321,7 +321,7 @@ function drawFooter(
   drawText: DocCtx["drawText"],
 ) {
   ensure(40);
-  drawText("CounselPDF · Compliance Certificate", { size: 8, color: MUTED });
+  drawText("PDFMacro · Compliance Certificate", { size: 8, color: MUTED });
 }
 
 function fmtNow(): string {

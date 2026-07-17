@@ -1,4 +1,4 @@
-// CounselPDF Service Worker — true offline operation.
+// PDFMacro Service Worker — true offline operation.
 //
 // Strategy:
 //  - Precache the minimal app shell on install.
@@ -15,7 +15,7 @@
 // All processing remains on-device — the SW just makes the bytes available
 // when the network is gone.
 
-const VERSION = "counselpdf-v6-offline";
+const VERSION = "pdfmacro-v1-offline";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const THIRDPARTY_CACHE = `${VERSION}-thirdparty`;

@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * Playwright config for VaultPDF end-to-end tests.
+ * Playwright config for PDFMacro end-to-end tests.
  *
  * Goal: exercise code paths that Node vitest can't — Web Workers,
  * pdf.js rendering, canvas/OffscreenCanvas — inside real headless

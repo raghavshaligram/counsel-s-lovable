@@ -1,47 +1,37 @@
-## New signal (decisive)
+## PDFMacro Rebrand — Implementation Plan
 
-You reproduced the crash by **switching tabs** with heavy files loaded. That rules the rest of the matrix out and points at tab lifecycle. Not SW/CSP/cache (site-data clear made no difference), not a single operation — it's what the app holds and re-does per tab.
+### 1. Brand mark (v1 — PM Monogram)
+- Generate `public/favicon.png` (512×512, transparent) — bold "PM" ligature with folded page corner, steel blue (#4C7FB8) on transparent.
+- Generate `src/assets/pdfmacro-logo.png` (transparent) for in-app header use.
+- Delete template default `public/favicon.ico`.
+- Wire favicon in `src/routes/__root.tsx` `head().links`.
 
-## What's actually happening (confirmed from `workspace-shell.tsx`)
+### 2. Text sweep — replace all `CounselPDF` and `VaultPDF` with `PDFMacro`
+Scope: `src/**`, `public/**`, `tests/**`, `index.html`, `README.md`, `package.json` name field.
+Includes user-visible strings, comments, code identifiers in component names/strings, JSDoc.
 
-- Non-active tab pdfDocs **are** destroyed on switch (line ~862). Good.
-- But each `TabState.editor.doc.srcBytes` is a Uint8Array that **stays resident for every open tab**, active or not. Heavy file × N tabs = N × file size in JS heap, permanently.
-- On switch, the open-effect (~line 1264+) **re-parses** the incoming tab's bytes with `pdfjs.getDocument({ data: bytes, … })`. `pdfjs` clones `data` into its worker; while both live you briefly hold ~3× the file size. If a previous destroy hasn't finished, they overlap.
-- Every switch remounts `EditorPages`, which lazily re-renders visible pages, warms text/image caches, and re-fires per-page workers. Under memory pressure these allocations trip OOM → tab dies (grey → crash).
+### 3. SEO / head metadata
+- `src/routes/__root.tsx`: title, description, og:site_name → PDFMacro; JSON-LD Organization name + url `https://pdfmacro.com`.
+- Leaf routes: update title/description/og:title/og:description/og:url/canonical to `pdfmacro.com`.
+- Update any hardcoded prior domain references.
 
-So the crash is a compounding of: (1) all tabs' srcBytes held forever + (2) destroy/reparse overlap on switch + (3) re-render storm on the new tab.
+### 4. PWA manifest
+- `public/manifest.webmanifest`: `name`, `short_name`, `description`, `theme_color`, icons → new favicon.
 
-## Diagnostic step (~15 min, no logic changes)
+### 5. Service Worker cache
+- Bump cache version to `pdfmacro-v1-offline` so old caches evict on next load.
 
-Add a **tiny probe** (`src/lib/debug/heap-probe.ts`, ~40 lines) exposing `sampleHeap(label)` + `startLongTaskWatch()`. Wire samples at:
+### 6. Storage keys — rename, no migration
+Rename every persisted key (no migration = users lose local state, per your call):
+- IndexedDB database names: `vaultpdf-*` / `counselpdf-*` → `pdfmacro-*` (workspace, sidecars, recents).
+- localStorage keys: any `vaultpdf.*` / `counselpdf.*` prefix → `pdfmacro.*` (toolbar pin, nav overlay geometry, resume prefs, column selections, etc.).
+- Sidecar schema `app` field if stamped.
 
-1. Boot (baseline).
-2. Just before/after `setActiveId` in `workspace-shell.tsx`.
-3. Before/after the destroy call at line 867.
-4. Before `pdfjs.getDocument(...)` at line 1307 and immediately after it resolves.
-5. 5 s post-switch idle.
+### 7. Verification
+- `rg -i 'counselpdf|vaultpdf'` returns zero hits.
+- Typecheck clean.
+- Browser check: favicon renders, title bar shows "PDFMacro", app loads fresh (empty state expected — no migration).
 
-Also log `pdfDocsRef.current.size` and `Σ tab.editor.doc.srcBytes.byteLength` at each sample.
-
-**Repro you run once:** open heavy file A, open heavy file B, switch A↔B three times. Copy the console tail (filter `heap|probe|longtask`).
-
-## What the tail will tell us (and the fix each answer implies — no code this plan)
-
-| Observation | Confirmed cause | Fix in next plan |
-|---|---|---|
-| Total srcBytes MB grows linearly with tabs opened | All tabs pinning bytes | Evict `srcBytes` for background tabs to IndexedDB; rehydrate on activate |
-| Heap spikes to ~2× file during the switch window, drops after | Destroy/reparse overlap | Await previous `destroy()` before `getDocument`; sequence with a switch lock |
-| Long task > 1 s at each switch, heap flat | Re-render storm on EditorPages remount | Debounce switch, keep `pdfDoc` for last N tabs, skip page-warm on activate |
-| Heap never returns to pre-switch baseline | Retained refs (closures, workers, caches) | Audit `pdfDocsRef`, worker terminate, text/image caches |
-
-Multiple can be true; the numbers rank them.
-
-## Out of scope
-
-- No changes to redaction burn/verify/gate.
-- No SW, CSP, or pdf.js option changes.
-- No fix commits this plan — only instrumentation and the repro. The follow-up plan picks exactly the fix the numbers justify.
-
-## Deliverable from you
-
-Console tail from the A↔B×3 repro. I map it to the table above and open a targeted fix plan.
+### Notes
+- Storage reset means every existing user sees an empty workspace on first load after deploy. Documents on disk are unaffected; only persisted app state (recents, sidecars, preferences) is dropped.
+- OG social previews on already-shared links refresh only when the platform re-scrapes.

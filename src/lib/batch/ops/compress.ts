@@ -70,8 +70,8 @@ async function compressStructural(bytes: Uint8Array): Promise<Uint8Array | null>
     try { doc.setAuthor(""); } catch { /* noop */ }
     try { doc.setSubject(""); } catch { /* noop */ }
     try { doc.setKeywords([]); } catch { /* noop */ }
-    try { doc.setProducer("CounselPDF"); } catch { /* noop */ }
-    try { doc.setCreator("CounselPDF"); } catch { /* noop */ }
+    try { doc.setProducer("PDFMacro"); } catch { /* noop */ }
+    try { doc.setCreator("PDFMacro"); } catch { /* noop */ }
     return await doc.save({
       useObjectStreams: true,
       addDefaultPage: false,
@@ -139,8 +139,8 @@ async function compressRasterise(
     out.setAuthor("");
     out.setSubject("");
     out.setKeywords([]);
-    out.setProducer("CounselPDF");
-    out.setCreator("CounselPDF");
+    out.setProducer("PDFMacro");
+    out.setCreator("PDFMacro");
     return await out.save({ useObjectStreams: true });
   } catch (e) {
     if ((e as { name?: string })?.name === "AbortError") throw e;

@@ -34,13 +34,13 @@ import { ToolHeader } from "@/routes/split";
 export const Route = createFileRoute("/outline")({
   head: () => ({
     meta: [
-      { title: "Edit PDF Outline & Links — Bookmarks Tree · CounselPDF" },
+      { title: "Edit PDF Outline & Links — Bookmarks Tree · PDFMacro" },
       {
         name: "description",
         content:
           "Edit a PDF's bookmark tree and link annotations in your browser. Add, rename, nest, and drop bookmarks. Linkify URLs on a page in one click. 100% on-device.",
       },
-      { property: "og:title", content: "Edit PDF Outline & Links — CounselPDF" },
+      { property: "og:title", content: "Edit PDF Outline & Links — PDFMacro" },
       {
         property: "og:description",
         content: "Tree on the left, page in the middle, inspector on the right. Keyboard-driven.",
