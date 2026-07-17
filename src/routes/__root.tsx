@@ -214,6 +214,10 @@ function RootComponent() {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (import.meta.env.DEV) return; // skip SW in dev to avoid stale chunks
+    if (window.location.hostname === "lovableproject.com" || window.location.hostname.endsWith(".lovableproject.com")) return;
+    if (window.location.hostname === "lovableproject-dev.com" || window.location.hostname.endsWith(".lovableproject-dev.com")) return;
+    if (window.location.hostname === "beta.lovable.dev" || window.location.hostname.endsWith(".beta.lovable.dev")) return;
+    if (window.location.hostname.startsWith("id-preview--") || window.location.hostname.startsWith("preview--")) return;
 
     const READY_KEY = "pdfmacro:offline-ready-notified";
     const wasControlled = Boolean(navigator.serviceWorker.controller);
