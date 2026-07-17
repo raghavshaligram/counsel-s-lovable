@@ -353,6 +353,14 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
   const activeIdRef = useRef(activeId);
   useEffect(() => {
     activeIdRef.current = activeId;
+  }, [activeId]);
+  const tabsRef = useRef(tabs);
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+  // Heap probe on tab switch. Samples immediately + 5s idle to see whether
+  // memory returns to baseline. Also logs total pinned srcBytes across tabs.
+  useEffect(() => {
     const stats = sumSrcBytes(tabsRef.current);
     sampleHeap("switch:activeId-change", {
       activeId,
@@ -369,10 +377,6 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
     }, 5000);
     return () => clearTimeout(t);
   }, [activeId]);
-  const tabsRef = useRef(tabs);
-  useEffect(() => {
-    tabsRef.current = tabs;
-  }, [tabs]);
   // Forward-ref to the tab-cap toast helper (defined after closeTab). Lets
   // callbacks declared earlier (openNewStartTab, onFiles) trigger it
   // without a TDZ on the const.
