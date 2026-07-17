@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   Lock,
+  Zap,
   Download,
   Files,
   Shield,
@@ -1719,7 +1720,7 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
               className="grid h-6 w-6 place-items-center bg-vault text-vault-foreground"
               style={{ borderRadius: 7 }}
             >
-              <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
+              <Zap className="h-3.5 w-3.5" strokeWidth={2.5} fill="currentColor" />
             </span>
             <span className="font-display text-[15px] leading-none">PDFMacro</span>
           </Link>

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PDFMacro">
   <rect width="64" height="64" rx="12" fill="#1c1f33"/>
-  <path d="M22 28V20a10 10 0 0120 0v8" fill="none" stroke="#4C7FB8" stroke-width="6" stroke-linecap="round"/>
-  <rect x="14" y="26" width="36" height="28" rx="5" fill="#4C7FB8"/>
-  <rect x="29" y="36" width="6" height="12" rx="3" fill="#ffffff"/>
+  <path d="M18 12h20l10 10v30a4 4 0 01-4 4H18a4 4 0 01-4-4V16a4 4 0 014-4z" fill="#4C7FB8"/>
+  <path d="M38 12v10h10" fill="none" stroke="#1c1f33" stroke-width="2"/>
+  <path d="M33 24l-9 16h7l-2 12 10-16h-7l1-12z" fill="#ffffff"/>
 </svg>
