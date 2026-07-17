@@ -4957,6 +4957,8 @@ function EditorPages({
     const w = Math.ceil(meta.width * scale);
     const h = Math.ceil(meta.height * scale);
     const inView = visible.has(i);
+    const isSpeculative = speculative.has(i);
+
     const annosForPage = annosByPage.get(i) ?? EMPTY_ANNOS;
     const isOcrPage = !!ocrPages?.has(i);
     const isCopiedPage = !isOcrPage && !!ocrPagesCopied?.has(i);
