@@ -16,14 +16,14 @@ export const PDFJS_ASSET_DEFAULTS = {
 
 function ensureCollectionCompat() {
   type GetOrInsertComputed<K, V> = (key: K, callback: () => V) => V;
-  const install = <K extends object | unknown, V>(proto: object) => {
+  const install = <K, V>(proto: object) => {
     const target = proto as { getOrInsertComputed?: GetOrInsertComputed<K, V> };
     if (typeof target.getOrInsertComputed === "function") return;
     Object.defineProperty(target, "getOrInsertComputed", {
       configurable: true,
       writable: true,
       value(this: Map<K, V> | WeakMap<K & object, V>, key: K, callback: () => V) {
-        if (this.has(key as never)) return this.get(key as never);
+        if (this.has(key as never)) return this.get(key as never) as V;
         const value = callback();
         this.set(key as never, value as never);
         return value;
