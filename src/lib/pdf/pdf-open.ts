@@ -14,7 +14,7 @@
  * `pdfjs.getDocument({..., enableXfa: true, useSystemFonts: true })` calls leak PasswordException as an uncaught
  * error on the main thread.
  */
-import { loadPdfjs } from "@/lib/pdf/worker";
+import { loadPdfjs, PDFJS_ASSET_DEFAULTS } from "@/lib/pdf/worker";
 
 export class EncryptedPdfError extends Error {
   constructor(message = "This PDF is password-protected.") {
@@ -65,7 +65,11 @@ export async function openPdfjs(
   const prompt = opts.onPassword ?? defaultPrompt;
   const task = pdfjs.getDocument({
     data: data instanceof Uint8Array ? data : new Uint8Array(data),
-    ...(opts.extra ?? {}), enableXfa: true, useSystemFonts: true });
+    ...PDFJS_ASSET_DEFAULTS,
+    ...(opts.extra ?? {}),
+    enableXfa: true,
+    useSystemFonts: true,
+  });
   const anyTask = task as unknown as {
     onPassword?: (updateCallback: (pw: string) => void, reason: number) => void;
     promise: Promise<unknown>;

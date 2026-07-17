@@ -1267,9 +1267,9 @@ export function WorkspaceShell({ initialTool }: { initialTool?: ToolId }) {
       void (async () => {
         try {
           const bytes = new Uint8Array(await f.arrayBuffer());
-          const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
+          const { loadPdfjs, PDFJS_ASSET_DEFAULTS } = await importChunk(() => import("@/lib/pdf/worker"));
           const pdfjs = await loadPdfjs();
-          const doc = await pdfjs.getDocument({ data: bytes, enableXfa: true, useSystemFonts: true }).promise;
+          const doc = await pdfjs.getDocument({ data: bytes, ...PDFJS_ASSET_DEFAULTS, enableXfa: true, useSystemFonts: true }).promise;
           if (cancelledFast) {
             try { await (doc as { destroy?: () => Promise<void> }).destroy?.(); } catch { /* ignore */ }
             return;
@@ -3543,10 +3543,10 @@ function PagesPlaceholder({
     setError(null);
     (async () => {
       try {
-        const { loadPdfjs } = await importChunk(() => import("@/lib/pdf/worker"));
+        const { loadPdfjs, PDFJS_ASSET_DEFAULTS } = await importChunk(() => import("@/lib/pdf/worker"));
         const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const doc = await pdfjs.getDocument({ data: bytes, enableXfa: true, useSystemFonts: true }).promise;
+        const doc = await pdfjs.getDocument({ data: bytes, ...PDFJS_ASSET_DEFAULTS, enableXfa: true, useSystemFonts: true }).promise;
         if (cancelled) return;
         const n = continuous ? doc.numPages : Math.min(1, doc.numPages);
         const sizes: Array<{ width: number; height: number }> = [];
