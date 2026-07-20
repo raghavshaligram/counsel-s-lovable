@@ -118,13 +118,88 @@ function applyEdgeCacheHeaders(request: Request, response: Response): Response {
   });
 }
 
+// Worker-side cache using the Cloudflare Cache API. We can't rely on the
+// downstream `cache-control` header (the platform rewrites it to no-cache
+// on the response we return to the browser), so we store rendered HTML in
+// caches.default keyed by URL and short-circuit future requests here.
+const WORKER_CACHE_TTL_SECONDS = 300; // 5 min fresh
+const WORKER_CACHE_SWR_SECONDS = 86_400; // serve stale up to 24h
+
+function getWorkerCache(): Cache | undefined {
+  const c = (globalThis as unknown as { caches?: CacheStorage }).caches;
+  return c && "default" in c ? (c as unknown as { default: Cache }).default : undefined;
+}
+
+function isCacheableRequest(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  let url: URL;
+  try { url = new URL(request.url); } catch { return false; }
+  if (!CACHEABLE_HTML_PATHS.has(normalizePath(url.pathname))) return false;
+  if (/[?&](code|token|access_token|refresh_token|type|error|error_description)=/i.test(url.search)) return false;
+  // Skip if the visitor has an app session cookie (signed in).
+  const cookie = request.headers.get("cookie") ?? "";
+  if (/(^|;\s*)sb-[^=]+-auth-token=/.test(cookie)) return false;
+  return true;
+}
+
+function buildCacheKey(request: Request): Request {
+  const url = new URL(request.url);
+  // Strip search entirely for cache key — all cacheable paths render the
+  // same shell regardless of query string (client-only routing after that).
+  url.search = "";
+  return new Request(url.toString(), { method: "GET" });
+}
+
+async function tryCachedResponse(request: Request): Promise<Response | undefined> {
+  const cache = getWorkerCache();
+  if (!cache) return undefined;
+  const hit = await cache.match(buildCacheKey(request));
+  if (!hit) return undefined;
+  const storedAt = Number(hit.headers.get("x-worker-cached-at") ?? "0");
+  const ageSec = storedAt ? (Date.now() - storedAt) / 1000 : Number.POSITIVE_INFINITY;
+  if (ageSec > WORKER_CACHE_TTL_SECONDS + WORKER_CACHE_SWR_SECONDS) return undefined;
+  const headers = new Headers(hit.headers);
+  headers.set("x-worker-cache", ageSec <= WORKER_CACHE_TTL_SECONDS ? "HIT" : "STALE");
+  headers.set("age", String(Math.max(0, Math.floor(ageSec))));
+  return new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers });
+}
+
+async function storeInWorkerCache(
+  request: Request,
+  response: Response,
+  ctx: unknown,
+): Promise<void> {
+  const cache = getWorkerCache();
+  if (!cache) return;
+  if (response.status !== 200) return;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return;
+  const buf = await response.clone().arrayBuffer();
+  const headers = new Headers(response.headers);
+  headers.set("x-worker-cached-at", String(Date.now()));
+  // Strip Set-Cookie from cached copy — never replay another visitor's cookie.
+  headers.delete("set-cookie");
+  const cached = new Response(buf, { status: 200, headers });
+  const put = cache.put(buildCacheKey(request), cached);
+  const c = ctx as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+  if (c?.waitUntil) c.waitUntil(put); else await put;
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      if (isCacheableRequest(request)) {
+        const cached = await tryCachedResponse(request);
+        if (cached) return cached;
+      }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       const normalized = await normalizeCatastrophicSsrResponse(response);
-      return applyEdgeCacheHeaders(request, normalized);
+      const withHeaders = applyEdgeCacheHeaders(request, normalized);
+      if (isCacheableRequest(request)) {
+        await storeInWorkerCache(request, withHeaders, ctx);
+      }
+      return withHeaders;
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {
@@ -134,4 +209,5 @@ export default {
     }
   },
 };
+
 
