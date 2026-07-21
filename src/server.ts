@@ -160,7 +160,13 @@ function buildCacheKey(request: Request): Request {
 async function tryCachedResponse(request: Request): Promise<Response | undefined> {
   const cache = getWorkerCache();
   if (!cache) return undefined;
-  const hit = await cache.match(buildCacheKey(request));
+  let hit: Response | undefined;
+  try {
+    hit = await cache.match(buildCacheKey(request));
+  } catch {
+    workerCacheDisabled = true;
+    return undefined;
+  }
   if (!hit) return undefined;
   const storedAt = Number(hit.headers.get("x-worker-cached-at") ?? "0");
   const ageSec = storedAt ? (Date.now() - storedAt) / 1000 : Number.POSITIVE_INFINITY;
@@ -187,9 +193,15 @@ async function storeInWorkerCache(
   // Strip Set-Cookie from cached copy — never replay another visitor's cookie.
   headers.delete("set-cookie");
   const cached = new Response(buf, { status: 200, headers });
-  const put = cache.put(buildCacheKey(request), cached);
+  const doPut = async () => {
+    try {
+      await cache.put(buildCacheKey(request), cached);
+    } catch {
+      workerCacheDisabled = true;
+    }
+  };
   const c = ctx as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
-  if (c?.waitUntil) c.waitUntil(put); else await put;
+  if (c?.waitUntil) c.waitUntil(doPut()); else await doPut();
 }
 
 export default {
