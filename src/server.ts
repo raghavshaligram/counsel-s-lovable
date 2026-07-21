@@ -125,9 +125,16 @@ function applyEdgeCacheHeaders(request: Request, response: Response): Response {
 const WORKER_CACHE_TTL_SECONDS = 300; // 5 min fresh
 const WORKER_CACHE_SWR_SECONDS = 86_400; // serve stale up to 24h
 
+let workerCacheDisabled = false;
 function getWorkerCache(): Cache | undefined {
-  const c = (globalThis as unknown as { caches?: CacheStorage }).caches;
-  return c && "default" in c ? (c as unknown as { default: Cache }).default : undefined;
+  if (workerCacheDisabled) return undefined;
+  try {
+    const c = (globalThis as unknown as { caches?: CacheStorage }).caches;
+    return c && "default" in c ? (c as unknown as { default: Cache }).default : undefined;
+  } catch {
+    workerCacheDisabled = true;
+    return undefined;
+  }
 }
 
 function isCacheableRequest(request: Request): boolean {
