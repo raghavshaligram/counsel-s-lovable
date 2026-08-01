@@ -1154,7 +1154,7 @@ function PatternRedact({ ctx }: { ctx: ToolPanelCtx }) {
     }
     if (added > 0) {
       toast.success(`${added} redaction box${added === 1 ? "" : "es"} staged`, {
-        description: 'Click "Redact, export & verify" below to permanently burn them.',
+        description: 'Click "Export" below to permanently burn them.',
       });
       setSelected(new Set());
     } else if (skipped > 0) {
