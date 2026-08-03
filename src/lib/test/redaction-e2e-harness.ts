@@ -385,13 +385,36 @@ export async function runFragmentedRedactionE2E(): Promise<FragProbe> {
 }
 
 // Convenience: expose on window so the Playwright script can just call
-// `await window.__runMixedRedactionE2E()` without wiring an import graph.
+// `window.__runMixedRedactionE2E()` without wiring an import graph.
+//
+// Result delivery is decoupled from the promise's return value on purpose.
+// The mixed run is long (rasterize-always → sanitize → verify → re-verify →
+// pdf.js re-extract), and on a slow CI runner a page-level navigation/reload
+// can tear down the execution context AFTER the probe is computed but BEFORE
+// the driving `page.evaluate()` resolves — surfacing as "Execution context
+// was destroyed, most likely because of a navigation" even though redaction
+// succeeded. To make it deterministic, each wrapper pushes the probe through
+// a Playwright-exposed binding (`__reportMixedResult` / `__reportFragResult`)
+// the instant it resolves — same microtask as the await continuation, so no
+// navigation can interleave before the payload is sent to Node. The binding
+// call reaches the driver even if the context dies a moment later. The return
+// value is kept as a fallback for any caller that still awaits it directly.
 if (typeof window !== "undefined") {
   const w = window as unknown as {
-    __runMixedRedactionE2E?: typeof runMixedRedactionE2E;
-    __runFragmentedRedactionE2E?: typeof runFragmentedRedactionE2E;
+    __runMixedRedactionE2E?: () => Promise<E2eProbe>;
+    __runFragmentedRedactionE2E?: () => Promise<FragProbe>;
+    __reportMixedResult?: (p: E2eProbe) => void;
+    __reportFragResult?: (p: FragProbe) => void;
   };
-  w.__runMixedRedactionE2E = runMixedRedactionE2E;
-  w.__runFragmentedRedactionE2E = runFragmentedRedactionE2E;
+  w.__runMixedRedactionE2E = async () => {
+    const probe = await runMixedRedactionE2E();
+    try { w.__reportMixedResult?.(probe); } catch { /* fall back to return value */ }
+    return probe;
+  };
+  w.__runFragmentedRedactionE2E = async () => {
+    const probe = await runFragmentedRedactionE2E();
+    try { w.__reportFragResult?.(probe); } catch { /* fall back to return value */ }
+    return probe;
+  };
 }
 

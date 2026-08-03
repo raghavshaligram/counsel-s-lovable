@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * End-to-end regression test for the redaction pipeline.
@@ -23,9 +23,74 @@ import { test, expect } from "@playwright/test";
  * Fail condition (the exact class of regression this guards against):
  *   "leaked"  — gate returned bytes BUT the secret is still recoverable
  *               from raw bytes or the text layer of the exported PDF.
+ *
+ * RESULT DELIVERY: we do NOT read the harness result from the return value
+ * of a long-lived `page.evaluate()`. The mixed run in particular is slow
+ * (rasterize-always → sanitize → verify → re-verify → pdf.js re-extract),
+ * and on a slow CI runner a page-level navigation/reload can destroy the
+ * execution context AFTER the probe is computed but BEFORE that evaluate
+ * resolves — Playwright then throws "Execution context was destroyed, most
+ * likely because of a navigation" even though redaction succeeded. Instead
+ * we install a `page.exposeFunction` binding BEFORE navigating; the harness
+ * pushes the probe through it the instant it resolves, so the result reaches
+ * Node regardless of what happens to the page afterward. The run itself is
+ * kicked off fire-and-forget so no evaluate is left awaiting across a nav.
+ *
+ * SERVER: the page under test is a standalone harness page built by
+ * vite.e2e.config.ts and served via `vite preview` (a static production
+ * build). Its root document imports the harness, so no addScriptTag is
+ * needed, and there is no dev HMR client / on-the-fly dep optimization to
+ * trigger a full-page reload, and pdf.js's worker is a real bundled asset.
  */
 
-const HARNESS_URL = "/src/lib/test/redaction-e2e-harness.ts";
+/**
+ * Drive one harness entry point and return its probe via a nav-proof
+ * binding rather than the evaluate return value.
+ */
+async function runHarnessViaBinding(
+  page: Page,
+  runFnName: "__runMixedRedactionE2E" | "__runFragmentedRedactionE2E",
+  reportName: string,
+): Promise<Record<string, unknown>> {
+  let resolveProbe!: (p: Record<string, unknown>) => void;
+  const probePromise = new Promise<Record<string, unknown>>((res) => {
+    resolveProbe = res;
+  });
+
+  // Install the result sink BEFORE navigating. exposeFunction survives
+  // navigations, so the binding stays live regardless of what the page does.
+  await page.exposeFunction(reportName, (p: Record<string, unknown>) => resolveProbe(p));
+
+  // The preview page's own <script> imports the harness and attaches the run
+  // functions to window — no addScriptTag needed.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.waitForFunction(
+    (fnName) => typeof (window as unknown as Record<string, unknown>)[fnName] === "function",
+    runFnName,
+    { timeout: 30_000 },
+  );
+
+  // Fire-and-forget: kick the run off and return immediately. The harness
+  // wrapper calls `reportName` with the probe the moment it resolves; on
+  // failure we report an error probe so the awaiter below never hangs.
+  await page.evaluate(
+    ([fnName, repName]) => {
+      const w = window as unknown as Record<string, (arg?: unknown) => unknown>;
+      void Promise.resolve()
+        .then(() => (w[fnName] as () => Promise<unknown>)())
+        .catch((e: unknown) => w[repName]({ outcome: "error", error: String(e) }));
+    },
+    [runFnName, reportName] as const,
+  );
+
+  return Promise.race([
+    probePromise,
+    new Promise<Record<string, unknown>>((_, reject) =>
+      setTimeout(() => reject(new Error(`timed out waiting for ${reportName}`)), 90_000),
+    ),
+  ]);
+}
 
 test.describe("redaction end-to-end (browser chain)", () => {
   test("mixed page-text + side-channel selection: no leak ships", async ({ page }) => {
@@ -35,23 +100,11 @@ test.describe("redaction end-to-end (browser chain)", () => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
 
-    // Vite serves the harness + all editor/worker modules at :8080.
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.addScriptTag({ url: HARNESS_URL, type: "module" });
-
-    await page.waitForFunction(
-      () => typeof (window as unknown as { __runMixedRedactionE2E?: unknown }).__runMixedRedactionE2E === "function",
-      { timeout: 30_000 },
-    );
-
-    const probe = (await page.evaluate(async () => {
-      const fn = (window as unknown as { __runMixedRedactionE2E: () => Promise<unknown> })
-        .__runMixedRedactionE2E;
-      return fn();
-    })) as {
+    const probe = (await runHarnessViaBinding(page, "__runMixedRedactionE2E", "__reportMixedResult")) as {
       secret: string;
       name: string;
-      outcome: "clean" | "blocked" | "leaked";
+      outcome: "clean" | "blocked" | "leaked" | "error";
+      error?: string;
       secretInRawBytes?: boolean;
       secretInExtractedText?: boolean;
       perPageText?: string[];
@@ -65,6 +118,10 @@ test.describe("redaction end-to-end (browser chain)", () => {
     // Log for CI visibility.
     // eslint-disable-next-line no-console
     console.log("[redaction-e2e]", JSON.stringify(probe, null, 2));
+
+    // An "error" outcome means the harness threw before producing a probe —
+    // surface it as a real failure with the underlying message.
+    expect(probe.outcome, `harness error: ${probe.error}`).not.toBe("error");
 
     // The single hard invariant: leaky bytes must NEVER be delivered.
     expect(
@@ -112,23 +169,12 @@ test.describe("redaction end-to-end (browser chain)", () => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
 
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.addScriptTag({ url: HARNESS_URL, type: "module" });
-
-    await page.waitForFunction(
-      () => typeof (window as unknown as { __runFragmentedRedactionE2E?: unknown }).__runFragmentedRedactionE2E === "function",
-      { timeout: 30_000 },
-    );
-
-    const probe = (await page.evaluate(async () => {
-      const fn = (window as unknown as { __runFragmentedRedactionE2E: () => Promise<unknown> })
-        .__runFragmentedRedactionE2E;
-      return fn();
-    })) as {
+    const probe = (await runHarnessViaBinding(page, "__runFragmentedRedactionE2E", "__reportFragResult")) as {
       fullValue: string;
       leadingFragment: string;
       trailingFragment: string;
-      outcome: "clean" | "blocked" | "leaked";
+      outcome: "clean" | "blocked" | "leaked" | "error";
+      error?: string;
       rectsCoveredAllFragments: boolean;
       detectionRectCount: number;
       beforeText?: string;
@@ -149,6 +195,8 @@ test.describe("redaction end-to-end (browser chain)", () => {
 
     // eslint-disable-next-line no-console
     console.log("[redaction-e2e:frag]", JSON.stringify(probe, null, 2));
+
+    expect(probe.outcome, `harness error: ${probe.error}`).not.toBe("error");
 
     expect(
       probe.outcome,
@@ -178,4 +226,3 @@ test.describe("redaction end-to-end (browser chain)", () => {
     ).toEqual([]);
   });
 });
-

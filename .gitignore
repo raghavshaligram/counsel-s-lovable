@@ -30,3 +30,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# e2e (Playwright) artifacts
+e2e/harness-dist
+playwright-report
+test-results

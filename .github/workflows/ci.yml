@@ -28,13 +28,15 @@ jobs:
           node-version: 22
           cache: npm
 
-      # onnxruntime-node (pulled transitively via @huggingface/transformers)
-      # downloads a native binary in its postinstall that neither the unit
-      # suite nor the browser bundle needs — the app runs onnxruntime-web in
-      # the browser. Skipping lifecycle scripts keeps installs deterministic
-      # and avoids that flaky binary fetch; esbuild/rollup ship their platform
-      # binaries as optional dependencies (no postinstall), so the toolchain
-      # still works.
+      # Use `npm install`, not `npm ci`: this repo is Lovable-managed, and
+      # Lovable bumps versions in package.json without regenerating
+      # package-lock.json, so `npm ci`'s strict lock-sync check fails
+      # (EUSAGE). `npm install` reconciles the drift instead of erroring.
+      # --ignore-scripts skips onnxruntime-node's native-binary postinstall
+      # (pulled transitively via @huggingface/transformers) — neither the
+      # unit suite nor the browser bundle needs it (the app runs
+      # onnxruntime-web). esbuild/rollup/sharp ship platform binaries as
+      # optional dependencies (no postinstall), so the toolchain still works.
       - name: Install dependencies
         run: npm install --no-audit --no-fund --ignore-scripts
 
@@ -60,35 +62,43 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # playwright.config.ts intentionally does NOT declare a `webServer`, so
-      # we bring the dev server up ourselves. Bind explicitly to IPv4 so the
-      # baseURL (http://localhost:8080) resolves regardless of the runner's
-      # IPv6 configuration. The background process persists across steps for
-      # the lifetime of the job.
-      - name: Start dev server
-        run: |
-          npm run dev -- --host 127.0.0.1 --port 8080 --strictPort > /tmp/vite-dev.log 2>&1 &
-          echo "started dev server (pid $!)"
+      # Build the standalone e2e harness page (a production build) and serve it
+      # with `vite preview` — NOT the app dev server. The dev server's HMR
+      # client and on-the-fly dependency optimization issued spurious full-page
+      # reloads mid-run, and pdf.js fell back to a "fake worker" on a 404, which
+      # tore down / stalled the redaction chain ("Execution context was
+      # destroyed, most likely because of a navigation"). A static preview has
+      # no HMR, no dev transforms, and bundles pdf.js's worker as a real asset —
+      # deterministic and closer to what ships. See vite.e2e.config.ts.
+      - name: Build e2e harness
+        run: npx vite build --config vite.e2e.config.ts
 
-      - name: Wait for dev server
+      # The preview server binds 127.0.0.1:8080 (strictPort) via the config.
+      # The background process persists across steps for the job's lifetime.
+      - name: Start preview server
+        run: |
+          npx vite preview --config vite.e2e.config.ts > /tmp/vite-preview.log 2>&1 &
+          echo "started preview server (pid $!)"
+
+      - name: Wait for preview server
         run: |
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8080/ >/dev/null 2>&1; then
-              echo "dev server is up"
+              echo "preview server is up"
               exit 0
             fi
             sleep 2
           done
-          echo "::error::dev server did not become ready within 120s"
-          cat /tmp/vite-dev.log || true
+          echo "::error::preview server did not become ready within 120s"
+          cat /tmp/vite-preview.log || true
           exit 1
 
       - name: Run e2e tests
         run: npx playwright test
 
-      - name: Dump dev server log on failure
+      - name: Dump preview server log on failure
         if: failure()
-        run: cat /tmp/vite-dev.log || true
+        run: cat /tmp/vite-preview.log || true
 
       - name: Upload Playwright report
         if: always()
